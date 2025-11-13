@@ -280,7 +280,8 @@ export default function CastsPage() {
         👥 キャスト管理
       </h1>
 
-      <div style={{ marginBottom: '20px', display: 'flex', gap: '15px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+      <div style={{ marginBottom: '20px', overflowX: 'auto', paddingBottom: '10px' }}>
+        <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-end', minWidth: 'max-content' }}>
         <div>
           <label style={{ display: 'block', marginBottom: '5px', fontSize: '13px', color: '#666' }}>店舗</label>
           <select
@@ -427,6 +428,7 @@ export default function CastsPage() {
         >
           クリア
         </button>
+        </div>
       </div>
 
       {loading ? (
@@ -442,42 +444,42 @@ export default function CastsPage() {
           }}>
             <thead>
               <tr style={{ backgroundColor: '#f5f5f5' }}>
-                <th style={thStyleClickable} onClick={() => handleSort('name')}>
+                <th style={thStyleNameSticky} onClick={() => handleSort('name')}>
                   名前 {sortField === 'name' && (sortDirection === 'asc' ? '↑' : '↓')}
                 </th>
-                <th style={thStyleClickable} onClick={() => handleSort('birthday')}>
+                <th style={thStyleClickableSticky} onClick={() => handleSort('birthday')}>
                   誕生日 {sortField === 'birthday' && (sortDirection === 'asc' ? '↑' : '↓')}
                 </th>
-                <th style={thStyleClickable} onClick={() => handleSort('status')}>
+                <th style={thStyleClickableSticky} onClick={() => handleSort('status')}>
                   ステータス {sortField === 'status' && (sortDirection === 'asc' ? '↑' : '↓')}
                 </th>
-                <th style={thStyleClickable} onClick={() => handleSort('attributes')}>
+                <th style={thStyleClickableSticky} onClick={() => handleSort('attributes')}>
                   属性 {sortField === 'attributes' && (sortDirection === 'asc' ? '↑' : '↓')}
                 </th>
-                <th style={thStyleClickable} onClick={() => handleSort('experience_date')}>
+                <th style={thStyleClickableSticky} onClick={() => handleSort('experience_date')}>
                   体験日 {sortField === 'experience_date' && (sortDirection === 'asc' ? '↑' : '↓')}
                 </th>
-                <th style={thStyleClickable} onClick={() => handleSort('hire_date')}>
+                <th style={thStyleClickableSticky} onClick={() => handleSort('hire_date')}>
                   入社日 {sortField === 'hire_date' && (sortDirection === 'asc' ? '↑' : '↓')}
                 </th>
-                <th style={thStyleClickable} onClick={() => handleSort('resignation_date')}>
+                <th style={thStyleClickableSticky} onClick={() => handleSort('resignation_date')}>
                   退職日 {sortField === 'resignation_date' && (sortDirection === 'asc' ? '↑' : '↓')}
                 </th>
-                <th style={thStyleClickable} onClick={() => handleSort('hourly_wage')}>
+                <th style={thStyleClickableSticky} onClick={() => handleSort('hourly_wage')}>
                   時給 {sortField === 'hourly_wage' && (sortDirection === 'asc' ? '↑' : '↓')}
                 </th>
-                <th style={thStyleClickable} onClick={() => handleSort('commission_rate')}>
+                <th style={thStyleClickableSticky} onClick={() => handleSort('commission_rate')}>
                   歩合率 {sortField === 'commission_rate' && (sortDirection === 'asc' ? '↑' : '↓')}
                 </th>
-                <th style={thStyle}>住民票</th>
-                <th style={thStyle}>在籍証明</th>
-                <th style={thStyle}>契約書</th>
-                <th style={thStyle}>Twitter</th>
-                <th style={thStyle}>Instagram</th>
-                <th style={thStyle}>POS表示</th>
-                <th style={thStyle}>管理者</th>
-                <th style={thStyle}>マネージャー</th>
-                <th style={thStyle}>
+                <th style={thStyleSticky}>住民票</th>
+                <th style={thStyleSticky}>在籍証明</th>
+                <th style={thStyleSticky}>契約書</th>
+                <th style={thStyleSticky}>Twitter</th>
+                <th style={thStyleSticky}>Instagram</th>
+                <th style={thStyleSticky}>POS表示</th>
+                <th style={thStyleSticky}>管理者</th>
+                <th style={thStyleSticky}>マネージャー</th>
+                <th style={thStyleSticky}>
                   <div style={{ lineHeight: '1.2' }}>
                     シフトアプリ<br/>ログイン
                   </div>
@@ -487,7 +489,7 @@ export default function CastsPage() {
             <tbody>
               {filteredCasts.map((cast) => (
                 <tr key={cast.id} style={{ borderBottom: '1px solid #eee' }}>
-                  <td style={{ ...tdStyle, fontWeight: 'bold' }}>{cast.name}</td>
+                  <td style={tdStyleNameSticky}>{cast.name}</td>
                   <td style={tdStyle}>{cast.birthday || '-'}</td>
                   <td style={tdStyle}>
                     {cast.status ? (
@@ -537,6 +539,14 @@ const thStyle = {
   borderBottom: '2px solid #ddd'
 }
 
+const thStyleSticky = {
+  ...thStyle,
+  position: 'sticky' as const,
+  top: 0,
+  backgroundColor: '#f5f5f5',
+  zIndex: 2,
+}
+
 const thStyleClickable = {
   ...thStyle,
   cursor: 'pointer',
@@ -544,8 +554,34 @@ const thStyleClickable = {
   transition: 'background-color 0.2s',
 }
 
+const thStyleClickableSticky = {
+  ...thStyleClickable,
+  position: 'sticky' as const,
+  top: 0,
+  backgroundColor: '#f5f5f5',
+  zIndex: 2,
+}
+
+const thStyleNameSticky = {
+  ...thStyleClickable,
+  position: 'sticky' as const,
+  top: 0,
+  left: 0,
+  backgroundColor: '#f5f5f5',
+  zIndex: 3,
+}
+
 const tdStyle = {
   padding: '12px'
+}
+
+const tdStyleNameSticky = {
+  ...tdStyle,
+  fontWeight: 'bold',
+  position: 'sticky' as const,
+  left: 0,
+  backgroundColor: 'white',
+  zIndex: 1,
 }
 
 const filterSelectStyle = {
