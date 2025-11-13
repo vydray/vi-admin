@@ -43,7 +43,21 @@ export default function CastsPage() {
   const [filteredCasts, setFilteredCasts] = useState<Cast[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedStore, setSelectedStore] = useState(2)
+
+  // フィルタの一時的な状態（検索ボタンを押すまで適用されない）
+  const [tempSearchQuery, setTempSearchQuery] = useState('')
+  const [tempStatusFilter, setTempStatusFilter] = useState<string>('')
+  const [tempAttributeFilter, setTempAttributeFilter] = useState<string>('')
+  const [tempDocumentFilter, setTempDocumentFilter] = useState<string>('')
+  const [tempActiveFilter, setTempActiveFilter] = useState<string>('')
+
+  // 実際に適用されたフィルタ
   const [searchQuery, setSearchQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState<string>('')
+  const [attributeFilter, setAttributeFilter] = useState<string>('')
+  const [documentFilter, setDocumentFilter] = useState<string>('')
+  const [activeFilter, setActiveFilter] = useState<string>('')
+
   const [sortField, setSortField] = useState<keyof Cast | null>(null)
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
 
@@ -53,7 +67,7 @@ export default function CastsPage() {
 
   useEffect(() => {
     filterAndSortCasts()
-  }, [casts, searchQuery, sortField, sortDirection])
+  }, [casts, searchQuery, statusFilter, attributeFilter, documentFilter, activeFilter, sortField, sortDirection])
 
   const loadCasts = async () => {
     setLoading(true)
@@ -71,6 +85,27 @@ export default function CastsPage() {
     setLoading(false)
   }
 
+  const applyFilters = () => {
+    setSearchQuery(tempSearchQuery)
+    setStatusFilter(tempStatusFilter)
+    setAttributeFilter(tempAttributeFilter)
+    setDocumentFilter(tempDocumentFilter)
+    setActiveFilter(tempActiveFilter)
+  }
+
+  const clearFilters = () => {
+    setTempSearchQuery('')
+    setTempStatusFilter('')
+    setTempAttributeFilter('')
+    setTempDocumentFilter('')
+    setTempActiveFilter('')
+    setSearchQuery('')
+    setStatusFilter('')
+    setAttributeFilter('')
+    setDocumentFilter('')
+    setActiveFilter('')
+  }
+
   const filterAndSortCasts = () => {
     let result = [...casts]
 
@@ -78,10 +113,40 @@ export default function CastsPage() {
     if (searchQuery) {
       result = result.filter(cast =>
         cast.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        cast.birthday?.includes(searchQuery) ||
-        cast.status?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        cast.attributes?.toLowerCase().includes(searchQuery.toLowerCase())
+        cast.birthday?.includes(searchQuery)
       )
+    }
+
+    // ステータスフィルター
+    if (statusFilter) {
+      result = result.filter(cast => cast.status === statusFilter)
+    }
+
+    // 属性フィルター
+    if (attributeFilter) {
+      result = result.filter(cast => cast.attributes === attributeFilter)
+    }
+
+    // 書類フィルター
+    if (documentFilter === 'complete') {
+      result = result.filter(cast =>
+        cast.residence_record === true &&
+        cast.attendance_certificate === true &&
+        cast.contract_documents === true
+      )
+    } else if (documentFilter === 'incomplete') {
+      result = result.filter(cast =>
+        cast.residence_record !== true ||
+        cast.attendance_certificate !== true ||
+        cast.contract_documents !== true
+      )
+    }
+
+    // 勤務可能フィルター
+    if (activeFilter === 'active') {
+      result = result.filter(cast => cast.is_active === true)
+    } else if (activeFilter === 'inactive') {
+      result = result.filter(cast => cast.is_active === false)
     }
 
     // ソート
@@ -101,6 +166,10 @@ export default function CastsPage() {
 
     setFilteredCasts(result)
   }
+
+  // ユニークな値を取得
+  const uniqueStatuses = Array.from(new Set(casts.map(c => c.status).filter(Boolean)))
+  const uniqueAttributes = Array.from(new Set(casts.map(c => c.attributes).filter(Boolean)))
 
   const handleSort = (field: keyof Cast) => {
     if (sortField === field) {
@@ -171,47 +240,118 @@ export default function CastsPage() {
 
   return (
     <div style={{ padding: '40px', width: '100%', maxWidth: '100%' }}>
-      <div style={{ marginBottom: '30px' }}>
-        <a href="/" style={{ color: '#007AFF', textDecoration: 'none' }}>← ホームに戻る</a>
-      </div>
-
       <h1 style={{ fontSize: '32px', fontWeight: 'bold', marginBottom: '20px' }}>
         👥 キャスト管理
       </h1>
 
-      <div style={{ marginBottom: '20px', display: 'flex', gap: '20px', alignItems: 'center' }}>
+      <div style={{ marginBottom: '20px', display: 'flex', gap: '15px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <div>
-          <label style={{ marginRight: '10px' }}>店舗:</label>
+          <label style={{ display: 'block', marginBottom: '5px', fontSize: '13px', color: '#666' }}>店舗</label>
           <select
             value={selectedStore}
             onChange={(e) => setSelectedStore(Number(e.target.value))}
-            style={{
-              padding: '8px 12px',
-              border: '1px solid #ddd',
-              borderRadius: '4px',
-              fontSize: '14px'
-            }}
+            style={filterSelectStyle}
           >
-            <option value={1}>Store 1 - Memorable</option>
-            <option value={2}>Store 2 - MistressMirage</option>
+            <option value={1}>Memorable</option>
+            <option value={2}>Mistress Mirage</option>
           </select>
         </div>
-        <div style={{ flex: 1 }}>
+
+        <div>
+          <label style={{ display: 'block', marginBottom: '5px', fontSize: '13px', color: '#666' }}>名前検索</label>
           <input
             type="text"
-            placeholder="検索（名前、誕生日、ステータス、属性）"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={{
-              width: '100%',
-              maxWidth: '400px',
-              padding: '8px 12px',
-              border: '1px solid #ddd',
-              borderRadius: '4px',
-              fontSize: '14px'
-            }}
+            placeholder="名前・誕生日"
+            value={tempSearchQuery}
+            onChange={(e) => setTempSearchQuery(e.target.value)}
+            style={filterInputStyle}
           />
         </div>
+
+        <div>
+          <label style={{ display: 'block', marginBottom: '5px', fontSize: '13px', color: '#666' }}>ステータス</label>
+          <select
+            value={tempStatusFilter}
+            onChange={(e) => setTempStatusFilter(e.target.value)}
+            style={filterSelectStyle}
+          >
+            <option value="">すべて</option>
+            {uniqueStatuses.map(status => (
+              <option key={status} value={status}>{status}</option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label style={{ display: 'block', marginBottom: '5px', fontSize: '13px', color: '#666' }}>属性</label>
+          <select
+            value={tempAttributeFilter}
+            onChange={(e) => setTempAttributeFilter(e.target.value)}
+            style={filterSelectStyle}
+          >
+            <option value="">すべて</option>
+            {uniqueAttributes.map(attr => (
+              <option key={attr} value={attr}>{attr}</option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label style={{ display: 'block', marginBottom: '5px', fontSize: '13px', color: '#666' }}>書類状況</label>
+          <select
+            value={tempDocumentFilter}
+            onChange={(e) => setTempDocumentFilter(e.target.value)}
+            style={filterSelectStyle}
+          >
+            <option value="">すべて</option>
+            <option value="complete">完備</option>
+            <option value="incomplete">未完備</option>
+          </select>
+        </div>
+
+        <div>
+          <label style={{ display: 'block', marginBottom: '5px', fontSize: '13px', color: '#666' }}>勤務可能</label>
+          <select
+            value={tempActiveFilter}
+            onChange={(e) => setTempActiveFilter(e.target.value)}
+            style={filterSelectStyle}
+          >
+            <option value="">すべて</option>
+            <option value="active">可能</option>
+            <option value="inactive">不可</option>
+          </select>
+        </div>
+
+        <button
+          onClick={applyFilters}
+          style={{
+            padding: '10px 24px',
+            backgroundColor: '#007AFF',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '14px',
+            fontWeight: 'bold'
+          }}
+        >
+          検索
+        </button>
+
+        <button
+          onClick={clearFilters}
+          style={{
+            padding: '10px 24px',
+            backgroundColor: '#f5f5f5',
+            color: '#333',
+            border: '1px solid #ddd',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '14px'
+          }}
+        >
+          クリア
+        </button>
       </div>
 
       {loading ? (
@@ -331,4 +471,22 @@ const thStyleClickable = {
 
 const tdStyle = {
   padding: '12px'
+}
+
+const filterSelectStyle = {
+  padding: '8px 12px',
+  border: '1px solid #ddd',
+  borderRadius: '4px',
+  fontSize: '14px',
+  backgroundColor: 'white',
+  minWidth: '140px',
+  cursor: 'pointer'
+}
+
+const filterInputStyle = {
+  padding: '8px 12px',
+  border: '1px solid #ddd',
+  borderRadius: '4px',
+  fontSize: '14px',
+  minWidth: '200px'
 }
