@@ -168,8 +168,8 @@ export default function CastsPage() {
   }
 
   // ユニークな値を取得
-  const uniqueStatuses = Array.from(new Set(casts.map(c => c.status).filter(Boolean)))
-  const uniqueAttributes = Array.from(new Set(casts.map(c => c.attributes).filter(Boolean)))
+  const uniqueStatuses = Array.from(new Set(casts.map(c => c.status).filter((s): s is string => s !== null && s !== undefined)))
+  const uniqueAttributes = Array.from(new Set(casts.map(c => c.attributes).filter((attr): attr is string => attr !== null && attr !== undefined)))
 
   const handleSort = (field: keyof Cast) => {
     if (sortField === field) {
