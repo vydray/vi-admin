@@ -67,6 +67,10 @@ export default function CastsPage() {
   const [sortField, setSortField] = useState<keyof Cast | null>(null)
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
 
+  // モーダル状態
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [editingCast, setEditingCast] = useState<Cast | null>(null)
+
   useEffect(() => {
     loadCasts()
   }, [selectedStore])
@@ -233,10 +237,56 @@ export default function CastsPage() {
     }
   }
 
+  const openEditModal = (cast: Cast) => {
+    setEditingCast({ ...cast })
+    setIsModalOpen(true)
+  }
+
+  const closeModal = () => {
+    setIsModalOpen(false)
+    setEditingCast(null)
+  }
+
+  const handleSaveCast = async () => {
+    if (!editingCast) return
+
+    const { error } = await supabase
+      .from('casts')
+      .update({
+        name: editingCast.name,
+        birthday: editingCast.birthday,
+        status: editingCast.status,
+        attributes: editingCast.attributes,
+        experience_date: editingCast.experience_date,
+        hire_date: editingCast.hire_date,
+        resignation_date: editingCast.resignation_date,
+        hourly_wage: editingCast.hourly_wage,
+        commission_rate: editingCast.commission_rate,
+        twitter: editingCast.twitter,
+        instagram: editingCast.instagram,
+      })
+      .eq('id', editingCast.id)
+
+    if (error) {
+      console.error('Error updating cast:', error)
+      alert('更新に失敗しました')
+    } else {
+      closeModal()
+      loadCasts()
+    }
+  }
+
+  const handleFieldChange = (field: keyof Cast, value: any) => {
+    if (editingCast) {
+      setEditingCast({ ...editingCast, [field]: value })
+    }
+  }
+
   const renderToggle = (castId: number, field: string, value: boolean | null) => {
     const isOn = value === true
     return (
       <div
+        data-toggle="true"
         onClick={() => updateCastField(castId, field, !isOn)}
         style={{
           width: '44px',
@@ -478,7 +528,17 @@ export default function CastsPage() {
             </thead>
             <tbody>
               {filteredCasts.map((cast) => (
-                <tr key={cast.id} style={{ borderBottom: '1px solid #eee' }}>
+                <tr
+                  key={cast.id}
+                  style={{ borderBottom: '1px solid #eee', cursor: 'pointer' }}
+                  onClick={(e) => {
+                    // トグルスイッチのクリックは無視
+                    if ((e.target as HTMLElement).closest('[data-toggle]')) {
+                      return
+                    }
+                    openEditModal(cast)
+                  }}
+                >
                   <td style={tdStyleNameSticky}>{cast.name}</td>
                   <td style={tdStyle}>{cast.birthday || '-'}</td>
                   <td style={tdStyle}>
@@ -518,6 +578,139 @@ export default function CastsPage() {
       <div style={{ marginTop: '10px', color: '#666' }}>
         表示: {filteredCasts.length}人 / 合計: {casts.length}人
       </div>
+
+      {/* 編集モーダル */}
+      {isModalOpen && editingCast && (
+        <div style={modalOverlayStyle} onClick={closeModal}>
+          <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
+            <h2 style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '20px' }}>
+              キャスト情報編集
+            </h2>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
+              <div>
+                <label style={labelStyle}>名前</label>
+                <input
+                  type="text"
+                  value={editingCast.name}
+                  onChange={(e) => handleFieldChange('name', e.target.value)}
+                  style={inputStyle}
+                />
+              </div>
+
+              <div>
+                <label style={labelStyle}>誕生日</label>
+                <input
+                  type="date"
+                  value={editingCast.birthday || ''}
+                  onChange={(e) => handleFieldChange('birthday', e.target.value)}
+                  style={inputStyle}
+                />
+              </div>
+
+              <div>
+                <label style={labelStyle}>ステータス</label>
+                <input
+                  type="text"
+                  value={editingCast.status || ''}
+                  onChange={(e) => handleFieldChange('status', e.target.value)}
+                  style={inputStyle}
+                />
+              </div>
+
+              <div>
+                <label style={labelStyle}>属性</label>
+                <input
+                  type="text"
+                  value={editingCast.attributes || ''}
+                  onChange={(e) => handleFieldChange('attributes', e.target.value)}
+                  style={inputStyle}
+                />
+              </div>
+
+              <div>
+                <label style={labelStyle}>体験日</label>
+                <input
+                  type="date"
+                  value={editingCast.experience_date || ''}
+                  onChange={(e) => handleFieldChange('experience_date', e.target.value)}
+                  style={inputStyle}
+                />
+              </div>
+
+              <div>
+                <label style={labelStyle}>入社日</label>
+                <input
+                  type="date"
+                  value={editingCast.hire_date || ''}
+                  onChange={(e) => handleFieldChange('hire_date', e.target.value)}
+                  style={inputStyle}
+                />
+              </div>
+
+              <div>
+                <label style={labelStyle}>退職日</label>
+                <input
+                  type="date"
+                  value={editingCast.resignation_date || ''}
+                  onChange={(e) => handleFieldChange('resignation_date', e.target.value)}
+                  style={inputStyle}
+                />
+              </div>
+
+              <div>
+                <label style={labelStyle}>時給</label>
+                <input
+                  type="number"
+                  value={editingCast.hourly_wage}
+                  onChange={(e) => handleFieldChange('hourly_wage', Number(e.target.value))}
+                  style={inputStyle}
+                />
+              </div>
+
+              <div>
+                <label style={labelStyle}>歩合率 (%)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={(editingCast.commission_rate * 100).toFixed(2)}
+                  onChange={(e) => handleFieldChange('commission_rate', Number(e.target.value) / 100)}
+                  style={inputStyle}
+                />
+              </div>
+
+              <div>
+                <label style={labelStyle}>Twitter</label>
+                <input
+                  type="text"
+                  value={editingCast.twitter || ''}
+                  onChange={(e) => handleFieldChange('twitter', e.target.value)}
+                  style={inputStyle}
+                />
+              </div>
+
+              <div>
+                <label style={labelStyle}>Instagram</label>
+                <input
+                  type="text"
+                  value={editingCast.instagram || ''}
+                  onChange={(e) => handleFieldChange('instagram', e.target.value)}
+                  style={inputStyle}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button onClick={closeModal} style={cancelButtonStyle}>
+                キャンセル
+              </button>
+              <button onClick={handleSaveCast} style={saveButtonStyle}>
+                保存
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -591,4 +784,66 @@ const filterInputStyle = {
   borderRadius: '4px',
   fontSize: '14px',
   minWidth: '200px'
+}
+
+const modalOverlayStyle: React.CSSProperties = {
+  position: 'fixed',
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+  backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  display: 'flex',
+  justifyContent: 'center',
+  alignItems: 'center',
+  zIndex: 1000,
+}
+
+const modalContentStyle: React.CSSProperties = {
+  backgroundColor: 'white',
+  borderRadius: '10px',
+  padding: '30px',
+  maxWidth: '800px',
+  width: '90%',
+  maxHeight: '90vh',
+  overflowY: 'auto',
+  boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)',
+}
+
+const labelStyle: React.CSSProperties = {
+  display: 'block',
+  marginBottom: '5px',
+  fontSize: '14px',
+  fontWeight: '600',
+  color: '#333',
+}
+
+const inputStyle: React.CSSProperties = {
+  width: '100%',
+  padding: '10px',
+  border: '1px solid #ddd',
+  borderRadius: '5px',
+  fontSize: '14px',
+  boxSizing: 'border-box',
+}
+
+const saveButtonStyle: React.CSSProperties = {
+  padding: '10px 24px',
+  backgroundColor: '#007AFF',
+  color: 'white',
+  border: 'none',
+  borderRadius: '5px',
+  fontSize: '14px',
+  fontWeight: 'bold',
+  cursor: 'pointer',
+}
+
+const cancelButtonStyle: React.CSSProperties = {
+  padding: '10px 24px',
+  backgroundColor: '#f5f5f5',
+  color: '#333',
+  border: '1px solid #ddd',
+  borderRadius: '5px',
+  fontSize: '14px',
+  cursor: 'pointer',
 }
