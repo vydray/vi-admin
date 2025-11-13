@@ -50,6 +50,9 @@ export default function CastsPage() {
   const [tempAttributeFilter, setTempAttributeFilter] = useState<string>('')
   const [tempDocumentFilter, setTempDocumentFilter] = useState<string>('')
   const [tempActiveFilter, setTempActiveFilter] = useState<string>('')
+  const [tempPosFilter, setTempPosFilter] = useState<string>('')
+  const [tempAdminFilter, setTempAdminFilter] = useState<string>('')
+  const [tempManagerFilter, setTempManagerFilter] = useState<string>('')
 
   // 実際に適用されたフィルタ
   const [searchQuery, setSearchQuery] = useState('')
@@ -57,6 +60,9 @@ export default function CastsPage() {
   const [attributeFilter, setAttributeFilter] = useState<string>('')
   const [documentFilter, setDocumentFilter] = useState<string>('')
   const [activeFilter, setActiveFilter] = useState<string>('')
+  const [posFilter, setPosFilter] = useState<string>('')
+  const [adminFilter, setAdminFilter] = useState<string>('')
+  const [managerFilter, setManagerFilter] = useState<string>('')
 
   const [sortField, setSortField] = useState<keyof Cast | null>(null)
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
@@ -67,7 +73,7 @@ export default function CastsPage() {
 
   useEffect(() => {
     filterAndSortCasts()
-  }, [casts, searchQuery, statusFilter, attributeFilter, documentFilter, activeFilter, sortField, sortDirection])
+  }, [casts, searchQuery, statusFilter, attributeFilter, documentFilter, activeFilter, posFilter, adminFilter, managerFilter, sortField, sortDirection])
 
   const loadCasts = async () => {
     setLoading(true)
@@ -91,6 +97,9 @@ export default function CastsPage() {
     setAttributeFilter(tempAttributeFilter)
     setDocumentFilter(tempDocumentFilter)
     setActiveFilter(tempActiveFilter)
+    setPosFilter(tempPosFilter)
+    setAdminFilter(tempAdminFilter)
+    setManagerFilter(tempManagerFilter)
   }
 
   const clearFilters = () => {
@@ -99,11 +108,17 @@ export default function CastsPage() {
     setTempAttributeFilter('')
     setTempDocumentFilter('')
     setTempActiveFilter('')
+    setTempPosFilter('')
+    setTempAdminFilter('')
+    setTempManagerFilter('')
     setSearchQuery('')
     setStatusFilter('')
     setAttributeFilter('')
     setDocumentFilter('')
     setActiveFilter('')
+    setPosFilter('')
+    setAdminFilter('')
+    setManagerFilter('')
   }
 
   const filterAndSortCasts = () => {
@@ -147,6 +162,27 @@ export default function CastsPage() {
       result = result.filter(cast => cast.is_active === true)
     } else if (activeFilter === 'inactive') {
       result = result.filter(cast => cast.is_active === false)
+    }
+
+    // POS表示フィルター
+    if (posFilter === 'on') {
+      result = result.filter(cast => cast.show_in_pos === true)
+    } else if (posFilter === 'off') {
+      result = result.filter(cast => cast.show_in_pos === false)
+    }
+
+    // 管理者フィルター
+    if (adminFilter === 'on') {
+      result = result.filter(cast => cast.is_admin === true)
+    } else if (adminFilter === 'off') {
+      result = result.filter(cast => cast.is_admin === false)
+    }
+
+    // マネージャーフィルター
+    if (managerFilter === 'on') {
+      result = result.filter(cast => cast.is_manager === true)
+    } else if (managerFilter === 'off') {
+      result = result.filter(cast => cast.is_manager === false)
     }
 
     // ソート
@@ -319,6 +355,45 @@ export default function CastsPage() {
             <option value="">すべて</option>
             <option value="active">可能</option>
             <option value="inactive">不可</option>
+          </select>
+        </div>
+
+        <div>
+          <label style={{ display: 'block', marginBottom: '5px', fontSize: '13px', color: '#666' }}>POS表示</label>
+          <select
+            value={tempPosFilter}
+            onChange={(e) => setTempPosFilter(e.target.value)}
+            style={filterSelectStyle}
+          >
+            <option value="">すべて</option>
+            <option value="on">ON</option>
+            <option value="off">OFF</option>
+          </select>
+        </div>
+
+        <div>
+          <label style={{ display: 'block', marginBottom: '5px', fontSize: '13px', color: '#666' }}>管理者</label>
+          <select
+            value={tempAdminFilter}
+            onChange={(e) => setTempAdminFilter(e.target.value)}
+            style={filterSelectStyle}
+          >
+            <option value="">すべて</option>
+            <option value="on">ON</option>
+            <option value="off">OFF</option>
+          </select>
+        </div>
+
+        <div>
+          <label style={{ display: 'block', marginBottom: '5px', fontSize: '13px', color: '#666' }}>マネージャー</label>
+          <select
+            value={tempManagerFilter}
+            onChange={(e) => setTempManagerFilter(e.target.value)}
+            style={filterSelectStyle}
+          >
+            <option value="">すべて</option>
+            <option value="on">ON</option>
+            <option value="off">OFF</option>
           </select>
         </div>
 
