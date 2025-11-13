@@ -109,13 +109,11 @@ export default function CastsPage() {
             borderCollapse: 'collapse',
             backgroundColor: 'white',
             boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-            minWidth: '1800px'
+            minWidth: '1600px'
           }}>
             <thead>
               <tr style={{ backgroundColor: '#f5f5f5' }}>
-                <th style={thStyle}>ID</th>
                 <th style={thStyle}>名前</th>
-                <th style={thStyle}>LINE番号</th>
                 <th style={thStyle}>誕生日</th>
                 <th style={thStyle}>ステータス</th>
                 <th style={thStyle}>属性</th>
@@ -138,9 +136,7 @@ export default function CastsPage() {
             <tbody>
               {casts.map((cast) => (
                 <tr key={cast.id} style={{ borderBottom: '1px solid #eee' }}>
-                  <td style={tdStyle}>{cast.id}</td>
                   <td style={{ ...tdStyle, fontWeight: 'bold' }}>{cast.name}</td>
-                  <td style={tdStyle}>{cast.line_number || '-'}</td>
                   <td style={tdStyle}>{cast.birthday || '-'}</td>
                   <td style={tdStyle}>
                     {cast.status ? (
