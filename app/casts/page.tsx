@@ -286,7 +286,6 @@ export default function CastsPage() {
     const isOn = value === true
     return (
       <div
-        data-toggle="true"
         onClick={() => updateCastField(castId, field, !isOn)}
         style={{
           width: '44px',
@@ -531,13 +530,7 @@ export default function CastsPage() {
                 <tr
                   key={cast.id}
                   style={{ borderBottom: '1px solid #eee', cursor: 'pointer' }}
-                  onClick={(e) => {
-                    // トグルスイッチのクリックは無視
-                    if ((e.target as HTMLElement).closest('[data-toggle]')) {
-                      return
-                    }
-                    openEditModal(cast)
-                  }}
+                  onClick={() => openEditModal(cast)}
                 >
                   <td style={tdStyleNameSticky}>{cast.name}</td>
                   <td style={tdStyle}>{cast.birthday || '-'}</td>
