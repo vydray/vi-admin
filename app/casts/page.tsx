@@ -119,6 +119,8 @@ export default function CastsPage() {
     setPosFilter('')
     setAdminFilter('')
     setManagerFilter('')
+    setSortField(null)
+    setSortDirection('asc')
   }
 
   const filterAndSortCasts = () => {
