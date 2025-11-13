@@ -40,12 +40,20 @@ interface Cast {
 
 export default function CastsPage() {
   const [casts, setCasts] = useState<Cast[]>([])
+  const [filteredCasts, setFilteredCasts] = useState<Cast[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedStore, setSelectedStore] = useState(2)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [sortField, setSortField] = useState<keyof Cast | null>(null)
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
 
   useEffect(() => {
     loadCasts()
   }, [selectedStore])
+
+  useEffect(() => {
+    filterAndSortCasts()
+  }, [casts, searchQuery, sortField, sortDirection])
 
   const loadCasts = async () => {
     setLoading(true)
@@ -61,6 +69,46 @@ export default function CastsPage() {
       setCasts(data || [])
     }
     setLoading(false)
+  }
+
+  const filterAndSortCasts = () => {
+    let result = [...casts]
+
+    // 検索フィルター
+    if (searchQuery) {
+      result = result.filter(cast =>
+        cast.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        cast.birthday?.includes(searchQuery) ||
+        cast.status?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        cast.attributes?.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    }
+
+    // ソート
+    if (sortField) {
+      result.sort((a, b) => {
+        const aValue = a[sortField]
+        const bValue = b[sortField]
+
+        if (aValue === null || aValue === undefined) return 1
+        if (bValue === null || bValue === undefined) return -1
+
+        if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1
+        if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1
+        return 0
+      })
+    }
+
+    setFilteredCasts(result)
+  }
+
+  const handleSort = (field: keyof Cast) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortField(field)
+      setSortDirection('asc')
+    }
   }
 
   const updateCastField = async (castId: number, field: string, value: boolean) => {
@@ -131,21 +179,39 @@ export default function CastsPage() {
         👥 キャスト管理
       </h1>
 
-      <div style={{ marginBottom: '20px' }}>
-        <label style={{ marginRight: '10px' }}>店舗:</label>
-        <select
-          value={selectedStore}
-          onChange={(e) => setSelectedStore(Number(e.target.value))}
-          style={{
-            padding: '8px 12px',
-            border: '1px solid #ddd',
-            borderRadius: '4px',
-            fontSize: '14px'
-          }}
-        >
-          <option value={1}>Store 1 - Memorable</option>
-          <option value={2}>Store 2 - MistressMirage</option>
-        </select>
+      <div style={{ marginBottom: '20px', display: 'flex', gap: '20px', alignItems: 'center' }}>
+        <div>
+          <label style={{ marginRight: '10px' }}>店舗:</label>
+          <select
+            value={selectedStore}
+            onChange={(e) => setSelectedStore(Number(e.target.value))}
+            style={{
+              padding: '8px 12px',
+              border: '1px solid #ddd',
+              borderRadius: '4px',
+              fontSize: '14px'
+            }}
+          >
+            <option value={1}>Store 1 - Memorable</option>
+            <option value={2}>Store 2 - MistressMirage</option>
+          </select>
+        </div>
+        <div style={{ flex: 1 }}>
+          <input
+            type="text"
+            placeholder="検索（名前、誕生日、ステータス、属性）"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{
+              width: '100%',
+              maxWidth: '400px',
+              padding: '8px 12px',
+              border: '1px solid #ddd',
+              borderRadius: '4px',
+              fontSize: '14px'
+            }}
+          />
+        </div>
       </div>
 
       {loading ? (
@@ -161,15 +227,33 @@ export default function CastsPage() {
           }}>
             <thead>
               <tr style={{ backgroundColor: '#f5f5f5' }}>
-                <th style={thStyle}>名前</th>
-                <th style={thStyle}>誕生日</th>
-                <th style={thStyle}>ステータス</th>
-                <th style={thStyle}>属性</th>
-                <th style={thStyle}>体験日</th>
-                <th style={thStyle}>入社日</th>
-                <th style={thStyle}>退職日</th>
-                <th style={thStyle}>時給</th>
-                <th style={thStyle}>歩合率</th>
+                <th style={thStyleClickable} onClick={() => handleSort('name')}>
+                  名前 {sortField === 'name' && (sortDirection === 'asc' ? '↑' : '↓')}
+                </th>
+                <th style={thStyleClickable} onClick={() => handleSort('birthday')}>
+                  誕生日 {sortField === 'birthday' && (sortDirection === 'asc' ? '↑' : '↓')}
+                </th>
+                <th style={thStyleClickable} onClick={() => handleSort('status')}>
+                  ステータス {sortField === 'status' && (sortDirection === 'asc' ? '↑' : '↓')}
+                </th>
+                <th style={thStyleClickable} onClick={() => handleSort('attributes')}>
+                  属性 {sortField === 'attributes' && (sortDirection === 'asc' ? '↑' : '↓')}
+                </th>
+                <th style={thStyleClickable} onClick={() => handleSort('experience_date')}>
+                  体験日 {sortField === 'experience_date' && (sortDirection === 'asc' ? '↑' : '↓')}
+                </th>
+                <th style={thStyleClickable} onClick={() => handleSort('hire_date')}>
+                  入社日 {sortField === 'hire_date' && (sortDirection === 'asc' ? '↑' : '↓')}
+                </th>
+                <th style={thStyleClickable} onClick={() => handleSort('resignation_date')}>
+                  退職日 {sortField === 'resignation_date' && (sortDirection === 'asc' ? '↑' : '↓')}
+                </th>
+                <th style={thStyleClickable} onClick={() => handleSort('hourly_wage')}>
+                  時給 {sortField === 'hourly_wage' && (sortDirection === 'asc' ? '↑' : '↓')}
+                </th>
+                <th style={thStyleClickable} onClick={() => handleSort('commission_rate')}>
+                  歩合率 {sortField === 'commission_rate' && (sortDirection === 'asc' ? '↑' : '↓')}
+                </th>
                 <th style={thStyle}>住民票</th>
                 <th style={thStyle}>在籍証明</th>
                 <th style={thStyle}>契約書</th>
@@ -178,11 +262,15 @@ export default function CastsPage() {
                 <th style={thStyle}>POS表示</th>
                 <th style={thStyle}>管理者</th>
                 <th style={thStyle}>マネージャー</th>
-                <th style={thStyle}>勤務可能</th>
+                <th style={thStyle}>
+                  <div style={{ lineHeight: '1.2' }}>
+                    シフトアプリ<br/>ログイン
+                  </div>
+                </th>
               </tr>
             </thead>
             <tbody>
-              {casts.map((cast) => (
+              {filteredCasts.map((cast) => (
                 <tr key={cast.id} style={{ borderBottom: '1px solid #eee' }}>
                   <td style={{ ...tdStyle, fontWeight: 'bold' }}>{cast.name}</td>
                   <td style={tdStyle}>{cast.birthday || '-'}</td>
@@ -221,7 +309,7 @@ export default function CastsPage() {
       )}
 
       <div style={{ marginTop: '20px', color: '#666' }}>
-        合計: {casts.length}人
+        表示: {filteredCasts.length}人 / 合計: {casts.length}人
       </div>
     </div>
   )
@@ -232,6 +320,13 @@ const thStyle = {
   textAlign: 'left' as const,
   fontWeight: '600',
   borderBottom: '2px solid #ddd'
+}
+
+const thStyleClickable = {
+  ...thStyle,
+  cursor: 'pointer',
+  userSelect: 'none' as const,
+  transition: 'background-color 0.2s',
 }
 
 const tdStyle = {
