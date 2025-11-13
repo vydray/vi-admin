@@ -207,8 +207,8 @@ export default function CastsPage() {
                   <td style={tdStyle}>{renderToggle(cast.id, 'residence_record', cast.residence_record)}</td>
                   <td style={tdStyle}>{renderToggle(cast.id, 'attendance_certificate', cast.attendance_certificate)}</td>
                   <td style={tdStyle}>{renderToggle(cast.id, 'contract_documents', cast.contract_documents)}</td>
-                  <td style={tdStyle}>{cast.twitter ? '✓' : '-'}</td>
-                  <td style={tdStyle}>{cast.instagram ? '✓' : '-'}</td>
+                  <td style={tdStyle}>{cast.twitter || '-'}</td>
+                  <td style={tdStyle}>{cast.instagram || '-'}</td>
                   <td style={tdStyle}>{renderToggle(cast.id, 'show_in_pos', cast.show_in_pos)}</td>
                   <td style={tdStyle}>{renderToggle(cast.id, 'is_admin', cast.is_admin)}</td>
                   <td style={tdStyle}>{renderToggle(cast.id, 'is_manager', cast.is_manager)}</td>
