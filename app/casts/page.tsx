@@ -280,8 +280,7 @@ export default function CastsPage() {
         👥 キャスト管理
       </h1>
 
-      <div style={{ marginBottom: '20px', overflowX: 'auto', paddingBottom: '10px' }}>
-        <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-end', minWidth: 'max-content' }}>
+      <div style={{ marginBottom: '20px', display: 'flex', gap: '15px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <div>
           <label style={{ display: 'block', marginBottom: '5px', fontSize: '13px', color: '#666' }}>店舗</label>
           <select
@@ -428,7 +427,6 @@ export default function CastsPage() {
         >
           クリア
         </button>
-        </div>
       </div>
 
       {loading ? (
