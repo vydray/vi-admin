@@ -178,7 +178,7 @@ export default function CastsPage() {
                 <th style={thStyle}>POS表示</th>
                 <th style={thStyle}>管理者</th>
                 <th style={thStyle}>マネージャー</th>
-                <th style={thStyle}>有効</th>
+                <th style={thStyle}>勤務可能</th>
               </tr>
             </thead>
             <tbody>
