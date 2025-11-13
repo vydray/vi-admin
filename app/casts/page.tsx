@@ -266,23 +266,13 @@ export default function CastsPage() {
     )
   }
 
-  const renderCheckmark = (value: boolean | null) => {
-    if (value === true) {
-      return <span style={{ color: '#4caf50', fontSize: '16px' }}>✓</span>
-    } else if (value === false) {
-      return <span style={{ color: '#f44336', fontSize: '16px' }}>✗</span>
-    } else {
-      return <span style={{ color: '#999' }}>-</span>
-    }
-  }
-
   return (
-    <div style={{ padding: '40px', width: '100%', maxWidth: '100%' }}>
-      <h1 style={{ fontSize: '32px', fontWeight: 'bold', marginBottom: '20px' }}>
+    <div style={{ padding: '20px', width: '100%', maxWidth: '100%' }}>
+      <h1 style={{ fontSize: '28px', fontWeight: 'bold', marginBottom: '15px' }}>
         👥 キャスト管理
       </h1>
 
-      <div style={{ marginBottom: '20px', display: 'flex', gap: '15px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+      <div style={{ marginBottom: '15px', display: 'flex', gap: '15px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <div>
           <label style={{ display: 'block', marginBottom: '5px', fontSize: '13px', color: '#666' }}>店舗</label>
           <select
@@ -434,7 +424,7 @@ export default function CastsPage() {
       {loading ? (
         <div>読み込み中...</div>
       ) : (
-        <div style={{ overflowX: 'auto', maxHeight: 'calc(100vh - 300px)', overflowY: 'auto' }}>
+        <div style={{ overflowX: 'auto', maxHeight: 'calc(100vh - 220px)', overflowY: 'auto' }}>
           <table style={{
             width: '100%',
             borderCollapse: 'collapse',
@@ -525,7 +515,7 @@ export default function CastsPage() {
         </div>
       )}
 
-      <div style={{ marginTop: '20px', color: '#666' }}>
+      <div style={{ marginTop: '10px', color: '#666' }}>
         表示: {filteredCasts.length}人 / 合計: {casts.length}人
       </div>
     </div>
