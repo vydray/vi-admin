@@ -63,6 +63,54 @@ export default function CastsPage() {
     setLoading(false)
   }
 
+  const updateCastField = async (castId: number, field: string, value: boolean) => {
+    const { error } = await supabase
+      .from('casts')
+      .update({ [field]: value })
+      .eq('id', castId)
+
+    if (error) {
+      console.error('Error updating cast:', error)
+      alert('更新に失敗しました')
+    } else {
+      // 成功したらリロード
+      loadCasts()
+    }
+  }
+
+  const renderToggle = (castId: number, field: string, value: boolean | null) => {
+    const isOn = value === true
+    return (
+      <div
+        onClick={() => updateCastField(castId, field, !isOn)}
+        style={{
+          width: '44px',
+          height: '24px',
+          backgroundColor: isOn ? '#4caf50' : '#ccc',
+          borderRadius: '12px',
+          position: 'relative',
+          cursor: 'pointer',
+          transition: 'background-color 0.3s',
+          display: 'inline-block'
+        }}
+      >
+        <div
+          style={{
+            width: '20px',
+            height: '20px',
+            backgroundColor: 'white',
+            borderRadius: '50%',
+            position: 'absolute',
+            top: '2px',
+            left: isOn ? '22px' : '2px',
+            transition: 'left 0.3s',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+          }}
+        />
+      </div>
+    )
+  }
+
   const renderCheckmark = (value: boolean | null) => {
     if (value === true) {
       return <span style={{ color: '#4caf50', fontSize: '16px' }}>✓</span>
@@ -156,21 +204,15 @@ export default function CastsPage() {
                   <td style={tdStyle}>{cast.resignation_date ? new Date(cast.resignation_date).toLocaleDateString('ja-JP') : '-'}</td>
                   <td style={tdStyle}>¥{cast.hourly_wage.toLocaleString()}</td>
                   <td style={tdStyle}>{(cast.commission_rate * 100).toFixed(0)}%</td>
-                  <td style={tdStyle}>{renderCheckmark(cast.residence_record)}</td>
-                  <td style={tdStyle}>{renderCheckmark(cast.attendance_certificate)}</td>
-                  <td style={tdStyle}>{renderCheckmark(cast.contract_documents)}</td>
+                  <td style={tdStyle}>{renderToggle(cast.id, 'residence_record', cast.residence_record)}</td>
+                  <td style={tdStyle}>{renderToggle(cast.id, 'attendance_certificate', cast.attendance_certificate)}</td>
+                  <td style={tdStyle}>{renderToggle(cast.id, 'contract_documents', cast.contract_documents)}</td>
                   <td style={tdStyle}>{cast.twitter ? '✓' : '-'}</td>
                   <td style={tdStyle}>{cast.instagram ? '✓' : '-'}</td>
-                  <td style={tdStyle}>{renderCheckmark(cast.show_in_pos)}</td>
-                  <td style={tdStyle}>{renderCheckmark(cast.is_admin)}</td>
-                  <td style={tdStyle}>{renderCheckmark(cast.is_manager)}</td>
-                  <td style={tdStyle}>
-                    {cast.is_active ? (
-                      <span style={{ color: '#4caf50', fontWeight: 'bold' }}>有効</span>
-                    ) : (
-                      <span style={{ color: '#999' }}>無効</span>
-                    )}
-                  </td>
+                  <td style={tdStyle}>{renderToggle(cast.id, 'show_in_pos', cast.show_in_pos)}</td>
+                  <td style={tdStyle}>{renderToggle(cast.id, 'is_admin', cast.is_admin)}</td>
+                  <td style={tdStyle}>{renderToggle(cast.id, 'is_manager', cast.is_manager)}</td>
+                  <td style={tdStyle}>{renderToggle(cast.id, 'is_active', cast.is_active)}</td>
                 </tr>
               ))}
             </tbody>
