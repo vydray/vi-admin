@@ -432,7 +432,7 @@ export default function CastsPage() {
       {loading ? (
         <div>読み込み中...</div>
       ) : (
-        <div style={{ overflowX: 'auto' }}>
+        <div style={{ overflowX: 'auto', maxHeight: 'calc(100vh - 300px)', overflowY: 'auto' }}>
           <table style={{
             width: '100%',
             borderCollapse: 'collapse',
@@ -477,7 +477,7 @@ export default function CastsPage() {
                 <th style={thStyleSticky}>POS表示</th>
                 <th style={thStyleSticky}>管理者</th>
                 <th style={thStyleSticky}>マネージャー</th>
-                <th style={thStyleSticky}>
+                <th style={{ ...thStyleSticky, whiteSpace: 'normal' }}>
                   <div style={{ lineHeight: '1.2' }}>
                     シフトアプリ<br/>ログイン
                   </div>
@@ -534,7 +534,8 @@ const thStyle = {
   padding: '12px',
   textAlign: 'left' as const,
   fontWeight: '600',
-  borderBottom: '2px solid #ddd'
+  borderBottom: '2px solid #ddd',
+  whiteSpace: 'nowrap' as const,
 }
 
 const thStyleSticky = {
