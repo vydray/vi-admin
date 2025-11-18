@@ -242,6 +242,46 @@ export default function CastsPage() {
     setIsModalOpen(true)
   }
 
+  const openNewCastModal = () => {
+    // 新規キャストのデフォルト値を設定
+    const newCast: Cast = {
+      id: 0, // 新規作成時は0（保存時は無視される）
+      line_number: null,
+      name: '',
+      twitter: null,
+      password: null,
+      instagram: null,
+      password2: null,
+      attendance_certificate: false,
+      residence_record: false,
+      contract_documents: false,
+      submission_contract: null,
+      employee_name: null,
+      attributes: null,
+      status: 'レギュラー',
+      sales_previous_day: null,
+      experience_date: null,
+      hire_date: null,
+      resignation_date: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      store_id: selectedStore,
+      show_in_pos: true,
+      birthday: null,
+      line_user_id: null,
+      hourly_wage: 0,
+      commission_rate: 0,
+      is_admin: false,
+      is_manager: false,
+      line_msg_user_id: null,
+      line_msg_state: null,
+      line_msg_registered_at: null,
+      is_active: true,
+    }
+    setEditingCast(newCast)
+    setIsModalOpen(true)
+  }
+
   const closeModal = () => {
     setIsModalOpen(false)
     setEditingCast(null)
@@ -250,28 +290,85 @@ export default function CastsPage() {
   const handleSaveCast = async () => {
     if (!editingCast) return
 
+    // 新規作成か編集かを判定（idが0なら新規）
+    const isNewCast = editingCast.id === 0
+
+    if (isNewCast) {
+      // 新規作成
+      const { error } = await supabase
+        .from('casts')
+        .insert({
+          name: editingCast.name,
+          birthday: editingCast.birthday,
+          status: editingCast.status,
+          attributes: editingCast.attributes,
+          experience_date: editingCast.experience_date,
+          hire_date: editingCast.hire_date,
+          resignation_date: editingCast.resignation_date,
+          hourly_wage: editingCast.hourly_wage,
+          commission_rate: editingCast.commission_rate,
+          twitter: editingCast.twitter,
+          instagram: editingCast.instagram,
+          store_id: selectedStore,
+          show_in_pos: editingCast.show_in_pos,
+          is_active: editingCast.is_active,
+          is_admin: editingCast.is_admin,
+          is_manager: editingCast.is_manager,
+          residence_record: editingCast.residence_record,
+          attendance_certificate: editingCast.attendance_certificate,
+          contract_documents: editingCast.contract_documents,
+        })
+
+      if (error) {
+        console.error('Error creating cast:', error)
+        alert('作成に失敗しました')
+      } else {
+        closeModal()
+        loadCasts()
+      }
+    } else {
+      // 既存のキャストを更新
+      const { error } = await supabase
+        .from('casts')
+        .update({
+          name: editingCast.name,
+          birthday: editingCast.birthday,
+          status: editingCast.status,
+          attributes: editingCast.attributes,
+          experience_date: editingCast.experience_date,
+          hire_date: editingCast.hire_date,
+          resignation_date: editingCast.resignation_date,
+          hourly_wage: editingCast.hourly_wage,
+          commission_rate: editingCast.commission_rate,
+          twitter: editingCast.twitter,
+          instagram: editingCast.instagram,
+        })
+        .eq('id', editingCast.id)
+
+      if (error) {
+        console.error('Error updating cast:', error)
+        alert('更新に失敗しました')
+      } else {
+        closeModal()
+        loadCasts()
+      }
+    }
+  }
+
+  const handleDeleteCast = async (castId: number, castName: string) => {
+    if (!confirm(`${castName}を削除してもよろしいですか？\nこの操作は取り消せません。`)) {
+      return
+    }
+
     const { error } = await supabase
       .from('casts')
-      .update({
-        name: editingCast.name,
-        birthday: editingCast.birthday,
-        status: editingCast.status,
-        attributes: editingCast.attributes,
-        experience_date: editingCast.experience_date,
-        hire_date: editingCast.hire_date,
-        resignation_date: editingCast.resignation_date,
-        hourly_wage: editingCast.hourly_wage,
-        commission_rate: editingCast.commission_rate,
-        twitter: editingCast.twitter,
-        instagram: editingCast.instagram,
-      })
-      .eq('id', editingCast.id)
+      .delete()
+      .eq('id', castId)
 
     if (error) {
-      console.error('Error updating cast:', error)
-      alert('更新に失敗しました')
+      console.error('Error deleting cast:', error)
+      alert('削除に失敗しました')
     } else {
-      closeModal()
       loadCasts()
     }
   }
@@ -468,6 +565,23 @@ export default function CastsPage() {
         >
           クリア
         </button>
+
+        <button
+          onClick={openNewCastModal}
+          style={{
+            padding: '10px 24px',
+            backgroundColor: '#34C759',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '14px',
+            fontWeight: 'bold',
+            marginLeft: 'auto'
+          }}
+        >
+          ➕ 新規追加
+        </button>
       </div>
 
       {loading ? (
@@ -523,6 +637,7 @@ export default function CastsPage() {
                     シフトアプリ<br/>ログイン
                   </div>
                 </th>
+                <th style={thStyleSticky}>操作</th>
               </tr>
             </thead>
             <tbody>
@@ -561,6 +676,26 @@ export default function CastsPage() {
                   <td style={tdStyle}>{renderToggle(cast.id, 'is_admin', cast.is_admin)}</td>
                   <td style={tdStyle}>{renderToggle(cast.id, 'is_manager', cast.is_manager)}</td>
                   <td style={tdStyle}>{renderToggle(cast.id, 'is_active', cast.is_active)}</td>
+                  <td style={tdStyle}>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleDeleteCast(cast.id, cast.name)
+                      }}
+                      style={{
+                        padding: '6px 12px',
+                        backgroundColor: '#FF3B30',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontSize: '12px',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      削除
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -577,7 +712,7 @@ export default function CastsPage() {
         <div style={modalOverlayStyle} onClick={closeModal}>
           <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
             <h2 style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '20px' }}>
-              キャスト情報編集
+              {editingCast.id === 0 ? 'キャスト新規追加' : 'キャスト情報編集'}
             </h2>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
@@ -693,13 +828,37 @@ export default function CastsPage() {
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-              <button onClick={closeModal} style={cancelButtonStyle}>
-                キャンセル
-              </button>
-              <button onClick={handleSaveCast} style={saveButtonStyle}>
-                保存
-              </button>
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'space-between' }}>
+              <div>
+                {editingCast.id !== 0 && (
+                  <button
+                    onClick={() => {
+                      closeModal()
+                      handleDeleteCast(editingCast.id, editingCast.name)
+                    }}
+                    style={{
+                      padding: '10px 24px',
+                      backgroundColor: '#FF3B30',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '5px',
+                      fontSize: '14px',
+                      fontWeight: 'bold',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    削除
+                  </button>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button onClick={closeModal} style={cancelButtonStyle}>
+                  キャンセル
+                </button>
+                <button onClick={handleSaveCast} style={saveButtonStyle}>
+                  {editingCast.id === 0 ? '作成' : '保存'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
