@@ -40,7 +40,8 @@ interface ShiftLock {
 }
 
 export default function ShiftManage() {
-  const { storeId } = useStore()
+  const { storeId: globalStoreId } = useStore()
+  const [selectedStore, setSelectedStore] = useState(globalStoreId)
   const [selectedMonth, setSelectedMonth] = useState(new Date())
   const [isFirstHalf, setIsFirstHalf] = useState(true)
   const [casts, setCasts] = useState<Cast[]>([])
@@ -65,7 +66,7 @@ export default function ShiftManage() {
 
   useEffect(() => {
     loadData()
-  }, [selectedMonth, isFirstHalf, storeId])
+  }, [selectedMonth, isFirstHalf, selectedStore])
 
   const loadData = async () => {
     setLoading(true)
@@ -82,7 +83,7 @@ export default function ShiftManage() {
     const { data, error } = await supabase
       .from('casts')
       .select('id, name')
-      .eq('store_id', storeId)
+      .eq('store_id', selectedStore)
       .eq('status', '在籍')
       .eq('is_active', true)
       .order('name')
@@ -130,7 +131,7 @@ export default function ShiftManage() {
     const { data, error } = await supabase
       .from('shift_locks')
       .select('*')
-      .eq('store_id', storeId)
+      .eq('store_id', selectedStore)
       .gte('date', format(start, 'yyyy-MM-dd'))
       .lte('date', format(end, 'yyyy-MM-dd'))
 
@@ -313,13 +314,13 @@ export default function ShiftManage() {
           cast_id: change.cast_id,
           date: change.date,
           lock_type: change.lock_type,
-          store_id: storeId
+          store_id: selectedStore
         })
       } else {
         deletes.push({
           cast_id: change.cast_id,
           date: change.date,
-          store_id: storeId
+          store_id: selectedStore
         })
       }
     })
@@ -430,7 +431,7 @@ export default function ShiftManage() {
           cast_id: castId,
           date: dateStr,
           lock_type: lockType,
-          store_id: storeId
+          store_id: selectedStore
         })
     }
 
@@ -544,7 +545,7 @@ export default function ShiftManage() {
             date: dateStr,
             start_time: normalizedStartTime,
             end_time: normalizedEndTime,
-            store_id: storeId
+            store_id: selectedStore
           })
           .select()
 
@@ -569,7 +570,7 @@ export default function ShiftManage() {
                 cast_id: parseInt(castId),
                 date: dateStr,
                 lock_type: 'confirmed',
-                store_id: storeId
+                store_id: selectedStore
               })
           }
 
@@ -705,13 +706,33 @@ export default function ShiftManage() {
         borderRadius: '12px',
         boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
       }}>
-        {/* 月・期間選択 */}
+        {/* 店舗・月・期間選択 */}
         <div style={{
           display: 'flex',
           alignItems: 'center',
           gap: '20px',
           marginBottom: '20px'
         }}>
+          {/* 店舗選択 */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <label style={{ fontSize: '14px', fontWeight: '500', color: '#475569' }}>店舗:</label>
+            <select
+              value={selectedStore}
+              onChange={(e) => setSelectedStore(Number(e.target.value))}
+              style={{
+                padding: '6px 12px',
+                fontSize: '14px',
+                border: '1px solid #e2e8f0',
+                borderRadius: '6px',
+                backgroundColor: '#fff',
+                cursor: 'pointer'
+              }}
+            >
+              <option value={1}>Memorable</option>
+              <option value={2}>Mistress Mirage</option>
+            </select>
+          </div>
+
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <button
               onClick={() => setSelectedMonth(subMonths(selectedMonth, 1))}
