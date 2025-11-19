@@ -38,11 +38,18 @@ interface Cast {
   is_active: boolean
 }
 
+interface CastPosition {
+  id: number
+  name: string
+  store_id: number
+}
+
 export default function CastsPage() {
   const [casts, setCasts] = useState<Cast[]>([])
   const [filteredCasts, setFilteredCasts] = useState<Cast[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedStore, setSelectedStore] = useState(2)
+  const [positions, setPositions] = useState<CastPosition[]>([])
 
   // フィルタの一時的な状態（検索ボタンを押すまで適用されない）
   const [tempSearchQuery, setTempSearchQuery] = useState('')
@@ -73,6 +80,7 @@ export default function CastsPage() {
 
   useEffect(() => {
     loadCasts()
+    loadPositions()
   }, [selectedStore])
 
   useEffect(() => {
@@ -93,6 +101,20 @@ export default function CastsPage() {
       setCasts(data || [])
     }
     setLoading(false)
+  }
+
+  const loadPositions = async () => {
+    const { data, error } = await supabase
+      .from('cast_positions')
+      .select('*')
+      .eq('store_id', selectedStore)
+      .order('name')
+
+    if (error) {
+      console.error('Error loading positions:', error)
+    } else {
+      setPositions(data || [])
+    }
   }
 
   const applyFilters = () => {
@@ -258,7 +280,7 @@ export default function CastsPage() {
       submission_contract: null,
       employee_name: null,
       attributes: null,
-      status: 'レギュラー',
+      status: '在籍',
       sales_previous_day: null,
       experience_date: null,
       hire_date: null,
@@ -750,22 +772,31 @@ export default function CastsPage() {
 
               <div>
                 <label style={labelStyle}>ステータス</label>
-                <input
-                  type="text"
-                  value={editingCast.status || ''}
+                <select
+                  value={editingCast.status || '在籍'}
                   onChange={(e) => handleFieldChange('status', e.target.value)}
                   style={inputStyle}
-                />
+                >
+                  <option value="在籍">在籍</option>
+                  <option value="退店">退店</option>
+                  <option value="不明">不明</option>
+                </select>
               </div>
 
               <div>
                 <label style={labelStyle}>属性</label>
-                <input
-                  type="text"
+                <select
                   value={editingCast.attributes || ''}
                   onChange={(e) => handleFieldChange('attributes', e.target.value)}
                   style={inputStyle}
-                />
+                >
+                  <option value="">選択してください</option>
+                  {positions.map((position) => (
+                    <option key={position.id} value={position.name}>
+                      {position.name}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div>
@@ -842,77 +873,92 @@ export default function CastsPage() {
 
             {/* ブール値フィールド */}
             <div style={{ marginBottom: '20px', padding: '20px', backgroundColor: '#f9f9f9', borderRadius: '8px' }}>
-              <h3 style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '15px', color: '#333' }}>設定</h3>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={editingCast.residence_record || false}
-                    onChange={(e) => handleFieldChange('residence_record', e.target.checked)}
-                    style={{ width: '18px', height: '18px', marginRight: '8px', cursor: 'pointer' }}
-                  />
-                  <span style={{ fontSize: '14px', fontWeight: '500' }}>住民票</span>
-                </label>
+              {/* 書類関連 */}
+              <div style={{ marginBottom: '20px' }}>
+                <h3 style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '12px', color: '#555' }}>📄 提出書類</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={editingCast.residence_record || false}
+                      onChange={(e) => handleFieldChange('residence_record', e.target.checked)}
+                      style={{ width: '18px', height: '18px', marginRight: '8px', cursor: 'pointer' }}
+                    />
+                    <span style={{ fontSize: '14px', fontWeight: '500' }}>住民票</span>
+                  </label>
 
-                <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={editingCast.attendance_certificate || false}
-                    onChange={(e) => handleFieldChange('attendance_certificate', e.target.checked)}
-                    style={{ width: '18px', height: '18px', marginRight: '8px', cursor: 'pointer' }}
-                  />
-                  <span style={{ fontSize: '14px', fontWeight: '500' }}>在籍証明</span>
-                </label>
+                  <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={editingCast.attendance_certificate || false}
+                      onChange={(e) => handleFieldChange('attendance_certificate', e.target.checked)}
+                      style={{ width: '18px', height: '18px', marginRight: '8px', cursor: 'pointer' }}
+                    />
+                    <span style={{ fontSize: '14px', fontWeight: '500' }}>身分証明書</span>
+                  </label>
 
-                <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={editingCast.contract_documents || false}
-                    onChange={(e) => handleFieldChange('contract_documents', e.target.checked)}
-                    style={{ width: '18px', height: '18px', marginRight: '8px', cursor: 'pointer' }}
-                  />
-                  <span style={{ fontSize: '14px', fontWeight: '500' }}>契約書</span>
-                </label>
+                  <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={editingCast.contract_documents || false}
+                      onChange={(e) => handleFieldChange('contract_documents', e.target.checked)}
+                      style={{ width: '18px', height: '18px', marginRight: '8px', cursor: 'pointer' }}
+                    />
+                    <span style={{ fontSize: '14px', fontWeight: '500' }}>契約書</span>
+                  </label>
+                </div>
+              </div>
 
-                <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={editingCast.show_in_pos}
-                    onChange={(e) => handleFieldChange('show_in_pos', e.target.checked)}
-                    style={{ width: '18px', height: '18px', marginRight: '8px', cursor: 'pointer' }}
-                  />
-                  <span style={{ fontSize: '14px', fontWeight: '500' }}>POS表示</span>
-                </label>
+              {/* POS・シフト関連 */}
+              <div style={{ marginBottom: '20px' }}>
+                <h3 style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '12px', color: '#555' }}>⚙️ POS・シフト設定</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={editingCast.show_in_pos}
+                      onChange={(e) => handleFieldChange('show_in_pos', e.target.checked)}
+                      style={{ width: '18px', height: '18px', marginRight: '8px', cursor: 'pointer' }}
+                    />
+                    <span style={{ fontSize: '14px', fontWeight: '500' }}>POS表示</span>
+                  </label>
 
-                <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={editingCast.is_active}
-                    onChange={(e) => handleFieldChange('is_active', e.target.checked)}
-                    style={{ width: '18px', height: '18px', marginRight: '8px', cursor: 'pointer' }}
-                  />
-                  <span style={{ fontSize: '14px', fontWeight: '500' }}>勤務可能</span>
-                </label>
+                  <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={editingCast.is_active}
+                      onChange={(e) => handleFieldChange('is_active', e.target.checked)}
+                      style={{ width: '18px', height: '18px', marginRight: '8px', cursor: 'pointer' }}
+                    />
+                    <span style={{ fontSize: '14px', fontWeight: '500' }}>シフト提出</span>
+                  </label>
+                </div>
+              </div>
 
-                <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={editingCast.is_admin}
-                    onChange={(e) => handleFieldChange('is_admin', e.target.checked)}
-                    style={{ width: '18px', height: '18px', marginRight: '8px', cursor: 'pointer' }}
-                  />
-                  <span style={{ fontSize: '14px', fontWeight: '500' }}>管理者</span>
-                </label>
+              {/* 権限関連 */}
+              <div>
+                <h3 style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '12px', color: '#555' }}>🔑 管理権限</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={editingCast.is_admin}
+                      onChange={(e) => handleFieldChange('is_admin', e.target.checked)}
+                      style={{ width: '18px', height: '18px', marginRight: '8px', cursor: 'pointer' }}
+                    />
+                    <span style={{ fontSize: '14px', fontWeight: '500' }}>管理者</span>
+                  </label>
 
-                <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={editingCast.is_manager}
-                    onChange={(e) => handleFieldChange('is_manager', e.target.checked)}
-                    style={{ width: '18px', height: '18px', marginRight: '8px', cursor: 'pointer' }}
-                  />
-                  <span style={{ fontSize: '14px', fontWeight: '500' }}>マネージャー</span>
-                </label>
+                  <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={editingCast.is_manager}
+                      onChange={(e) => handleFieldChange('is_manager', e.target.checked)}
+                      style={{ width: '18px', height: '18px', marginRight: '8px', cursor: 'pointer' }}
+                    />
+                    <span style={{ fontSize: '14px', fontWeight: '500' }}>マネージャー</span>
+                  </label>
+                </div>
               </div>
             </div>
 
