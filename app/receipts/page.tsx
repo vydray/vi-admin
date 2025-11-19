@@ -166,6 +166,7 @@ export default function ReceiptsPage() {
       if (error) throw error
 
       alert('伝票を削除しました')
+      setIsEditModalOpen(false)
       loadReceipts()
     } catch (error) {
       console.error('Error deleting receipt:', error)
@@ -198,7 +199,10 @@ export default function ReceiptsPage() {
     })
   }
 
-  const formatCurrency = (amount: number) => {
+  const formatCurrency = (amount: number | null | undefined) => {
+    if (amount === null || amount === undefined || isNaN(amount)) {
+      return '¥0'
+    }
     return new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY' }).format(amount)
   }
 
@@ -289,19 +293,22 @@ export default function ReceiptsPage() {
               <th style={styles.th}>合計（税込）</th>
               <th style={styles.th}>支払方法</th>
               <th style={styles.th}>会計日時</th>
-              <th style={styles.th}>アクション</th>
             </tr>
           </thead>
           <tbody>
             {filteredReceipts.length === 0 ? (
               <tr>
-                <td colSpan={9} style={styles.emptyRow}>
+                <td colSpan={8} style={styles.emptyRow}>
                   伝票がありません
                 </td>
               </tr>
             ) : (
               filteredReceipts.map((receipt) => (
-                <tr key={receipt.id} style={styles.tableRow}>
+                <tr
+                  key={receipt.id}
+                  style={styles.tableRow}
+                  onClick={() => loadReceiptDetails(receipt)}
+                >
                   <td style={styles.td}>{receipt.id}</td>
                   <td style={styles.td}>{receipt.table_number}</td>
                   <td style={styles.td}>{receipt.customer_name || '-'}</td>
@@ -310,22 +317,6 @@ export default function ReceiptsPage() {
                   <td style={styles.td}>{formatCurrency(receipt.total_incl_tax)}</td>
                   <td style={styles.td}>{receipt.payment_method}</td>
                   <td style={styles.td}>{formatDateTime(receipt.checkout_datetime)}</td>
-                  <td style={styles.td}>
-                    <div style={styles.actionButtons}>
-                      <button
-                        onClick={() => loadReceiptDetails(receipt)}
-                        style={styles.editButton}
-                      >
-                        編集
-                      </button>
-                      <button
-                        onClick={() => deleteReceipt(receipt.id)}
-                        style={styles.deleteButton}
-                      >
-                        削除
-                      </button>
-                    </div>
-                  </td>
                 </tr>
               ))
             )}
@@ -460,12 +451,20 @@ export default function ReceiptsPage() {
             </div>
 
             <div style={styles.modalFooter}>
-              <button onClick={() => setIsEditModalOpen(false)} style={styles.cancelButton}>
-                キャンセル
+              <button
+                onClick={() => deleteReceipt(selectedReceipt.id)}
+                style={styles.deleteButtonModal}
+              >
+                削除
               </button>
-              <button onClick={saveReceiptChanges} style={styles.saveButton}>
-                保存
-              </button>
+              <div style={styles.modalFooterRight}>
+                <button onClick={() => setIsEditModalOpen(false)} style={styles.cancelButton}>
+                  キャンセル
+                </button>
+                <button onClick={saveReceiptChanges} style={styles.saveButton}>
+                  保存
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -611,6 +610,7 @@ const styles: { [key: string]: React.CSSProperties } = {
   tableRow: {
     borderBottom: '1px solid #e9ecef',
     transition: 'background-color 0.2s',
+    cursor: 'pointer',
   },
   td: {
     padding: '12px',
@@ -622,28 +622,6 @@ const styles: { [key: string]: React.CSSProperties } = {
     textAlign: 'center' as const,
     color: '#6c757d',
     fontSize: '14px',
-  },
-  actionButtons: {
-    display: 'flex',
-    gap: '8px',
-  },
-  editButton: {
-    padding: '6px 12px',
-    fontSize: '13px',
-    backgroundColor: '#007bff',
-    color: 'white',
-    border: 'none',
-    borderRadius: '4px',
-    cursor: 'pointer',
-  },
-  deleteButton: {
-    padding: '6px 12px',
-    fontSize: '13px',
-    backgroundColor: '#dc3545',
-    color: 'white',
-    border: 'none',
-    borderRadius: '4px',
-    cursor: 'pointer',
   },
   modalOverlay: {
     position: 'fixed' as const,
@@ -784,11 +762,24 @@ const styles: { [key: string]: React.CSSProperties } = {
     padding: '20px 25px',
     borderTop: '1px solid #e9ecef',
     display: 'flex',
-    justifyContent: 'flex-end',
-    gap: '10px',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     position: 'sticky' as const,
     bottom: 0,
     backgroundColor: 'white',
+  },
+  modalFooterRight: {
+    display: 'flex',
+    gap: '10px',
+  },
+  deleteButtonModal: {
+    padding: '10px 20px',
+    fontSize: '14px',
+    backgroundColor: '#dc3545',
+    color: 'white',
+    border: 'none',
+    borderRadius: '6px',
+    cursor: 'pointer',
   },
   cancelButton: {
     padding: '10px 20px',
