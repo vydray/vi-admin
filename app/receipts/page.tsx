@@ -140,7 +140,7 @@ export default function ReceiptsPage() {
 
       // カテゴリーマスタを取得
       const { data: categoriesData } = await supabase
-        .from('categories')
+        .from('product_categories')
         .select('*')
         .eq('store_id', selectedStore)
         .order('name')

@@ -11,12 +11,19 @@
  */
 
 import { createClient } from '@supabase/supabase-js'
+import { config } from 'dotenv'
+import { resolve } from 'path'
+
+// .env.localファイルを読み込む
+config({ path: resolve(process.cwd(), '.env.local') })
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
 if (!supabaseUrl || !supabaseKey) {
   console.error('環境変数が設定されていません')
+  console.error('NEXT_PUBLIC_SUPABASE_URL:', supabaseUrl ? '設定済み' : '未設定')
+  console.error('NEXT_PUBLIC_SUPABASE_ANON_KEY:', supabaseKey ? '設定済み' : '未設定')
   process.exit(1)
 }
 
@@ -46,7 +53,7 @@ async function backfillCategories(storeId?: number) {
     }
 
     const categoriesQuery = supabase
-      .from('categories')
+      .from('product_categories')
       .select('id, name, store_id')
 
     if (storeId) {
