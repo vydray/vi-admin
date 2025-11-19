@@ -654,13 +654,9 @@ export default function CastsPage() {
                 <th style={thStyleSticky}>Twitter</th>
                 <th style={thStyleSticky}>Instagram</th>
                 <th style={thStyleSticky}>POS表示</th>
+                <th style={thStyleSticky}>シフトアプリ</th>
                 <th style={thStyleSticky}>管理者</th>
                 <th style={thStyleSticky}>マネージャー</th>
-                <th style={{ ...thStyleSticky, whiteSpace: 'normal' }}>
-                  <div style={{ lineHeight: '1.2' }}>
-                    シフトアプリ<br/>ログイン
-                  </div>
-                </th>
                 <th style={thStyleSticky}>操作</th>
               </tr>
             </thead>
@@ -697,9 +693,9 @@ export default function CastsPage() {
                   <td style={tdStyle}>{cast.twitter || '-'}</td>
                   <td style={tdStyle}>{cast.instagram || '-'}</td>
                   <td style={tdStyle}>{renderToggle(cast.id, 'show_in_pos', cast.show_in_pos)}</td>
+                  <td style={tdStyle}>{renderToggle(cast.id, 'is_active', cast.is_active)}</td>
                   <td style={tdStyle}>{renderToggle(cast.id, 'is_admin', cast.is_admin)}</td>
                   <td style={tdStyle}>{renderToggle(cast.id, 'is_manager', cast.is_manager)}</td>
-                  <td style={tdStyle}>{renderToggle(cast.id, 'is_active', cast.is_active)}</td>
                   <td style={tdStyle}>
                     <button
                       onClick={(e) => {
