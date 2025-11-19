@@ -21,6 +21,15 @@ interface Attendance {
   store_id: number
 }
 
+interface AttendanceStatus {
+  id: string
+  name: string
+  color: string
+  is_active: boolean
+  order_index: number
+  store_id: number
+}
+
 export default function AttendancePage() {
   const { storeId: globalStoreId } = useStore()
   const [selectedStore, setSelectedStore] = useState(globalStoreId)
@@ -30,10 +39,23 @@ export default function AttendancePage() {
   const [loading, setLoading] = useState(true)
   const [editingCell, setEditingCell] = useState<string | null>(null)
   const [tempTime, setTempTime] = useState({ clockIn: '', clockOut: '' })
+  const [showStatusModal, setShowStatusModal] = useState(false)
+  const [attendanceStatuses, setAttendanceStatuses] = useState<AttendanceStatus[]>([])
+  const [showAddStatus, setShowAddStatus] = useState(false)
+  const [showEditStatus, setShowEditStatus] = useState(false)
+  const [editingStatus, setEditingStatus] = useState<AttendanceStatus | null>(null)
+  const [newStatusName, setNewStatusName] = useState('')
+  const [newStatusColor, setNewStatusColor] = useState('#4CAF50')
 
   useEffect(() => {
     loadData()
   }, [selectedMonth, selectedStore])
+
+  useEffect(() => {
+    if (showStatusModal) {
+      loadAttendanceStatuses()
+    }
+  }, [showStatusModal, selectedStore])
 
   const loadData = async () => {
     setLoading(true)
@@ -72,6 +94,123 @@ export default function AttendancePage() {
     if (!error && data) {
       setAttendances(data)
     }
+  }
+
+  const loadAttendanceStatuses = async () => {
+    const { data, error } = await supabase
+      .from('attendance_statuses')
+      .select('*')
+      .eq('store_id', selectedStore)
+      .order('order_index')
+
+    if (!error && data) {
+      setAttendanceStatuses(data)
+    }
+  }
+
+  const addAttendanceStatus = async () => {
+    if (!newStatusName.trim()) {
+      alert('ステータス名を入力してください')
+      return
+    }
+
+    const isDuplicate = attendanceStatuses.some(s =>
+      s.name.toLowerCase() === newStatusName.trim().toLowerCase()
+    )
+
+    if (isDuplicate) {
+      alert(`「${newStatusName.trim()}」は既に登録されています`)
+      return
+    }
+
+    const { error } = await supabase
+      .from('attendance_statuses')
+      .insert({
+        name: newStatusName.trim(),
+        color: newStatusColor,
+        is_active: false,
+        order_index: attendanceStatuses.length,
+        store_id: selectedStore
+      })
+
+    if (!error) {
+      await loadAttendanceStatuses()
+      setShowAddStatus(false)
+      setNewStatusName('')
+      setNewStatusColor('#4CAF50')
+    }
+  }
+
+  const updateAttendanceStatus = async () => {
+    if (!editingStatus || !newStatusName.trim()) {
+      alert('ステータス名を入力してください')
+      return
+    }
+
+    const isDuplicate = attendanceStatuses.some(s =>
+      s.id !== editingStatus.id &&
+      s.name.toLowerCase() === newStatusName.trim().toLowerCase()
+    )
+
+    if (isDuplicate) {
+      alert(`「${newStatusName.trim()}」は既に登録されています`)
+      return
+    }
+
+    const { error } = await supabase
+      .from('attendance_statuses')
+      .update({
+        name: newStatusName.trim(),
+        color: newStatusColor
+      })
+      .eq('id', editingStatus.id)
+
+    if (!error) {
+      await loadAttendanceStatuses()
+      setShowEditStatus(false)
+      setEditingStatus(null)
+      setNewStatusName('')
+      setNewStatusColor('#4CAF50')
+    }
+  }
+
+  const toggleStatusActive = async (statusId: string, currentActive: boolean) => {
+    const { error } = await supabase
+      .from('attendance_statuses')
+      .update({ is_active: !currentActive })
+      .eq('id', statusId)
+
+    if (!error) {
+      await loadAttendanceStatuses()
+    }
+  }
+
+  const deleteAttendanceStatus = async (statusId: string) => {
+    if (!confirm('このステータスを削除しますか？')) return
+
+    const { error } = await supabase
+      .from('attendance_statuses')
+      .delete()
+      .eq('id', statusId)
+
+    if (!error) {
+      await loadAttendanceStatuses()
+    } else {
+      alert('ステータスの削除に失敗しました')
+    }
+  }
+
+  const openAddModal = () => {
+    setNewStatusName('')
+    setNewStatusColor('#4CAF50')
+    setShowAddStatus(true)
+  }
+
+  const openEditModal = (status: AttendanceStatus) => {
+    setEditingStatus(status)
+    setNewStatusName(status.name)
+    setNewStatusColor(status.color)
+    setShowEditStatus(true)
   }
 
   const getDaysInMonth = () => {
@@ -290,9 +429,26 @@ export default function AttendancePage() {
         borderRadius: '12px',
         boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
       }}>
-        <h1 style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '20px', color: '#1a1a1a' }}>
-          勤怠管理
-        </h1>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: 0, color: '#1a1a1a' }}>
+            勤怠管理
+          </h1>
+          <button
+            onClick={() => setShowStatusModal(true)}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: '#4A90E2',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '14px',
+              fontWeight: '500'
+            }}
+          >
+            ステータス管理
+          </button>
+        </div>
 
         {/* 店舗・月選択 */}
         <div style={{
@@ -690,6 +846,376 @@ export default function AttendancePage() {
             zIndex: 999
           }}
         />
+      )}
+
+      {/* ステータス管理モーダル */}
+      {showStatusModal && (
+        <div
+          onClick={() => setShowStatusModal(false)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: 'white',
+              borderRadius: '12px',
+              padding: '30px',
+              width: '90%',
+              maxWidth: '600px',
+              maxHeight: '80vh',
+              overflow: 'auto'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 'bold' }}>勤怠ステータス管理</h2>
+              <button
+                onClick={openAddModal}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#4A90E2',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '500'
+                }}
+              >
+                + ステータス追加
+              </button>
+            </div>
+
+            <div style={{
+              backgroundColor: '#e8f5e9',
+              borderRadius: '8px',
+              padding: '12px',
+              marginBottom: '20px',
+              fontSize: '13px',
+              color: '#2e7d32'
+            }}>
+              <strong>💡 ヒント:</strong> 有効にしたステータスは勤怠記録で使用できます
+            </div>
+
+            <div style={{ backgroundColor: 'white', borderRadius: '8px', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
+              {attendanceStatuses.length === 0 ? (
+                <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>
+                  ステータスが登録されていません
+                </div>
+              ) : (
+                attendanceStatuses.map((status, index) => (
+                  <div
+                    key={status.id}
+                    style={{
+                      padding: '16px 20px',
+                      borderBottom: index < attendanceStatuses.length - 1 ? '1px solid #e2e8f0' : 'none',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div
+                        style={{
+                          width: '30px',
+                          height: '30px',
+                          borderRadius: '6px',
+                          backgroundColor: status.color
+                        }}
+                      />
+                      <span style={{ fontSize: '15px', fontWeight: '500' }}>{status.name}</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <label style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        cursor: 'pointer',
+                        fontSize: '14px'
+                      }}>
+                        <input
+                          type="checkbox"
+                          checked={status.is_active}
+                          onChange={() => toggleStatusActive(status.id, status.is_active)}
+                          style={{
+                            width: '18px',
+                            height: '18px',
+                            cursor: 'pointer'
+                          }}
+                        />
+                        <span style={{ color: status.is_active ? '#4CAF50' : '#94a3b8' }}>
+                          {status.is_active ? '有効' : '無効'}
+                        </span>
+                      </label>
+                      <button
+                        onClick={() => openEditModal(status)}
+                        style={{
+                          padding: '6px 14px',
+                          backgroundColor: '#2196F3',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '5px',
+                          cursor: 'pointer',
+                          fontSize: '13px'
+                        }}
+                      >
+                        編集
+                      </button>
+                      <button
+                        onClick={() => deleteAttendanceStatus(status.id)}
+                        style={{
+                          padding: '6px 14px',
+                          backgroundColor: '#dc2626',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '5px',
+                          cursor: 'pointer',
+                          fontSize: '13px'
+                        }}
+                      >
+                        削除
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowStatusModal(false)}
+                style={{
+                  padding: '10px 20px',
+                  backgroundColor: '#6b7280',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '500'
+                }}
+              >
+                閉じる
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ステータス追加モーダル */}
+      {showAddStatus && (
+        <div
+          onClick={() => setShowAddStatus(false)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1001
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: 'white',
+              borderRadius: '12px',
+              padding: '30px',
+              width: '90%',
+              maxWidth: '400px'
+            }}
+          >
+            <h3 style={{ margin: '0 0 20px 0', fontSize: '18px', fontWeight: 'bold' }}>ステータス追加</h3>
+
+            <input
+              type="text"
+              placeholder="ステータス名"
+              value={newStatusName}
+              onChange={(e) => setNewStatusName(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '10px 12px',
+                fontSize: '14px',
+                border: '1px solid #e2e8f0',
+                borderRadius: '6px',
+                marginBottom: '16px',
+                boxSizing: 'border-box'
+              }}
+            />
+
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', marginBottom: '10px', fontSize: '14px', color: '#64748b', fontWeight: '500' }}>
+                カラー選択
+              </label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+                {['#4CAF50', '#2196F3', '#FF9800', '#F44336', '#9C27B0', '#00BCD4', '#8BC34A', '#FFC107', '#795548', '#607D8B'].map(color => (
+                  <button
+                    key={color}
+                    onClick={() => setNewStatusColor(color)}
+                    style={{
+                      width: '40px',
+                      height: '40px',
+                      borderRadius: '6px',
+                      backgroundColor: color,
+                      border: newStatusColor === color ? '3px solid #1e293b' : '1px solid #e2e8f0',
+                      cursor: 'pointer'
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowAddStatus(false)}
+                style={{
+                  padding: '10px 20px',
+                  backgroundColor: '#e2e8f0',
+                  color: '#475569',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '500'
+                }}
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={addAttendanceStatus}
+                style={{
+                  padding: '10px 20px',
+                  backgroundColor: '#4A90E2',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '500'
+                }}
+              >
+                追加
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ステータス編集モーダル */}
+      {showEditStatus && editingStatus && (
+        <div
+          onClick={() => setShowEditStatus(false)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1001
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: 'white',
+              borderRadius: '12px',
+              padding: '30px',
+              width: '90%',
+              maxWidth: '400px'
+            }}
+          >
+            <h3 style={{ margin: '0 0 20px 0', fontSize: '18px', fontWeight: 'bold' }}>ステータス編集</h3>
+
+            <input
+              type="text"
+              placeholder="ステータス名"
+              value={newStatusName}
+              onChange={(e) => setNewStatusName(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '10px 12px',
+                fontSize: '14px',
+                border: '1px solid #e2e8f0',
+                borderRadius: '6px',
+                marginBottom: '16px',
+                boxSizing: 'border-box'
+              }}
+            />
+
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', marginBottom: '10px', fontSize: '14px', color: '#64748b', fontWeight: '500' }}>
+                カラー選択
+              </label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+                {['#4CAF50', '#2196F3', '#FF9800', '#F44336', '#9C27B0', '#00BCD4', '#8BC34A', '#FFC107', '#795548', '#607D8B'].map(color => (
+                  <button
+                    key={color}
+                    onClick={() => setNewStatusColor(color)}
+                    style={{
+                      width: '40px',
+                      height: '40px',
+                      borderRadius: '6px',
+                      backgroundColor: color,
+                      border: newStatusColor === color ? '3px solid #1e293b' : '1px solid #e2e8f0',
+                      cursor: 'pointer'
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowEditStatus(false)}
+                style={{
+                  padding: '10px 20px',
+                  backgroundColor: '#e2e8f0',
+                  color: '#475569',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '500'
+                }}
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={updateAttendanceStatus}
+                style={{
+                  padding: '10px 20px',
+                  backgroundColor: '#2196F3',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '500'
+                }}
+              >
+                更新
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
