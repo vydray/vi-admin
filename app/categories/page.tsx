@@ -13,7 +13,8 @@ interface Category {
 }
 
 export default function CategoriesPage() {
-  const { storeId } = useStore()
+  const { storeId: globalStoreId } = useStore()
+  const [selectedStore, setSelectedStore] = useState(globalStoreId)
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
   const [newCategoryName, setNewCategoryName] = useState('')
@@ -23,14 +24,14 @@ export default function CategoriesPage() {
 
   useEffect(() => {
     loadCategories()
-  }, [storeId])
+  }, [selectedStore])
 
   const loadCategories = async () => {
     setLoading(true)
     const { data, error } = await supabase
       .from('product_categories')
       .select('*')
-      .eq('store_id', storeId)
+      .eq('store_id', selectedStore)
       .order('display_order')
 
     if (!error && data) {
@@ -63,7 +64,7 @@ export default function CategoriesPage() {
       .insert({
         name: newCategoryName.trim(),
         display_order: maxDisplayOrder + 1,
-        store_id: storeId,
+        store_id: selectedStore,
         show_oshi_first: false
       })
 
@@ -155,9 +156,29 @@ export default function CategoriesPage() {
         boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
         marginBottom: '20px'
       }}>
-        <h1 style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '30px', color: '#1a1a1a' }}>
-          カテゴリー管理
-        </h1>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
+          <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: 0, color: '#1a1a1a' }}>
+            カテゴリー管理
+          </h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <label style={{ fontSize: '14px', fontWeight: '500', color: '#475569' }}>店舗:</label>
+            <select
+              value={selectedStore}
+              onChange={(e) => setSelectedStore(Number(e.target.value))}
+              style={{
+                padding: '6px 12px',
+                fontSize: '14px',
+                border: '1px solid #e2e8f0',
+                borderRadius: '6px',
+                backgroundColor: '#fff',
+                cursor: 'pointer'
+              }}
+            >
+              <option value={1}>Memorable</option>
+              <option value={2}>Mistress Mirage</option>
+            </select>
+          </div>
+        </div>
 
         {/* カテゴリー追加フォーム */}
         <div style={{
