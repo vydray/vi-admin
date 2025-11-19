@@ -149,14 +149,15 @@ export default function CategoriesPage() {
       backgroundColor: '#f7f9fc',
       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
     }}>
+      {/* ヘッダー */}
       <div style={{
         backgroundColor: '#fff',
-        padding: '30px',
+        padding: '20px',
+        marginBottom: '20px',
         borderRadius: '12px',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-        marginBottom: '20px'
+        boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
       }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: 0, color: '#1a1a1a' }}>
             カテゴリー管理
           </h1>
@@ -179,13 +180,20 @@ export default function CategoriesPage() {
             </select>
           </div>
         </div>
+      </div>
 
+      {/* メインコンテンツ */}
+      <div style={{
+        backgroundColor: '#fff',
+        borderRadius: '12px',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+        overflow: 'hidden'
+      }}>
         {/* カテゴリー追加フォーム */}
         <div style={{
           backgroundColor: '#f8f9fa',
           padding: '20px',
-          borderRadius: '8px',
-          marginBottom: '30px'
+          borderBottom: '1px solid #e2e8f0'
         }}>
           <h3 style={{ margin: '0 0 15px 0', fontSize: '16px', fontWeight: '600', color: '#374151' }}>
             新規カテゴリー追加
@@ -225,12 +233,7 @@ export default function CategoriesPage() {
         </div>
 
         {/* カテゴリーリスト */}
-        <div style={{
-          backgroundColor: 'white',
-          borderRadius: '8px',
-          overflow: 'hidden',
-          border: '1px solid #e2e8f0'
-        }}>
+        <div>
           {loading ? (
             <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>
               読み込み中...

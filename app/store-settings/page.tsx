@@ -92,14 +92,15 @@ export default function StoreSettingsPage() {
       backgroundColor: '#f7f9fc',
       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
     }}>
+      {/* ヘッダー */}
       <div style={{
         backgroundColor: '#fff',
-        padding: '40px',
+        padding: '20px',
+        marginBottom: '20px',
         borderRadius: '12px',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-        maxWidth: '800px'
+        boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
       }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: 0, color: '#1a1a1a' }}>
             店舗設定
           </h1>
@@ -122,6 +123,16 @@ export default function StoreSettingsPage() {
             </select>
           </div>
         </div>
+      </div>
+
+      {/* メインコンテンツ */}
+      <div style={{
+        backgroundColor: '#fff',
+        borderRadius: '12px',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+        overflow: 'hidden',
+        maxWidth: '800px'
+      }}>
 
         {loading ? (
           <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>
@@ -130,13 +141,12 @@ export default function StoreSettingsPage() {
         ) : (
           <>
             {/* 店舗基本情報 */}
-            <div style={{ marginBottom: '40px' }}>
+            <div style={{ padding: '30px', borderBottom: '1px solid #e2e8f0' }}>
               <h3 style={{
                 fontSize: '18px',
                 fontWeight: 'bold',
                 marginBottom: '20px',
-                paddingBottom: '10px',
-                borderBottom: '2px solid #e2e8f0'
+                color: '#374151'
               }}>
                 店舗基本情報
               </h3>
@@ -345,13 +355,12 @@ export default function StoreSettingsPage() {
             </div>
 
             {/* レシート設定 */}
-            <div style={{ marginBottom: '40px' }}>
+            <div style={{ padding: '30px', borderBottom: '1px solid #e2e8f0' }}>
               <h3 style={{
                 fontSize: '18px',
                 fontWeight: 'bold',
                 marginBottom: '20px',
-                paddingBottom: '10px',
-                borderBottom: '2px solid #e2e8f0'
+                color: '#374151'
               }}>
                 レシート設定
               </h3>
@@ -413,8 +422,7 @@ export default function StoreSettingsPage() {
 
             {/* 保存ボタン */}
             <div style={{
-              borderTop: '1px solid #e2e8f0',
-              paddingTop: '20px',
+              padding: '30px',
               display: 'flex',
               justifyContent: 'flex-end'
             }}>
