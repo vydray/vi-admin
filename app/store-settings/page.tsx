@@ -25,6 +25,7 @@ interface SystemSettings {
   rounding_method: number
   rounding_unit: number
   card_fee_rate: number
+  business_day_cutoff_hour: number
 }
 
 interface DisplaySettings {
@@ -60,7 +61,8 @@ export default function StoreSettingsPage() {
     service_charge_rate: 0.15,
     rounding_method: 0,
     rounding_unit: 100,
-    card_fee_rate: 0
+    card_fee_rate: 0,
+    business_day_cutoff_hour: 6
   })
 
   const [displaySettings, setDisplaySettings] = useState<DisplaySettings>({
@@ -107,8 +109,19 @@ export default function StoreSettingsPage() {
       .eq('store_id', selectedStore)
 
     if (systemSettingsData) {
-      const newSystemSettings = { ...systemSettings }
-      const newDisplaySettings = { ...displaySettings }
+      const newSystemSettings: SystemSettings = {
+        consumption_tax_rate: 0.10,
+        service_charge_rate: 0.15,
+        rounding_method: 0,
+        rounding_unit: 100,
+        card_fee_rate: 0,
+        business_day_cutoff_hour: 6
+      }
+      const newDisplaySettings: DisplaySettings = {
+        theme: 'light',
+        language: 'ja',
+        date_format: 'YYYY/MM/DD'
+      }
 
       systemSettingsData.forEach(setting => {
         if (setting.setting_key === 'consumption_tax_rate') {
@@ -121,6 +134,8 @@ export default function StoreSettingsPage() {
           newSystemSettings.rounding_unit = Number(setting.setting_value)
         } else if (setting.setting_key === 'card_fee_rate') {
           newSystemSettings.card_fee_rate = Number(setting.setting_value)
+        } else if (setting.setting_key === 'business_day_cutoff_hour') {
+          newSystemSettings.business_day_cutoff_hour = Number(setting.setting_value)
         } else if (setting.setting_key === 'theme') {
           newDisplaySettings.theme = String(setting.setting_value)
         } else if (setting.setting_key === 'language') {
@@ -157,6 +172,7 @@ export default function StoreSettingsPage() {
         { store_id: selectedStore, setting_key: 'rounding_method', setting_value: systemSettings.rounding_method },
         { store_id: selectedStore, setting_key: 'rounding_unit', setting_value: systemSettings.rounding_unit },
         { store_id: selectedStore, setting_key: 'card_fee_rate', setting_value: systemSettings.card_fee_rate },
+        { store_id: selectedStore, setting_key: 'business_day_cutoff_hour', setting_value: systemSettings.business_day_cutoff_hour },
         { store_id: selectedStore, setting_key: 'theme', setting_value: displaySettings.theme },
         { store_id: selectedStore, setting_key: 'language', setting_value: displaySettings.language },
         { store_id: selectedStore, setting_key: 'date_format', setting_value: displaySettings.date_format }
@@ -971,6 +987,44 @@ export default function StoreSettingsPage() {
                 />
                 <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
                   カード決済時に適用される手数料率を設定します
+                </div>
+              </div>
+
+              <div style={{ marginTop: '20px' }}>
+                <label style={{
+                  display: 'block',
+                  marginBottom: '8px',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  color: '#374151'
+                }}>
+                  営業日切替時刻
+                </label>
+                <select
+                  value={systemSettings.business_day_cutoff_hour}
+                  onChange={(e) => updateSystemSetting('business_day_cutoff_hour', Number(e.target.value))}
+                  style={{
+                    width: '200px',
+                    padding: '10px',
+                    fontSize: '14px',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '6px',
+                    backgroundColor: '#fff',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <option value={0}>0時（午前0時）</option>
+                  <option value={1}>1時（午前1時）</option>
+                  <option value={2}>2時（午前2時）</option>
+                  <option value={3}>3時（午前3時）</option>
+                  <option value={4}>4時（午前4時）</option>
+                  <option value={5}>5時（午前5時）</option>
+                  <option value={6}>6時（午前6時）</option>
+                  <option value={7}>7時（午前7時）</option>
+                  <option value={8}>8時（午前8時）</option>
+                </select>
+                <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                  この時刻以降の会計は翌営業日として扱われます（例：6時設定の場合、午前1時の会計は前日の営業日として記録されます）
                 </div>
               </div>
             </div>

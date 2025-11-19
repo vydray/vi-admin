@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "update-business-days": "tsx scripts/update-business-days.ts"
   },
   "keywords": [],
   "author": "",
@@ -22,5 +23,8 @@
     "react-dom": "^19.2.0",
     "recharts": "^3.4.1",
     "typescript": "^5.9.3"
+  },
+  "devDependencies": {
+    "tsx": "^4.7.1"
   }
 }

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useStore } from '@/contexts/StoreContext'
 import { supabase } from '@/lib/supabase'
 import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
+import { getCurrentBusinessDay } from '@/lib/businessDay'
 
 interface DashboardData {
   todaySales: number
@@ -57,34 +58,47 @@ export default function Home() {
   const fetchDashboardData = async () => {
     setLoading(true)
     try {
-      // 日本時間（JST）で今日の日付を取得
-      const now = new Date()
-      const jstDate = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }))
-      const todayYear = jstDate.getFullYear()
-      const todayMonth = String(jstDate.getMonth() + 1).padStart(2, '0')
-      const todayDay = String(jstDate.getDate()).padStart(2, '0')
-      const today = `${todayYear}-${todayMonth}-${todayDay}`
+      // システム設定から営業日切替時刻を取得
+      const { data: settingData } = await supabase
+        .from('system_settings')
+        .select('setting_value')
+        .eq('store_id', storeId)
+        .eq('setting_key', 'business_day_cutoff_hour')
+        .single()
 
-      // 選択された年月の開始日
+      const cutoffHour = settingData?.setting_value ? Number(settingData.setting_value) : 6
+
+      // 今日の営業日を取得
+      const todayBusinessDay = getCurrentBusinessDay(cutoffHour)
+
+      // 選択された年月の開始日と終了日
       const monthStr = String(selectedMonth).padStart(2, '0')
       const monthStart = `${selectedYear}-${monthStr}-01`
 
+      // 月末日を計算
+      const lastDay = new Date(selectedYear, selectedMonth, 0).getDate()
+      const monthEnd = `${selectedYear}-${monthStr}-${String(lastDay).padStart(2, '0')}`
+
+      // 今日の営業日のデータを取得（order_dateで絞り込み）
       const { data: todayOrders, error: todayError } = await supabase
         .from('orders')
-        .select('id, total_incl_tax, table_number, checkout_datetime, payments(cash_amount, credit_card_amount, other_payment_amount)')
+        .select('id, total_incl_tax, table_number, order_date, checkout_datetime, payments(cash_amount, credit_card_amount, other_payment_amount)')
         .eq('store_id', storeId)
-        .gte('checkout_datetime', today)
+        .gte('order_date', todayBusinessDay)
+        .lt('order_date', todayBusinessDay + 'T23:59:59')
         .is('deleted_at', null)
 
+      // 選択された月のデータを取得（order_dateで絞り込み）
       const { data: monthlyOrders, error: monthlyError } = await supabase
         .from('orders')
-        .select('id, total_incl_tax, table_number, checkout_datetime, payments(cash_amount, credit_card_amount, other_payment_amount)')
+        .select('id, total_incl_tax, table_number, order_date, checkout_datetime, payments(cash_amount, credit_card_amount, other_payment_amount)')
         .eq('store_id', storeId)
-        .gte('checkout_datetime', monthStart)
+        .gte('order_date', monthStart)
+        .lte('order_date', monthEnd + 'T23:59:59')
         .is('deleted_at', null)
 
-      console.log('Today query:', { today, storeId, todayOrders, todayError })
-      console.log('Monthly query:', { monthStart, storeId, monthlyOrders, monthlyError })
+      console.log('Today query (business day):', { todayBusinessDay, cutoffHour, todayOrders, todayError })
+      console.log('Monthly query:', { monthStart, monthEnd, monthlyOrders, monthlyError })
 
       // 今日の集計
       const todaySales = todayOrders?.reduce((sum, order) => sum + (Number(order.total_incl_tax) || 0), 0) || 0
@@ -135,7 +149,7 @@ export default function Home() {
         todayGroups,
       })
 
-      // 日別売上データの作成
+      // 日別売上データの作成（営業日ベース）
       const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate()
       const dailyData: DailySalesData[] = []
       let cumulative = 0
@@ -144,8 +158,9 @@ export default function Home() {
         const dayStr = String(day).padStart(2, '0')
         const dateStr = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-${dayStr}`
 
+        // order_date（営業日）でフィルタリング
         const daySales = monthlyOrders?.filter(order => {
-          return order.checkout_datetime?.startsWith(dateStr)
+          return order.order_date?.startsWith(dateStr)
         }).reduce((sum, order) => sum + (Number(order.total_incl_tax) || 0), 0) || 0
 
         cumulative += daySales
