@@ -329,7 +329,7 @@ export default function ReceiptsPage() {
               <th style={styles.th}>営業日</th>
               <th style={styles.th}>テーブル</th>
               <th style={styles.th}>お客様名</th>
-              <th style={styles.th}>推しキャスト</th>
+              <th style={styles.th}>担当スタッフ</th>
               <th style={styles.th}>支払方法</th>
               <th style={styles.th}>小計</th>
               <th style={styles.th}>合計（税込）</th>
