@@ -41,6 +41,7 @@ interface Receipt {
 interface ReceiptWithDetails extends Receipt {
   order_items?: OrderItem[]
   payment?: Payment
+  payment_methods?: string
 }
 
 export default function ReceiptsPage() {
@@ -77,7 +78,35 @@ export default function ReceiptsPage() {
 
       if (error) throw error
 
-      setReceipts(ordersData || [])
+      // 各orderに対してpayment情報を取得
+      if (ordersData) {
+        const receiptsWithPayments = await Promise.all(
+          ordersData.map(async (order) => {
+            const { data: paymentData } = await supabase
+              .from('payments')
+              .select('*')
+              .eq('order_id', order.id)
+              .single()
+
+            let paymentMethods = '-'
+            if (paymentData) {
+              const methods: string[] = []
+              if (paymentData.cash_amount > 0) methods.push('現金')
+              if (paymentData.credit_card_amount > 0) methods.push('カード')
+              if (paymentData.other_payment_amount > 0) methods.push(paymentData.other_payment_method || 'その他')
+              paymentMethods = methods.length > 0 ? methods.join('・') : '-'
+            }
+
+            return {
+              ...order,
+              payment_methods: paymentMethods
+            }
+          })
+        )
+        setReceipts(receiptsWithPayments)
+      } else {
+        setReceipts([])
+      }
     } catch (error) {
       console.error('Error loading receipts:', error)
       alert('伝票の読み込みに失敗しました')
@@ -301,9 +330,9 @@ export default function ReceiptsPage() {
               <th style={styles.th}>テーブル</th>
               <th style={styles.th}>お客様名</th>
               <th style={styles.th}>推しキャスト</th>
+              <th style={styles.th}>支払方法</th>
               <th style={styles.th}>小計</th>
               <th style={styles.th}>合計（税込）</th>
-              <th style={styles.th}>支払方法</th>
             </tr>
           </thead>
           <tbody>
@@ -326,9 +355,9 @@ export default function ReceiptsPage() {
                   <td style={styles.td}>{receipt.table_number}</td>
                   <td style={styles.td}>{receipt.customer_name || '-'}</td>
                   <td style={styles.td}>{receipt.oshi_name || '-'}</td>
+                  <td style={styles.td}>{receipt.payment_methods || '-'}</td>
                   <td style={styles.td}>{formatCurrency(receipt.total_amount)}</td>
                   <td style={styles.td}>{formatCurrency(receipt.total_incl_tax)}</td>
-                  <td style={styles.td}>{receipt.payment_method}</td>
                 </tr>
               ))
             )}
