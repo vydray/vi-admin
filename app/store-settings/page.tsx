@@ -24,6 +24,8 @@ export default function StoreSettingsPage() {
   const [selectedStore, setSelectedStore] = useState(globalStoreId)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [isDragging, setIsDragging] = useState(false)
   const [settings, setSettings] = useState<StoreSettings>({
     store_name: '',
     store_postal_code: '',
@@ -91,6 +93,79 @@ export default function StoreSettingsPage() {
 
   const updateSetting = (key: keyof StoreSettings, value: string | number) => {
     setSettings(prev => ({ ...prev, [key]: value }))
+  }
+
+  const uploadImage = async (file: File) => {
+    try {
+      setUploading(true)
+
+      // ファイル名を生成（タイムスタンプ + オリジナル名）
+      const fileExt = file.name.split('.').pop()
+      const fileName = `${selectedStore}_${Date.now()}.${fileExt}`
+      const filePath = `store-logos/${fileName}`
+
+      // Supabase Storageにアップロード
+      const { error: uploadError } = await supabase.storage
+        .from('images')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false
+        })
+
+      if (uploadError) {
+        throw uploadError
+      }
+
+      // 公開URLを取得
+      const { data } = supabase.storage
+        .from('images')
+        .getPublicUrl(filePath)
+
+      // 設定を更新
+      updateSetting('logo_url', data.publicUrl)
+
+      alert('ロゴをアップロードしました')
+    } catch (error) {
+      console.error('Upload error:', error)
+      alert('ロゴのアップロードに失敗しました')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      if (!file.type.startsWith('image/')) {
+        alert('画像ファイルを選択してください')
+        return
+      }
+      uploadImage(file)
+    }
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(false)
+
+    const file = e.dataTransfer.files[0]
+    if (file) {
+      if (!file.type.startsWith('image/')) {
+        alert('画像ファイルを選択してください')
+        return
+      }
+      uploadImage(file)
+    }
+  }
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(true)
+  }
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(false)
   }
 
   return (
@@ -476,41 +551,126 @@ export default function StoreSettingsPage() {
                   fontWeight: '500',
                   color: '#374151'
                 }}>
-                  店舗ロゴURL
+                  店舗ロゴ
                 </label>
-                <input
-                  type="text"
-                  value={settings.logo_url}
-                  onChange={(e) => updateSetting('logo_url', e.target.value)}
-                  placeholder="https://example.com/logo.png"
+
+                {/* ドラッグ&ドロップゾーン */}
+                <div
+                  onDrop={handleDrop}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
                   style={{
-                    width: '100%',
-                    padding: '10px',
-                    fontSize: '14px',
-                    border: '1px solid #e2e8f0',
+                    border: `2px dashed ${isDragging ? '#3b82f6' : '#e2e8f0'}`,
                     borderRadius: '6px',
-                    boxSizing: 'border-box'
+                    padding: '30px',
+                    textAlign: 'center',
+                    backgroundColor: isDragging ? '#eff6ff' : '#f9fafb',
+                    transition: 'all 0.2s',
+                    cursor: 'pointer',
+                    marginBottom: '10px'
                   }}
-                />
-                {settings.logo_url && (
-                  <div style={{ marginTop: '10px' }}>
-                    <img
-                      src={settings.logo_url}
-                      alt="店舗ロゴプレビュー"
-                      style={{
-                        maxWidth: '200px',
-                        maxHeight: '100px',
-                        objectFit: 'contain',
-                        border: '1px solid #e2e8f0',
-                        borderRadius: '6px',
-                        padding: '10px'
-                      }}
-                      onError={(e) => {
-                        e.currentTarget.style.display = 'none'
-                      }}
+                >
+                  {uploading ? (
+                    <div style={{ color: '#64748b' }}>
+                      アップロード中...
+                    </div>
+                  ) : settings.logo_url ? (
+                    <div>
+                      <img
+                        src={settings.logo_url}
+                        alt="店舗ロゴ"
+                        style={{
+                          maxWidth: '200px',
+                          maxHeight: '100px',
+                          objectFit: 'contain',
+                          marginBottom: '10px'
+                        }}
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none'
+                        }}
+                      />
+                      <div style={{ fontSize: '12px', color: '#64748b', marginTop: '10px' }}>
+                        画像をドラッグ&ドロップで変更できます
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <div style={{ fontSize: '14px', color: '#374151', marginBottom: '5px' }}>
+                        📎 画像をドラッグ&ドロップ
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#64748b' }}>
+                        または下のボタンからファイルを選択
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* ファイル選択ボタン */}
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                  <label style={{
+                    padding: '8px 16px',
+                    backgroundColor: '#3b82f6',
+                    color: 'white',
+                    borderRadius: '5px',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    fontWeight: '500',
+                    display: 'inline-block'
+                  }}>
+                    ファイルを選択
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleFileSelect}
+                      style={{ display: 'none' }}
+                      disabled={uploading}
                     />
-                  </div>
-                )}
+                  </label>
+
+                  {settings.logo_url && (
+                    <button
+                      onClick={() => updateSetting('logo_url', '')}
+                      style={{
+                        padding: '8px 16px',
+                        backgroundColor: '#ef4444',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '5px',
+                        cursor: 'pointer',
+                        fontSize: '14px',
+                        fontWeight: '500'
+                      }}
+                    >
+                      削除
+                    </button>
+                  )}
+                </div>
+
+                {/* URL直接入力 */}
+                <div style={{ marginTop: '15px' }}>
+                  <label style={{
+                    display: 'block',
+                    marginBottom: '5px',
+                    fontSize: '12px',
+                    color: '#64748b'
+                  }}>
+                    または URL を直接入力
+                  </label>
+                  <input
+                    type="text"
+                    value={settings.logo_url}
+                    onChange={(e) => updateSetting('logo_url', e.target.value)}
+                    placeholder="https://example.com/logo.png"
+                    style={{
+                      width: '100%',
+                      padding: '8px',
+                      fontSize: '13px',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '4px',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                </div>
               </div>
 
               <div>
