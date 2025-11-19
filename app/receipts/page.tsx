@@ -61,6 +61,13 @@ export default function ReceiptsPage() {
     order_date: '',
     checkout_datetime: ''
   })
+  const [editingItemId, setEditingItemId] = useState<number | null>(null)
+  const [editingItemData, setEditingItemData] = useState({
+    product_name: '',
+    cast_name: '',
+    quantity: 1,
+    unit_price: 0
+  })
 
   useEffect(() => {
     loadReceipts()
@@ -200,6 +207,81 @@ export default function ReceiptsPage() {
     } catch (error) {
       console.error('Error deleting receipt:', error)
       alert('伝票の削除に失敗しました')
+    }
+  }
+
+  // 注文明細の編集開始
+  const startEditItem = (item: OrderItem) => {
+    setEditingItemId(item.id)
+    setEditingItemData({
+      product_name: item.product_name,
+      cast_name: item.cast_name || '',
+      quantity: item.quantity,
+      unit_price: item.unit_price
+    })
+  }
+
+  // 注文明細の編集キャンセル
+  const cancelEditItem = () => {
+    setEditingItemId(null)
+    setEditingItemData({
+      product_name: '',
+      cast_name: '',
+      quantity: 1,
+      unit_price: 0
+    })
+  }
+
+  // 注文明細の保存
+  const saveEditItem = async (itemId: number) => {
+    try {
+      const { error } = await supabase
+        .from('order_items')
+        .update({
+          product_name: editingItemData.product_name,
+          cast_name: editingItemData.cast_name || null,
+          quantity: editingItemData.quantity,
+          unit_price: editingItemData.unit_price,
+          subtotal: editingItemData.unit_price * editingItemData.quantity
+        })
+        .eq('id', itemId)
+
+      if (error) throw error
+
+      alert('注文明細を更新しました')
+      cancelEditItem()
+
+      // 詳細を再読み込み
+      if (selectedReceipt) {
+        loadReceiptDetails(selectedReceipt)
+      }
+    } catch (error) {
+      console.error('Error updating order item:', error)
+      alert('注文明細の更新に失敗しました')
+    }
+  }
+
+  // 注文明細の削除
+  const deleteOrderItem = async (itemId: number) => {
+    if (!confirm('この注文明細を削除してもよろしいですか？')) return
+
+    try {
+      const { error } = await supabase
+        .from('order_items')
+        .delete()
+        .eq('id', itemId)
+
+      if (error) throw error
+
+      alert('注文明細を削除しました')
+
+      // 詳細を再読み込み
+      if (selectedReceipt) {
+        loadReceiptDetails(selectedReceipt)
+      }
+    } catch (error) {
+      console.error('Error deleting order item:', error)
+      alert('注文明細の削除に失敗しました')
     }
   }
 
@@ -442,16 +524,93 @@ export default function ReceiptsPage() {
                         <th style={styles.itemTh}>数量</th>
                         <th style={styles.itemTh}>単価</th>
                         <th style={styles.itemTh}>合計</th>
+                        <th style={styles.itemTh}>操作</th>
                       </tr>
                     </thead>
                     <tbody>
                       {selectedReceipt.order_items.map((item) => (
                         <tr key={item.id}>
-                          <td style={styles.itemTd}>{item.product_name}</td>
-                          <td style={styles.itemTd}>{item.cast_name || '-'}</td>
-                          <td style={styles.itemTd}>{item.quantity}</td>
-                          <td style={styles.itemTd}>{formatCurrency(item.unit_price)}</td>
-                          <td style={styles.itemTd}>{formatCurrency(item.total_price)}</td>
+                          {editingItemId === item.id ? (
+                            // 編集モード
+                            <>
+                              <td style={styles.itemTd}>
+                                <input
+                                  type="text"
+                                  value={editingItemData.product_name}
+                                  onChange={(e) => setEditingItemData({ ...editingItemData, product_name: e.target.value })}
+                                  style={styles.itemInput}
+                                />
+                              </td>
+                              <td style={styles.itemTd}>
+                                <input
+                                  type="text"
+                                  value={editingItemData.cast_name}
+                                  onChange={(e) => setEditingItemData({ ...editingItemData, cast_name: e.target.value })}
+                                  style={styles.itemInput}
+                                />
+                              </td>
+                              <td style={styles.itemTd}>
+                                <input
+                                  type="number"
+                                  value={editingItemData.quantity}
+                                  onChange={(e) => setEditingItemData({ ...editingItemData, quantity: Number(e.target.value) })}
+                                  style={styles.itemInputSmall}
+                                  min="1"
+                                />
+                              </td>
+                              <td style={styles.itemTd}>
+                                <input
+                                  type="number"
+                                  value={editingItemData.unit_price}
+                                  onChange={(e) => setEditingItemData({ ...editingItemData, unit_price: Number(e.target.value) })}
+                                  style={styles.itemInputSmall}
+                                  min="0"
+                                />
+                              </td>
+                              <td style={styles.itemTd}>{formatCurrency(editingItemData.unit_price * editingItemData.quantity)}</td>
+                              <td style={styles.itemTd}>
+                                <div style={styles.itemActions}>
+                                  <button
+                                    onClick={() => saveEditItem(item.id)}
+                                    style={styles.itemSaveButton}
+                                  >
+                                    保存
+                                  </button>
+                                  <button
+                                    onClick={cancelEditItem}
+                                    style={styles.itemCancelButton}
+                                  >
+                                    キャンセル
+                                  </button>
+                                </div>
+                              </td>
+                            </>
+                          ) : (
+                            // 表示モード
+                            <>
+                              <td style={styles.itemTd}>{item.product_name}</td>
+                              <td style={styles.itemTd}>{item.cast_name || '-'}</td>
+                              <td style={styles.itemTd}>{item.quantity}</td>
+                              <td style={styles.itemTd}>{formatCurrency(item.unit_price)}</td>
+                              <td style={styles.itemTd}>{formatCurrency(item.total_price)}</td>
+                              <td style={styles.itemTd}>
+                                <div style={styles.itemActions}>
+                                  <button
+                                    onClick={() => startEditItem(item)}
+                                    style={styles.itemEditButton}
+                                  >
+                                    編集
+                                  </button>
+                                  <button
+                                    onClick={() => deleteOrderItem(item.id)}
+                                    style={styles.itemDeleteButton}
+                                  >
+                                    削除
+                                  </button>
+                                </div>
+                              </td>
+                            </>
+                          )}
                         </tr>
                       ))}
                     </tbody>
@@ -838,6 +997,61 @@ const styles: { [key: string]: React.CSSProperties } = {
     color: 'white',
     border: 'none',
     borderRadius: '6px',
+    cursor: 'pointer',
+  },
+  itemInput: {
+    width: '100%',
+    padding: '6px 8px',
+    fontSize: '13px',
+    border: '1px solid #ced4da',
+    borderRadius: '4px',
+  },
+  itemInputSmall: {
+    width: '80px',
+    padding: '6px 8px',
+    fontSize: '13px',
+    border: '1px solid #ced4da',
+    borderRadius: '4px',
+  },
+  itemActions: {
+    display: 'flex',
+    gap: '8px',
+    justifyContent: 'center',
+  },
+  itemEditButton: {
+    padding: '6px 12px',
+    fontSize: '12px',
+    backgroundColor: '#007bff',
+    color: 'white',
+    border: 'none',
+    borderRadius: '4px',
+    cursor: 'pointer',
+  },
+  itemDeleteButton: {
+    padding: '6px 12px',
+    fontSize: '12px',
+    backgroundColor: '#dc3545',
+    color: 'white',
+    border: 'none',
+    borderRadius: '4px',
+    cursor: 'pointer',
+  },
+  itemSaveButton: {
+    padding: '6px 12px',
+    fontSize: '12px',
+    backgroundColor: '#28a745',
+    color: 'white',
+    border: 'none',
+    borderRadius: '4px',
+    cursor: 'pointer',
+  },
+  itemCancelButton: {
+    padding: '6px 12px',
+    fontSize: '12px',
+    backgroundColor: '#6c757d',
+    color: 'white',
+    border: 'none',
+    borderRadius: '4px',
     cursor: 'pointer',
   },
 }
