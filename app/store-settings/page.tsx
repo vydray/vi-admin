@@ -27,6 +27,12 @@ interface SystemSettings {
   card_fee_rate: number
 }
 
+interface DisplaySettings {
+  theme: string
+  language: string
+  date_format: string
+}
+
 export default function StoreSettingsPage() {
   const { storeId: globalStoreId } = useStore()
   const [selectedStore, setSelectedStore] = useState(globalStoreId)
@@ -55,6 +61,12 @@ export default function StoreSettingsPage() {
     rounding_method: 0,
     rounding_unit: 100,
     card_fee_rate: 0
+  })
+
+  const [displaySettings, setDisplaySettings] = useState<DisplaySettings>({
+    theme: 'light',
+    language: 'ja',
+    date_format: 'YYYY/MM/DD'
   })
 
   useEffect(() => {
@@ -96,6 +108,8 @@ export default function StoreSettingsPage() {
 
     if (systemSettingsData) {
       const newSystemSettings = { ...systemSettings }
+      const newDisplaySettings = { ...displaySettings }
+
       systemSettingsData.forEach(setting => {
         if (setting.setting_key === 'consumption_tax_rate') {
           newSystemSettings.consumption_tax_rate = Number(setting.setting_value)
@@ -107,9 +121,16 @@ export default function StoreSettingsPage() {
           newSystemSettings.rounding_unit = Number(setting.setting_value)
         } else if (setting.setting_key === 'card_fee_rate') {
           newSystemSettings.card_fee_rate = Number(setting.setting_value)
+        } else if (setting.setting_key === 'theme') {
+          newDisplaySettings.theme = String(setting.setting_value)
+        } else if (setting.setting_key === 'language') {
+          newDisplaySettings.language = String(setting.setting_value)
+        } else if (setting.setting_key === 'date_format') {
+          newDisplaySettings.date_format = String(setting.setting_value)
         }
       })
       setSystemSettings(newSystemSettings)
+      setDisplaySettings(newDisplaySettings)
     }
 
     setLoading(false)
@@ -129,13 +150,16 @@ export default function StoreSettingsPage() {
 
       if (storeError) throw storeError
 
-      // システム設定を保存
+      // システム設定と表示設定を保存
       const systemSettingsArray = [
         { store_id: selectedStore, setting_key: 'consumption_tax_rate', setting_value: systemSettings.consumption_tax_rate },
         { store_id: selectedStore, setting_key: 'service_charge_rate', setting_value: systemSettings.service_charge_rate },
         { store_id: selectedStore, setting_key: 'rounding_method', setting_value: systemSettings.rounding_method },
         { store_id: selectedStore, setting_key: 'rounding_unit', setting_value: systemSettings.rounding_unit },
-        { store_id: selectedStore, setting_key: 'card_fee_rate', setting_value: systemSettings.card_fee_rate }
+        { store_id: selectedStore, setting_key: 'card_fee_rate', setting_value: systemSettings.card_fee_rate },
+        { store_id: selectedStore, setting_key: 'theme', setting_value: displaySettings.theme },
+        { store_id: selectedStore, setting_key: 'language', setting_value: displaySettings.language },
+        { store_id: selectedStore, setting_key: 'date_format', setting_value: displaySettings.date_format }
       ]
 
       const { error: systemError } = await supabase
@@ -159,6 +183,10 @@ export default function StoreSettingsPage() {
 
   const updateSystemSetting = (key: keyof SystemSettings, value: number) => {
     setSystemSettings(prev => ({ ...prev, [key]: value }))
+  }
+
+  const updateDisplaySetting = (key: keyof DisplaySettings, value: string) => {
+    setDisplaySettings(prev => ({ ...prev, [key]: value }))
   }
 
   const uploadImage = async (file: File) => {
@@ -943,6 +971,114 @@ export default function StoreSettingsPage() {
                 />
                 <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
                   カード決済時に適用される手数料率を設定します
+                </div>
+              </div>
+            </div>
+
+            {/* 表示設定 */}
+            <div style={{ padding: '30px', borderBottom: '1px solid #e2e8f0' }}>
+              <h3 style={{
+                fontSize: '18px',
+                fontWeight: 'bold',
+                marginBottom: '20px',
+                color: '#374151'
+              }}>
+                表示設定
+              </h3>
+
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: '20px',
+                marginBottom: '20px'
+              }}>
+                <div>
+                  <label style={{
+                    display: 'block',
+                    marginBottom: '8px',
+                    fontSize: '14px',
+                    fontWeight: '500',
+                    color: '#374151'
+                  }}>
+                    テーマ
+                  </label>
+                  <select
+                    value={displaySettings.theme}
+                    onChange={(e) => updateDisplaySetting('theme', e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '10px',
+                      fontSize: '14px',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '6px',
+                      backgroundColor: '#fff',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <option value="light">ライト</option>
+                    <option value="dark">ダーク</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{
+                    display: 'block',
+                    marginBottom: '8px',
+                    fontSize: '14px',
+                    fontWeight: '500',
+                    color: '#374151'
+                  }}>
+                    表示言語
+                  </label>
+                  <select
+                    value={displaySettings.language}
+                    onChange={(e) => updateDisplaySetting('language', e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '10px',
+                      fontSize: '14px',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '6px',
+                      backgroundColor: '#fff',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <option value="ja">日本語</option>
+                    <option value="en">English</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label style={{
+                  display: 'block',
+                  marginBottom: '8px',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  color: '#374151'
+                }}>
+                  日付形式
+                </label>
+                <select
+                  value={displaySettings.date_format}
+                  onChange={(e) => updateDisplaySetting('date_format', e.target.value)}
+                  style={{
+                    width: '300px',
+                    padding: '10px',
+                    fontSize: '14px',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '6px',
+                    backgroundColor: '#fff',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <option value="YYYY/MM/DD">YYYY/MM/DD（例: 2025/01/20）</option>
+                  <option value="YYYY-MM-DD">YYYY-MM-DD（例: 2025-01-20）</option>
+                  <option value="MM/DD/YYYY">MM/DD/YYYY（例: 01/20/2025）</option>
+                  <option value="DD/MM/YYYY">DD/MM/YYYY（例: 20/01/2025）</option>
+                </select>
+                <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                  システム全体で使用される日付の表示形式です
                 </div>
               </div>
             </div>
