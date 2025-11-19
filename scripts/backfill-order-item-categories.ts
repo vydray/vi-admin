@@ -1,21 +1,26 @@
+/**
+ * 既存の注文明細データにカテゴリー情報を一括設定するスクリプト
+ *
+ * 使い方:
+ * npx tsx scripts/backfill-order-item-categories.ts [store_id]
+ *
+ * 例:
+ * npx tsx scripts/backfill-order-item-categories.ts 1  # Memorable
+ * npx tsx scripts/backfill-order-item-categories.ts 2  # Mistress Mirage
+ * npx tsx scripts/backfill-order-item-categories.ts    # 全店舗
+ */
+
 import { createClient } from '@supabase/supabase-js'
-import * as dotenv from 'dotenv'
-import * as path from 'path'
 
-// .env.localファイルを読み込む
-dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY
-
-if (!supabaseUrl || !supabaseServiceKey) {
-  console.error('エラー: 環境変数が設定されていません')
-  console.error('NEXT_PUBLIC_SUPABASE_URL:', supabaseUrl ? '設定済み' : '未設定')
-  console.error('SUPABASE_SERVICE_KEY:', supabaseServiceKey ? '設定済み' : '未設定')
+if (!supabaseUrl || !supabaseKey) {
+  console.error('環境変数が設定されていません')
   process.exit(1)
 }
 
-const supabase = createClient(supabaseUrl, supabaseServiceKey)
+const supabase = createClient(supabaseUrl, supabaseKey)
 
 async function backfillCategories(storeId?: number) {
   try {
@@ -130,8 +135,17 @@ const storeIdArg = process.argv[2]
 const storeId = storeIdArg ? parseInt(storeIdArg, 10) : undefined
 
 if (storeIdArg && isNaN(storeId!)) {
-  console.error('エラー: 店舗IDは数値で指定してください')
+  console.error('店舗IDは数値で指定してください')
   process.exit(1)
 }
 
+// スクリプト実行
 backfillCategories(storeId)
+  .then(() => {
+    console.log('スクリプトが正常に終了しました')
+    process.exit(0)
+  })
+  .catch((error) => {
+    console.error('スクリプトの実行中にエラーが発生しました:', error)
+    process.exit(1)
+  })
