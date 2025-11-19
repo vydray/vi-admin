@@ -8,6 +8,7 @@ interface OrderItem {
   id: number
   order_id: number
   product_name: string
+  category: string | null
   cast_name: string | null
   quantity: number
   unit_price: number
@@ -65,13 +66,18 @@ export default function ReceiptsPage() {
   const [editingItem, setEditingItem] = useState<OrderItem | null>(null)
   const [editingItemData, setEditingItemData] = useState({
     product_name: '',
+    category: '',
     cast_name: '',
     quantity: 1,
     unit_price: 0
   })
+  const [products, setProducts] = useState<any[]>([])
+  const [categories, setCategories] = useState<any[]>([])
+  const [casts, setCasts] = useState<any[]>([])
 
   useEffect(() => {
     loadReceipts()
+    loadMasterData()
   }, [selectedStore])
 
   const loadReceipts = async () => {
@@ -120,6 +126,38 @@ export default function ReceiptsPage() {
       alert('伝票の読み込みに失敗しました')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const loadMasterData = async () => {
+    try {
+      // 商品マスタを取得
+      const { data: productsData } = await supabase
+        .from('products')
+        .select('*')
+        .eq('store_id', selectedStore)
+        .order('name')
+
+      // カテゴリーマスタを取得
+      const { data: categoriesData } = await supabase
+        .from('categories')
+        .select('*')
+        .eq('store_id', selectedStore)
+        .order('name')
+
+      // キャストマスタを取得
+      const { data: castsData } = await supabase
+        .from('casts')
+        .select('*')
+        .eq('store_id', selectedStore)
+        .eq('is_active', true)
+        .order('name')
+
+      setProducts(productsData || [])
+      setCategories(categoriesData || [])
+      setCasts(castsData || [])
+    } catch (error) {
+      console.error('Error loading master data:', error)
     }
   }
 
@@ -216,6 +254,7 @@ export default function ReceiptsPage() {
     setEditingItem(item)
     setEditingItemData({
       product_name: item.product_name,
+      category: item.category || '',
       cast_name: item.cast_name || '',
       quantity: item.quantity,
       unit_price: item.unit_price
@@ -229,6 +268,7 @@ export default function ReceiptsPage() {
     setEditingItem(null)
     setEditingItemData({
       product_name: '',
+      category: '',
       cast_name: '',
       quantity: 1,
       unit_price: 0
@@ -244,6 +284,7 @@ export default function ReceiptsPage() {
         .from('order_items')
         .update({
           product_name: editingItemData.product_name,
+          category: editingItemData.category || null,
           cast_name: editingItemData.cast_name || null,
           quantity: editingItemData.quantity,
           unit_price: editingItemData.unit_price,
@@ -617,7 +658,7 @@ export default function ReceiptsPage() {
       {/* Edit Item Modal */}
       {isEditItemModalOpen && editingItem && (
         <div style={styles.modalOverlay} onClick={cancelEditItem}>
-          <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+          <div style={styles.itemModal} onClick={(e) => e.stopPropagation()}>
             <div style={styles.modalHeader}>
               <h2 style={styles.modalTitle}>注文明細を編集</h2>
             </div>
@@ -625,22 +666,58 @@ export default function ReceiptsPage() {
             <div style={styles.modalBody}>
               <div style={styles.formGroup}>
                 <label style={styles.label}>商品名</label>
-                <input
-                  type="text"
+                <select
                   value={editingItemData.product_name}
-                  onChange={(e) => setEditingItemData({ ...editingItemData, product_name: e.target.value })}
+                  onChange={(e) => {
+                    const product = products.find(p => p.name === e.target.value)
+                    setEditingItemData({
+                      ...editingItemData,
+                      product_name: e.target.value,
+                      category: product?.category_name || editingItemData.category,
+                      unit_price: product?.price || editingItemData.unit_price
+                    })
+                  }}
                   style={styles.input}
-                />
+                >
+                  <option value="">選択してください</option>
+                  {products.map((product) => (
+                    <option key={product.id} value={product.name}>
+                      {product.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.label}>カテゴリー</label>
+                <select
+                  value={editingItemData.category}
+                  onChange={(e) => setEditingItemData({ ...editingItemData, category: e.target.value })}
+                  style={styles.input}
+                >
+                  <option value="">なし</option>
+                  {categories.map((category) => (
+                    <option key={category.id} value={category.name}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div style={styles.formGroup}>
                 <label style={styles.label}>キャスト名</label>
-                <input
-                  type="text"
+                <select
                   value={editingItemData.cast_name}
                   onChange={(e) => setEditingItemData({ ...editingItemData, cast_name: e.target.value })}
                   style={styles.input}
-                />
+                >
+                  <option value="">なし</option>
+                  {casts.map((cast) => (
+                    <option key={cast.id} value={cast.name}>
+                      {cast.name}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div style={styles.formGroup}>
@@ -866,6 +943,15 @@ const styles: { [key: string]: React.CSSProperties } = {
     borderRadius: '12px',
     width: '90%',
     maxWidth: '800px',
+    maxHeight: '90vh',
+    overflow: 'auto',
+    boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+  },
+  itemModal: {
+    backgroundColor: 'white',
+    borderRadius: '12px',
+    width: '90%',
+    maxWidth: '500px',
     maxHeight: '90vh',
     overflow: 'auto',
     boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
