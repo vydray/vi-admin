@@ -670,10 +670,11 @@ export default function ReceiptsPage() {
                   value={editingItemData.product_name}
                   onChange={(e) => {
                     const product = products.find(p => p.name === e.target.value)
+                    const category = categories.find(c => c.id === product?.category_id)
                     setEditingItemData({
                       ...editingItemData,
                       product_name: e.target.value,
-                      category: product?.category_name || editingItemData.category,
+                      category: category?.name || '',
                       unit_price: product?.price || editingItemData.unit_price
                     })
                   }}
