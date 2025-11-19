@@ -209,6 +209,41 @@ export default function ProductsPage() {
     return categories.find(c => c.id === categoryId)?.name || '不明'
   }
 
+  const renderToggle = (productId: number, value: boolean) => {
+    return (
+      <div
+        onClick={(e) => {
+          e.stopPropagation()
+          toggleActive(productId, value)
+        }}
+        style={{
+          width: '44px',
+          height: '24px',
+          backgroundColor: value ? '#10b981' : '#cbd5e1',
+          borderRadius: '12px',
+          position: 'relative',
+          cursor: 'pointer',
+          transition: 'background-color 0.3s',
+          display: 'inline-block'
+        }}
+      >
+        <div
+          style={{
+            width: '20px',
+            height: '20px',
+            backgroundColor: 'white',
+            borderRadius: '50%',
+            position: 'absolute',
+            top: '2px',
+            left: value ? '22px' : '2px',
+            transition: 'left 0.3s',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+          }}
+        />
+      </div>
+    )
+  }
+
   return (
     <div style={{
       backgroundColor: '#f7f9fc',
@@ -538,32 +573,11 @@ export default function ProductsPage() {
                         </span>
                       )}
                     </td>
-                    <td
-                      onClick={(e) => e.stopPropagation()}
-                      style={{
-                        padding: '12px 20px',
-                        textAlign: 'center'
-                      }}
-                    >
-                      <label style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        cursor: 'pointer',
-                        fontSize: '13px',
-                        color: '#64748b'
-                      }}>
-                        <input
-                          type="checkbox"
-                          checked={product.is_active}
-                          onChange={() => toggleActive(product.id, product.is_active)}
-                          style={{
-                            width: '16px',
-                            height: '16px',
-                            cursor: 'pointer'
-                          }}
-                        />
-                      </label>
+                    <td style={{
+                      padding: '12px 20px',
+                      textAlign: 'center'
+                    }}>
+                      {renderToggle(product.id, product.is_active)}
                     </td>
                     <td
                       onClick={(e) => e.stopPropagation()}

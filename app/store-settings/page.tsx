@@ -14,6 +14,9 @@ interface StoreSettings {
   closed_days: string
   store_registration_number: string
   footer_message: string
+  revenue_stamp_threshold: number
+  menu_template: string
+  logo_url: string
 }
 
 export default function StoreSettingsPage() {
@@ -30,7 +33,10 @@ export default function StoreSettingsPage() {
     business_hours: '',
     closed_days: '',
     store_registration_number: '',
-    footer_message: 'またのご来店をお待ちしております'
+    footer_message: 'またのご来店をお待ちしております',
+    revenue_stamp_threshold: 50000,
+    menu_template: '',
+    logo_url: ''
   })
 
   useEffect(() => {
@@ -55,7 +61,10 @@ export default function StoreSettingsPage() {
         business_hours: data.business_hours || '',
         closed_days: data.closed_days || '',
         store_registration_number: data.store_registration_number || '',
-        footer_message: data.footer_message || 'またのご来店をお待ちしております'
+        footer_message: data.footer_message || 'またのご来店をお待ちしております',
+        revenue_stamp_threshold: data.revenue_stamp_threshold ?? 50000,
+        menu_template: data.menu_template || '',
+        logo_url: data.logo_url || ''
       })
     }
     setLoading(false)
@@ -80,7 +89,7 @@ export default function StoreSettingsPage() {
     setSaving(false)
   }
 
-  const updateSetting = (key: keyof StoreSettings, value: string) => {
+  const updateSetting = (key: keyof StoreSettings, value: string | number) => {
     setSettings(prev => ({ ...prev, [key]: value }))
   }
 
@@ -390,6 +399,35 @@ export default function StoreSettingsPage() {
                 />
               </div>
 
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{
+                  display: 'block',
+                  marginBottom: '8px',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  color: '#374151'
+                }}>
+                  収入印紙の閾値（円）
+                </label>
+                <input
+                  type="number"
+                  value={settings.revenue_stamp_threshold}
+                  onChange={(e) => updateSetting('revenue_stamp_threshold', Number(e.target.value))}
+                  placeholder="50000"
+                  style={{
+                    width: '200px',
+                    padding: '10px',
+                    fontSize: '14px',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '6px',
+                    boxSizing: 'border-box'
+                  }}
+                />
+                <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                  この金額以上の場合、収入印紙が必要になります
+                </div>
+              </div>
+
               <div>
                 <label style={{
                   display: 'block',
@@ -416,6 +454,94 @@ export default function StoreSettingsPage() {
                     fontFamily: 'inherit'
                   }}
                 />
+              </div>
+            </div>
+
+            {/* その他の設定 */}
+            <div style={{ padding: '30px', borderBottom: '1px solid #e2e8f0' }}>
+              <h3 style={{
+                fontSize: '18px',
+                fontWeight: 'bold',
+                marginBottom: '20px',
+                color: '#374151'
+              }}>
+                その他の設定
+              </h3>
+
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{
+                  display: 'block',
+                  marginBottom: '8px',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  color: '#374151'
+                }}>
+                  店舗ロゴURL
+                </label>
+                <input
+                  type="text"
+                  value={settings.logo_url}
+                  onChange={(e) => updateSetting('logo_url', e.target.value)}
+                  placeholder="https://example.com/logo.png"
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    fontSize: '14px',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '6px',
+                    boxSizing: 'border-box'
+                  }}
+                />
+                {settings.logo_url && (
+                  <div style={{ marginTop: '10px' }}>
+                    <img
+                      src={settings.logo_url}
+                      alt="店舗ロゴプレビュー"
+                      style={{
+                        maxWidth: '200px',
+                        maxHeight: '100px',
+                        objectFit: 'contain',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '6px',
+                        padding: '10px'
+                      }}
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none'
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label style={{
+                  display: 'block',
+                  marginBottom: '8px',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  color: '#374151'
+                }}>
+                  お品書きテンプレート
+                </label>
+                <textarea
+                  value={settings.menu_template}
+                  onChange={(e) => updateSetting('menu_template', e.target.value)}
+                  placeholder="お品書きのテンプレートを入力してください"
+                  rows={5}
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    fontSize: '14px',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '6px',
+                    resize: 'vertical',
+                    boxSizing: 'border-box',
+                    fontFamily: 'monospace'
+                  }}
+                />
+                <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                  POSシステムで使用するお品書きのテンプレートです
+                </div>
               </div>
             </div>
 
