@@ -61,7 +61,8 @@ export default function ReceiptsPage() {
     order_date: '',
     checkout_datetime: ''
   })
-  const [editingItemId, setEditingItemId] = useState<number | null>(null)
+  const [isEditItemModalOpen, setIsEditItemModalOpen] = useState(false)
+  const [editingItem, setEditingItem] = useState<OrderItem | null>(null)
   const [editingItemData, setEditingItemData] = useState({
     product_name: '',
     cast_name: '',
@@ -210,20 +211,22 @@ export default function ReceiptsPage() {
     }
   }
 
-  // 注文明細の編集開始
+  // 注文明細の編集開始（モーダルを開く）
   const startEditItem = (item: OrderItem) => {
-    setEditingItemId(item.id)
+    setEditingItem(item)
     setEditingItemData({
       product_name: item.product_name,
       cast_name: item.cast_name || '',
       quantity: item.quantity,
       unit_price: item.unit_price
     })
+    setIsEditItemModalOpen(true)
   }
 
   // 注文明細の編集キャンセル
   const cancelEditItem = () => {
-    setEditingItemId(null)
+    setIsEditItemModalOpen(false)
+    setEditingItem(null)
     setEditingItemData({
       product_name: '',
       cast_name: '',
@@ -233,7 +236,9 @@ export default function ReceiptsPage() {
   }
 
   // 注文明細の保存
-  const saveEditItem = async (itemId: number) => {
+  const saveEditItem = async () => {
+    if (!editingItem) return
+
     try {
       const { error } = await supabase
         .from('order_items')
@@ -244,7 +249,7 @@ export default function ReceiptsPage() {
           unit_price: editingItemData.unit_price,
           subtotal: editingItemData.unit_price * editingItemData.quantity
         })
-        .eq('id', itemId)
+        .eq('id', editingItem.id)
 
       if (error) throw error
 
@@ -529,88 +534,27 @@ export default function ReceiptsPage() {
                     </thead>
                     <tbody>
                       {selectedReceipt.order_items.map((item) => (
-                        <tr key={item.id}>
-                          {editingItemId === item.id ? (
-                            // 編集モード
-                            <>
-                              <td style={styles.itemTd}>
-                                <input
-                                  type="text"
-                                  value={editingItemData.product_name}
-                                  onChange={(e) => setEditingItemData({ ...editingItemData, product_name: e.target.value })}
-                                  style={styles.itemInput}
-                                />
-                              </td>
-                              <td style={styles.itemTd}>
-                                <input
-                                  type="text"
-                                  value={editingItemData.cast_name}
-                                  onChange={(e) => setEditingItemData({ ...editingItemData, cast_name: e.target.value })}
-                                  style={styles.itemInput}
-                                />
-                              </td>
-                              <td style={styles.itemTd}>
-                                <input
-                                  type="number"
-                                  value={editingItemData.quantity}
-                                  onChange={(e) => setEditingItemData({ ...editingItemData, quantity: Number(e.target.value) })}
-                                  style={styles.itemInputSmall}
-                                  min="1"
-                                />
-                              </td>
-                              <td style={styles.itemTd}>
-                                <input
-                                  type="number"
-                                  value={editingItemData.unit_price}
-                                  onChange={(e) => setEditingItemData({ ...editingItemData, unit_price: Number(e.target.value) })}
-                                  style={styles.itemInputSmall}
-                                  min="0"
-                                />
-                              </td>
-                              <td style={styles.itemTd}>{formatCurrency(editingItemData.unit_price * editingItemData.quantity)}</td>
-                              <td style={styles.itemTd}>
-                                <div style={styles.itemActions}>
-                                  <button
-                                    onClick={() => saveEditItem(item.id)}
-                                    style={styles.itemSaveButton}
-                                  >
-                                    保存
-                                  </button>
-                                  <button
-                                    onClick={cancelEditItem}
-                                    style={styles.itemCancelButton}
-                                  >
-                                    キャンセル
-                                  </button>
-                                </div>
-                              </td>
-                            </>
-                          ) : (
-                            // 表示モード
-                            <>
-                              <td style={styles.itemTd}>{item.product_name}</td>
-                              <td style={styles.itemTd}>{item.cast_name || '-'}</td>
-                              <td style={styles.itemTd}>{item.quantity}</td>
-                              <td style={styles.itemTd}>{formatCurrency(item.unit_price)}</td>
-                              <td style={styles.itemTd}>{formatCurrency(item.total_price)}</td>
-                              <td style={styles.itemTd}>
-                                <div style={styles.itemActions}>
-                                  <button
-                                    onClick={() => startEditItem(item)}
-                                    style={styles.itemEditButton}
-                                  >
-                                    編集
-                                  </button>
-                                  <button
-                                    onClick={() => deleteOrderItem(item.id)}
-                                    style={styles.itemDeleteButton}
-                                  >
-                                    削除
-                                  </button>
-                                </div>
-                              </td>
-                            </>
-                          )}
+                        <tr
+                          key={item.id}
+                          onClick={() => startEditItem(item)}
+                          style={styles.itemRow}
+                        >
+                          <td style={styles.itemTd}>{item.product_name}</td>
+                          <td style={styles.itemTd}>{item.cast_name || '-'}</td>
+                          <td style={styles.itemTd}>{item.quantity}</td>
+                          <td style={styles.itemTd}>{formatCurrency(item.unit_price)}</td>
+                          <td style={styles.itemTd}>{formatCurrency(item.total_price)}</td>
+                          <td style={styles.itemTd}>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                deleteOrderItem(item.id)
+                              }}
+                              style={styles.itemDeleteButton}
+                            >
+                              削除
+                            </button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -662,6 +606,88 @@ export default function ReceiptsPage() {
                   キャンセル
                 </button>
                 <button onClick={saveReceiptChanges} style={styles.saveButton}>
+                  保存
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Item Modal */}
+      {isEditItemModalOpen && editingItem && (
+        <div style={styles.modalOverlay} onClick={cancelEditItem}>
+          <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+            <div style={styles.modalHeader}>
+              <h2 style={styles.modalTitle}>注文明細を編集</h2>
+            </div>
+
+            <div style={styles.modalBody}>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>商品名</label>
+                <input
+                  type="text"
+                  value={editingItemData.product_name}
+                  onChange={(e) => setEditingItemData({ ...editingItemData, product_name: e.target.value })}
+                  style={styles.input}
+                />
+              </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.label}>キャスト名</label>
+                <input
+                  type="text"
+                  value={editingItemData.cast_name}
+                  onChange={(e) => setEditingItemData({ ...editingItemData, cast_name: e.target.value })}
+                  style={styles.input}
+                />
+              </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.label}>数量</label>
+                <input
+                  type="number"
+                  value={editingItemData.quantity}
+                  onChange={(e) => setEditingItemData({ ...editingItemData, quantity: Number(e.target.value) })}
+                  style={styles.input}
+                  min="1"
+                />
+              </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.label}>単価</label>
+                <input
+                  type="number"
+                  value={editingItemData.unit_price}
+                  onChange={(e) => setEditingItemData({ ...editingItemData, unit_price: Number(e.target.value) })}
+                  style={styles.input}
+                  min="0"
+                />
+              </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.label}>合計</label>
+                <div style={styles.totalDisplay}>
+                  {formatCurrency(editingItemData.unit_price * editingItemData.quantity)}
+                </div>
+              </div>
+            </div>
+
+            <div style={styles.modalFooter}>
+              <button
+                onClick={() => {
+                  deleteOrderItem(editingItem.id)
+                  cancelEditItem()
+                }}
+                style={styles.deleteButtonModal}
+              >
+                削除
+              </button>
+              <div style={styles.modalFooterRight}>
+                <button onClick={cancelEditItem} style={styles.cancelButton}>
+                  キャンセル
+                </button>
+                <button onClick={saveEditItem} style={styles.saveButton}>
                   保存
                 </button>
               </div>
@@ -999,34 +1025,6 @@ const styles: { [key: string]: React.CSSProperties } = {
     borderRadius: '6px',
     cursor: 'pointer',
   },
-  itemInput: {
-    width: '100%',
-    padding: '6px 8px',
-    fontSize: '13px',
-    border: '1px solid #ced4da',
-    borderRadius: '4px',
-  },
-  itemInputSmall: {
-    width: '80px',
-    padding: '6px 8px',
-    fontSize: '13px',
-    border: '1px solid #ced4da',
-    borderRadius: '4px',
-  },
-  itemActions: {
-    display: 'flex',
-    gap: '8px',
-    justifyContent: 'center',
-  },
-  itemEditButton: {
-    padding: '6px 12px',
-    fontSize: '12px',
-    backgroundColor: '#007bff',
-    color: 'white',
-    border: 'none',
-    borderRadius: '4px',
-    cursor: 'pointer',
-  },
   itemDeleteButton: {
     padding: '6px 12px',
     fontSize: '12px',
@@ -1036,22 +1034,17 @@ const styles: { [key: string]: React.CSSProperties } = {
     borderRadius: '4px',
     cursor: 'pointer',
   },
-  itemSaveButton: {
-    padding: '6px 12px',
-    fontSize: '12px',
-    backgroundColor: '#28a745',
-    color: 'white',
-    border: 'none',
-    borderRadius: '4px',
+  itemRow: {
     cursor: 'pointer',
+    transition: 'background-color 0.2s',
   },
-  itemCancelButton: {
-    padding: '6px 12px',
-    fontSize: '12px',
-    backgroundColor: '#6c757d',
-    color: 'white',
-    border: 'none',
-    borderRadius: '4px',
-    cursor: 'pointer',
+  totalDisplay: {
+    padding: '10px 15px',
+    fontSize: '16px',
+    fontWeight: 'bold',
+    color: '#2c3e50',
+    backgroundColor: '#f8f9fa',
+    borderRadius: '6px',
+    border: '1px solid #e9ecef',
   },
 }
