@@ -44,7 +44,8 @@ interface ReceiptWithDetails extends Receipt {
 }
 
 export default function ReceiptsPage() {
-  const { storeId } = useStore()
+  const { storeId: globalStoreId } = useStore()
+  const [selectedStore, setSelectedStore] = useState(globalStoreId)
   const [receipts, setReceipts] = useState<ReceiptWithDetails[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
@@ -62,7 +63,7 @@ export default function ReceiptsPage() {
 
   useEffect(() => {
     loadReceipts()
-  }, [storeId])
+  }, [selectedStore])
 
   const loadReceipts = async () => {
     setLoading(true)
@@ -70,7 +71,7 @@ export default function ReceiptsPage() {
       const { data: ordersData, error } = await supabase
         .from('orders')
         .select('*')
-        .eq('store_id', storeId)
+        .eq('store_id', selectedStore)
         .is('deleted_at', null)
         .order('checkout_datetime', { ascending: false })
 
@@ -212,7 +213,20 @@ export default function ReceiptsPage() {
   return (
     <div style={styles.container}>
       <div style={styles.header}>
-        <h1 style={styles.title}>伝票管理</h1>
+        <div>
+          <h1 style={styles.title}>伝票管理</h1>
+          <div style={styles.storeSelector}>
+            <label style={styles.storeSelectorLabel}>店舗:</label>
+            <select
+              value={selectedStore}
+              onChange={(e) => setSelectedStore(Number(e.target.value))}
+              style={styles.storeSelectorDropdown}
+            >
+              <option value={1}>Memorable</option>
+              <option value={2}>Mistress Mirage</option>
+            </select>
+          </div>
+        </div>
         <div style={styles.stats}>
           <div style={styles.statItem}>
             <span style={styles.statLabel}>総伝票数</span>
@@ -476,6 +490,26 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontWeight: 'bold',
     color: '#2c3e50',
     margin: 0,
+    marginBottom: '12px',
+  },
+  storeSelector: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+  },
+  storeSelectorLabel: {
+    fontSize: '14px',
+    fontWeight: '500',
+    color: '#495057',
+  },
+  storeSelectorDropdown: {
+    padding: '8px 12px',
+    fontSize: '14px',
+    border: '1px solid #ced4da',
+    borderRadius: '6px',
+    backgroundColor: '#fff',
+    cursor: 'pointer',
+    minWidth: '180px',
   },
   stats: {
     display: 'flex',
