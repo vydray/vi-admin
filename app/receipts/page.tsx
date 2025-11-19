@@ -199,6 +199,16 @@ export default function ReceiptsPage() {
     })
   }
 
+  const formatDate = (dateString: string) => {
+    if (!dateString) return '-'
+    const date = new Date(dateString)
+    return date.toLocaleDateString('ja-JP', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    })
+  }
+
   const formatCurrency = (amount: number | null | undefined) => {
     if (amount === null || amount === undefined || isNaN(amount)) {
       return '¥0'
@@ -286,19 +296,20 @@ export default function ReceiptsPage() {
           <thead>
             <tr style={styles.tableHeader}>
               <th style={styles.th}>伝票ID</th>
+              <th style={styles.th}>会計日時</th>
+              <th style={styles.th}>営業日</th>
               <th style={styles.th}>テーブル</th>
               <th style={styles.th}>お客様名</th>
               <th style={styles.th}>推しキャスト</th>
               <th style={styles.th}>小計</th>
               <th style={styles.th}>合計（税込）</th>
               <th style={styles.th}>支払方法</th>
-              <th style={styles.th}>会計日時</th>
             </tr>
           </thead>
           <tbody>
             {filteredReceipts.length === 0 ? (
               <tr>
-                <td colSpan={8} style={styles.emptyRow}>
+                <td colSpan={9} style={styles.emptyRow}>
                   伝票がありません
                 </td>
               </tr>
@@ -310,13 +321,14 @@ export default function ReceiptsPage() {
                   onClick={() => loadReceiptDetails(receipt)}
                 >
                   <td style={styles.td}>{receipt.id}</td>
+                  <td style={styles.td}>{formatDateTime(receipt.checkout_datetime)}</td>
+                  <td style={styles.td}>{formatDate(receipt.order_date)}</td>
                   <td style={styles.td}>{receipt.table_number}</td>
                   <td style={styles.td}>{receipt.customer_name || '-'}</td>
                   <td style={styles.td}>{receipt.oshi_name || '-'}</td>
                   <td style={styles.td}>{formatCurrency(receipt.total_amount)}</td>
                   <td style={styles.td}>{formatCurrency(receipt.total_incl_tax)}</td>
                   <td style={styles.td}>{receipt.payment_method}</td>
-                  <td style={styles.td}>{formatDateTime(receipt.checkout_datetime)}</td>
                 </tr>
               ))
             )}
