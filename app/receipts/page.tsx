@@ -325,8 +325,8 @@ export default function ReceiptsPage() {
           <thead>
             <tr style={styles.tableHeader}>
               <th style={styles.th}>伝票ID</th>
-              <th style={styles.th}>会計日時</th>
               <th style={styles.th}>営業日</th>
+              <th style={styles.th}>会計日時</th>
               <th style={styles.th}>テーブル</th>
               <th style={styles.th}>お客様名</th>
               <th style={styles.th}>担当スタッフ</th>
@@ -350,8 +350,8 @@ export default function ReceiptsPage() {
                   onClick={() => loadReceiptDetails(receipt)}
                 >
                   <td style={styles.td}>{receipt.id}</td>
-                  <td style={styles.td}>{formatDateTime(receipt.checkout_datetime)}</td>
                   <td style={styles.td}>{formatDate(receipt.order_date)}</td>
+                  <td style={styles.td}>{formatDateTime(receipt.checkout_datetime)}</td>
                   <td style={styles.td}>{receipt.table_number}</td>
                   <td style={styles.td}>{receipt.guest_name || '-'}</td>
                   <td style={styles.td}>{receipt.staff_name || '-'}</td>
