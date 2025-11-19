@@ -831,8 +831,9 @@ export default function StoreSettingsPage() {
                     min="0"
                     max="100"
                     step="0.1"
-                    value={systemSettings.service_charge_rate * 100}
-                    onChange={(e) => updateSystemSetting('service_charge_rate', Number(e.target.value) / 100)}
+                    value={systemSettings.service_charge_rate > 0 ? systemSettings.service_charge_rate * 100 : ''}
+                    onChange={(e) => updateSystemSetting('service_charge_rate', e.target.value === '' ? 0 : Number(e.target.value) / 100)}
+                    placeholder="0"
                     style={{
                       width: '100%',
                       padding: '10px',
@@ -928,8 +929,9 @@ export default function StoreSettingsPage() {
                   min="0"
                   max="100"
                   step="0.1"
-                  value={systemSettings.card_fee_rate * 100}
-                  onChange={(e) => updateSystemSetting('card_fee_rate', Number(e.target.value) / 100)}
+                  value={systemSettings.card_fee_rate > 0 ? systemSettings.card_fee_rate * 100 : ''}
+                  onChange={(e) => updateSystemSetting('card_fee_rate', e.target.value === '' ? 0 : Number(e.target.value) / 100)}
+                  placeholder="0"
                   style={{
                     width: '200px',
                     padding: '10px',
