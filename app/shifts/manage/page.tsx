@@ -1,0 +1,1533 @@
+'use client'
+
+import { useState, useEffect, useMemo } from 'react'
+import { supabase } from '@/lib/supabase'
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, addMonths, subMonths, getDate } from 'date-fns'
+import { ja } from 'date-fns/locale'
+import { useStore } from '@/contexts/StoreContext'
+import { generateTimeOptions, formatShiftTime as formatShiftTimeUtil } from '@/lib/timeUtils'
+
+interface Cast {
+  id: number
+  name: string
+}
+
+interface Shift {
+  id: string
+  cast_id: number
+  date: string
+  start_time: string
+  end_time: string
+  is_locked?: boolean
+  is_confirmed?: boolean
+}
+
+interface ShiftRequest {
+  id: string
+  cast_id: number
+  date: string
+  start_time: string
+  end_time: string
+  status: 'pending' | 'approved' | 'rejected'
+  is_locked?: boolean
+}
+
+interface ShiftLock {
+  id: string
+  cast_id: number
+  date: string
+  lock_type: 'locked' | 'confirmed'
+}
+
+export default function ShiftManage() {
+  const { storeId } = useStore()
+  const [selectedMonth, setSelectedMonth] = useState(new Date())
+  const [isFirstHalf, setIsFirstHalf] = useState(true)
+  const [casts, setCasts] = useState<Cast[]>([])
+  const [shifts, setShifts] = useState<Shift[]>([])
+  const [shiftRequests, setShiftRequests] = useState<ShiftRequest[]>([])
+  const [shiftLocks, setShiftLocks] = useState<ShiftLock[]>([])
+  const [isLockMode, setIsLockMode] = useState(false)
+  const [isConfirmMode, setIsConfirmMode] = useState(false)
+  const [editingCell, setEditingCell] = useState<string | null>(null)
+  const [tempTime, setTempTime] = useState({ start: '', end: '' })
+  const [loading, setLoading] = useState(true)
+  const [isNewShift, setIsNewShift] = useState(false)
+
+  // 保存待ちのロック変更を追跡
+  const [pendingLocks, setPendingLocks] = useState<Map<string, {
+    cast_id: number
+    date: string
+    lock_type: 'locked' | 'confirmed'
+    action: 'add' | 'remove'
+  }>>(new Map())
+  const [isSaving, setIsSaving] = useState(false)
+
+  useEffect(() => {
+    loadData()
+  }, [selectedMonth, isFirstHalf, storeId])
+
+  const loadData = async () => {
+    setLoading(true)
+    await Promise.all([
+      loadCasts(),
+      loadShifts(),
+      loadShiftRequests(),
+      loadShiftLocks()
+    ])
+    setLoading(false)
+  }
+
+  const loadCasts = async () => {
+    const { data, error } = await supabase
+      .from('casts')
+      .select('id, name')
+      .eq('store_id', storeId)
+      .eq('status', '在籍')
+      .eq('is_active', true)
+      .order('name')
+
+    if (!error && data) {
+      setCasts(data)
+    }
+  }
+
+  const loadShifts = async () => {
+    const start = isFirstHalf ? startOfMonth(selectedMonth) : new Date(selectedMonth.getFullYear(), selectedMonth.getMonth(), 16)
+    const end = isFirstHalf ? new Date(selectedMonth.getFullYear(), selectedMonth.getMonth(), 15) : endOfMonth(selectedMonth)
+
+    const { data, error } = await supabase
+      .from('shifts')
+      .select('*')
+      .gte('date', format(start, 'yyyy-MM-dd'))
+      .lte('date', format(end, 'yyyy-MM-dd'))
+
+    if (!error && data) {
+      setShifts(data)
+    }
+  }
+
+  const loadShiftRequests = async () => {
+    const start = isFirstHalf ? startOfMonth(selectedMonth) : new Date(selectedMonth.getFullYear(), selectedMonth.getMonth(), 16)
+    const end = isFirstHalf ? new Date(selectedMonth.getFullYear(), selectedMonth.getMonth(), 15) : endOfMonth(selectedMonth)
+
+    const { data, error } = await supabase
+      .from('shift_requests')
+      .select('*')
+      .eq('status', 'pending')
+      .gte('date', format(start, 'yyyy-MM-dd'))
+      .lte('date', format(end, 'yyyy-MM-dd'))
+
+    if (!error && data) {
+      setShiftRequests(data)
+    }
+  }
+
+  const loadShiftLocks = async () => {
+    const start = isFirstHalf ? startOfMonth(selectedMonth) : new Date(selectedMonth.getFullYear(), selectedMonth.getMonth(), 16)
+    const end = isFirstHalf ? new Date(selectedMonth.getFullYear(), selectedMonth.getMonth(), 15) : endOfMonth(selectedMonth)
+
+    const { data, error } = await supabase
+      .from('shift_locks')
+      .select('*')
+      .eq('store_id', storeId)
+      .gte('date', format(start, 'yyyy-MM-dd'))
+      .lte('date', format(end, 'yyyy-MM-dd'))
+
+    if (!error && data) {
+      setShiftLocks(data)
+    }
+  }
+
+  const getDaysInPeriod = () => {
+    const start = isFirstHalf ? startOfMonth(selectedMonth) : new Date(selectedMonth.getFullYear(), selectedMonth.getMonth(), 16)
+    const end = isFirstHalf ? new Date(selectedMonth.getFullYear(), selectedMonth.getMonth(), 15) : endOfMonth(selectedMonth)
+    return eachDayOfInterval({ start, end })
+  }
+
+  const getShiftForCell = (castId: number, date: Date) => {
+    const dateStr = format(date, 'yyyy-MM-dd')
+    const shift = shifts.find(s => s.cast_id === castId && s.date === dateStr)
+    const request = shiftRequests.find(r => r.cast_id === castId && r.date === dateStr)
+
+    return { shift, request }
+  }
+
+  const formatShiftTime = (shift: Shift | ShiftRequest) => {
+    if (!shift.start_time || !shift.end_time) return ''
+    return formatShiftTimeUtil(shift.start_time, shift.end_time, ' ~ ')
+  }
+
+  const getCellKey = (castId: number, date: Date) => {
+    return `${castId}-${format(date, 'yyyy-MM-dd')}`
+  }
+
+  const getShiftLock = (castId: number, date: Date) => {
+    const dateStr = format(date, 'yyyy-MM-dd')
+    const key = `${castId}-${dateStr}`
+
+    // 保存待ちの変更をチェック
+    const pendingChange = pendingLocks.get(key)
+    if (pendingChange) {
+      if (pendingChange.action === 'remove') {
+        return undefined
+      } else {
+        return {
+          id: 'pending',
+          cast_id: castId,
+          date: dateStr,
+          lock_type: pendingChange.lock_type
+        }
+      }
+    }
+
+    // データベースから取得
+    return shiftLocks.find(lock => lock.cast_id === castId && lock.date === dateStr)
+  }
+
+  const toggleLock = (type: 'cell' | 'row' | 'column' | 'all', lockType: 'locked' | 'confirmed', castId?: number, date?: Date) => {
+    const newPendingLocks = new Map(pendingLocks)
+
+    const processCellToggle = (cId: number, d: Date) => {
+      const dateStr = format(d, 'yyyy-MM-dd')
+      const key = `${cId}-${dateStr}`
+      const existingLock = getShiftLock(cId, d)
+
+      if (existingLock && existingLock.lock_type === lockType) {
+        // 既存のロックを解除
+        newPendingLocks.set(key, {
+          cast_id: cId,
+          date: dateStr,
+          lock_type: lockType,
+          action: 'remove'
+        })
+      } else {
+        // 新規ロックまたは別タイプに変更
+        newPendingLocks.set(key, {
+          cast_id: cId,
+          date: dateStr,
+          lock_type: lockType,
+          action: 'add'
+        })
+      }
+    }
+
+    switch (type) {
+      case 'cell':
+        if (castId && date) {
+          processCellToggle(castId, date)
+        }
+        break
+
+      case 'row':
+        if (castId) {
+          // 行全体がロックされているかチェック
+          const allRowLocked = getDaysInPeriod().every(day => {
+            const lock = getShiftLock(castId, day)
+            return lock && lock.lock_type === lockType
+          })
+
+          getDaysInPeriod().forEach(day => {
+            const dateStr = format(day, 'yyyy-MM-dd')
+            const key = `${castId}-${dateStr}`
+
+            if (allRowLocked) {
+              // 全部ロックされている場合は全解除
+              newPendingLocks.set(key, {
+                cast_id: castId,
+                date: dateStr,
+                lock_type: lockType,
+                action: 'remove'
+              })
+            } else {
+              // 一部でもロックされていない場合は全追加
+              newPendingLocks.set(key, {
+                cast_id: castId,
+                date: dateStr,
+                lock_type: lockType,
+                action: 'add'
+              })
+            }
+          })
+        }
+        break
+
+      case 'column':
+        if (date) {
+          casts.forEach(cast => {
+            processCellToggle(cast.id, date)
+          })
+        }
+        break
+
+      case 'all':
+        const allLocked = casts.every(cast =>
+          getDaysInPeriod().every(day => {
+            const lock = getShiftLock(cast.id, day)
+            return lock && lock.lock_type === lockType
+          })
+        )
+
+        casts.forEach(cast => {
+          getDaysInPeriod().forEach(day => {
+            const dateStr = format(day, 'yyyy-MM-dd')
+            const key = `${cast.id}-${dateStr}`
+
+            if (allLocked) {
+              // 全解除
+              newPendingLocks.set(key, {
+                cast_id: cast.id,
+                date: dateStr,
+                lock_type: lockType,
+                action: 'remove'
+              })
+            } else {
+              // 全適用
+              newPendingLocks.set(key, {
+                cast_id: cast.id,
+                date: dateStr,
+                lock_type: lockType,
+                action: 'add'
+              })
+            }
+          })
+        })
+        break
+    }
+
+    setPendingLocks(newPendingLocks)
+  }
+
+  // 保存待ちの変更をデータベースに保存
+  const saveLocks = async () => {
+    if (isSaving) return
+
+    setIsSaving(true)
+
+    const updates: { cast_id: number, date: string, lock_type: string, store_id: number }[] = []
+    const deletes: { cast_id: number, date: string, store_id: number }[] = []
+
+    pendingLocks.forEach((change) => {
+      if (change.action === 'add') {
+        updates.push({
+          cast_id: change.cast_id,
+          date: change.date,
+          lock_type: change.lock_type,
+          store_id: storeId
+        })
+      } else {
+        deletes.push({
+          cast_id: change.cast_id,
+          date: change.date,
+          store_id: storeId
+        })
+      }
+    })
+
+    try {
+      // 削除処理
+      if (deletes.length > 0) {
+        for (const del of deletes) {
+          await supabase
+            .from('shift_locks')
+            .delete()
+            .eq('cast_id', del.cast_id)
+            .eq('date', del.date)
+            .eq('store_id', del.store_id)
+        }
+      }
+
+      // 追加・更新処理
+      if (updates.length > 0) {
+        await supabase
+          .from('shift_locks')
+          .upsert(updates)
+      }
+
+      // データを再読み込み
+      await loadShiftLocks()
+
+      // 保存待ちの変更をクリア
+      setPendingLocks(new Map())
+
+      alert('ロック設定を保存しました')
+    } catch (error) {
+      console.error('保存エラー:', error)
+      alert('保存中にエラーが発生しました')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  // 保存待ちの変更をキャンセル
+  const cancelLocks = () => {
+    setPendingLocks(new Map())
+  }
+
+  // 全体に適用（明示的に全てのセルにロック/確定を追加）
+  const applyToAll = (lockType: 'locked' | 'confirmed') => {
+    const newPendingLocks = new Map(pendingLocks)
+
+    casts.forEach(cast => {
+      getDaysInPeriod().forEach(day => {
+        const dateStr = format(day, 'yyyy-MM-dd')
+        const key = `${cast.id}-${dateStr}`
+        newPendingLocks.set(key, {
+          cast_id: cast.id,
+          date: dateStr,
+          lock_type: lockType,
+          action: 'add'
+        })
+      })
+    })
+
+    setPendingLocks(newPendingLocks)
+  }
+
+  // 全体を解除（明示的に全てのロック/確定を削除）
+  const clearAll = (lockType: 'locked' | 'confirmed') => {
+    const newPendingLocks = new Map(pendingLocks)
+
+    casts.forEach(cast => {
+      getDaysInPeriod().forEach(day => {
+        const dateStr = format(day, 'yyyy-MM-dd')
+        const key = `${cast.id}-${dateStr}`
+        const existingLock = shiftLocks.find(lock => lock.cast_id === cast.id && lock.date === dateStr)
+
+        // データベースにロックがある場合のみ削除を追加
+        if (existingLock && existingLock.lock_type === lockType) {
+          newPendingLocks.set(key, {
+            cast_id: cast.id,
+            date: dateStr,
+            lock_type: lockType,
+            action: 'remove'
+          })
+        } else {
+          // pendingLocksに追加されているが、DBにはない場合は削除
+          newPendingLocks.delete(key)
+        }
+      })
+    })
+
+    setPendingLocks(newPendingLocks)
+  }
+
+  const toggleCellLock = async (castId: number, dateStr: string, lockType: 'locked' | 'confirmed') => {
+    const existingLock = shiftLocks.find(lock => lock.cast_id === castId && lock.date === dateStr)
+
+    if (existingLock && existingLock.lock_type === lockType) {
+      // 解除
+      await supabase
+        .from('shift_locks')
+        .delete()
+        .eq('cast_id', castId)
+        .eq('date', dateStr)
+    } else {
+      // ロック/確定（既存の別タイプがある場合は更新）
+      await supabase
+        .from('shift_locks')
+        .upsert({
+          cast_id: castId,
+          date: dateStr,
+          lock_type: lockType,
+          store_id: storeId
+        })
+    }
+
+    await loadShiftLocks()
+  }
+
+  const handleCellClick = (castId: number, date: Date) => {
+    // 保存中は操作不可
+    if (isSaving) return
+
+    const key = getCellKey(castId, date)
+
+    const lock = getShiftLock(castId, date)
+
+    if (isLockMode) {
+      toggleLock('cell', 'locked', castId, date)
+      return
+    }
+
+    if (isConfirmMode) {
+      toggleLock('cell', 'confirmed', castId, date)
+      return
+    }
+
+    setEditingCell(key)
+
+    const { shift, request } = getShiftForCell(castId, date)
+
+    // 時間を24時間超えの形式に変換する関数
+    const convertTo24Plus = (time: string) => {
+      const [hours, minutes] = time.slice(0, 5).split(':').map(Number)
+      // 0-5時は24-29時として扱う
+      if (hours >= 0 && hours <= 5) {
+        return `${(hours + 24).toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`
+      }
+      return time.slice(0, 5)
+    }
+
+    if (shift) {
+      // シフトがある場合
+      setTempTime({
+        start: convertTo24Plus(shift.start_time),
+        end: convertTo24Plus(shift.end_time)
+      })
+      setIsNewShift(false)
+    } else if (request) {
+      // 申請がある場合
+      setTempTime({
+        start: convertTo24Plus(request.start_time),
+        end: convertTo24Plus(request.end_time)
+      })
+      setIsNewShift(true)
+    } else {
+      // 空のセルの場合
+      setTempTime({ start: '', end: '' })
+      setIsNewShift(true)
+    }
+  }
+
+  const addShift = () => {
+    setTempTime({ start: '19:00', end: '23:30' })
+  }
+
+  const saveShift = async () => {
+    if (!editingCell || !tempTime.start || !tempTime.end) {
+      alert('時間を入力してください')
+      return
+    }
+
+    const [castId, ...dateParts] = editingCell.split('-')
+    const dateStr = dateParts.join('-')
+
+    // existingShiftの定義を追加
+    const existingShift = shifts.find(s => s.cast_id === parseInt(castId) && s.date === dateStr)
+
+    // 24時間超えの時間を正規化（25:00 → 01:00）
+    const normalizeTime = (time: string) => {
+      const [hours, minutes] = time.split(':').map(Number)
+      const normalizedHours = hours >= 24 ? hours - 24 : hours
+      return `${normalizedHours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`
+    }
+
+    const normalizedStartTime = normalizeTime(tempTime.start)
+    const normalizedEndTime = normalizeTime(tempTime.end)
+
+    try {
+      if (existingShift) {
+        // 更新
+        const { data, error } = await supabase
+          .from('shifts')
+          .update({
+            start_time: normalizedStartTime,
+            end_time: normalizedEndTime
+          })
+          .eq('id', existingShift.id)
+          .select()
+
+        if (error) {
+          alert('更新エラー: ' + error.message)
+        } else {
+          await loadShifts()
+          setEditingCell(null)
+          setIsNewShift(false)
+        }
+      } else {
+        // 新規作成
+        const { data, error } = await supabase
+          .from('shifts')
+          .insert({
+            cast_id: parseInt(castId),
+            date: dateStr,
+            start_time: normalizedStartTime,
+            end_time: normalizedEndTime,
+            store_id: storeId
+          })
+          .select()
+
+        if (error) {
+          alert('登録エラー: ' + error.message)
+        } else {
+          // 対応するshift_requestがあれば承認済みに更新
+          const request = shiftRequests.find(r => r.cast_id === parseInt(castId) && r.date === dateStr)
+          if (request) {
+            await supabase
+              .from('shift_requests')
+              .update({ status: 'approved' })
+              .eq('id', request.id)
+          }
+
+          // ロック状態を確定に自動設定（オプション）
+          const existingLock = shiftLocks.find(l => l.cast_id === parseInt(castId) && l.date === dateStr)
+          if (!existingLock) {
+            await supabase
+              .from('shift_locks')
+              .insert({
+                cast_id: parseInt(castId),
+                date: dateStr,
+                lock_type: 'confirmed',
+                store_id: storeId
+              })
+          }
+
+          await loadData()
+          setEditingCell(null)
+          setIsNewShift(false)
+        }
+      }
+    } catch (error) {
+      console.error('Unexpected error:', error)
+      alert('予期しないエラーが発生しました')
+    }
+  }
+
+  const deleteShift = async () => {
+    if (!editingCell) {
+      return
+    }
+
+    const [castId, ...dateParts] = editingCell.split('-')
+    const dateStr = dateParts.join('-')
+
+    const existingShift = shifts.find(s => s.cast_id === parseInt(castId) && s.date === dateStr)
+
+    if (existingShift) {
+      if (confirm('このシフトを削除しますか？')) {
+        try {
+          const { error } = await supabase
+            .from('shifts')
+            .delete()
+            .eq('id', existingShift.id)
+
+          if (error) {
+            alert('削除エラー: ' + error.message)
+          } else {
+            // 対応するshift_requestがあれば未承認に戻す
+            const request = shiftRequests.find(r => r.cast_id === parseInt(castId) && r.date === dateStr)
+            if (request && request.status === 'approved') {
+              await supabase
+                .from('shift_requests')
+                .update({ status: 'pending' })
+                .eq('id', request.id)
+            }
+
+            await loadData()
+            setEditingCell(null)
+            setIsNewShift(false)
+          }
+        } catch (error) {
+          console.error('Unexpected error:', error)
+          alert('予期しないエラーが発生しました')
+        }
+      }
+    } else {
+      alert('削除するシフトが見つかりません')
+    }
+  }
+
+  const getDayOfWeek = (date: Date) => {
+    const days = ['日', '月', '火', '水', '木', '金', '土']
+    return days[date.getDay()]
+  }
+
+  const getAttendanceCount = (date: Date) => {
+    const dateStr = format(date, 'yyyy-MM-dd')
+    return shifts.filter(s => s.date === dateStr).length
+  }
+
+  // 時間選択肢をメモ化
+  const timeOptions = useMemo(() => generateTimeOptions(), [])
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
+        <div>読み込み中...</div>
+      </div>
+    )
+  }
+
+  // 編集中のセルの情報を取得
+  const getEditingCellInfo = () => {
+    if (!editingCell) {
+      return null
+    }
+
+    const parts = editingCell.split('-')
+    if (parts.length < 4) {
+      console.error('Invalid cell key format:', editingCell)
+      return null
+    }
+
+    const castId = parseInt(parts[0])
+    const dateStr = parts.slice(1).join('-')
+
+    const cast = casts.find(c => c.id === castId)
+
+    const [year, month, day] = dateStr.split('-').map(Number)
+    const date = new Date(year, month - 1, day)
+
+    if (isNaN(date.getTime())) {
+      console.error('Invalid date:', dateStr)
+      return null
+    }
+
+    const lock = shiftLocks.find(l => l.cast_id === castId && l.date === dateStr)
+
+    return { castId, dateStr, cast, date, lock }
+  }
+
+  const editingInfo = getEditingCellInfo()
+
+  return (
+    <div style={{
+      backgroundColor: '#f7f9fc',
+      minHeight: '100vh',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+    }}>
+      <style jsx>{`
+        @keyframes spin {
+          from {
+            transform: rotate(0deg);
+          }
+          to {
+            transform: rotate(360deg);
+          }
+        }
+      `}</style>
+      {/* ヘッダー */}
+      <div style={{
+        backgroundColor: '#fff',
+        padding: '20px',
+        marginBottom: '20px',
+        borderRadius: '12px',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
+      }}>
+        {/* 月・期間選択 */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '20px',
+          marginBottom: '20px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <button
+              onClick={() => setSelectedMonth(subMonths(selectedMonth, 1))}
+              style={{
+                padding: '6px 12px',
+                fontSize: '14px',
+                backgroundColor: '#f1f5f9',
+                color: '#475569',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer'
+              }}
+            >
+              ←
+            </button>
+            <span style={{ fontSize: '16px', fontWeight: '600' }}>
+              {format(selectedMonth, 'yyyy年M月', { locale: ja })}
+            </span>
+            <button
+              onClick={() => setSelectedMonth(addMonths(selectedMonth, 1))}
+              style={{
+                padding: '6px 12px',
+                fontSize: '14px',
+                backgroundColor: '#f1f5f9',
+                color: '#475569',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer'
+              }}
+            >
+              →
+            </button>
+          </div>
+
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              onClick={() => setIsFirstHalf(true)}
+              style={{
+                padding: '6px 16px',
+                fontSize: '14px',
+                backgroundColor: isFirstHalf ? '#2563eb' : '#fff',
+                color: isFirstHalf ? '#fff' : '#64748b',
+                border: `1px solid ${isFirstHalf ? '#2563eb' : '#e2e8f0'}`,
+                borderRadius: '6px',
+                cursor: 'pointer'
+              }}
+            >
+              前半（1日〜15日）
+            </button>
+            <button
+              onClick={() => setIsFirstHalf(false)}
+              style={{
+                padding: '6px 16px',
+                fontSize: '14px',
+                backgroundColor: !isFirstHalf ? '#2563eb' : '#fff',
+                color: !isFirstHalf ? '#fff' : '#64748b',
+                border: `1px solid ${!isFirstHalf ? '#2563eb' : '#e2e8f0'}`,
+                borderRadius: '6px',
+                cursor: 'pointer'
+              }}
+            >
+              後半（16日〜末日）
+            </button>
+          </div>
+        </div>
+
+        {/* 全ボタン */}
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* モード切り替えボタン */}
+          <button
+            onClick={() => {
+              if (isLockMode) {
+                setIsLockMode(false)
+              } else {
+                setIsLockMode(true)
+                setIsConfirmMode(false)
+              }
+            }}
+            disabled={isSaving}
+            style={{
+              padding: '8px 16px',
+              fontSize: '14px',
+              fontWeight: '500',
+              backgroundColor: isLockMode ? '#dc2626' : '#fff',
+              color: isLockMode ? '#fff' : '#1a1a1a',
+              border: isLockMode ? 'none' : '1px solid #e2e8f0',
+              borderRadius: '8px',
+              cursor: isSaving ? 'not-allowed' : 'pointer',
+              transition: 'all 0.2s ease',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              opacity: isSaving ? 0.5 : 1,
+              minWidth: '120px'
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+              <path d="M12 2C9.243 2 7 4.243 7 7v3H6c-1.103 0-2 .897-2 2v8c0 1.103.897 2 2 2h12c1.103 0 2-.897 2-2v-8c0-1.103-.897-2-2-2h-1V7c0-2.757-2.243-5-5-5zm-3 5c0-1.654 1.346-3 3-3s3 1.346 3 3v3H9V7zm9 13H6v-8h12v8z" fill="currentColor"/>
+            </svg>
+            ロック設定
+          </button>
+
+          <button
+            onClick={() => {
+              if (isConfirmMode) {
+                setIsConfirmMode(false)
+              } else {
+                setIsConfirmMode(true)
+                setIsLockMode(false)
+              }
+            }}
+            disabled={isSaving}
+            style={{
+              padding: '8px 16px',
+              fontSize: '14px',
+              fontWeight: '500',
+              backgroundColor: isConfirmMode ? '#10b981' : '#fff',
+              color: isConfirmMode ? '#fff' : '#1a1a1a',
+              border: isConfirmMode ? 'none' : '1px solid #e2e8f0',
+              borderRadius: '8px',
+              cursor: isSaving ? 'not-allowed' : 'pointer',
+              transition: 'all 0.2s ease',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              opacity: isSaving ? 0.5 : 1,
+              minWidth: '120px'
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+              <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" fill="currentColor"/>
+            </svg>
+            シフト確定
+          </button>
+
+          {/* 操作ボタン */}
+          <button
+            onClick={() => {
+              if (!isLockMode && !isConfirmMode) return
+              const lockType = isLockMode ? 'locked' : 'confirmed'
+              applyToAll(lockType)
+            }}
+            disabled={isSaving || (!isLockMode && !isConfirmMode)}
+            style={{
+              padding: '8px 16px',
+              fontSize: '14px',
+              fontWeight: '500',
+              backgroundColor: (isLockMode || isConfirmMode) && !isSaving ? '#6366f1' : '#9ca3af',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: (isLockMode || isConfirmMode) && !isSaving ? 'pointer' : 'not-allowed',
+              transition: 'all 0.2s ease',
+              opacity: (isLockMode || isConfirmMode) && !isSaving ? 1 : 0.5
+            }}
+          >
+            全体適用
+          </button>
+
+          <button
+            onClick={() => {
+              if (!isLockMode && !isConfirmMode) return
+              const lockType = isLockMode ? 'locked' : 'confirmed'
+              clearAll(lockType)
+            }}
+            disabled={isSaving || (!isLockMode && !isConfirmMode)}
+            style={{
+              padding: '8px 16px',
+              fontSize: '14px',
+              fontWeight: '500',
+              backgroundColor: '#fff',
+              color: (isLockMode || isConfirmMode) && !isSaving ? '#ef4444' : '#9ca3af',
+              border: `1px solid ${(isLockMode || isConfirmMode) && !isSaving ? '#ef4444' : '#9ca3af'}`,
+              borderRadius: '8px',
+              cursor: (isLockMode || isConfirmMode) && !isSaving ? 'pointer' : 'not-allowed',
+              transition: 'all 0.2s ease',
+              opacity: (isLockMode || isConfirmMode) && !isSaving ? 1 : 0.5
+            }}
+          >
+            全体解除
+          </button>
+
+          {/* キャンセルボタン */}
+          <button
+            onClick={() => {
+              setIsLockMode(false)
+              setIsConfirmMode(false)
+              setPendingLocks(new Map())
+            }}
+            disabled={isSaving || (!isLockMode && !isConfirmMode && pendingLocks.size === 0)}
+            style={{
+              padding: '8px 16px',
+              fontSize: '14px',
+              fontWeight: '500',
+              backgroundColor: (isLockMode || isConfirmMode || pendingLocks.size > 0) && !isSaving ? '#fff' : '#f1f5f9',
+              color: (isLockMode || isConfirmMode || pendingLocks.size > 0) && !isSaving ? '#ef4444' : '#cbd5e1',
+              border: `2px solid ${(isLockMode || isConfirmMode || pendingLocks.size > 0) && !isSaving ? '#ef4444' : '#e2e8f0'}`,
+              borderRadius: '8px',
+              cursor: (isLockMode || isConfirmMode || pendingLocks.size > 0) && !isSaving ? 'pointer' : 'not-allowed',
+              transition: 'all 0.2s ease',
+              opacity: (isLockMode || isConfirmMode || pendingLocks.size > 0) && !isSaving ? 1 : 0.4
+            }}
+          >
+            キャンセル
+          </button>
+
+          {/* 保存ボタン */}
+          <button
+            onClick={saveLocks}
+            disabled={isSaving || pendingLocks.size === 0}
+            style={{
+              padding: '8px 16px',
+              fontSize: '14px',
+              fontWeight: '600',
+              backgroundColor: pendingLocks.size > 0 && !isSaving ? '#10b981' : '#9ca3af',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: pendingLocks.size > 0 && !isSaving ? 'pointer' : 'not-allowed',
+              transition: 'all 0.2s ease',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              opacity: pendingLocks.size > 0 && !isSaving ? 1 : 0.5
+            }}
+          >
+            {isSaving && (
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                style={{
+                  animation: 'spin 1s linear infinite'
+                }}
+              >
+                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" strokeOpacity="0.25"/>
+                <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="4" strokeLinecap="round"/>
+              </svg>
+            )}
+            {isSaving ? '保存中...' : '保存'}
+          </button>
+        </div>
+      </div>
+
+      {/* シフト表 */}
+      <div style={{
+        backgroundColor: '#fff',
+        borderRadius: '12px',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+        overflow: 'hidden'
+      }}>
+        <div style={{
+          maxHeight: 'calc(100vh - 300px)',
+          overflow: 'auto',
+          position: 'relative'
+        }}>
+          <table style={{
+            width: '100%',
+            borderCollapse: 'collapse',
+            fontSize: '14px',
+            position: 'relative'
+          }}>
+            <thead>
+              <tr>
+                <th style={{
+                  position: 'sticky',
+                  top: 0,
+                  left: 0,
+                  backgroundColor: '#f8fafc',
+                  padding: '12px',
+                  borderBottom: '2px solid #e2e8f0',
+                  borderRight: '1px solid #e2e8f0',
+                  fontWeight: '600',
+                  color: '#475569',
+                  minWidth: '120px',
+                  zIndex: 20,
+                  boxShadow: '2px 2px 4px rgba(0,0,0,0.05)'
+                }}>
+                  スタッフ名
+                </th>
+                {getDaysInPeriod().map(date => (
+                  <th
+                    key={format(date, 'yyyy-MM-dd')}
+                    onClick={() => (isLockMode || isConfirmMode) && toggleLock('column', isLockMode ? 'locked' : 'confirmed', undefined, date)}
+                    style={{
+                      position: 'sticky',
+                      top: 0,
+                      padding: '8px',
+                      borderBottom: '2px solid #e2e8f0',
+                      borderRight: '1px solid #e2e8f0',
+                      textAlign: 'center',
+                      backgroundColor: '#f8fafc',
+                      color: date.getDay() === 0 ? '#dc2626' : date.getDay() === 6 ? '#2563eb' : '#475569',
+                      fontWeight: '600',
+                      minWidth: '100px',
+                      cursor: (isLockMode || isConfirmMode) ? 'pointer' : 'default',
+                      zIndex: 10,
+                      boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+                    }}
+                  >
+                    <div>{getDate(date)}日({getDayOfWeek(date)})</div>
+                    <div style={{ fontSize: '12px', fontWeight: '400', marginTop: '4px' }}>
+                      {getAttendanceCount(date)}人
+                    </div>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {casts.map((cast, index) => (
+                <tr key={cast.id}>
+                  <td
+                    onClick={() => (isLockMode || isConfirmMode) && toggleLock('row', isLockMode ? 'locked' : 'confirmed', cast.id)}
+                    style={{
+                      position: 'sticky',
+                      left: 0,
+                      backgroundColor: '#fff',
+                      padding: '12px',
+                      borderBottom: '1px solid #e2e8f0',
+                      borderRight: '1px solid #e2e8f0',
+                      fontWeight: '500',
+                      color: '#1a1a1a',
+                      zIndex: 5,
+                      cursor: (isLockMode || isConfirmMode) ? 'pointer' : 'default',
+                      boxShadow: '2px 0 4px rgba(0,0,0,0.05)'
+                    }}
+                  >
+                    {cast.name}
+                  </td>
+                  {getDaysInPeriod().map(date => {
+                    const cellKey = getCellKey(cast.id, date)
+                    const { shift, request } = getShiftForCell(cast.id, date)
+                    const lock = getShiftLock(cast.id, date)
+                    const isEditing = editingCell === cellKey
+
+                    // 保存待ちの変更があるかチェック
+                    const dateStr = format(date, 'yyyy-MM-dd')
+                    const pendingKey = `${cast.id}-${dateStr}`
+                    const hasPendingChange = pendingLocks.has(pendingKey)
+
+                    return (
+                      <td
+                        key={cellKey}
+                        onClick={() => handleCellClick(cast.id, date)}
+                        style={{
+                          padding: '8px',
+                          borderBottom: '1px solid #e2e8f0',
+                          borderRight: '1px solid #e2e8f0',
+                          textAlign: 'center',
+                          backgroundColor: lock?.lock_type === 'locked' ? '#fee2e2' :
+                                         lock?.lock_type === 'confirmed' ? '#dcfce7' :
+                                         request && !shift ? '#fef3c7' : '#fff',
+                          cursor: isSaving ? 'not-allowed' : 'pointer',
+                          position: 'relative',
+                          transition: 'background-color 0.2s ease',
+                          minHeight: '60px',
+                          outline: hasPendingChange ? '2px dashed #f59e0b' : undefined,
+                          outlineOffset: hasPendingChange ? '-2px' : undefined,
+                          boxShadow: hasPendingChange ? '0 0 8px rgba(245, 158, 11, 0.3)' : undefined
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!lock && !isLockMode && !isConfirmMode) {
+                            e.currentTarget.style.backgroundColor = '#f1f5f9'
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!lock && !isLockMode && !isConfirmMode) {
+                            e.currentTarget.style.backgroundColor = request && !shift ? '#fef3c7' : '#fff'
+                          }
+                        }}
+                      >
+                        {!isEditing && (
+                          <>
+                            {shift && (
+                              <div style={{ fontSize: '13px', color: '#1a1a1a' }}>
+                                {formatShiftTime(shift)}
+                              </div>
+                            )}
+                            {request && !shift && (
+                              <div style={{ fontSize: '12px', color: '#ea580c', fontStyle: 'italic' }}>
+                                申請: {formatShiftTime(request)}
+                              </div>
+                            )}
+                            {lock && (
+                              <div style={{
+                                position: 'absolute',
+                                top: '4px',
+                                right: '4px',
+                                width: '16px',
+                                height: '16px'
+                              }}>
+                                {lock.lock_type === 'locked' ? (
+                                  <svg width="16" height="16" viewBox="0 0 24 24" fill="#dc2626">
+                                    <path d="M12 2C9.243 2 7 4.243 7 7v3H6c-1.103 0-2 .897-2 2v8c0 1.103.897 2 2 2h12c1.103 0 2-.897 2-2v-8c0-1.103-.897-2-2-2h-1V7c0-2.757-2.243-5-5-5zM9 7c0-1.654 1.346-3 3-3s3 1.346 3 3v3H9V7z"/>
+                                  </svg>
+                                ) : (
+                                  <svg width="16" height="16" viewBox="0 0 24 24" fill="#10b981">
+                                    <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                                  </svg>
+                                )}
+                              </div>
+                            )}
+                            {hasPendingChange && (
+                              <div style={{
+                                position: 'absolute',
+                                top: '4px',
+                                left: '4px',
+                                width: '8px',
+                                height: '8px',
+                                backgroundColor: '#f59e0b',
+                                borderRadius: '50%',
+                                boxShadow: '0 0 4px rgba(245, 158, 11, 0.6)'
+                              }} title="未保存の変更があります" />
+                            )}
+                          </>
+                        )}
+                      </td>
+                    )
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* 凡例 */}
+      <div style={{
+        marginTop: '20px',
+        padding: '16px',
+        backgroundColor: '#fff',
+        borderRadius: '8px',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+        fontSize: '13px',
+        color: '#64748b',
+        display: 'flex',
+        gap: '24px',
+        flexWrap: 'wrap'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ width: '20px', height: '20px', backgroundColor: '#fef3c7', border: '1px solid #fbbf24' }}></div>
+          <span>シフト申請あり（未承認）</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ width: '20px', height: '20px', backgroundColor: '#fee2e2', border: '1px solid #f87171' }}></div>
+          <span>ロック済み</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ width: '20px', height: '20px', backgroundColor: '#dcfce7', border: '1px solid #86efac' }}></div>
+          <span>確定済み</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{
+            width: '20px',
+            height: '20px',
+            backgroundColor: '#fff',
+            border: '1px solid #e2e8f0',
+            outline: '2px dashed #f59e0b',
+            outlineOffset: '-2px',
+            boxShadow: '0 0 4px rgba(245, 158, 11, 0.3)',
+            position: 'relative'
+          }}>
+            <div style={{
+              position: 'absolute',
+              top: '2px',
+              left: '2px',
+              width: '6px',
+              height: '6px',
+              backgroundColor: '#f59e0b',
+              borderRadius: '50%'
+            }} />
+          </div>
+          <span>未保存の変更</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="#dc2626">
+            <path d="M12 2C9.243 2 7 4.243 7 7v3H6c-1.103 0-2 .897-2 2v8c0 1.103.897 2 2 2h12c1.103 0 2-.897 2-2v-8c0-1.103-.897-2-2-2h-1V7c0-2.757-2.243-5-5-5zM9 7c0-1.654 1.346-3 3-3s3 1.346 3 3v3H9V7z"/>
+          </svg>
+          <span>ロックアイコン</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="#10b981">
+            <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+          </svg>
+          <span>確定アイコン</span>
+        </div>
+      </div>
+
+      {/* 編集モーダル */}
+      {editingCell && editingInfo && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            position: 'fixed',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            backgroundColor: '#fff',
+            padding: '24px',
+            borderRadius: '12px',
+            boxShadow: '0 10px 40px rgba(0,0,0,0.2)',
+            zIndex: 1000,
+            minWidth: '380px'
+          }}
+        >
+          <h3 style={{
+            margin: '0 0 16px 0',
+            fontSize: '18px',
+            fontWeight: '600',
+            color: '#1a1a1a'
+          }}>
+            シフト編集
+          </h3>
+
+          <div style={{ marginBottom: '16px' }}>
+            <div style={{ fontSize: '14px', color: '#64748b', marginBottom: '4px' }}>
+              スタッフ: {editingInfo.cast?.name || ''}
+            </div>
+            <div style={{ fontSize: '14px', color: '#64748b' }}>
+              日付: {format(editingInfo.date, 'yyyy年M月d日(E)', { locale: ja })}
+            </div>
+          </div>
+
+          {/* ロック状態の表示 */}
+          {editingInfo.lock && (
+            <div style={{
+              marginBottom: '16px',
+              padding: '8px 12px',
+              backgroundColor: editingInfo.lock.lock_type === 'locked' ? '#fee2e2' : '#dcfce7',
+              borderRadius: '6px',
+              fontSize: '13px',
+              color: editingInfo.lock.lock_type === 'locked' ? '#dc2626' : '#059669',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}>
+              {editingInfo.lock.lock_type === 'locked' ? (
+                <>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2C9.243 2 7 4.243 7 7v3H6c-1.103 0-2 .897-2 2v8c0 1.103.897 2 2 2h12c1.103 0 2-.897 2-2v-8c0-1.103-.897-2-2-2h-1V7c0-2.757-2.243-5-5-5zM9 7c0-1.654 1.346-3 3-3s3 1.346 3 3v3H9V7z"/>
+                  </svg>
+                  このセルはロックされています
+                </>
+              ) : (
+                <>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                  </svg>
+                  このセルは確定されています
+                </>
+              )}
+            </div>
+          )}
+
+          {/* 時間入力または新規追加ボタン */}
+          {tempTime.start && tempTime.end ? (
+            <>
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{
+                  display: 'block',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  color: '#475569',
+                  marginBottom: '6px'
+                }}>
+                  開始時間
+                </label>
+                <select
+                  value={tempTime.start}
+                  onChange={(e) => setTempTime({ ...tempTime, start: e.target.value })}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    fontSize: '14px',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '6px',
+                    backgroundColor: '#fff',
+                    cursor: 'pointer'
+                  }}
+                >
+                  {timeOptions.map(time => (
+                    <option key={time} value={time}>
+                      {time}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{
+                  display: 'block',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  color: '#475569',
+                  marginBottom: '6px'
+                }}>
+                  終了時間
+                </label>
+                <select
+                  value={tempTime.end}
+                  onChange={(e) => setTempTime({ ...tempTime, end: e.target.value })}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    fontSize: '14px',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '6px',
+                    backgroundColor: '#fff',
+                    cursor: 'pointer'
+                  }}
+                >
+                  {timeOptions.map(time => (
+                    <option key={time} value={time}>{time}</option>
+                  ))}
+                </select>
+              </div>
+            </>
+          ) : (
+            <div style={{
+              marginBottom: '20px',
+              padding: '40px',
+              backgroundColor: '#f8fafc',
+              borderRadius: '8px',
+              textAlign: 'center'
+            }}>
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" style={{ margin: '0 auto 16px', color: '#94a3b8' }}>
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 11h-4v4h-2v-4H7v-2h4V7h2v4h4v2z" fill="currentColor"/>
+              </svg>
+              <p style={{ fontSize: '14px', color: '#64748b', marginBottom: '16px' }}>
+                このセルにシフトはありません
+              </p>
+              <button
+                onClick={addShift}
+                style={{
+                  padding: '8px 24px',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  backgroundColor: '#2563eb',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer'
+                }}
+              >
+                シフトを追加
+              </button>
+            </div>
+          )}
+
+          {/* ロック/確定ボタン */}
+          <div style={{ marginBottom: '16px', display: 'flex', gap: '8px' }}>
+            <button
+              onClick={() => toggleCellLock(editingInfo.castId, editingInfo.dateStr, 'locked')}
+              style={{
+                flex: 1,
+                padding: '8px',
+                fontSize: '13px',
+                fontWeight: '500',
+                backgroundColor: editingInfo.lock?.lock_type === 'locked' ? '#dc2626' : '#fff',
+                color: editingInfo.lock?.lock_type === 'locked' ? '#fff' : '#dc2626',
+                border: '1px solid #dc2626',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '4px'
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2C9.243 2 7 4.243 7 7v3H6c-1.103 0-2 .897-2 2v8c0 1.103.897 2 2 2h12c1.103 0 2-.897 2-2v-8c0-1.103-.897-2-2-2h-1V7c0-2.757-2.243-5-5-5zM9 7c0-1.654 1.346-3 3-3s3 1.346 3 3v3H9V7z"/>
+              </svg>
+              {editingInfo.lock?.lock_type === 'locked' ? 'ロック解除' : 'ロック'}
+            </button>
+            <button
+              onClick={() => toggleCellLock(editingInfo.castId, editingInfo.dateStr, 'confirmed')}
+              style={{
+                flex: 1,
+                padding: '8px',
+                fontSize: '13px',
+                fontWeight: '500',
+                backgroundColor: editingInfo.lock?.lock_type === 'confirmed' ? '#10b981' : '#fff',
+                color: editingInfo.lock?.lock_type === 'confirmed' ? '#fff' : '#10b981',
+                border: '1px solid #10b981',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '4px'
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+              </svg>
+              {editingInfo.lock?.lock_type === 'confirmed' ? '確定解除' : '確定'}
+            </button>
+          </div>
+
+          {/* アクションボタン */}
+          <div style={{ display: 'flex', gap: '8px' }}>
+            {tempTime.start && tempTime.end && (
+              <>
+                <button
+                  onClick={saveShift}
+                  style={{
+                    flex: 1,
+                    padding: '10px',
+                    fontSize: '14px',
+                    fontWeight: '500',
+                    backgroundColor: '#10b981',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '6px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  保存
+                </button>
+                {!isNewShift && shifts.find(s => s.cast_id === editingInfo.castId && s.date === editingInfo.dateStr) && (
+                  <button
+                    onClick={deleteShift}
+                    style={{
+                      padding: '10px 16px',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      backgroundColor: '#dc2626',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: '6px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    削除
+                  </button>
+                )}
+              </>
+            )}
+
+            {editingInfo && shiftRequests.find(r => r.cast_id === editingInfo.castId && r.date === editingInfo.dateStr) && (
+              <button
+                onClick={async () => {
+                  if (confirm('この申請を却下しますか？')) {
+                    const request = shiftRequests.find(r => r.cast_id === editingInfo.castId && r.date === editingInfo.dateStr)
+                    if (request) {
+                      const { error } = await supabase
+                        .from('shift_requests')
+                        .update({ status: 'rejected' })
+                        .eq('id', request.id)
+
+                      if (!error) {
+                        await loadData()
+                        setEditingCell(null)
+                        setIsNewShift(false)
+                      } else {
+                        alert('エラーが発生しました: ' + error.message)
+                      }
+                    }
+                  }
+                }}
+                style={{
+                  padding: '10px 16px',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  backgroundColor: '#ef4444',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer'
+                }}
+              >
+                申請却下
+              </button>
+            )}
+
+            <button
+              onClick={() => {
+                setEditingCell(null)
+                setIsNewShift(false)
+              }}
+              style={{
+                padding: '10px 16px',
+                fontSize: '14px',
+                fontWeight: '500',
+                backgroundColor: '#6b7280',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer'
+              }}
+            >
+              キャンセル
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* オーバーレイ */}
+      {editingCell && (
+        <div
+          onClick={() => {
+            setEditingCell(null)
+            setIsNewShift(false)
+          }}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            zIndex: 999
+          }}
+        />
+      )}
+    </div>
+  )
+}

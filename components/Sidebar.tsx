@@ -7,7 +7,7 @@ import { useStore } from '@/contexts/StoreContext'
 const menuItems = [
   { name: 'ホーム', path: '/', icon: '🏠' },
   { name: 'キャスト管理', path: '/casts', icon: '👥' },
-  { name: 'シフト管理', path: '/shifts', icon: '📅' },
+  { name: 'シフト管理', path: '/shifts/manage', icon: '📅' },
   { name: '勤怠管理', path: '/attendance', icon: '⏰' },
   { name: 'レポート', path: '/reports', icon: '📊' },
   { name: '設定', path: '/settings', icon: '⚙️' },
