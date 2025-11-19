@@ -394,7 +394,7 @@ export default function ProductsPage() {
         </div>
 
         {/* 商品リスト */}
-        <div>
+        <div style={{ overflowX: 'auto' }}>
           {loading ? (
             <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>
               読み込み中...
@@ -404,99 +404,194 @@ export default function ProductsPage() {
               商品が登録されていません
             </div>
           ) : (
-            filteredProducts.map((product, index) => (
-              <div
-                key={product.id}
-                onClick={() => openEditModal(product)}
-                style={{
-                  padding: '16px 20px',
-                  borderBottom: index < filteredProducts.length - 1 ? '1px solid #e2e8f0' : 'none',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  backgroundColor: product.is_active ? 'white' : '#f8f9fa',
-                  cursor: 'pointer',
-                  transition: 'background-color 0.2s'
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = product.is_active ? '#f8f9fa' : '#f1f5f9'}
-                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = product.is_active ? 'white' : '#f8f9fa'}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '15px', flex: 1 }}>
-                  <span style={{
-                    fontSize: '15px',
-                    fontWeight: '500',
-                    color: product.is_active ? '#1e293b' : '#94a3b8'
+            <table style={{
+              width: '100%',
+              borderCollapse: 'collapse',
+              backgroundColor: 'white'
+            }}>
+              <thead>
+                <tr style={{ backgroundColor: '#f8f9fa', borderBottom: '2px solid #e2e8f0' }}>
+                  <th style={{
+                    padding: '12px 20px',
+                    textAlign: 'left',
+                    fontWeight: '600',
+                    fontSize: '14px',
+                    color: '#475569',
+                    whiteSpace: 'nowrap'
                   }}>
-                    {product.name}
-                  </span>
-                  <span style={{ fontSize: '14px', color: '#64748b' }}>
-                    ¥{product.price.toLocaleString()}
-                  </span>
-                  <span style={{
-                    fontSize: '12px',
-                    padding: '2px 8px',
-                    backgroundColor: '#e0e7ff',
-                    color: '#4338ca',
-                    borderRadius: '4px'
+                    商品名
+                  </th>
+                  <th style={{
+                    padding: '12px 20px',
+                    textAlign: 'left',
+                    fontWeight: '600',
+                    fontSize: '14px',
+                    color: '#475569',
+                    whiteSpace: 'nowrap'
                   }}>
-                    {getCategoryName(product.category_id)}
-                  </span>
-                  {product.needs_cast && (
-                    <span style={{
-                      fontSize: '12px',
-                      padding: '2px 8px',
-                      backgroundColor: '#fef3c7',
-                      color: '#92400e',
-                      borderRadius: '4px'
-                    }}>
-                      指名必須
-                    </span>
-                  )}
-                </div>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  <label
-                    onClick={(e) => e.stopPropagation()}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      cursor: 'pointer',
-                      fontSize: '13px',
-                      color: '#64748b'
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={product.is_active}
-                      onChange={() => toggleActive(product.id, product.is_active)}
-                      style={{
-                        width: '16px',
-                        height: '16px',
-                        cursor: 'pointer'
-                      }}
-                    />
+                    価格
+                  </th>
+                  <th style={{
+                    padding: '12px 20px',
+                    textAlign: 'left',
+                    fontWeight: '600',
+                    fontSize: '14px',
+                    color: '#475569',
+                    whiteSpace: 'nowrap'
+                  }}>
+                    カテゴリー
+                  </th>
+                  <th style={{
+                    padding: '12px 20px',
+                    textAlign: 'center',
+                    fontWeight: '600',
+                    fontSize: '14px',
+                    color: '#475569',
+                    whiteSpace: 'nowrap'
+                  }}>
+                    指名の有無
+                  </th>
+                  <th style={{
+                    padding: '12px 20px',
+                    textAlign: 'center',
+                    fontWeight: '600',
+                    fontSize: '14px',
+                    color: '#475569',
+                    whiteSpace: 'nowrap'
+                  }}>
                     有効
-                  </label>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      deleteProduct(product.id)
-                    }}
+                  </th>
+                  <th style={{
+                    padding: '12px 20px',
+                    textAlign: 'center',
+                    fontWeight: '600',
+                    fontSize: '14px',
+                    color: '#475569',
+                    whiteSpace: 'nowrap'
+                  }}>
+                    操作
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredProducts.map((product) => (
+                  <tr
+                    key={product.id}
+                    onClick={() => openEditModal(product)}
                     style={{
-                      padding: '6px 14px',
-                      backgroundColor: '#ef4444',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '5px',
+                      borderBottom: '1px solid #e2e8f0',
+                      backgroundColor: product.is_active ? 'white' : '#f8f9fa',
                       cursor: 'pointer',
-                      fontSize: '13px'
+                      transition: 'background-color 0.2s'
                     }}
+                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = product.is_active ? '#f8f9fa' : '#f1f5f9'}
+                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = product.is_active ? 'white' : '#f8f9fa'}
                   >
-                    削除
-                  </button>
-                </div>
-              </div>
-            ))
+                    <td style={{
+                      padding: '12px 20px',
+                      fontSize: '15px',
+                      fontWeight: '500',
+                      color: product.is_active ? '#1e293b' : '#94a3b8'
+                    }}>
+                      {product.name}
+                    </td>
+                    <td style={{
+                      padding: '12px 20px',
+                      fontSize: '14px',
+                      color: '#64748b'
+                    }}>
+                      ¥{product.price.toLocaleString()}
+                    </td>
+                    <td style={{ padding: '12px 20px' }}>
+                      <span style={{
+                        fontSize: '12px',
+                        padding: '4px 12px',
+                        backgroundColor: '#e0e7ff',
+                        color: '#4338ca',
+                        borderRadius: '12px',
+                        fontWeight: '500'
+                      }}>
+                        {getCategoryName(product.category_id)}
+                      </span>
+                    </td>
+                    <td style={{
+                      padding: '12px 20px',
+                      textAlign: 'center'
+                    }}>
+                      {product.needs_cast ? (
+                        <span style={{
+                          fontSize: '12px',
+                          padding: '4px 12px',
+                          backgroundColor: '#fef3c7',
+                          color: '#92400e',
+                          borderRadius: '12px',
+                          fontWeight: '500'
+                        }}>
+                          指名必須
+                        </span>
+                      ) : (
+                        <span style={{
+                          fontSize: '12px',
+                          color: '#94a3b8'
+                        }}>
+                          -
+                        </span>
+                      )}
+                    </td>
+                    <td
+                      onClick={(e) => e.stopPropagation()}
+                      style={{
+                        padding: '12px 20px',
+                        textAlign: 'center'
+                      }}
+                    >
+                      <label style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        cursor: 'pointer',
+                        fontSize: '13px',
+                        color: '#64748b'
+                      }}>
+                        <input
+                          type="checkbox"
+                          checked={product.is_active}
+                          onChange={() => toggleActive(product.id, product.is_active)}
+                          style={{
+                            width: '16px',
+                            height: '16px',
+                            cursor: 'pointer'
+                          }}
+                        />
+                      </label>
+                    </td>
+                    <td
+                      onClick={(e) => e.stopPropagation()}
+                      style={{
+                        padding: '12px 20px',
+                        textAlign: 'center'
+                      }}
+                    >
+                      <button
+                        onClick={() => deleteProduct(product.id)}
+                        style={{
+                          padding: '6px 14px',
+                          backgroundColor: '#ef4444',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '5px',
+                          cursor: 'pointer',
+                          fontSize: '13px',
+                          fontWeight: '500'
+                        }}
+                      >
+                        削除
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           )}
         </div>
       </div>
