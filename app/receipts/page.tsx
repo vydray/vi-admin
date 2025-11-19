@@ -28,8 +28,8 @@ interface Receipt {
   id: number
   store_id: number
   table_number: string
-  customer_name: string | null
-  oshi_name: string | null
+  guest_name: string | null
+  staff_name: string | null
   total_amount: number
   total_incl_tax: number
   payment_method: string
@@ -56,8 +56,8 @@ export default function ReceiptsPage() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [editFormData, setEditFormData] = useState({
     table_number: '',
-    customer_name: '',
-    oshi_name: '',
+    guest_name: '',
+    staff_name: '',
     order_date: '',
     checkout_datetime: ''
   })
@@ -145,8 +145,8 @@ export default function ReceiptsPage() {
       setSelectedReceipt(receiptWithDetails)
       setEditFormData({
         table_number: receipt.table_number,
-        customer_name: receipt.customer_name || '',
-        oshi_name: receipt.oshi_name || '',
+        guest_name: receipt.guest_name || '',
+        staff_name: receipt.staff_name || '',
         order_date: receipt.order_date ? receipt.order_date.split('T')[0] : '',
         checkout_datetime: receipt.checkout_datetime ? receipt.checkout_datetime.slice(0, 16) : ''
       })
@@ -165,8 +165,8 @@ export default function ReceiptsPage() {
         .from('orders')
         .update({
           table_number: editFormData.table_number,
-          customer_name: editFormData.customer_name || null,
-          oshi_name: editFormData.oshi_name || null,
+          guest_name: editFormData.guest_name || null,
+          staff_name: editFormData.staff_name || null,
           order_date: editFormData.order_date ? new Date(editFormData.order_date).toISOString() : null,
           checkout_datetime: editFormData.checkout_datetime ? new Date(editFormData.checkout_datetime).toISOString() : null
         })
@@ -206,7 +206,7 @@ export default function ReceiptsPage() {
   const filteredReceipts = receipts.filter(receipt => {
     const matchesSearch = searchTerm === '' ||
       receipt.table_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (receipt.customer_name && receipt.customer_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (receipt.guest_name && receipt.guest_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
       receipt.id.toString().includes(searchTerm)
 
     const receiptDate = new Date(receipt.checkout_datetime || receipt.order_date)
@@ -353,8 +353,8 @@ export default function ReceiptsPage() {
                   <td style={styles.td}>{formatDateTime(receipt.checkout_datetime)}</td>
                   <td style={styles.td}>{formatDate(receipt.order_date)}</td>
                   <td style={styles.td}>{receipt.table_number}</td>
-                  <td style={styles.td}>{receipt.customer_name || '-'}</td>
-                  <td style={styles.td}>{receipt.oshi_name || '-'}</td>
+                  <td style={styles.td}>{receipt.guest_name || '-'}</td>
+                  <td style={styles.td}>{receipt.staff_name || '-'}</td>
                   <td style={styles.td}>{receipt.payment_methods || '-'}</td>
                   <td style={styles.td}>{formatCurrency(receipt.total_amount)}</td>
                   <td style={styles.td}>{formatCurrency(receipt.total_incl_tax)}</td>
@@ -394,18 +394,18 @@ export default function ReceiptsPage() {
                 <label style={styles.label}>お客様名</label>
                 <input
                   type="text"
-                  value={editFormData.customer_name}
-                  onChange={(e) => setEditFormData({ ...editFormData, customer_name: e.target.value })}
+                  value={editFormData.guest_name}
+                  onChange={(e) => setEditFormData({ ...editFormData, guest_name: e.target.value })}
                   style={styles.input}
                 />
               </div>
 
               <div style={styles.formGroup}>
-                <label style={styles.label}>推しキャスト名</label>
+                <label style={styles.label}>担当スタッフ名</label>
                 <input
                   type="text"
-                  value={editFormData.oshi_name}
-                  onChange={(e) => setEditFormData({ ...editFormData, oshi_name: e.target.value })}
+                  value={editFormData.staff_name}
+                  onChange={(e) => setEditFormData({ ...editFormData, staff_name: e.target.value })}
                   style={styles.input}
                 />
               </div>
