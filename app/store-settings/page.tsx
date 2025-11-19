@@ -19,6 +19,14 @@ interface StoreSettings {
   logo_url: string
 }
 
+interface SystemSettings {
+  consumption_tax_rate: number
+  service_charge_rate: number
+  rounding_method: number
+  rounding_unit: number
+  card_fee_rate: number
+}
+
 export default function StoreSettingsPage() {
   const { storeId: globalStoreId } = useStore()
   const [selectedStore, setSelectedStore] = useState(globalStoreId)
@@ -41,12 +49,22 @@ export default function StoreSettingsPage() {
     logo_url: ''
   })
 
+  const [systemSettings, setSystemSettings] = useState<SystemSettings>({
+    consumption_tax_rate: 0.10,
+    service_charge_rate: 0.15,
+    rounding_method: 0,
+    rounding_unit: 100,
+    card_fee_rate: 0
+  })
+
   useEffect(() => {
     loadSettings()
   }, [selectedStore])
 
   const loadSettings = async () => {
     setLoading(true)
+
+    // 店舗設定を取得
     const { data, error } = await supabase
       .from('store_settings')
       .select('*')
@@ -69,22 +87,66 @@ export default function StoreSettingsPage() {
         logo_url: data.logo_url || ''
       })
     }
+
+    // システム設定を取得
+    const { data: systemSettingsData } = await supabase
+      .from('system_settings')
+      .select('setting_key, setting_value')
+      .eq('store_id', selectedStore)
+
+    if (systemSettingsData) {
+      const newSystemSettings = { ...systemSettings }
+      systemSettingsData.forEach(setting => {
+        if (setting.setting_key === 'consumption_tax_rate') {
+          newSystemSettings.consumption_tax_rate = Number(setting.setting_value)
+        } else if (setting.setting_key === 'service_charge_rate') {
+          newSystemSettings.service_charge_rate = Number(setting.setting_value)
+        } else if (setting.setting_key === 'rounding_method') {
+          newSystemSettings.rounding_method = Number(setting.setting_value)
+        } else if (setting.setting_key === 'rounding_unit') {
+          newSystemSettings.rounding_unit = Number(setting.setting_value)
+        } else if (setting.setting_key === 'card_fee_rate') {
+          newSystemSettings.card_fee_rate = Number(setting.setting_value)
+        }
+      })
+      setSystemSettings(newSystemSettings)
+    }
+
     setLoading(false)
   }
 
   const saveSettings = async () => {
     setSaving(true)
 
-    const { error } = await supabase
-      .from('store_settings')
-      .upsert({
-        store_id: selectedStore,
-        ...settings
-      })
+    try {
+      // 店舗設定を保存
+      const { error: storeError } = await supabase
+        .from('store_settings')
+        .upsert({
+          store_id: selectedStore,
+          ...settings
+        })
 
-    if (!error) {
+      if (storeError) throw storeError
+
+      // システム設定を保存
+      const systemSettingsArray = [
+        { store_id: selectedStore, setting_key: 'consumption_tax_rate', setting_value: systemSettings.consumption_tax_rate },
+        { store_id: selectedStore, setting_key: 'service_charge_rate', setting_value: systemSettings.service_charge_rate },
+        { store_id: selectedStore, setting_key: 'rounding_method', setting_value: systemSettings.rounding_method },
+        { store_id: selectedStore, setting_key: 'rounding_unit', setting_value: systemSettings.rounding_unit },
+        { store_id: selectedStore, setting_key: 'card_fee_rate', setting_value: systemSettings.card_fee_rate }
+      ]
+
+      const { error: systemError } = await supabase
+        .from('system_settings')
+        .upsert(systemSettingsArray, { onConflict: 'store_id,setting_key' })
+
+      if (systemError) throw systemError
+
       alert('設定を保存しました')
-    } else {
+    } catch (error) {
+      console.error('Error saving settings:', error)
       alert('設定の保存に失敗しました')
     }
 
@@ -93,6 +155,10 @@ export default function StoreSettingsPage() {
 
   const updateSetting = (key: keyof StoreSettings, value: string | number) => {
     setSettings(prev => ({ ...prev, [key]: value }))
+  }
+
+  const updateSystemSetting = (key: keyof SystemSettings, value: number) => {
+    setSystemSettings(prev => ({ ...prev, [key]: value }))
   }
 
   const uploadImage = async (file: File) => {
@@ -701,6 +767,180 @@ export default function StoreSettingsPage() {
                 />
                 <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
                   POSシステムで使用するお品書きのテンプレートです
+                </div>
+              </div>
+            </div>
+
+            {/* システム設定 */}
+            <div style={{ padding: '30px', borderBottom: '1px solid #e2e8f0' }}>
+              <h3 style={{
+                fontSize: '18px',
+                fontWeight: 'bold',
+                marginBottom: '20px',
+                color: '#374151'
+              }}>
+                システム設定
+              </h3>
+
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: '20px',
+                marginBottom: '20px'
+              }}>
+                <div>
+                  <label style={{
+                    display: 'block',
+                    marginBottom: '8px',
+                    fontSize: '14px',
+                    fontWeight: '500',
+                    color: '#374151'
+                  }}>
+                    消費税率
+                  </label>
+                  <select
+                    value={systemSettings.consumption_tax_rate}
+                    onChange={(e) => updateSystemSetting('consumption_tax_rate', Number(e.target.value))}
+                    style={{
+                      width: '100%',
+                      padding: '10px',
+                      fontSize: '14px',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '6px',
+                      backgroundColor: '#fff',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <option value={0.08}>8%</option>
+                    <option value={0.10}>10%</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{
+                    display: 'block',
+                    marginBottom: '8px',
+                    fontSize: '14px',
+                    fontWeight: '500',
+                    color: '#374151'
+                  }}>
+                    サービス料率（%）
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.1"
+                    value={systemSettings.service_charge_rate * 100}
+                    onChange={(e) => updateSystemSetting('service_charge_rate', Number(e.target.value) / 100)}
+                    style={{
+                      width: '100%',
+                      padding: '10px',
+                      fontSize: '14px',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '6px',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                  <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                    0〜100の範囲で入力してください
+                  </div>
+                </div>
+              </div>
+
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: '20px',
+                marginBottom: '20px'
+              }}>
+                <div>
+                  <label style={{
+                    display: 'block',
+                    marginBottom: '8px',
+                    fontSize: '14px',
+                    fontWeight: '500',
+                    color: '#374151'
+                  }}>
+                    端数処理方法
+                  </label>
+                  <select
+                    value={systemSettings.rounding_method}
+                    onChange={(e) => updateSystemSetting('rounding_method', Number(e.target.value))}
+                    style={{
+                      width: '100%',
+                      padding: '10px',
+                      fontSize: '14px',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '6px',
+                      backgroundColor: '#fff',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <option value={0}>切り捨て</option>
+                    <option value={1}>切り上げ</option>
+                    <option value={2}>四捨五入</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{
+                    display: 'block',
+                    marginBottom: '8px',
+                    fontSize: '14px',
+                    fontWeight: '500',
+                    color: '#374151'
+                  }}>
+                    端数処理単位
+                  </label>
+                  <select
+                    value={systemSettings.rounding_unit}
+                    onChange={(e) => updateSystemSetting('rounding_unit', Number(e.target.value))}
+                    style={{
+                      width: '100%',
+                      padding: '10px',
+                      fontSize: '14px',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '6px',
+                      backgroundColor: '#fff',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <option value={1}>1円単位</option>
+                    <option value={10}>10円単位</option>
+                    <option value={100}>100円単位</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label style={{
+                  display: 'block',
+                  marginBottom: '8px',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  color: '#374151'
+                }}>
+                  カード手数料率（%）
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                  value={systemSettings.card_fee_rate * 100}
+                  onChange={(e) => updateSystemSetting('card_fee_rate', Number(e.target.value) / 100)}
+                  style={{
+                    width: '200px',
+                    padding: '10px',
+                    fontSize: '14px',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '6px',
+                    boxSizing: 'border-box'
+                  }}
+                />
+                <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                  カード決済時に適用される手数料率を設定します
                 </div>
               </div>
             </div>
