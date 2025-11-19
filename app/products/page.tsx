@@ -211,10 +211,8 @@ export default function ProductsPage() {
 
   return (
     <div style={{
-      marginLeft: '250px',
-      padding: '40px',
-      minHeight: '100vh',
       backgroundColor: '#f7f9fc',
+      minHeight: '100vh',
       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
     }}>
       {/* ヘッダー */}
@@ -225,28 +223,30 @@ export default function ProductsPage() {
         borderRadius: '12px',
         boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
       }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
           <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: 0, color: '#1a1a1a' }}>
             商品管理
           </h1>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <label style={{ fontSize: '14px', fontWeight: '500', color: '#475569' }}>店舗:</label>
-            <select
-              value={selectedStore}
-              onChange={(e) => setSelectedStore(Number(e.target.value))}
-              style={{
-                padding: '6px 12px',
-                fontSize: '14px',
-                border: '1px solid #e2e8f0',
-                borderRadius: '6px',
-                backgroundColor: '#fff',
-                cursor: 'pointer'
-              }}
-            >
-              <option value={1}>Memorable</option>
-              <option value={2}>Mistress Mirage</option>
-            </select>
-          </div>
+        </div>
+
+        {/* 店舗選択 */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <label style={{ fontSize: '14px', fontWeight: '500', color: '#475569' }}>店舗:</label>
+          <select
+            value={selectedStore}
+            onChange={(e) => setSelectedStore(Number(e.target.value))}
+            style={{
+              padding: '6px 12px',
+              fontSize: '14px',
+              border: '1px solid #e2e8f0',
+              borderRadius: '6px',
+              backgroundColor: '#fff',
+              cursor: 'pointer'
+            }}
+          >
+            <option value={1}>Memorable</option>
+            <option value={2}>Mistress Mirage</option>
+          </select>
         </div>
       </div>
 
