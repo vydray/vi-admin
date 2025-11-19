@@ -11,6 +11,7 @@ const menuItems = [
   { name: '勤怠管理', path: '/attendance', icon: '⏰' },
   { name: '商品管理', path: '/products', icon: '🛍️' },
   { name: 'カテゴリー管理', path: '/categories', icon: '📁' },
+  { name: '伝票管理', path: '/receipts', icon: '🧾' },
   { name: '店舗設定', path: '/store-settings', icon: '🏪' },
   { name: '設定', path: '/settings', icon: '⚙️' },
 ]
