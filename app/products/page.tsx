@@ -407,14 +407,19 @@ export default function ProductsPage() {
             filteredProducts.map((product, index) => (
               <div
                 key={product.id}
+                onClick={() => openEditModal(product)}
                 style={{
                   padding: '16px 20px',
                   borderBottom: index < filteredProducts.length - 1 ? '1px solid #e2e8f0' : 'none',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  backgroundColor: product.is_active ? 'white' : '#f8f9fa'
+                  backgroundColor: product.is_active ? 'white' : '#f8f9fa',
+                  cursor: 'pointer',
+                  transition: 'background-color 0.2s'
                 }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = product.is_active ? '#f8f9fa' : '#f1f5f9'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = product.is_active ? 'white' : '#f8f9fa'}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '15px', flex: 1 }}>
                   <span style={{
@@ -449,14 +454,17 @@ export default function ProductsPage() {
                   )}
                 </div>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  <label style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    cursor: 'pointer',
-                    fontSize: '13px',
-                    color: '#64748b'
-                  }}>
+                  <label
+                    onClick={(e) => e.stopPropagation()}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                      color: '#64748b'
+                    }}
+                  >
                     <input
                       type="checkbox"
                       checked={product.is_active}
@@ -470,21 +478,10 @@ export default function ProductsPage() {
                     有効
                   </label>
                   <button
-                    onClick={() => openEditModal(product)}
-                    style={{
-                      padding: '6px 14px',
-                      backgroundColor: '#3b82f6',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '5px',
-                      cursor: 'pointer',
-                      fontSize: '13px'
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      deleteProduct(product.id)
                     }}
-                  >
-                    編集
-                  </button>
-                  <button
-                    onClick={() => deleteProduct(product.id)}
                     style={{
                       padding: '6px 14px',
                       backgroundColor: '#ef4444',

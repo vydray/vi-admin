@@ -246,13 +246,18 @@ export default function CategoriesPage() {
             categories.map((category, index) => (
               <div
                 key={category.id}
+                onClick={() => openEditModal(category)}
                 style={{
                   padding: '16px 20px',
                   borderBottom: index < categories.length - 1 ? '1px solid #e2e8f0' : 'none',
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'space-between'
+                  justifyContent: 'space-between',
+                  cursor: 'pointer',
+                  transition: 'background-color 0.2s',
                 }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8f9fa'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
                   <span style={{ fontSize: '15px', fontWeight: '500', color: '#1e293b' }}>
@@ -260,14 +265,17 @@ export default function CategoriesPage() {
                   </span>
                 </div>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  <label style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    cursor: 'pointer',
-                    fontSize: '13px',
-                    color: '#64748b'
-                  }}>
+                  <label
+                    onClick={(e) => e.stopPropagation()}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                      color: '#64748b'
+                    }}
+                  >
                     <input
                       type="checkbox"
                       checked={category.show_oshi_first}
@@ -281,21 +289,10 @@ export default function CategoriesPage() {
                     推しファースト
                   </label>
                   <button
-                    onClick={() => openEditModal(category)}
-                    style={{
-                      padding: '6px 14px',
-                      backgroundColor: '#3b82f6',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '5px',
-                      cursor: 'pointer',
-                      fontSize: '13px'
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      deleteCategory(category.id)
                     }}
-                  >
-                    編集
-                  </button>
-                  <button
-                    onClick={() => deleteCategory(category.id)}
                     style={{
                       padding: '6px 14px',
                       backgroundColor: '#ef4444',
