@@ -668,7 +668,7 @@ export default function CastsPage() {
                   onClick={() => openEditModal(cast)}
                 >
                   <td style={tdStyleNameSticky}>{cast.name}</td>
-                  <td style={tdStyle}>{cast.birthday || '-'}</td>
+                  <td style={tdStyle}>{cast.birthday ? cast.birthday.substring(5).replace('-', '') : '-'}</td>
                   <td style={tdStyle}>
                     {cast.status ? (
                       <span style={{
@@ -757,11 +757,22 @@ export default function CastsPage() {
               </div>
 
               <div>
-                <label style={labelStyle}>誕生日</label>
+                <label style={labelStyle}>誕生日（MMDD）</label>
                 <input
-                  type="date"
-                  value={editingCast.birthday || ''}
-                  onChange={(e) => handleFieldChange('birthday', e.target.value)}
+                  type="text"
+                  maxLength={4}
+                  placeholder="0315"
+                  value={editingCast.birthday ? editingCast.birthday.substring(5).replace('-', '') : ''}
+                  onChange={(e) => {
+                    const value = e.target.value.replace(/[^0-9]/g, '').substring(0, 4)
+                    if (value.length === 4) {
+                      const month = value.substring(0, 2)
+                      const day = value.substring(2, 4)
+                      handleFieldChange('birthday', `2000-${month}-${day}`)
+                    } else if (value.length === 0) {
+                      handleFieldChange('birthday', null)
+                    }
+                  }}
                   style={inputStyle}
                 />
               </div>
