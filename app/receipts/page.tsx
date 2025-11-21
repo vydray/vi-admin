@@ -62,6 +62,13 @@ export default function ReceiptsPage() {
     order_date: '',
     checkout_datetime: ''
   })
+  const [editPaymentData, setEditPaymentData] = useState({
+    cash_amount: 0,
+    credit_card_amount: 0,
+    other_payment_amount: 0,
+    other_payment_method: '',
+    change_amount: 0
+  })
   const [isEditItemModalOpen, setIsEditItemModalOpen] = useState(false)
   const [editingItem, setEditingItem] = useState<OrderItem | null>(null)
   const [editingItemData, setEditingItemData] = useState({
@@ -208,6 +215,13 @@ export default function ReceiptsPage() {
         order_date: receipt.order_date ? receipt.order_date.split('T')[0] : '',
         checkout_datetime: receipt.checkout_datetime ? receipt.checkout_datetime.slice(0, 16) : ''
       })
+      setEditPaymentData({
+        cash_amount: paymentData?.cash_amount || 0,
+        credit_card_amount: paymentData?.credit_card_amount || 0,
+        other_payment_amount: paymentData?.other_payment_amount || 0,
+        other_payment_method: paymentData?.other_payment_method || '',
+        change_amount: paymentData?.change_amount || 0
+      })
       setIsEditModalOpen(true)
     } catch (error) {
       console.error('Error loading receipt details:', error)
@@ -219,7 +233,8 @@ export default function ReceiptsPage() {
     if (!selectedReceipt) return
 
     try {
-      const { error } = await supabase
+      // 注文情報を更新
+      const { error: orderError } = await supabase
         .from('orders')
         .update({
           table_number: editFormData.table_number,
@@ -230,7 +245,37 @@ export default function ReceiptsPage() {
         })
         .eq('id', selectedReceipt.id)
 
-      if (error) throw error
+      if (orderError) throw orderError
+
+      // 支払い情報を更新（存在する場合は更新、ない場合は作成）
+      if (selectedReceipt.payment) {
+        const { error: paymentError } = await supabase
+          .from('payments')
+          .update({
+            cash_amount: editPaymentData.cash_amount,
+            credit_card_amount: editPaymentData.credit_card_amount,
+            other_payment_amount: editPaymentData.other_payment_amount,
+            other_payment_method: editPaymentData.other_payment_method || null,
+            change_amount: editPaymentData.change_amount
+          })
+          .eq('order_id', selectedReceipt.id)
+
+        if (paymentError) throw paymentError
+      } else {
+        const { error: paymentError } = await supabase
+          .from('payments')
+          .insert({
+            order_id: selectedReceipt.id,
+            cash_amount: editPaymentData.cash_amount,
+            credit_card_amount: editPaymentData.credit_card_amount,
+            other_payment_amount: editPaymentData.other_payment_amount,
+            other_payment_method: editPaymentData.other_payment_method || null,
+            change_amount: editPaymentData.change_amount,
+            store_id: selectedReceipt.store_id
+          })
+
+        if (paymentError) throw paymentError
+      }
 
       alert('伝票を更新しました')
       setIsEditModalOpen(false)
@@ -695,36 +740,62 @@ export default function ReceiptsPage() {
                 </div>
               )}
 
-              {/* Payment Details Display */}
-              {selectedReceipt.payment && (
-                <div style={styles.paymentSection}>
-                  <h3 style={styles.sectionTitle}>支払情報</h3>
-                  <div style={styles.paymentGrid}>
-                    <div style={styles.paymentItem}>
-                      <span style={styles.paymentLabel}>現金:</span>
-                      <span style={styles.paymentValue}>{formatCurrency(selectedReceipt.payment.cash_amount)}</span>
-                    </div>
-                    <div style={styles.paymentItem}>
-                      <span style={styles.paymentLabel}>クレジットカード:</span>
-                      <span style={styles.paymentValue}>{formatCurrency(selectedReceipt.payment.credit_card_amount)}</span>
-                    </div>
-                    <div style={styles.paymentItem}>
-                      <span style={styles.paymentLabel}>その他:</span>
-                      <span style={styles.paymentValue}>{formatCurrency(selectedReceipt.payment.other_payment_amount)}</span>
-                    </div>
-                    {selectedReceipt.payment.other_payment_method && (
-                      <div style={styles.paymentItem}>
-                        <span style={styles.paymentLabel}>その他支払方法:</span>
-                        <span style={styles.paymentValue}>{selectedReceipt.payment.other_payment_method}</span>
-                      </div>
-                    )}
-                    <div style={styles.paymentItem}>
-                      <span style={styles.paymentLabel}>お釣り:</span>
-                      <span style={styles.paymentValue}>{formatCurrency(selectedReceipt.payment.change_amount)}</span>
-                    </div>
+              {/* Payment Details Edit */}
+              <div style={styles.paymentSection}>
+                <h3 style={styles.sectionTitle}>支払情報</h3>
+                <div style={styles.paymentEditGrid}>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>現金</label>
+                    <input
+                      type="number"
+                      value={editPaymentData.cash_amount}
+                      onChange={(e) => setEditPaymentData({ ...editPaymentData, cash_amount: Number(e.target.value) })}
+                      style={styles.input}
+                      min="0"
+                    />
+                  </div>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>クレジットカード</label>
+                    <input
+                      type="number"
+                      value={editPaymentData.credit_card_amount}
+                      onChange={(e) => setEditPaymentData({ ...editPaymentData, credit_card_amount: Number(e.target.value) })}
+                      style={styles.input}
+                      min="0"
+                    />
+                  </div>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>その他金額</label>
+                    <input
+                      type="number"
+                      value={editPaymentData.other_payment_amount}
+                      onChange={(e) => setEditPaymentData({ ...editPaymentData, other_payment_amount: Number(e.target.value) })}
+                      style={styles.input}
+                      min="0"
+                    />
+                  </div>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>その他支払方法</label>
+                    <input
+                      type="text"
+                      value={editPaymentData.other_payment_method}
+                      onChange={(e) => setEditPaymentData({ ...editPaymentData, other_payment_method: e.target.value })}
+                      style={styles.input}
+                      placeholder="例: PayPay"
+                    />
+                  </div>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>お釣り</label>
+                    <input
+                      type="number"
+                      value={editPaymentData.change_amount}
+                      onChange={(e) => setEditPaymentData({ ...editPaymentData, change_amount: Number(e.target.value) })}
+                      style={styles.input}
+                      min="0"
+                    />
                   </div>
                 </div>
-              )}
+              </div>
             </div>
 
             <div style={styles.modalFooter}>
@@ -1278,6 +1349,11 @@ const styles: { [key: string]: React.CSSProperties } = {
     borderRadius: '8px',
   },
   paymentGrid: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: '15px',
+  },
+  paymentEditGrid: {
     display: 'grid',
     gridTemplateColumns: '1fr 1fr',
     gap: '15px',
