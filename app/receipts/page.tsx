@@ -741,43 +741,54 @@ export default function ReceiptsPage() {
 
             <div style={styles.modalBody}>
               <div style={styles.formGroup}>
-                <label style={styles.label}>商品名</label>
+                <label style={styles.label}>カテゴリー</label>
                 <select
-                  value={editingItemData.product_name}
+                  value={editingItemData.category}
                   onChange={(e) => {
-                    const product = products.find(p => p.name === e.target.value)
-                    const category = categories.find(c => c.id === product?.category_id)
                     setEditingItemData({
                       ...editingItemData,
-                      product_name: e.target.value,
-                      category: category?.name || '',
-                      unit_price: product?.price || editingItemData.unit_price
+                      category: e.target.value,
+                      product_name: '' // カテゴリー変更時に商品選択をリセット
                     })
                   }}
                   style={styles.input}
                 >
-                  <option value="">選択してください</option>
-                  {products.map((product) => (
-                    <option key={product.id} value={product.name}>
-                      {product.name}
+                  <option value="">すべて</option>
+                  {categories.map((category) => (
+                    <option key={category.id} value={category.name}>
+                      {category.name}
                     </option>
                   ))}
                 </select>
               </div>
 
               <div style={styles.formGroup}>
-                <label style={styles.label}>カテゴリー</label>
+                <label style={styles.label}>商品名</label>
                 <select
-                  value={editingItemData.category}
-                  onChange={(e) => setEditingItemData({ ...editingItemData, category: e.target.value })}
+                  value={editingItemData.product_name}
+                  onChange={(e) => {
+                    const product = products.find(p => p.name === e.target.value)
+                    setEditingItemData({
+                      ...editingItemData,
+                      product_name: e.target.value,
+                      unit_price: product?.price || editingItemData.unit_price
+                    })
+                  }}
                   style={styles.input}
                 >
-                  <option value="">なし</option>
-                  {categories.map((category) => (
-                    <option key={category.id} value={category.name}>
-                      {category.name}
-                    </option>
-                  ))}
+                  <option value="">選択してください</option>
+                  {products
+                    .filter(product => {
+                      // カテゴリーが選択されている場合はフィルタリング
+                      if (!editingItemData.category) return true
+                      const category = categories.find(c => c.name === editingItemData.category)
+                      return product.category_id === category?.id
+                    })
+                    .map((product) => (
+                      <option key={product.id} value={product.name}>
+                        {product.name}
+                      </option>
+                    ))}
                 </select>
               </div>
 
@@ -860,43 +871,54 @@ export default function ReceiptsPage() {
 
             <div style={styles.modalBody}>
               <div style={styles.formGroup}>
-                <label style={styles.label}>商品名</label>
+                <label style={styles.label}>カテゴリー</label>
                 <select
-                  value={newItemData.product_name}
+                  value={newItemData.category}
                   onChange={(e) => {
-                    const product = products.find(p => p.name === e.target.value)
-                    const category = categories.find(c => c.id === product?.category_id)
                     setNewItemData({
                       ...newItemData,
-                      product_name: e.target.value,
-                      category: category?.name || '',
-                      unit_price: product?.price || newItemData.unit_price
+                      category: e.target.value,
+                      product_name: '' // カテゴリー変更時に商品選択をリセット
                     })
                   }}
                   style={styles.input}
                 >
-                  <option value="">選択してください</option>
-                  {products.map((product) => (
-                    <option key={product.id} value={product.name}>
-                      {product.name}
+                  <option value="">すべて</option>
+                  {categories.map((category) => (
+                    <option key={category.id} value={category.name}>
+                      {category.name}
                     </option>
                   ))}
                 </select>
               </div>
 
               <div style={styles.formGroup}>
-                <label style={styles.label}>カテゴリー</label>
+                <label style={styles.label}>商品名</label>
                 <select
-                  value={newItemData.category}
-                  onChange={(e) => setNewItemData({ ...newItemData, category: e.target.value })}
+                  value={newItemData.product_name}
+                  onChange={(e) => {
+                    const product = products.find(p => p.name === e.target.value)
+                    setNewItemData({
+                      ...newItemData,
+                      product_name: e.target.value,
+                      unit_price: product?.price || newItemData.unit_price
+                    })
+                  }}
                   style={styles.input}
                 >
-                  <option value="">なし</option>
-                  {categories.map((category) => (
-                    <option key={category.id} value={category.name}>
-                      {category.name}
-                    </option>
-                  ))}
+                  <option value="">選択してください</option>
+                  {products
+                    .filter(product => {
+                      // カテゴリーが選択されている場合はフィルタリング
+                      if (!newItemData.category) return true
+                      const category = categories.find(c => c.name === newItemData.category)
+                      return product.category_id === category?.id
+                    })
+                    .map((product) => (
+                      <option key={product.id} value={product.name}>
+                        {product.name}
+                      </option>
+                    ))}
                 </select>
               </div>
 
