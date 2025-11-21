@@ -179,10 +179,13 @@ export default function ReceiptsPage() {
 
   const loadReceiptDetails = async (receipt: Receipt) => {
     try {
-      // Load order items and payment details in parallel for better performance
+      // Load order items, payment details, products, categories, and casts for this receipt's store in parallel
       const [
         { data: itemsData, error: itemsError },
-        { data: paymentData, error: paymentError }
+        { data: paymentData, error: paymentError },
+        { data: productsData, error: productsError },
+        { data: categoriesData, error: categoriesError },
+        { data: castsData, error: castsError }
       ] = await Promise.all([
         supabase
           .from('order_items')
@@ -192,7 +195,24 @@ export default function ReceiptsPage() {
           .from('payments')
           .select('*')
           .eq('order_id', receipt.id)
-          .single()
+          .single(),
+        supabase
+          .from('products')
+          .select('*')
+          .eq('store_id', receipt.store_id)
+          .order('name'),
+        supabase
+          .from('product_categories')
+          .select('*')
+          .eq('store_id', receipt.store_id)
+          .order('name'),
+        supabase
+          .from('casts')
+          .select('*')
+          .eq('store_id', receipt.store_id)
+          .eq('is_active', true)
+          .eq('show_in_pos', true)
+          .order('name')
       ])
 
       if (itemsError) throw itemsError
@@ -200,6 +220,23 @@ export default function ReceiptsPage() {
       if (paymentError && paymentError.code !== 'PGRST116') {
         console.error('Payment error:', paymentError)
       }
+
+      if (productsError) {
+        console.error('Products error:', productsError)
+      }
+
+      if (categoriesError) {
+        console.error('Categories error:', categoriesError)
+      }
+
+      if (castsError) {
+        console.error('Casts error:', castsError)
+      }
+
+      // Update master data state with the receipt's store data
+      setProducts(productsData || [])
+      setCategories(categoriesData || [])
+      setCasts(castsData || [])
 
       const receiptWithDetails: ReceiptWithDetails = {
         ...receipt,
