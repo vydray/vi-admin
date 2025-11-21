@@ -153,12 +153,13 @@ export default function ReceiptsPage() {
         .eq('store_id', selectedStore)
         .order('name')
 
-      // キャストマスタを取得
+      // キャストマスタを取得（POS表示がオンの子のみ）
       const { data: castsData } = await supabase
         .from('casts')
         .select('*')
         .eq('store_id', selectedStore)
         .eq('is_active', true)
+        .eq('show_in_pos', true)
         .order('name')
 
       setProducts(productsData || [])
@@ -171,20 +172,23 @@ export default function ReceiptsPage() {
 
   const loadReceiptDetails = async (receipt: Receipt) => {
     try {
-      // Load order items
-      const { data: itemsData, error: itemsError } = await supabase
-        .from('order_items')
-        .select('*')
-        .eq('order_id', receipt.id)
+      // Load order items and payment details in parallel for better performance
+      const [
+        { data: itemsData, error: itemsError },
+        { data: paymentData, error: paymentError }
+      ] = await Promise.all([
+        supabase
+          .from('order_items')
+          .select('*')
+          .eq('order_id', receipt.id),
+        supabase
+          .from('payments')
+          .select('*')
+          .eq('order_id', receipt.id)
+          .single()
+      ])
 
       if (itemsError) throw itemsError
-
-      // Load payment details
-      const { data: paymentData, error: paymentError } = await supabase
-        .from('payments')
-        .select('*')
-        .eq('order_id', receipt.id)
-        .single()
 
       if (paymentError && paymentError.code !== 'PGRST116') {
         console.error('Payment error:', paymentError)
@@ -606,6 +610,12 @@ export default function ReceiptsPage() {
                   style={styles.input}
                 >
                   <option value="">なし</option>
+                  {/* 既存データのキャストがPOS表示オフの場合も表示 */}
+                  {editFormData.staff_name && !casts.find(c => c.name === editFormData.staff_name) && (
+                    <option value={editFormData.staff_name}>
+                      {editFormData.staff_name} (POS表示オフ)
+                    </option>
+                  )}
                   {casts.map((cast) => (
                     <option key={cast.id} value={cast.name}>
                       {cast.name}
@@ -806,6 +816,12 @@ export default function ReceiptsPage() {
                   style={styles.input}
                 >
                   <option value="">なし</option>
+                  {/* 既存データのキャストがPOS表示オフの場合も表示 */}
+                  {editingItemData.cast_name && !casts.find(c => c.name === editingItemData.cast_name) && (
+                    <option value={editingItemData.cast_name}>
+                      {editingItemData.cast_name} (POS表示オフ)
+                    </option>
+                  )}
                   {casts.map((cast) => (
                     <option key={cast.id} value={cast.name}>
                       {cast.name}
