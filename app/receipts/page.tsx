@@ -527,7 +527,7 @@ export default function ReceiptsPage() {
               <th style={styles.th}>会計日時</th>
               <th style={styles.th}>テーブル</th>
               <th style={styles.th}>お客様名</th>
-              <th style={styles.th}>担当スタッフ</th>
+              <th style={styles.th}>推し</th>
               <th style={styles.th}>支払方法</th>
               <th style={styles.th}>小計</th>
               <th style={styles.th}>合計（税込）</th>
@@ -599,13 +599,19 @@ export default function ReceiptsPage() {
               </div>
 
               <div style={styles.formGroup}>
-                <label style={styles.label}>担当スタッフ名</label>
-                <input
-                  type="text"
+                <label style={styles.label}>推し</label>
+                <select
                   value={editFormData.staff_name}
                   onChange={(e) => setEditFormData({ ...editFormData, staff_name: e.target.value })}
                   style={styles.input}
-                />
+                >
+                  <option value="">なし</option>
+                  {casts.map((cast) => (
+                    <option key={cast.id} value={cast.name}>
+                      {cast.name}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div style={styles.formGroup}>
