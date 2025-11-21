@@ -71,6 +71,14 @@ export default function ReceiptsPage() {
     quantity: 1,
     unit_price: 0
   })
+  const [isAddItemModalOpen, setIsAddItemModalOpen] = useState(false)
+  const [newItemData, setNewItemData] = useState({
+    product_name: '',
+    category: '',
+    cast_name: '',
+    quantity: 1,
+    unit_price: 0
+  })
   const [products, setProducts] = useState<any[]>([])
   const [categories, setCategories] = useState<any[]>([])
   const [casts, setCasts] = useState<any[]>([])
@@ -328,6 +336,68 @@ export default function ReceiptsPage() {
     } catch (error) {
       console.error('Error deleting order item:', error)
       alert('注文明細の削除に失敗しました')
+    }
+  }
+
+  // 注文明細追加モーダルを開く
+  const openAddItemModal = () => {
+    setNewItemData({
+      product_name: '',
+      category: '',
+      cast_name: '',
+      quantity: 1,
+      unit_price: 0
+    })
+    setIsAddItemModalOpen(true)
+  }
+
+  // 注文明細追加をキャンセル
+  const cancelAddItem = () => {
+    setIsAddItemModalOpen(false)
+    setNewItemData({
+      product_name: '',
+      category: '',
+      cast_name: '',
+      quantity: 1,
+      unit_price: 0
+    })
+  }
+
+  // 注文明細を追加
+  const addOrderItem = async () => {
+    if (!selectedReceipt) return
+    if (!newItemData.product_name) {
+      alert('商品名を選択してください')
+      return
+    }
+
+    try {
+      const { error } = await supabase
+        .from('order_items')
+        .insert({
+          order_id: selectedReceipt.id,
+          product_name: newItemData.product_name,
+          category: newItemData.category || null,
+          cast_name: newItemData.cast_name || null,
+          quantity: newItemData.quantity,
+          unit_price: newItemData.unit_price,
+          unit_price_excl_tax: Math.round(newItemData.unit_price / 1.1), // 税抜き価格（仮で10%）
+          tax_amount: newItemData.unit_price - Math.round(newItemData.unit_price / 1.1), // 税額
+          subtotal: newItemData.unit_price * newItemData.quantity,
+          pack_number: 0,
+          store_id: selectedReceipt.store_id
+        })
+
+      if (error) throw error
+
+      alert('注文明細を追加しました')
+      cancelAddItem()
+
+      // 詳細を再読み込み
+      loadReceiptDetails(selectedReceipt)
+    } catch (error) {
+      console.error('Error adding order item:', error)
+      alert('注文明細の追加に失敗しました')
     }
   }
 
@@ -600,6 +670,12 @@ export default function ReceiptsPage() {
                       ))}
                     </tbody>
                   </table>
+                  <button
+                    onClick={openAddItemModal}
+                    style={styles.addItemButton}
+                  >
+                    + 注文明細を追加
+                  </button>
                 </div>
               )}
 
@@ -769,6 +845,114 @@ export default function ReceiptsPage() {
                   保存
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Item Modal */}
+      {isAddItemModalOpen && selectedReceipt && (
+        <div style={styles.modalOverlay} onClick={cancelAddItem}>
+          <div style={styles.itemModal} onClick={(e) => e.stopPropagation()}>
+            <div style={styles.modalHeader}>
+              <h2 style={styles.modalTitle}>注文明細を追加</h2>
+            </div>
+
+            <div style={styles.modalBody}>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>商品名</label>
+                <select
+                  value={newItemData.product_name}
+                  onChange={(e) => {
+                    const product = products.find(p => p.name === e.target.value)
+                    const category = categories.find(c => c.id === product?.category_id)
+                    setNewItemData({
+                      ...newItemData,
+                      product_name: e.target.value,
+                      category: category?.name || '',
+                      unit_price: product?.price || newItemData.unit_price
+                    })
+                  }}
+                  style={styles.input}
+                >
+                  <option value="">選択してください</option>
+                  {products.map((product) => (
+                    <option key={product.id} value={product.name}>
+                      {product.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.label}>カテゴリー</label>
+                <select
+                  value={newItemData.category}
+                  onChange={(e) => setNewItemData({ ...newItemData, category: e.target.value })}
+                  style={styles.input}
+                >
+                  <option value="">なし</option>
+                  {categories.map((category) => (
+                    <option key={category.id} value={category.name}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.label}>キャスト名</label>
+                <select
+                  value={newItemData.cast_name}
+                  onChange={(e) => setNewItemData({ ...newItemData, cast_name: e.target.value })}
+                  style={styles.input}
+                >
+                  <option value="">なし</option>
+                  {casts.map((cast) => (
+                    <option key={cast.id} value={cast.name}>
+                      {cast.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.label}>数量</label>
+                <input
+                  type="number"
+                  value={newItemData.quantity}
+                  onChange={(e) => setNewItemData({ ...newItemData, quantity: Number(e.target.value) })}
+                  style={styles.input}
+                  min="1"
+                />
+              </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.label}>単価</label>
+                <input
+                  type="number"
+                  value={newItemData.unit_price}
+                  onChange={(e) => setNewItemData({ ...newItemData, unit_price: Number(e.target.value) })}
+                  style={styles.input}
+                  min="0"
+                />
+              </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.label}>合計</label>
+                <div style={styles.totalDisplay}>
+                  {formatCurrency(newItemData.unit_price * newItemData.quantity)}
+                </div>
+              </div>
+            </div>
+
+            <div style={styles.modalFooter}>
+              <button onClick={cancelAddItem} style={styles.cancelButton}>
+                キャンセル
+              </button>
+              <button onClick={addOrderItem} style={styles.saveButton}>
+                追加
+              </button>
             </div>
           </div>
         </div>
@@ -1133,5 +1317,16 @@ const styles: { [key: string]: React.CSSProperties } = {
     backgroundColor: '#f8f9fa',
     borderRadius: '6px',
     border: '1px solid #e9ecef',
+  },
+  addItemButton: {
+    marginTop: '15px',
+    padding: '10px 20px',
+    fontSize: '14px',
+    backgroundColor: '#007bff',
+    color: 'white',
+    border: 'none',
+    borderRadius: '6px',
+    cursor: 'pointer',
+    width: '100%',
   },
 }
