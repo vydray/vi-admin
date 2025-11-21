@@ -343,6 +343,81 @@ export default function ReceiptsPage() {
     }
   }
 
+  const duplicateReceipt = async () => {
+    if (!selectedReceipt) return
+    if (!confirm('この伝票を複製してもよろしいですか？')) return
+
+    try {
+      const now = new Date().toISOString()
+
+      // 新しい注文を作成
+      const { data: newOrder, error: orderError } = await supabase
+        .from('orders')
+        .insert({
+          store_id: selectedReceipt.store_id,
+          table_number: selectedReceipt.table_number,
+          guest_name: selectedReceipt.guest_name,
+          staff_name: selectedReceipt.staff_name,
+          total_amount: selectedReceipt.total_amount,
+          total_incl_tax: selectedReceipt.total_incl_tax,
+          payment_method: selectedReceipt.payment_method,
+          order_date: now,
+          checkout_datetime: now
+        })
+        .select()
+        .single()
+
+      if (orderError) throw orderError
+
+      // 注文明細をコピー
+      if (selectedReceipt.order_items && selectedReceipt.order_items.length > 0) {
+        const newItems = selectedReceipt.order_items.map(item => ({
+          order_id: newOrder.id,
+          product_name: item.product_name,
+          category: item.category,
+          cast_name: item.cast_name,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          unit_price_excl_tax: Math.round(item.unit_price / 1.1),
+          tax_amount: item.unit_price - Math.round(item.unit_price / 1.1),
+          subtotal: item.unit_price * item.quantity,
+          pack_number: 0,
+          store_id: selectedReceipt.store_id
+        }))
+
+        const { error: itemsError } = await supabase
+          .from('order_items')
+          .insert(newItems)
+
+        if (itemsError) throw itemsError
+      }
+
+      // 支払い情報をコピー
+      if (selectedReceipt.payment) {
+        const { error: paymentError } = await supabase
+          .from('payments')
+          .insert({
+            order_id: newOrder.id,
+            cash_amount: selectedReceipt.payment.cash_amount,
+            credit_card_amount: selectedReceipt.payment.credit_card_amount,
+            other_payment_amount: selectedReceipt.payment.other_payment_amount,
+            other_payment_method: selectedReceipt.payment.other_payment_method,
+            change_amount: selectedReceipt.payment.change_amount,
+            store_id: selectedReceipt.store_id
+          })
+
+        if (paymentError) throw paymentError
+      }
+
+      alert('伝票を複製しました')
+      setIsEditModalOpen(false)
+      loadReceipts()
+    } catch (error) {
+      console.error('Error duplicating receipt:', error)
+      alert('伝票の複製に失敗しました')
+    }
+  }
+
   // 注文明細の編集開始（モーダルを開く）
   const startEditItem = (item: OrderItem) => {
     setEditingItem(item)
@@ -836,12 +911,20 @@ export default function ReceiptsPage() {
             </div>
 
             <div style={styles.modalFooter}>
-              <button
-                onClick={() => deleteReceipt(selectedReceipt.id)}
-                style={styles.deleteButtonModal}
-              >
-                削除
-              </button>
+              <div style={styles.modalFooterLeft}>
+                <button
+                  onClick={() => deleteReceipt(selectedReceipt.id)}
+                  style={styles.deleteButtonModal}
+                >
+                  削除
+                </button>
+                <button
+                  onClick={duplicateReceipt}
+                  style={styles.duplicateButton}
+                >
+                  複製
+                </button>
+              </div>
               <div style={styles.modalFooterRight}>
                 <button onClick={() => setIsEditModalOpen(false)} style={styles.cancelButton}>
                   キャンセル
@@ -1422,6 +1505,10 @@ const styles: { [key: string]: React.CSSProperties } = {
     bottom: 0,
     backgroundColor: 'white',
   },
+  modalFooterLeft: {
+    display: 'flex',
+    gap: '10px',
+  },
   modalFooterRight: {
     display: 'flex',
     gap: '10px',
@@ -1430,6 +1517,15 @@ const styles: { [key: string]: React.CSSProperties } = {
     padding: '10px 20px',
     fontSize: '14px',
     backgroundColor: '#dc3545',
+    color: 'white',
+    border: 'none',
+    borderRadius: '6px',
+    cursor: 'pointer',
+  },
+  duplicateButton: {
+    padding: '10px 20px',
+    fontSize: '14px',
+    backgroundColor: '#17a2b8',
     color: 'white',
     border: 'none',
     borderRadius: '6px',
