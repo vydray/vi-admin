@@ -92,6 +92,7 @@ export default function ReceiptsPage() {
   const [categories, setCategories] = useState<any[]>([])
   const [casts, setCasts] = useState<any[]>([])
   const [cardFeeRate, setCardFeeRate] = useState(0) // カード手数料率（例: 3.6）
+  const [serviceChargeRate, setServiceChargeRate] = useState(0) // サービス料率（例: 15）
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [createFormData, setCreateFormData] = useState({
     table_number: '',
@@ -214,6 +215,10 @@ export default function ReceiptsPage() {
         // card_fee_rateは%で保存されている（例: 3.6）
         const cardFee = Number(settings.find(s => s.setting_key === 'card_fee_rate')?.setting_value || 0)
         setCardFeeRate(cardFee)
+
+        // service_charge_rateは小数で保存されている（例: 0.15 = 15%）
+        const serviceCharge = Number(settings.find(s => s.setting_key === 'service_charge_rate')?.setting_value || 0)
+        setServiceChargeRate(serviceCharge * 100) // パーセント表示用に100倍
       }
     } catch (error) {
       console.error('Error loading system settings:', error)
@@ -396,30 +401,36 @@ export default function ReceiptsPage() {
     if (!selectedReceipt || !selectedReceipt.order_items) return
 
     try {
-      // 注文明細から小計を計算
-      const subtotal = selectedReceipt.order_items.reduce((sum, item) => sum + item.subtotal, 0)
+      // 商品小計を計算
+      const itemsSubtotal = selectedReceipt.order_items.reduce((sum, item) => sum + item.subtotal, 0)
 
-      // カード手数料を計算（残りの支払額 = 小計 - 現金 - その他 に対してカード手数料率を適用）
-      const remainingAmount = subtotal - editPaymentData.cash_amount - editPaymentData.other_payment_amount
+      // サービス料を計算
+      const serviceFee = Math.floor(itemsSubtotal * (serviceChargeRate / 100))
+
+      // サービス料込み小計
+      const subtotalWithService = itemsSubtotal + serviceFee
+
+      // カード手数料を計算（サービス料込み小計 - 現金 - その他 に対してカード手数料率を適用）
+      const remainingAmount = subtotalWithService - editPaymentData.cash_amount - editPaymentData.other_payment_amount
       const cardFee = remainingAmount > 0 && cardFeeRate > 0
         ? Math.floor(remainingAmount * (cardFeeRate / 100))
         : 0
 
-      // 合計 = 小計 + カード手数料
-      const totalWithCardFee = subtotal + cardFee
+      // 最終合計 = サービス料込み小計 + カード手数料
+      const finalTotal = subtotalWithService + cardFee
 
       // 支払い合計
       const totalPaid = editPaymentData.cash_amount + editPaymentData.credit_card_amount + editPaymentData.other_payment_amount
 
       // お釣り
-      const change = totalPaid - totalWithCardFee
+      const change = totalPaid - finalTotal
 
       // 注文情報を更新
       const { error: orderError } = await supabase
         .from('orders')
         .update({
-          total_amount: subtotal,
-          total_incl_tax: totalWithCardFee
+          total_amount: itemsSubtotal,
+          total_incl_tax: finalTotal
         })
         .eq('id', selectedReceipt.id)
 
@@ -443,7 +454,7 @@ export default function ReceiptsPage() {
         if (paymentError) throw paymentError
       }
 
-      alert(`合計を再計算しました\n小計: ${formatCurrency(subtotal)}\nカード手数料 (${cardFeeRate}%): ${formatCurrency(cardFee)}\n合計: ${formatCurrency(totalWithCardFee)}\nお釣り: ${formatCurrency(Math.max(0, change))}`)
+      alert(`合計を再計算しました\n小計: ${formatCurrency(itemsSubtotal)}\nサービス料 (${serviceChargeRate}%): ${formatCurrency(serviceFee)}\n小計（サービス料込）: ${formatCurrency(subtotalWithService)}\nカード手数料 (${cardFeeRate}%): ${formatCurrency(cardFee)}\n合計: ${formatCurrency(finalTotal)}\nお釣り: ${formatCurrency(Math.max(0, change))}`)
 
       // 伝票情報を再読み込み
       loadReceiptDetails(selectedReceipt)
@@ -1117,33 +1128,60 @@ export default function ReceiptsPage() {
 
               {/* Totals Summary */}
               {selectedReceipt.order_items && selectedReceipt.order_items.length > 0 && (() => {
-                const subtotal = selectedReceipt.order_items.reduce((sum, item) => sum + item.subtotal, 0)
-                const remainingAmount = subtotal - editPaymentData.cash_amount - editPaymentData.other_payment_amount
+                // 商品小計
+                const itemsSubtotal = selectedReceipt.order_items.reduce((sum, item) => sum + item.subtotal, 0)
+
+                // サービス料
+                const serviceFee = Math.floor(itemsSubtotal * (serviceChargeRate / 100))
+
+                // サービス料込み小計
+                const subtotalWithService = itemsSubtotal + serviceFee
+
+                // カード手数料（サービス料込み小計 - 現金 - その他）に対して
+                const remainingAmount = subtotalWithService - editPaymentData.cash_amount - editPaymentData.other_payment_amount
                 const cardFee = remainingAmount > 0 && cardFeeRate > 0
                   ? Math.floor(remainingAmount * (cardFeeRate / 100))
                   : 0
-                const total = subtotal + cardFee
+
+                // 最終合計
+                const finalTotal = subtotalWithService + cardFee
 
                 return (
                   <div style={styles.totalsSummarySection}>
                     <div style={styles.summaryRow}>
                       <span style={styles.summaryLabel}>小計</span>
                       <span style={styles.summaryValue}>
-                        {formatCurrency(subtotal)}
+                        {formatCurrency(itemsSubtotal)}
+                      </span>
+                    </div>
+                    {serviceFee > 0 && (
+                      <div style={styles.summaryRow}>
+                        <span style={styles.summaryLabel}>サービス料 {serviceChargeRate}% +</span>
+                        <span style={styles.summaryValue}>
+                          {formatCurrency(serviceFee)}
+                        </span>
+                      </div>
+                    )}
+                    <div style={styles.summaryDivider}></div>
+                    <div style={styles.summaryRow}>
+                      <span style={styles.summaryLabel}>小計（サービス料込）</span>
+                      <span style={styles.summaryValue}>
+                        {formatCurrency(subtotalWithService)}
                       </span>
                     </div>
                     {cardFee > 0 && (
                       <div style={styles.summaryRow}>
-                        <span style={styles.summaryLabel}>カード手数料 ({cardFeeRate}%)</span>
+                        <span style={styles.summaryLabel}>カード手数料 {cardFeeRate}% +</span>
                         <span style={styles.summaryValue}>
                           {formatCurrency(cardFee)}
                         </span>
                       </div>
                     )}
+                    <div style={styles.summaryDivider}></div>
                     <div style={styles.summaryRow}>
-                      <span style={styles.summaryLabelBold}>合計</span>
+                      <span style={styles.summaryLabelBold}>合計金額</span>
                       <span style={styles.summaryValueBold}>
-                        {formatCurrency(total)}
+                        {formatCurrency(finalTotal)}
                       </span>
                     </div>
                   </div>
@@ -2271,7 +2309,11 @@ const styles: { [key: string]: React.CSSProperties } = {
     display: 'flex',
     justifyContent: 'space-between',
     padding: '8px 0',
-    borderBottom: '1px solid #ffe699',
+  },
+  summaryDivider: {
+    height: '1px',
+    backgroundColor: '#ffc107',
+    margin: '10px 0',
   },
   summaryLabel: {
     fontSize: '14px',
