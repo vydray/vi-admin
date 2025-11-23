@@ -106,7 +106,8 @@ export default function Home() {
         '商品名',
         'キャスト名',
         '個数',
-        '単位',
+        '個別価格',
+        '消費税前金額',
         '合計'
       ]
 
@@ -123,6 +124,9 @@ export default function Home() {
 
         const items = order.order_items || []
 
+        // 商品合計（サービス料・消費税が足される前の金額）
+        const itemsTotal = items.reduce((sum: number, item: any) => sum + (item.subtotal || 0), 0)
+
         // 1行目：伝票ヘッダー（伝票情報のみ、明細は空欄）
         rows.push([
           order.receipt_number || '',
@@ -132,10 +136,11 @@ export default function Home() {
           String(cashAmount),
           String(cardAmount),
           String(otherAmount),
-          String(order.subtotal_excl_tax || 0),
+          String(itemsTotal), // 商品合計（サービス料・消費税前）
           String(order.total_incl_tax || 0),
           order.staff_name || '', // 推し
           '', // カテゴリー以降は空欄
+          '',
           '',
           '',
           '',
@@ -160,7 +165,8 @@ export default function Home() {
             item.product_name || '',
             item.cast_name || '',
             String(item.quantity || 0),
-            String(item.unit_price || 0),
+            String(item.unit_price || 0), // 個別価格（税込単価）
+            String(item.unit_price_excl_tax || 0), // 消費税前金額（税抜単価）
             String(item.subtotal || 0)
           ])
         })
