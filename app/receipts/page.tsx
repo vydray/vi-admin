@@ -30,7 +30,10 @@ interface Receipt {
   table_number: string
   guest_name: string | null
   staff_name: string | null
-  total_amount: number
+  subtotal_excl_tax: number
+  tax_amount: number
+  service_charge: number
+  rounding_adjustment: number
   total_incl_tax: number
   order_date: string
   checkout_datetime: string
@@ -666,6 +669,13 @@ export default function ReceiptsPage() {
 
         const validItems = createItems.filter(item => item.product_name)
 
+        // 税抜き小計を計算（消費税10%として）
+        const subtotalExclTax = Math.round(itemsSubtotal / 1.1)
+        const taxAmount = itemsSubtotal - subtotalExclTax
+
+        // 端数調整額を計算
+        const roundingAdjustment = finalTotal - (itemsSubtotal + serviceFee + cardFee)
+
         // 新しい注文を作成
         const { data: newOrder, error: orderError } = await supabase
           .from('orders')
@@ -674,7 +684,10 @@ export default function ReceiptsPage() {
             table_number: createFormData.table_number,
             guest_name: createFormData.guest_name || null,
             staff_name: createFormData.staff_name || null,
-            total_amount: itemsSubtotal,
+            subtotal_excl_tax: subtotalExclTax,
+            tax_amount: taxAmount,
+            service_charge: serviceFee,
+            rounding_adjustment: roundingAdjustment,
             total_incl_tax: finalTotal,
             order_date: new Date(createFormData.order_date).toISOString(),
             checkout_datetime: new Date(createFormData.checkout_datetime).toISOString()
@@ -737,6 +750,21 @@ export default function ReceiptsPage() {
     try {
       const now = new Date().toISOString()
 
+      // 注文明細から合計金額を計算
+      const itemsSubtotal = selectedReceipt.order_items?.reduce((sum, item) => sum + item.subtotal, 0) || 0
+
+      // 税抜き小計を計算（消費税10%として）
+      const subtotalExclTax = Math.round(itemsSubtotal / 1.1)
+      const taxAmount = itemsSubtotal - subtotalExclTax
+
+      // サービス料を計算
+      const serviceFee = Math.floor(itemsSubtotal * (serviceChargeRate / 100))
+      const subtotalBeforeRounding = itemsSubtotal + serviceFee
+      const totalInclTax = getRoundedTotal(subtotalBeforeRounding, roundingUnit, roundingMethod)
+
+      // 端数調整額を計算
+      const roundingAdjustment = totalInclTax - subtotalBeforeRounding
+
       // 新しい注文を作成
       const { data: newOrder, error: orderError } = await supabase
         .from('orders')
@@ -745,8 +773,11 @@ export default function ReceiptsPage() {
           table_number: selectedReceipt.table_number,
           guest_name: selectedReceipt.guest_name,
           staff_name: selectedReceipt.staff_name,
-          total_amount: selectedReceipt.total_amount,
-          total_incl_tax: selectedReceipt.total_incl_tax,
+          subtotal_excl_tax: subtotalExclTax,
+          tax_amount: taxAmount,
+          service_charge: serviceFee,
+          rounding_adjustment: roundingAdjustment,
+          total_incl_tax: totalInclTax,
           order_date: now,
           checkout_datetime: now
         })
@@ -853,9 +884,17 @@ export default function ReceiptsPage() {
     try {
       // 合計金額を計算（支払い情報なし）
       const itemsSubtotal = validItems.reduce((sum, item) => sum + (item.unit_price * item.quantity), 0)
+
+      // 税抜き小計を計算（消費税10%として）
+      const subtotalExclTax = Math.round(itemsSubtotal / 1.1)
+      const taxAmount = itemsSubtotal - subtotalExclTax
+
       const serviceFee = Math.floor(itemsSubtotal * (serviceChargeRate / 100))
       const subtotalBeforeRounding = itemsSubtotal + serviceFee
       const totalInclTax = getRoundedTotal(subtotalBeforeRounding, roundingUnit, roundingMethod)
+
+      // 端数調整額を計算
+      const roundingAdjustment = totalInclTax - subtotalBeforeRounding
 
       // 新しい注文を作成
       const { data: newOrder, error: orderError } = await supabase
@@ -865,7 +904,10 @@ export default function ReceiptsPage() {
           table_number: createFormData.table_number,
           guest_name: createFormData.guest_name || null,
           staff_name: createFormData.staff_name || null,
-          total_amount: itemsSubtotal,
+          subtotal_excl_tax: subtotalExclTax,
+          tax_amount: taxAmount,
+          service_charge: serviceFee,
+          rounding_adjustment: roundingAdjustment,
           total_incl_tax: totalInclTax,
           order_date: new Date(createFormData.order_date).toISOString(),
           checkout_datetime: new Date(createFormData.checkout_datetime).toISOString()
@@ -1256,7 +1298,7 @@ export default function ReceiptsPage() {
                   <td style={styles.td}>{receipt.guest_name || '-'}</td>
                   <td style={styles.td}>{receipt.staff_name || '-'}</td>
                   <td style={styles.td}>{receipt.payment_methods || '-'}</td>
-                  <td style={styles.td}>{formatCurrency(receipt.total_amount)}</td>
+                  <td style={styles.td}>{formatCurrency(receipt.subtotal_excl_tax)}</td>
                   <td style={styles.td}>{formatCurrency(receipt.total_incl_tax)}</td>
                 </tr>
               ))
