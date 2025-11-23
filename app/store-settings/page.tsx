@@ -100,6 +100,22 @@ export default function StoreSettingsPage() {
         menu_template: data.menu_template || '',
         logo_url: data.logo_url || ''
       })
+    } else {
+      // データがない場合は空の初期値にリセット
+      setSettings({
+        store_name: '',
+        store_postal_code: '',
+        store_address: '',
+        store_phone: '',
+        store_email: '',
+        business_hours: '',
+        closed_days: '',
+        store_registration_number: '',
+        footer_message: 'またのご来店をお待ちしております',
+        revenue_stamp_threshold: 50000,
+        menu_template: '',
+        logo_url: ''
+      })
     }
 
     // システム設定を取得
@@ -108,7 +124,7 @@ export default function StoreSettingsPage() {
       .select('setting_key, setting_value')
       .eq('store_id', selectedStore)
 
-    if (systemSettingsData) {
+    if (systemSettingsData && systemSettingsData.length > 0) {
       const newSystemSettings: SystemSettings = {
         consumption_tax_rate: 0.10,
         service_charge_rate: 0.15,
@@ -146,6 +162,21 @@ export default function StoreSettingsPage() {
       })
       setSystemSettings(newSystemSettings)
       setDisplaySettings(newDisplaySettings)
+    } else {
+      // データがない場合はデフォルト値にリセット
+      setSystemSettings({
+        consumption_tax_rate: 0.10,
+        service_charge_rate: 0.15,
+        rounding_method: 0,
+        rounding_unit: 100,
+        card_fee_rate: 0,
+        business_day_cutoff_hour: 6
+      })
+      setDisplaySettings({
+        theme: 'light',
+        language: 'ja',
+        date_format: 'YYYY/MM/DD'
+      })
     }
 
     setLoading(false)
