@@ -93,6 +93,14 @@ export default function ReceiptsPage() {
   const [serviceChargeRate, setServiceChargeRate] = useState(0) // サービス料率
   const [roundingUnit, setRoundingUnit] = useState(0) // 端数処理の単位
   const [roundingMethod, setRoundingMethod] = useState(0) // 端数処理の方法（0: 切り上げ, 1: 切り捨て, 2: 四捨五入）
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false) // 会計処理モーダル
+  const [calculatedTotal, setCalculatedTotal] = useState(0) // 計算された合計金額
+  const [tempPaymentData, setTempPaymentData] = useState({
+    cash_amount: 0,
+    credit_card_amount: 0,
+    other_payment_amount: 0
+  })
+  const [activePaymentInput, setActivePaymentInput] = useState<'cash' | 'card' | 'other'>('cash')
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [createFormData, setCreateFormData] = useState({
     table_number: '',
@@ -417,7 +425,58 @@ export default function ReceiptsPage() {
     }
   }
 
-  const calculateReceiptTotals = async () => {
+  const calculateReceiptTotals = () => {
+    if (!selectedReceipt || !selectedReceipt.order_items) return
+
+    // 商品小計を計算
+    const itemsSubtotal = selectedReceipt.order_items.reduce((sum, item) => sum + item.subtotal, 0)
+
+    // サービス料を計算
+    const serviceFee = Math.floor(itemsSubtotal * (serviceChargeRate / 100))
+
+    // サービス料込み小計
+    const subtotalBeforeRounding = itemsSubtotal + serviceFee
+
+    // 端数処理を適用
+    const roundedSubtotal = getRoundedTotal(subtotalBeforeRounding, roundingUnit, roundingMethod)
+
+    // 初期状態の合計を設定（カード手数料なし）
+    setCalculatedTotal(roundedSubtotal)
+    setTempPaymentData({
+      cash_amount: 0,
+      credit_card_amount: 0,
+      other_payment_amount: 0
+    })
+    setActivePaymentInput('cash')
+    setIsPaymentModalOpen(true)
+  }
+
+  const handlePaymentNumberClick = (num: string) => {
+    const field = activePaymentInput === 'cash' ? 'cash_amount' : activePaymentInput === 'card' ? 'credit_card_amount' : 'other_payment_amount'
+    const currentValue = tempPaymentData[field]
+    const newValue = currentValue * 10 + parseInt(num)
+    setTempPaymentData({ ...tempPaymentData, [field]: newValue })
+  }
+
+  const handlePaymentClear = () => {
+    const field = activePaymentInput === 'cash' ? 'cash_amount' : activePaymentInput === 'card' ? 'credit_card_amount' : 'other_payment_amount'
+    setTempPaymentData({ ...tempPaymentData, [field]: 0 })
+  }
+
+  const handlePaymentDelete = () => {
+    const field = activePaymentInput === 'cash' ? 'cash_amount' : activePaymentInput === 'card' ? 'credit_card_amount' : 'other_payment_amount'
+    const currentValue = tempPaymentData[field]
+    const newValue = Math.floor(currentValue / 10)
+    setTempPaymentData({ ...tempPaymentData, [field]: newValue })
+  }
+
+  const handleQuickAmount = (amount: number) => {
+    const field = activePaymentInput === 'cash' ? 'cash_amount' : activePaymentInput === 'card' ? 'credit_card_amount' : 'other_payment_amount'
+    const currentValue = tempPaymentData[field]
+    setTempPaymentData({ ...tempPaymentData, [field]: currentValue + amount })
+  }
+
+  const completePayment = async () => {
     if (!selectedReceipt || !selectedReceipt.order_items) return
 
     try {
@@ -433,9 +492,9 @@ export default function ReceiptsPage() {
       // 端数処理を適用
       const roundedSubtotal = getRoundedTotal(subtotalBeforeRounding, roundingUnit, roundingMethod)
 
-      // カード手数料を計算（端数処理後の小計 - 現金 - その他 に対してカード手数料率を適用）
-      const remainingAmount = roundedSubtotal - editPaymentData.cash_amount - editPaymentData.other_payment_amount
-      const cardFee = remainingAmount > 0 && cardFeeRate > 0
+      // カード手数料を計算（カード支払いがある場合のみ）
+      const remainingAmount = roundedSubtotal - tempPaymentData.cash_amount - tempPaymentData.other_payment_amount
+      const cardFee = tempPaymentData.credit_card_amount > 0 && remainingAmount > 0 && cardFeeRate > 0
         ? Math.floor(remainingAmount * (cardFeeRate / 100))
         : 0
 
@@ -444,10 +503,16 @@ export default function ReceiptsPage() {
       const finalTotal = getRoundedTotal(totalBeforeRounding, roundingUnit, roundingMethod)
 
       // 支払い合計
-      const totalPaid = editPaymentData.cash_amount + editPaymentData.credit_card_amount + editPaymentData.other_payment_amount
+      const totalPaid = tempPaymentData.cash_amount + tempPaymentData.credit_card_amount + tempPaymentData.other_payment_amount
 
       // お釣り
       const change = totalPaid - finalTotal
+
+      // 支払い不足のチェック
+      if (totalPaid < finalTotal) {
+        alert('支払い金額が不足しています')
+        return
+      }
 
       // 注文情報を更新
       const { error: orderError } = await supabase
@@ -459,34 +524,40 @@ export default function ReceiptsPage() {
 
       if (orderError) throw orderError
 
-      // お釣りを更新
-      setEditPaymentData({
-        ...editPaymentData,
-        change_amount: Math.max(0, change)
-      })
-
-      // 支払い情報も更新
+      // 支払い情報を更新
       if (selectedReceipt.payment) {
         const { error: paymentError } = await supabase
           .from('payments')
           .update({
+            cash_amount: tempPaymentData.cash_amount,
+            credit_card_amount: tempPaymentData.credit_card_amount,
+            other_payment_amount: tempPaymentData.other_payment_amount,
             change_amount: Math.max(0, change)
           })
           .eq('order_id', selectedReceipt.id)
 
         if (paymentError) throw paymentError
+      } else {
+        const { error: paymentError } = await supabase
+          .from('payments')
+          .insert({
+            order_id: selectedReceipt.id,
+            cash_amount: tempPaymentData.cash_amount,
+            credit_card_amount: tempPaymentData.credit_card_amount,
+            other_payment_amount: tempPaymentData.other_payment_amount,
+            change_amount: Math.max(0, change),
+            store_id: selectedReceipt.store_id
+          })
+
+        if (paymentError) throw paymentError
       }
 
-      const roundingAdjustment1 = roundedSubtotal - subtotalBeforeRounding
-      const roundingAdjustment2 = finalTotal - totalBeforeRounding
-
-      alert(`合計を再計算しました\n小計: ${formatCurrency(itemsSubtotal)}\nサービス料 (${serviceChargeRate}%): ${formatCurrency(serviceFee)}\n端数調整: ${formatCurrency(roundingAdjustment1)}\n小計（端数処理後）: ${formatCurrency(roundedSubtotal)}\nカード手数料 (${cardFeeRate}%): ${formatCurrency(cardFee)}\n端数調整: ${formatCurrency(roundingAdjustment2)}\n合計: ${formatCurrency(finalTotal)}\nお釣り: ${formatCurrency(Math.max(0, change))}`)
-
-      // 伝票情報を再読み込み
+      alert('会計処理が完了しました')
+      setIsPaymentModalOpen(false)
       loadReceiptDetails(selectedReceipt)
     } catch (error) {
-      console.error('Error calculating totals:', error)
-      alert('合計の計算に失敗しました')
+      console.error('Error completing payment:', error)
+      alert('会計処理に失敗しました')
     }
   }
 
@@ -1164,9 +1235,9 @@ export default function ReceiptsPage() {
                 const roundedSubtotal = getRoundedTotal(subtotalBeforeRounding, roundingUnit, roundingMethod)
                 const roundingAdjustment1 = roundedSubtotal - subtotalBeforeRounding
 
-                // カード手数料（端数処理後の小計 - 現金 - その他）に対して
+                // カード手数料（カード支払いがある場合のみ計算）
                 const remainingAmount = roundedSubtotal - editPaymentData.cash_amount - editPaymentData.other_payment_amount
-                const cardFee = remainingAmount > 0 && cardFeeRate > 0
+                const cardFee = editPaymentData.credit_card_amount > 0 && remainingAmount > 0 && cardFeeRate > 0
                   ? Math.floor(remainingAmount * (cardFeeRate / 100))
                   : 0
 
@@ -1235,7 +1306,7 @@ export default function ReceiptsPage() {
                 )
               })()}
 
-              {/* Payment Details Edit */}
+              {/* Payment Details Display (Read-only) */}
               <div style={styles.paymentSection}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
                   <h3 style={{ ...styles.sectionTitle, marginBottom: 0 }}>支払情報</h3>
@@ -1249,44 +1320,31 @@ export default function ReceiptsPage() {
                 <div style={styles.paymentEditGrid}>
                   <div style={styles.formGroup}>
                     <label style={styles.label}>現金</label>
-                    <input
-                      type="number"
-                      value={editPaymentData.cash_amount}
-                      onChange={(e) => setEditPaymentData({ ...editPaymentData, cash_amount: Number(e.target.value) })}
-                      style={styles.input}
-                      min="0"
-                    />
+                    <div style={styles.totalDisplay}>
+                      {formatCurrency(editPaymentData.cash_amount)}
+                    </div>
                   </div>
                   <div style={styles.formGroup}>
                     <label style={styles.label}>クレジットカード</label>
-                    <input
-                      type="number"
-                      value={editPaymentData.credit_card_amount}
-                      onChange={(e) => setEditPaymentData({ ...editPaymentData, credit_card_amount: Number(e.target.value) })}
-                      style={styles.input}
-                      min="0"
-                    />
+                    <div style={styles.totalDisplay}>
+                      {formatCurrency(editPaymentData.credit_card_amount)}
+                    </div>
                   </div>
                   <div style={styles.formGroup}>
                     <label style={styles.label}>その他金額</label>
-                    <input
-                      type="number"
-                      value={editPaymentData.other_payment_amount}
-                      onChange={(e) => setEditPaymentData({ ...editPaymentData, other_payment_amount: Number(e.target.value) })}
-                      style={styles.input}
-                      min="0"
-                    />
+                    <div style={styles.totalDisplay}>
+                      {formatCurrency(editPaymentData.other_payment_amount)}
+                    </div>
                   </div>
                   <div style={styles.formGroup}>
                     <label style={styles.label}>お釣り</label>
-                    <input
-                      type="number"
-                      value={editPaymentData.change_amount}
-                      onChange={(e) => setEditPaymentData({ ...editPaymentData, change_amount: Number(e.target.value) })}
-                      style={styles.input}
-                      min="0"
-                    />
+                    <div style={styles.totalDisplay}>
+                      {formatCurrency(editPaymentData.change_amount)}
+                    </div>
                   </div>
+                </div>
+                <div style={{ fontSize: '13px', color: '#6c757d', marginTop: '10px', fontStyle: 'italic' }}>
+                  ※ 支払い情報を変更するには「合計を計算」ボタンをクリックしてください
                 </div>
               </div>
             </div>
@@ -1632,6 +1690,223 @@ export default function ReceiptsPage() {
           </div>
         </div>
       )}
+
+      {/* Payment Modal */}
+      {isPaymentModalOpen && selectedReceipt && selectedReceipt.order_items && (() => {
+        // 計算ロジック
+        const itemsSubtotal = selectedReceipt.order_items.reduce((sum, item) => sum + item.subtotal, 0)
+        const serviceFee = Math.floor(itemsSubtotal * (serviceChargeRate / 100))
+        const subtotalBeforeRounding = itemsSubtotal + serviceFee
+        const roundedSubtotal = getRoundedTotal(subtotalBeforeRounding, roundingUnit, roundingMethod)
+
+        const remainingAmount = roundedSubtotal - tempPaymentData.cash_amount - tempPaymentData.other_payment_amount
+        const cardFee = tempPaymentData.credit_card_amount > 0 && remainingAmount > 0 && cardFeeRate > 0
+          ? Math.floor(remainingAmount * (cardFeeRate / 100))
+          : 0
+
+        const totalBeforeRounding = roundedSubtotal + cardFee
+        const finalTotal = getRoundedTotal(totalBeforeRounding, roundingUnit, roundingMethod)
+
+        const totalPaid = tempPaymentData.cash_amount + tempPaymentData.credit_card_amount + tempPaymentData.other_payment_amount
+        const change = totalPaid - finalTotal
+
+        return (
+          <div style={styles.modalOverlay} onClick={() => setIsPaymentModalOpen(false)}>
+            <div style={styles.paymentModal} onClick={(e) => e.stopPropagation()}>
+              <div style={styles.modalHeader}>
+                <h2 style={styles.modalTitle}>会計処理 - {selectedReceipt.table_number}</h2>
+                <button onClick={() => setIsPaymentModalOpen(false)} style={styles.closeButton}>×</button>
+              </div>
+
+              <div style={styles.paymentModalBody}>
+                {/* 左側：支払い入力 */}
+                <div style={styles.paymentModalLeft}>
+                  {/* 合計金額表示 */}
+                  <div style={styles.paymentTotalSection}>
+                    <div style={styles.paymentTotalRow}>
+                      <span>小計：</span>
+                      <span>{formatCurrency(roundedSubtotal)}</span>
+                    </div>
+                    {cardFee > 0 && (
+                      <div style={styles.paymentTotalRow}>
+                        <span style={{ color: '#2196F3', fontSize: '14px' }}>
+                          カード手数料 (+{cardFeeRate}%):
+                        </span>
+                        <span style={{ color: '#2196F3', fontSize: '14px' }}>
+                          +{formatCurrency(cardFee)}
+                        </span>
+                      </div>
+                    )}
+                    <div style={styles.paymentTotalDivider}></div>
+                    <div style={styles.paymentTotalFinal}>
+                      <span>合計金額:</span>
+                      <span>{formatCurrency(finalTotal)}</span>
+                    </div>
+                  </div>
+
+                  {/* 支払い方法ボタン */}
+                  <div style={styles.paymentMethodButtons}>
+                    <button
+                      onClick={() => setActivePaymentInput('cash')}
+                      style={{
+                        ...styles.paymentMethodButton,
+                        backgroundColor: activePaymentInput === 'cash' ? '#4CAF50' : '#e0e0e0',
+                        color: activePaymentInput === 'cash' ? 'white' : '#333'
+                      }}
+                    >
+                      現金
+                    </button>
+                    <button
+                      onClick={() => setActivePaymentInput('card')}
+                      style={{
+                        ...styles.paymentMethodButton,
+                        backgroundColor: activePaymentInput === 'card' ? '#2196F3' : '#e0e0e0',
+                        color: activePaymentInput === 'card' ? 'white' : '#333'
+                      }}
+                    >
+                      カード
+                      {cardFeeRate > 0 && (
+                        <span style={{ fontSize: '11px', marginLeft: '4px' }}>
+                          (+{cardFeeRate}%)
+                        </span>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => setActivePaymentInput('other')}
+                      style={{
+                        ...styles.paymentMethodButton,
+                        backgroundColor: activePaymentInput === 'other' ? '#FF9800' : '#e0e0e0',
+                        color: activePaymentInput === 'other' ? 'white' : '#333'
+                      }}
+                    >
+                      その他
+                    </button>
+                  </div>
+
+                  {/* 支払い金額入力 */}
+                  <div style={styles.paymentInputSection}>
+                    <div style={styles.paymentInputRow}>
+                      <label style={styles.paymentInputLabel}>現金</label>
+                      <input
+                        type="text"
+                        value={tempPaymentData.cash_amount ? tempPaymentData.cash_amount.toLocaleString() : '0'}
+                        onClick={() => setActivePaymentInput('cash')}
+                        readOnly
+                        style={{
+                          ...styles.paymentInput,
+                          border: activePaymentInput === 'cash' ? '2px solid #ff9800' : '1px solid #ddd',
+                          backgroundColor: activePaymentInput === 'cash' ? '#fff8e1' : 'white'
+                        }}
+                      />
+                    </div>
+                    <div style={styles.paymentInputRow}>
+                      <label style={styles.paymentInputLabel}>カード</label>
+                      <input
+                        type="text"
+                        value={tempPaymentData.credit_card_amount ? tempPaymentData.credit_card_amount.toLocaleString() : '0'}
+                        onClick={() => setActivePaymentInput('card')}
+                        readOnly
+                        style={{
+                          ...styles.paymentInput,
+                          border: activePaymentInput === 'card' ? '2px solid #ff9800' : '1px solid #ddd',
+                          backgroundColor: activePaymentInput === 'card' ? '#fff8e1' : 'white'
+                        }}
+                      />
+                    </div>
+                    <div style={styles.paymentInputRow}>
+                      <label style={styles.paymentInputLabel}>その他</label>
+                      <input
+                        type="text"
+                        value={tempPaymentData.other_payment_amount ? tempPaymentData.other_payment_amount.toLocaleString() : '0'}
+                        onClick={() => setActivePaymentInput('other')}
+                        readOnly
+                        style={{
+                          ...styles.paymentInput,
+                          border: activePaymentInput === 'other' ? '2px solid #ff9800' : '1px solid #ddd',
+                          backgroundColor: activePaymentInput === 'other' ? '#fff8e1' : 'white'
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* 支払い合計とお釣り */}
+                  <div style={styles.paymentSummary}>
+                    <div style={styles.paymentSummaryRow}>
+                      支払合計: {formatCurrency(totalPaid)}
+                    </div>
+                    {totalPaid >= finalTotal && (
+                      <div style={{ fontSize: '20px', color: '#4CAF50', fontWeight: 'bold' }}>
+                        おつり: {formatCurrency(change)}
+                      </div>
+                    )}
+                    {totalPaid > 0 && totalPaid < finalTotal && (
+                      <div style={{ color: '#f44336', fontSize: '16px' }}>
+                        不足: {formatCurrency(finalTotal - totalPaid)}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* ボタン */}
+                  <div style={styles.paymentModalButtons}>
+                    <button
+                      onClick={completePayment}
+                      disabled={totalPaid < finalTotal}
+                      style={{
+                        ...styles.saveButton,
+                        flex: 1,
+                        opacity: totalPaid < finalTotal ? 0.6 : 1
+                      }}
+                    >
+                      会計完了
+                    </button>
+                    <button
+                      onClick={() => setIsPaymentModalOpen(false)}
+                      style={{ ...styles.cancelButton, flex: 1 }}
+                    >
+                      キャンセル
+                    </button>
+                  </div>
+                </div>
+
+                {/* 右側：数字パッド */}
+                <div style={styles.numberPad}>
+                  <div style={styles.numberPadGrid}>
+                    {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
+                      <button
+                        key={num}
+                        onClick={() => handlePaymentNumberClick(num.toString())}
+                        style={styles.numberButton}
+                      >
+                        {num}
+                      </button>
+                    ))}
+                    <button onClick={handlePaymentClear} style={styles.numberButtonSpecial}>
+                      C
+                    </button>
+                    <button onClick={() => handlePaymentNumberClick('0')} style={styles.numberButton}>
+                      0
+                    </button>
+                    <button onClick={handlePaymentDelete} style={styles.numberButtonSpecial}>
+                      ←
+                    </button>
+                  </div>
+                  <div style={styles.quickAmountButtons}>
+                    {[1000, 5000, 10000].map((amount) => (
+                      <button
+                        key={amount}
+                        onClick={() => handleQuickAmount(amount)}
+                        style={styles.quickAmountButton}
+                      >
+                        +{amount.toLocaleString()}円
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Create New Receipt Modal */}
       {isCreateModalOpen && (
@@ -2360,5 +2635,150 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '16px',
     fontWeight: 'bold',
     color: '#2c3e50',
+  },
+  paymentModal: {
+    backgroundColor: 'white',
+    borderRadius: '12px',
+    width: '95%',
+    maxWidth: '900px',
+    maxHeight: '90vh',
+    overflow: 'hidden',
+    boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+  },
+  paymentModalBody: {
+    display: 'flex',
+    height: 'calc(90vh - 70px)',
+    maxHeight: '700px',
+  },
+  paymentModalLeft: {
+    flex: 1,
+    padding: '30px',
+    overflowY: 'auto' as const,
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '20px',
+  },
+  paymentTotalSection: {
+    padding: '15px',
+    backgroundColor: '#f5f5f5',
+    borderRadius: '8px',
+  },
+  paymentTotalRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    padding: '8px 0',
+    fontSize: '14px',
+  },
+  paymentTotalDivider: {
+    height: '2px',
+    backgroundColor: '#ccc',
+    margin: '10px 0',
+  },
+  paymentTotalFinal: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    fontSize: '24px',
+    fontWeight: 'bold',
+    paddingTop: '10px',
+  },
+  paymentMethodButtons: {
+    display: 'flex',
+    gap: '10px',
+  },
+  paymentMethodButton: {
+    flex: 1,
+    padding: '12px',
+    border: 'none',
+    borderRadius: '6px',
+    fontSize: '14px',
+    cursor: 'pointer',
+    fontWeight: 'bold',
+    transition: 'all 0.2s',
+  },
+  paymentInputSection: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '15px',
+  },
+  paymentInputRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+  },
+  paymentInputLabel: {
+    width: '80px',
+    fontSize: '14px',
+    fontWeight: '600',
+  },
+  paymentInput: {
+    flex: 1,
+    padding: '10px 12px',
+    fontSize: '16px',
+    borderRadius: '6px',
+    cursor: 'pointer',
+    textAlign: 'right' as const,
+  },
+  paymentSummary: {
+    padding: '15px',
+    backgroundColor: '#f0f8ff',
+    borderRadius: '8px',
+    textAlign: 'center' as const,
+  },
+  paymentSummaryRow: {
+    fontSize: '16px',
+    marginBottom: '10px',
+  },
+  paymentModalButtons: {
+    display: 'flex',
+    gap: '10px',
+  },
+  numberPad: {
+    width: '320px',
+    backgroundColor: '#f8f9fa',
+    padding: '20px',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '15px',
+  },
+  numberPadGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, 1fr)',
+    gap: '10px',
+  },
+  numberButton: {
+    padding: '20px',
+    fontSize: '20px',
+    fontWeight: 'bold',
+    backgroundColor: 'white',
+    border: '1px solid #ddd',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+  },
+  numberButtonSpecial: {
+    padding: '20px',
+    fontSize: '18px',
+    fontWeight: 'bold',
+    backgroundColor: '#e9ecef',
+    border: '1px solid #ddd',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+  },
+  quickAmountButtons: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '10px',
+  },
+  quickAmountButton: {
+    padding: '15px',
+    fontSize: '16px',
+    fontWeight: 'bold',
+    backgroundColor: '#ffc107',
+    color: '#000',
+    border: 'none',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    transition: 'all 0.2s',
   },
 }
