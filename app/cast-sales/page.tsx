@@ -23,7 +23,7 @@ interface CastSales {
   total: number
 }
 
-type AggregationType = 'subtotal_only' | 'items_only' | 'both'
+type AggregationType = 'subtotal_only' | 'items_only'
 
 export default function CastSalesPage() {
   const { storeId: globalStoreId } = useStore()
@@ -108,7 +108,7 @@ export default function CastSalesPage() {
     orders.forEach((order: any) => {
       const orderDate = format(new Date(order.order_date), 'yyyy-MM-dd')
 
-      if (aggregationType === 'subtotal_only' || aggregationType === 'both') {
+      if (aggregationType === 'subtotal_only') {
         // 小計のみ: staff_nameで集計
         if (order.staff_name) {
           const cast = casts.find(c => c.name === order.staff_name)
@@ -119,10 +119,8 @@ export default function CastSalesPage() {
             }
           }
         }
-      }
-
-      if (aggregationType === 'items_only' || aggregationType === 'both') {
-        // 商品売上: order_items.cast_nameで集計
+      } else if (aggregationType === 'items_only') {
+        // 商品売上のみ: order_items.cast_nameで集計
         if (order.order_items && Array.isArray(order.order_items)) {
           order.order_items.forEach((item: any) => {
             if (item.cast_name) {
@@ -167,8 +165,6 @@ export default function CastSalesPage() {
         return '小計のみ'
       case 'items_only':
         return '商品売上のみ'
-      case 'both':
-        return '小計+商品売上'
       default:
         return ''
     }
@@ -280,7 +276,6 @@ export default function CastSalesPage() {
             >
               <option value="subtotal_only">小計のみ</option>
               <option value="items_only">商品売上のみ</option>
-              <option value="both">小計+商品売上</option>
             </select>
           </div>
         </div>
@@ -428,7 +423,6 @@ export default function CastSalesPage() {
         <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
           <div>• <strong>小計のみ</strong>: 担当テーブルの小計金額</div>
           <div>• <strong>商品売上のみ</strong>: 商品に紐づいたキャスト売上（指名料、ドリンクバックなど）</div>
-          <div>• <strong>小計+商品売上</strong>: 両方を合算</div>
         </div>
       </div>
     </div>
