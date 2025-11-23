@@ -349,7 +349,7 @@ export default function ReceiptsPage() {
     if (!selectedReceipt) return
 
     try {
-      // 注文情報を更新
+      // 注文情報を更新（基本情報のみ）
       const { error: orderError } = await supabase
         .from('orders')
         .update({
@@ -363,35 +363,7 @@ export default function ReceiptsPage() {
 
       if (orderError) throw orderError
 
-      // 支払い情報を更新（存在する場合は更新、ない場合は作成）
-      if (selectedReceipt.payment) {
-        const { error: paymentError } = await supabase
-          .from('payments')
-          .update({
-            cash_amount: editPaymentData.cash_amount,
-            credit_card_amount: editPaymentData.credit_card_amount,
-            other_payment_amount: editPaymentData.other_payment_amount,
-            change_amount: editPaymentData.change_amount
-          })
-          .eq('order_id', selectedReceipt.id)
-
-        if (paymentError) throw paymentError
-      } else {
-        const { error: paymentError } = await supabase
-          .from('payments')
-          .insert({
-            order_id: selectedReceipt.id,
-            cash_amount: editPaymentData.cash_amount,
-            credit_card_amount: editPaymentData.credit_card_amount,
-            other_payment_amount: editPaymentData.other_payment_amount,
-            change_amount: editPaymentData.change_amount,
-            store_id: selectedReceipt.store_id
-          })
-
-        if (paymentError) throw paymentError
-      }
-
-      alert('伝票を更新しました')
+      alert('伝票の基本情報を更新しました')
       setIsEditModalOpen(false)
       loadReceipts()
     } catch (error) {
