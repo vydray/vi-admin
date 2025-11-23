@@ -12,7 +12,7 @@ interface OrderItem {
   cast_name: string | null
   quantity: number
   unit_price: number
-  total_price: number
+  subtotal: number
 }
 
 interface Payment {
@@ -378,7 +378,7 @@ export default function ReceiptsPage() {
 
     try {
       // 注文明細から合計を計算
-      const totalAmount = selectedReceipt.order_items.reduce((sum, item) => sum + item.total_price, 0)
+      const totalAmount = selectedReceipt.order_items.reduce((sum, item) => sum + item.subtotal, 0)
       const totalInclTax = totalAmount
 
       // カードタックスを計算（クレジットカード決済の場合は3.6%の手数料）
@@ -1067,7 +1067,7 @@ export default function ReceiptsPage() {
                           <td style={styles.itemTd}>{item.cast_name || '-'}</td>
                           <td style={styles.itemTd}>{item.quantity}</td>
                           <td style={styles.itemTd}>{formatCurrency(item.unit_price)}</td>
-                          <td style={styles.itemTd}>{formatCurrency(item.total_price)}</td>
+                          <td style={styles.itemTd}>{formatCurrency(item.subtotal)}</td>
                           <td style={styles.itemTd}>
                             <button
                               onClick={(e) => {
@@ -1092,6 +1092,32 @@ export default function ReceiptsPage() {
                 </div>
               )}
 
+              {/* Totals Summary */}
+              {selectedReceipt.order_items && selectedReceipt.order_items.length > 0 && (
+                <div style={styles.totalsSummarySection}>
+                  <div style={styles.summaryRow}>
+                    <span style={styles.summaryLabel}>小計</span>
+                    <span style={styles.summaryValue}>
+                      {formatCurrency(selectedReceipt.order_items.reduce((sum, item) => sum + item.subtotal, 0))}
+                    </span>
+                  </div>
+                  {editPaymentData.credit_card_amount > 0 && (
+                    <div style={styles.summaryRow}>
+                      <span style={styles.summaryLabel}>カードタックス (3.6%)</span>
+                      <span style={styles.summaryValue}>
+                        {formatCurrency(Math.round(editPaymentData.credit_card_amount * 0.036))}
+                      </span>
+                    </div>
+                  )}
+                  <div style={styles.summaryRow}>
+                    <span style={styles.summaryLabelBold}>合計</span>
+                    <span style={styles.summaryValueBold}>
+                      {formatCurrency(selectedReceipt.order_items.reduce((sum, item) => sum + item.subtotal, 0))}
+                    </span>
+                  </div>
+                </div>
+              )}
+
               {/* Payment Details Edit */}
               <div style={styles.paymentSection}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
@@ -1100,7 +1126,7 @@ export default function ReceiptsPage() {
                     onClick={calculateReceiptTotals}
                     style={styles.calculateButton}
                   >
-                    💰 合計を計算
+                    合計を計算
                   </button>
                 </div>
                 <div style={styles.paymentEditGrid}>
@@ -2201,5 +2227,37 @@ const styles: { [key: string]: React.CSSProperties } = {
     borderRadius: '6px',
     cursor: 'pointer',
     fontWeight: '600',
+  },
+  totalsSummarySection: {
+    marginTop: '20px',
+    padding: '20px',
+    backgroundColor: '#fff9e6',
+    borderRadius: '8px',
+    border: '2px solid #ffc107',
+  },
+  summaryRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    padding: '8px 0',
+    borderBottom: '1px solid #ffe699',
+  },
+  summaryLabel: {
+    fontSize: '14px',
+    color: '#495057',
+  },
+  summaryValue: {
+    fontSize: '14px',
+    fontWeight: '500',
+    color: '#2c3e50',
+  },
+  summaryLabelBold: {
+    fontSize: '16px',
+    fontWeight: 'bold',
+    color: '#2c3e50',
+  },
+  summaryValueBold: {
+    fontSize: '16px',
+    fontWeight: 'bold',
+    color: '#2c3e50',
   },
 }
