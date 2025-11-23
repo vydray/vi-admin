@@ -1171,7 +1171,8 @@ const thStyleNameSticky = {
 }
 
 const tdStyle = {
-  padding: '12px'
+  padding: '12px',
+  whiteSpace: 'nowrap' as const
 }
 
 const tdStyleNameSticky = {
