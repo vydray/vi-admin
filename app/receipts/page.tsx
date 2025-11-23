@@ -54,6 +54,10 @@ export default function ReceiptsPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
+  const [filterStaffName, setFilterStaffName] = useState('')
+  const [filterPaymentMethod, setFilterPaymentMethod] = useState('')
+  const [filterMinAmount, setFilterMinAmount] = useState('')
+  const [filterMaxAmount, setFilterMaxAmount] = useState('')
   const [selectedReceipt, setSelectedReceipt] = useState<ReceiptWithDetails | null>(null)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [editFormData, setEditFormData] = useState({
@@ -1171,7 +1175,21 @@ export default function ReceiptsPage() {
     const matchesStartDate = !startDate || receiptDate >= new Date(startDate)
     const matchesEndDate = !endDate || receiptDate <= new Date(endDate + 'T23:59:59')
 
-    return matchesSearch && matchesStartDate && matchesEndDate
+    // 推しフィルター
+    const matchesStaffName = filterStaffName === '' || receipt.staff_name === filterStaffName
+
+    // 支払方法フィルター
+    const matchesPaymentMethod = filterPaymentMethod === '' ||
+      (receipt.payment_methods && receipt.payment_methods.includes(filterPaymentMethod))
+
+    // 金額範囲フィルター
+    const amount = receipt.total_incl_tax
+    const matchesMinAmount = filterMinAmount === '' || amount >= Number(filterMinAmount)
+    const matchesMaxAmount = filterMaxAmount === '' || amount <= Number(filterMaxAmount)
+
+    return matchesSearch && matchesStartDate && matchesEndDate &&
+           matchesStaffName && matchesPaymentMethod &&
+           matchesMinAmount && matchesMaxAmount
   })
 
   const formatDateTime = (dateString: string) => {
@@ -1266,16 +1284,75 @@ export default function ReceiptsPage() {
               style={styles.dateInput}
             />
           </label>
-          {(searchTerm || startDate || endDate) && (
+        </div>
+
+        {/* 追加フィルター */}
+        <div style={styles.additionalFilters}>
+          <label style={styles.filterLabel}>
+            推し:
+            <select
+              value={filterStaffName}
+              onChange={(e) => setFilterStaffName(e.target.value)}
+              style={styles.filterSelect}
+            >
+              <option value="">全て</option>
+              {Array.from(new Set(receipts.map(r => r.staff_name).filter(Boolean))).map((staffName) => (
+                <option key={staffName} value={staffName || ''}>
+                  {staffName}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label style={styles.filterLabel}>
+            支払方法:
+            <select
+              value={filterPaymentMethod}
+              onChange={(e) => setFilterPaymentMethod(e.target.value)}
+              style={styles.filterSelect}
+            >
+              <option value="">全て</option>
+              <option value="現金">現金</option>
+              <option value="カード">カード</option>
+              <option value="その他">その他</option>
+            </select>
+          </label>
+
+          <label style={styles.filterLabel}>
+            金額範囲:
+            <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
+              <input
+                type="number"
+                placeholder="最小"
+                value={filterMinAmount}
+                onChange={(e) => setFilterMinAmount(e.target.value)}
+                style={styles.amountInput}
+              />
+              <span>〜</span>
+              <input
+                type="number"
+                placeholder="最大"
+                value={filterMaxAmount}
+                onChange={(e) => setFilterMaxAmount(e.target.value)}
+                style={styles.amountInput}
+              />
+            </div>
+          </label>
+
+          {(searchTerm || startDate || endDate || filterStaffName || filterPaymentMethod || filterMinAmount || filterMaxAmount) && (
             <button
               onClick={() => {
                 setSearchTerm('')
                 setStartDate('')
                 setEndDate('')
+                setFilterStaffName('')
+                setFilterPaymentMethod('')
+                setFilterMinAmount('')
+                setFilterMaxAmount('')
               }}
               style={styles.clearButton}
             >
-              フィルタクリア
+              全フィルタクリア
             </button>
           )}
         </div>
@@ -2479,6 +2556,38 @@ const styles: { [key: string]: React.CSSProperties } = {
     border: 'none',
     borderRadius: '6px',
     cursor: 'pointer',
+  },
+  additionalFilters: {
+    display: 'flex',
+    gap: '15px',
+    alignItems: 'flex-end',
+    flexWrap: 'wrap',
+    marginTop: '15px',
+    paddingTop: '15px',
+    borderTop: '1px solid #dee2e6',
+  },
+  filterLabel: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '5px',
+    fontSize: '14px',
+    fontWeight: '500',
+  },
+  filterSelect: {
+    padding: '8px 12px',
+    fontSize: '14px',
+    border: '1px solid #ced4da',
+    borderRadius: '6px',
+    backgroundColor: 'white',
+    cursor: 'pointer',
+    minWidth: '150px',
+  },
+  amountInput: {
+    padding: '8px 12px',
+    fontSize: '14px',
+    border: '1px solid #ced4da',
+    borderRadius: '6px',
+    width: '120px',
   },
   tableContainer: {
     backgroundColor: 'white',
