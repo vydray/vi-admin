@@ -453,7 +453,6 @@ export default function ReceiptsPage() {
       const { error: orderError } = await supabase
         .from('orders')
         .update({
-          total_amount: itemsSubtotal,
           total_incl_tax: finalTotal
         })
         .eq('id', selectedReceipt.id)
