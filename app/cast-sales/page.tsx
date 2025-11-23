@@ -23,6 +23,19 @@ interface CastSales {
   total: number
 }
 
+interface OrderItem {
+  cast_name: string | null
+  subtotal: number
+}
+
+interface Order {
+  id: number
+  staff_name: string | null
+  order_date: string
+  total_incl_tax: number
+  order_items: OrderItem[]
+}
+
 type AggregationType = 'subtotal_only' | 'items_only'
 
 export default function CastSalesPage() {
@@ -98,6 +111,9 @@ export default function CastSalesPage() {
       return
     }
 
+    // 型アサーション（Supabaseの型推論を補完）
+    const typedOrders = orders as unknown as Order[]
+
     // キャストごとの売上を集計
     const salesMap = new Map<number, CastSales>()
 
@@ -115,7 +131,7 @@ export default function CastSalesPage() {
     })
 
     // 売上の集計
-    orders.forEach((order: any) => {
+    typedOrders.forEach((order) => {
       const orderDate = format(new Date(order.order_date), 'yyyy-MM-dd')
 
       if (aggregationType === 'subtotal_only') {
@@ -125,25 +141,23 @@ export default function CastSalesPage() {
           if (cast) {
             const castSales = salesMap.get(cast.id)
             if (castSales) {
-              castSales.dailySales[orderDate] = (castSales.dailySales[orderDate] || 0) + (order.total_incl_tax || 0)
+              castSales.dailySales[orderDate] = (castSales.dailySales[orderDate] || 0) + order.total_incl_tax
             }
           }
         }
       } else if (aggregationType === 'items_only') {
         // 商品売上のみ: order_items.cast_nameで集計
-        if (order.order_items && Array.isArray(order.order_items)) {
-          order.order_items.forEach((item: any) => {
-            if (item.cast_name) {
-              const cast = castNameMap.get(item.cast_name)
-              if (cast) {
-                const castSales = salesMap.get(cast.id)
-                if (castSales) {
-                  castSales.dailySales[orderDate] = (castSales.dailySales[orderDate] || 0) + (item.subtotal || 0)
-                }
+        order.order_items.forEach((item) => {
+          if (item.cast_name) {
+            const cast = castNameMap.get(item.cast_name)
+            if (cast) {
+              const castSales = salesMap.get(cast.id)
+              if (castSales) {
+                castSales.dailySales[orderDate] = (castSales.dailySales[orderDate] || 0) + item.subtotal
               }
             }
-          })
-        }
+          }
+        })
       }
     })
 
