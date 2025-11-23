@@ -191,42 +191,101 @@ export default function CategoriesPage() {
       // ヘッダーをスキップ
       const dataLines = lines.slice(1)
 
-      let successCount = 0
-      let errorCount = 0
+      // === バリデーションフェーズ ===
+      const errors: string[] = []
+      const validatedData: Array<{
+        name: string
+        display_order: number
+        show_oshi_first: boolean
+      }> = []
 
-      for (const line of dataLines) {
-        // CSVパース（簡易版）
+      for (let i = 0; i < dataLines.length; i++) {
+        const lineNumber = i + 2 // ヘッダー行を考慮して+2
+        const line = dataLines[i]
+
+        // CSVパース
         const matches = line.match(/("(?:[^"]|"")*"|[^,]*)/g)
-        if (!matches || matches.length < 3) continue
+        if (!matches || matches.length < 3) {
+          errors.push(`${lineNumber}行目: 列数が不足しています（3列必要）`)
+          continue
+        }
 
         const cells = matches.map(cell => cell.replace(/^"|"$/g, '').replace(/""/g, '"').trim())
-
         const [name, displayOrderStr, showOshiFirstStr] = cells
 
+        // カテゴリー名チェック
+        if (!name || name.trim() === '') {
+          errors.push(`${lineNumber}行目: カテゴリー名が空です`)
+          continue
+        }
+
+        // 表示順チェック
         const displayOrder = parseInt(displayOrderStr)
+        if (isNaN(displayOrder) || displayOrder < 0) {
+          errors.push(`${lineNumber}行目: 表示順「${displayOrderStr}」が不正です`)
+          continue
+        }
+
+        // 推しファーストチェック
+        if (showOshiFirstStr !== 'ON' && showOshiFirstStr !== 'OFF') {
+          errors.push(`${lineNumber}行目: 推しファースト「${showOshiFirstStr}」が不正です（「ON」または「OFF」を指定してください）`)
+          continue
+        }
         const showOshiFirst = showOshiFirstStr === 'ON'
 
-        // カテゴリーを登録
-        const { error } = await supabase
-          .from('product_categories')
-          .insert({
-            name,
-            display_order: displayOrder,
-            show_oshi_first: showOshiFirst,
-            store_id: selectedStore
-          })
-
-        if (error) {
-          console.error(`カテゴリー登録エラー: ${name}`, error)
-          errorCount++
-        } else {
-          successCount++
-        }
+        // バリデーション成功、データを保存
+        validatedData.push({
+          name,
+          display_order: displayOrder,
+          show_oshi_first: showOshiFirst
+        })
       }
 
+      // エラーがある場合は詳細を表示して中断
+      if (errors.length > 0) {
+        const errorMessage = `CSVデータにエラーがあります：\n\n${errors.join('\n')}\n\n修正してから再度アップロードしてください。`
+        alert(errorMessage)
+        return
+      }
+
+      // バリデーション成功、確認メッセージ
+      if (!confirm(`既存のカテゴリーデータを全て削除し、${validatedData.length}件のカテゴリーを登録します。\nよろしいですか？`)) {
+        return
+      }
+
+      // === データ上書きフェーズ ===
+      // 1. 既存データを全削除
+      const { error: deleteError } = await supabase
+        .from('product_categories')
+        .delete()
+        .eq('store_id', selectedStore)
+
+      if (deleteError) {
+        alert('既存データの削除に失敗しました')
+        console.error(deleteError)
+        return
+      }
+
+      // 2. 新しいデータを一括登録
+      const dataToInsert = validatedData.map(item => ({
+        ...item,
+        store_id: selectedStore
+      }))
+
+      const { error: insertError } = await supabase
+        .from('product_categories')
+        .insert(dataToInsert)
+
+      if (insertError) {
+        alert('データの登録に失敗しました')
+        console.error(insertError)
+        return
+      }
+
+      // 成功
       await loadCategories()
       setShowImportModal(false)
-      alert(`インポート完了\n成功: ${successCount}件\nエラー: ${errorCount}件`)
+      alert(`インポート完了\n${validatedData.length}件のカテゴリーを登録しました`)
     } catch (error) {
       console.error('CSV読み込みエラー:', error)
       alert('CSVファイルの読み込みに失敗しました')
@@ -578,6 +637,18 @@ export default function CategoriesPage() {
               カテゴリーマスタCSV入力
             </h3>
 
+            <div style={{
+              padding: '12px',
+              backgroundColor: '#fef3c7',
+              borderRadius: '6px',
+              marginBottom: '20px',
+              border: '1px solid #fbbf24'
+            }}>
+              <p style={{ margin: 0, fontSize: '13px', color: '#92400e', fontWeight: '500' }}>
+                ⚠️ 既存のカテゴリーデータを全て削除し、CSVのデータに置き換えます
+              </p>
+            </div>
+
             <div
               onDrop={handleDrop}
               onDragOver={handleDragOver}
@@ -623,8 +694,11 @@ export default function CategoriesPage() {
             <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '20px' }}>
               <p style={{ margin: '0 0 8px 0', fontWeight: '500' }}>CSV形式:</p>
               <p style={{ margin: '0 0 4px 0' }}>カテゴリー名, 表示順, 推しファースト</p>
-              <p style={{ margin: '0', fontSize: '11px', color: '#94a3b8' }}>
+              <p style={{ margin: '0 0 4px 0', fontSize: '11px', color: '#94a3b8' }}>
                 ※1行目はヘッダー行として読み飛ばされます
+              </p>
+              <p style={{ margin: '0', fontSize: '11px', color: '#94a3b8' }}>
+                ※データにエラーがある場合は詳細なエラーメッセージを表示します
               </p>
             </div>
 
