@@ -377,26 +377,28 @@ export default function ReceiptsPage() {
     if (!selectedReceipt || !selectedReceipt.order_items) return
 
     try {
-      // 注文明細から合計を計算
-      const totalAmount = selectedReceipt.order_items.reduce((sum, item) => sum + item.subtotal, 0)
-      const totalInclTax = totalAmount
+      // 注文明細から小計を計算
+      const subtotal = selectedReceipt.order_items.reduce((sum, item) => sum + item.subtotal, 0)
 
-      // カードタックスを計算（クレジットカード決済の場合は3.6%の手数料）
-      const cardAmount = editPaymentData.credit_card_amount
-      const cardTax = Math.round(cardAmount * 0.036)
+      // カード手数料を計算（残りの支払額 = 小計 - 現金 - その他 に対して3.6%）
+      const remainingAmount = subtotal - editPaymentData.cash_amount - editPaymentData.other_payment_amount
+      const cardFee = remainingAmount > 0 ? Math.floor(remainingAmount * 0.036) : 0
 
-      // 支払い総額（カードタックス込み）
-      const paymentTotal = editPaymentData.cash_amount + editPaymentData.credit_card_amount + editPaymentData.other_payment_amount + cardTax
+      // 合計 = 小計 + カード手数料
+      const totalWithCardFee = subtotal + cardFee
 
-      // お釣りを計算
-      const change = paymentTotal - totalInclTax
+      // 支払い合計
+      const totalPaid = editPaymentData.cash_amount + editPaymentData.credit_card_amount + editPaymentData.other_payment_amount
+
+      // お釣り
+      const change = totalPaid - totalWithCardFee
 
       // 注文情報を更新
       const { error: orderError } = await supabase
         .from('orders')
         .update({
-          total_amount: totalAmount,
-          total_incl_tax: totalInclTax
+          total_amount: subtotal,
+          total_incl_tax: totalWithCardFee
         })
         .eq('id', selectedReceipt.id)
 
@@ -420,7 +422,7 @@ export default function ReceiptsPage() {
         if (paymentError) throw paymentError
       }
 
-      alert(`合計を再計算しました\n小計: ${formatCurrency(totalAmount)}\nカードタックス: ${formatCurrency(cardTax)}\n合計: ${formatCurrency(totalInclTax)}\nお釣り: ${formatCurrency(Math.max(0, change))}`)
+      alert(`合計を再計算しました\n小計: ${formatCurrency(subtotal)}\nカード手数料: ${formatCurrency(cardFee)}\n合計: ${formatCurrency(totalWithCardFee)}\nお釣り: ${formatCurrency(Math.max(0, change))}`)
 
       // 伝票情報を再読み込み
       loadReceiptDetails(selectedReceipt)
@@ -1093,30 +1095,37 @@ export default function ReceiptsPage() {
               )}
 
               {/* Totals Summary */}
-              {selectedReceipt.order_items && selectedReceipt.order_items.length > 0 && (
-                <div style={styles.totalsSummarySection}>
-                  <div style={styles.summaryRow}>
-                    <span style={styles.summaryLabel}>小計</span>
-                    <span style={styles.summaryValue}>
-                      {formatCurrency(selectedReceipt.order_items.reduce((sum, item) => sum + item.subtotal, 0))}
-                    </span>
-                  </div>
-                  {editPaymentData.credit_card_amount > 0 && (
+              {selectedReceipt.order_items && selectedReceipt.order_items.length > 0 && (() => {
+                const subtotal = selectedReceipt.order_items.reduce((sum, item) => sum + item.subtotal, 0)
+                const remainingAmount = subtotal - editPaymentData.cash_amount - editPaymentData.other_payment_amount
+                const cardFee = remainingAmount > 0 ? Math.floor(remainingAmount * 0.036) : 0
+                const total = subtotal + cardFee
+
+                return (
+                  <div style={styles.totalsSummarySection}>
                     <div style={styles.summaryRow}>
-                      <span style={styles.summaryLabel}>カードタックス (3.6%)</span>
+                      <span style={styles.summaryLabel}>小計</span>
                       <span style={styles.summaryValue}>
-                        {formatCurrency(Math.round(editPaymentData.credit_card_amount * 0.036))}
+                        {formatCurrency(subtotal)}
                       </span>
                     </div>
-                  )}
-                  <div style={styles.summaryRow}>
-                    <span style={styles.summaryLabelBold}>合計</span>
-                    <span style={styles.summaryValueBold}>
-                      {formatCurrency(selectedReceipt.order_items.reduce((sum, item) => sum + item.subtotal, 0))}
-                    </span>
+                    {cardFee > 0 && (
+                      <div style={styles.summaryRow}>
+                        <span style={styles.summaryLabel}>カード手数料 (3.6%)</span>
+                        <span style={styles.summaryValue}>
+                          {formatCurrency(cardFee)}
+                        </span>
+                      </div>
+                    )}
+                    <div style={styles.summaryRow}>
+                      <span style={styles.summaryLabelBold}>合計</span>
+                      <span style={styles.summaryValueBold}>
+                        {formatCurrency(total)}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              )}
+                )
+              })()}
 
               {/* Payment Details Edit */}
               <div style={styles.paymentSection}>
