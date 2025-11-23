@@ -91,6 +91,7 @@ export default function ReceiptsPage() {
   const [products, setProducts] = useState<any[]>([])
   const [categories, setCategories] = useState<any[]>([])
   const [casts, setCasts] = useState<any[]>([])
+  const [cardFeeRate, setCardFeeRate] = useState(0) // カード手数料率（例: 3.6）
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [createFormData, setCreateFormData] = useState({
     table_number: '',
@@ -119,11 +120,6 @@ export default function ReceiptsPage() {
     quantity: 1,
     unit_price: 0
   }])
-
-  useEffect(() => {
-    loadReceipts()
-    loadMasterData()
-  }, [selectedStore])
 
   const loadReceipts = async () => {
     setLoading(true)
@@ -206,6 +202,29 @@ export default function ReceiptsPage() {
       console.error('Error loading master data:', error)
     }
   }
+
+  const loadSystemSettings = async () => {
+    try {
+      const { data: settings } = await supabase
+        .from('system_settings')
+        .select('setting_key, setting_value')
+        .eq('store_id', selectedStore)
+
+      if (settings) {
+        // card_fee_rateは%で保存されている（例: 3.6）
+        const cardFee = Number(settings.find(s => s.setting_key === 'card_fee_rate')?.setting_value || 0)
+        setCardFeeRate(cardFee)
+      }
+    } catch (error) {
+      console.error('Error loading system settings:', error)
+    }
+  }
+
+  useEffect(() => {
+    loadReceipts()
+    loadMasterData()
+    loadSystemSettings()
+  }, [selectedStore])
 
   const loadReceiptDetails = async (receipt: Receipt) => {
     try {
@@ -380,9 +399,11 @@ export default function ReceiptsPage() {
       // 注文明細から小計を計算
       const subtotal = selectedReceipt.order_items.reduce((sum, item) => sum + item.subtotal, 0)
 
-      // カード手数料を計算（残りの支払額 = 小計 - 現金 - その他 に対して3.6%）
+      // カード手数料を計算（残りの支払額 = 小計 - 現金 - その他 に対してカード手数料率を適用）
       const remainingAmount = subtotal - editPaymentData.cash_amount - editPaymentData.other_payment_amount
-      const cardFee = remainingAmount > 0 ? Math.floor(remainingAmount * 0.036) : 0
+      const cardFee = remainingAmount > 0 && cardFeeRate > 0
+        ? Math.floor(remainingAmount * (cardFeeRate / 100))
+        : 0
 
       // 合計 = 小計 + カード手数料
       const totalWithCardFee = subtotal + cardFee
@@ -422,7 +443,7 @@ export default function ReceiptsPage() {
         if (paymentError) throw paymentError
       }
 
-      alert(`合計を再計算しました\n小計: ${formatCurrency(subtotal)}\nカード手数料: ${formatCurrency(cardFee)}\n合計: ${formatCurrency(totalWithCardFee)}\nお釣り: ${formatCurrency(Math.max(0, change))}`)
+      alert(`合計を再計算しました\n小計: ${formatCurrency(subtotal)}\nカード手数料 (${cardFeeRate}%): ${formatCurrency(cardFee)}\n合計: ${formatCurrency(totalWithCardFee)}\nお釣り: ${formatCurrency(Math.max(0, change))}`)
 
       // 伝票情報を再読み込み
       loadReceiptDetails(selectedReceipt)
@@ -1098,7 +1119,9 @@ export default function ReceiptsPage() {
               {selectedReceipt.order_items && selectedReceipt.order_items.length > 0 && (() => {
                 const subtotal = selectedReceipt.order_items.reduce((sum, item) => sum + item.subtotal, 0)
                 const remainingAmount = subtotal - editPaymentData.cash_amount - editPaymentData.other_payment_amount
-                const cardFee = remainingAmount > 0 ? Math.floor(remainingAmount * 0.036) : 0
+                const cardFee = remainingAmount > 0 && cardFeeRate > 0
+                  ? Math.floor(remainingAmount * (cardFeeRate / 100))
+                  : 0
                 const total = subtotal + cardFee
 
                 return (
@@ -1111,7 +1134,7 @@ export default function ReceiptsPage() {
                     </div>
                     {cardFee > 0 && (
                       <div style={styles.summaryRow}>
-                        <span style={styles.summaryLabel}>カード手数料 (3.6%)</span>
+                        <span style={styles.summaryLabel}>カード手数料 ({cardFeeRate}%)</span>
                         <span style={styles.summaryValue}>
                           {formatCurrency(cardFee)}
                         </span>
