@@ -213,11 +213,12 @@ export default function AttendancePage() {
     setShowEditStatus(true)
   }
 
-  const getDaysInMonth = () => {
+  // 月内の日付一覧をメモ化
+  const daysInMonth = useMemo(() => {
     const start = startOfMonth(selectedMonth)
     const end = endOfMonth(selectedMonth)
     return eachDayOfInterval({ start, end })
-  }
+  }, [selectedMonth])
 
   const getAttendanceForCell = (castId: number, date: Date) => {
     const dateStr = format(date, 'yyyy-MM-dd')
@@ -392,8 +393,8 @@ export default function AttendancePage() {
     )
   }
 
-  // 編集中のセルの情報を取得
-  const getEditingCellInfo = () => {
+  // 編集中のセルの情報を取得（メモ化）
+  const editingInfo = useMemo(() => {
     if (!editingCell) return null
 
     const parts = editingCell.split('-')
@@ -411,9 +412,7 @@ export default function AttendancePage() {
     const attendance = attendances.find(a => a.cast_id === castId && a.date === dateStr)
 
     return { castId, dateStr, cast, date, attendance }
-  }
-
-  const editingInfo = getEditingCellInfo()
+  }, [editingCell, casts, attendances])
 
   return (
     <div style={{
@@ -549,7 +548,7 @@ export default function AttendancePage() {
                 }}>
                   スタッフ名
                 </th>
-                {getDaysInMonth().map(date => (
+                {daysInMonth.map(date => (
                   <th
                     key={format(date, 'yyyy-MM-dd')}
                     style={{
@@ -594,7 +593,7 @@ export default function AttendancePage() {
                   >
                     {cast.name}
                   </td>
-                  {getDaysInMonth().map(date => {
+                  {daysInMonth.map(date => {
                     const cellKey = getCellKey(cast.id, date)
                     const attendance = getAttendanceForCell(cast.id, date)
 
