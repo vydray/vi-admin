@@ -10,6 +10,7 @@ import { generateTimeOptions, formatShiftTime as formatShiftTimeUtil } from '@/l
 interface Cast {
   id: number
   name: string
+  display_order?: number | null
 }
 
 interface Shift {
@@ -64,6 +65,10 @@ export default function ShiftManage() {
   }>>(new Map())
   const [isSaving, setIsSaving] = useState(false)
 
+  // ドラッグ&ドロップ状態
+  const [draggedCastId, setDraggedCastId] = useState<number | null>(null)
+  const [dragOverCastId, setDragOverCastId] = useState<number | null>(null)
+
   useEffect(() => {
     loadData()
   }, [selectedMonth, isFirstHalf, selectedStore])
@@ -82,10 +87,11 @@ export default function ShiftManage() {
   const loadCasts = async () => {
     const { data, error } = await supabase
       .from('casts')
-      .select('id, name')
+      .select('id, name, display_order')
       .eq('store_id', selectedStore)
       .eq('status', '在籍')
       .eq('is_active', true)
+      .order('display_order', { ascending: true, nullsFirst: false })
       .order('name')
 
     if (!error && data) {
@@ -411,6 +417,80 @@ export default function ShiftManage() {
     })
 
     setPendingLocks(newPendingLocks)
+  }
+
+  // ドラッグ&ドロップハンドラー
+  const handleDragStart = (e: React.DragEvent, castId: number) => {
+    setDraggedCastId(castId)
+    e.dataTransfer.effectAllowed = 'move'
+  }
+
+  const handleDragOver = (e: React.DragEvent, castId: number) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    setDragOverCastId(castId)
+  }
+
+  const handleDragLeave = () => {
+    setDragOverCastId(null)
+  }
+
+  const handleDrop = async (e: React.DragEvent, targetCastId: number) => {
+    e.preventDefault()
+    setDragOverCastId(null)
+
+    if (!draggedCastId || draggedCastId === targetCastId) {
+      setDraggedCastId(null)
+      return
+    }
+
+    // キャストの並び順を更新
+    const draggedIndex = casts.findIndex(c => c.id === draggedCastId)
+    const targetIndex = casts.findIndex(c => c.id === targetCastId)
+
+    if (draggedIndex === -1 || targetIndex === -1) {
+      setDraggedCastId(null)
+      return
+    }
+
+    // 新しい並び順を作成
+    const newCasts = [...casts]
+    const [draggedCast] = newCasts.splice(draggedIndex, 1)
+    newCasts.splice(targetIndex, 0, draggedCast)
+
+    // display_orderを再計算して一時的に更新
+    const updatedCasts = newCasts.map((cast, index) => ({
+      ...cast,
+      display_order: index + 1
+    }))
+
+    setCasts(updatedCasts)
+    setDraggedCastId(null)
+
+    // データベースに保存
+    try {
+      const updates = updatedCasts.map((cast, index) => ({
+        id: cast.id,
+        display_order: index + 1
+      }))
+
+      for (const update of updates) {
+        await supabase
+          .from('casts')
+          .update({ display_order: update.display_order })
+          .eq('id', update.id)
+      }
+    } catch (error) {
+      console.error('並び順の保存エラー:', error)
+      alert('並び順の保存に失敗しました')
+      // エラー時はリロード
+      loadCasts()
+    }
+  }
+
+  const handleDragEnd = () => {
+    setDraggedCastId(null)
+    setDragOverCastId(null)
   }
 
   const toggleCellLock = async (castId: number, dateStr: string, lockType: 'locked' | 'confirmed') => {
@@ -1043,25 +1123,41 @@ export default function ShiftManage() {
               </tr>
             </thead>
             <tbody>
-              {casts.map((cast, index) => (
+              {casts.map((cast) => (
                 <tr key={cast.id}>
                   <td
+                    draggable={!isLockMode && !isConfirmMode && !editingCell}
+                    onDragStart={(e) => handleDragStart(e, cast.id)}
+                    onDragOver={(e) => handleDragOver(e, cast.id)}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => handleDrop(e, cast.id)}
+                    onDragEnd={handleDragEnd}
                     onClick={() => (isLockMode || isConfirmMode) && toggleLock('row', isLockMode ? 'locked' : 'confirmed', cast.id)}
                     style={{
                       position: 'sticky',
                       left: 0,
-                      backgroundColor: '#fff',
+                      backgroundColor: dragOverCastId === cast.id ? '#e0f2fe' : draggedCastId === cast.id ? '#f0f0f0' : '#fff',
                       padding: '12px',
                       borderBottom: '1px solid #e2e8f0',
                       borderRight: '1px solid #e2e8f0',
                       fontWeight: '500',
                       color: '#1a1a1a',
                       zIndex: 5,
-                      cursor: (isLockMode || isConfirmMode) ? 'pointer' : 'default',
-                      boxShadow: '2px 0 4px rgba(0,0,0,0.05)'
+                      cursor: (isLockMode || isConfirmMode) ? 'pointer' : (!editingCell ? 'grab' : 'default'),
+                      boxShadow: '2px 0 4px rgba(0,0,0,0.05)',
+                      transition: 'background-color 0.2s',
+                      borderTop: dragOverCastId === cast.id ? '2px solid #3b82f6' : undefined,
+                      userSelect: 'none'
                     }}
                   >
-                    {cast.name}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      {!isLockMode && !isConfirmMode && !editingCell && (
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ opacity: 0.4 }}>
+                          <path d="M3 15h18v-2H3v2zm0 4h18v-2H3v2zm0-8h18V9H3v2zm0-6v2h18V5H3z" fill="currentColor"/>
+                        </svg>
+                      )}
+                      {cast.name}
+                    </div>
                   </td>
                   {getDaysInPeriod().map(date => {
                     const cellKey = getCellKey(cast.id, date)

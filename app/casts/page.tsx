@@ -78,6 +78,10 @@ export default function CastsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingCast, setEditingCast] = useState<Cast | null>(null)
 
+  // ドラッグ&ドロップ状態
+  const [draggedCastId, setDraggedCastId] = useState<number | null>(null)
+  const [dragOverCastId, setDragOverCastId] = useState<number | null>(null)
+
   useEffect(() => {
     loadCasts()
     loadPositions()
@@ -93,6 +97,7 @@ export default function CastsPage() {
       .from('casts')
       .select('*')
       .eq('store_id', selectedStore)
+      .order('display_order', { ascending: true, nullsFirst: false })
       .order('name')
 
     if (error) {
@@ -403,6 +408,87 @@ export default function CastsPage() {
     }
   }
 
+  // ドラッグ&ドロップハンドラー
+  const handleDragStart = (e: React.DragEvent, castId: number) => {
+    setDraggedCastId(castId)
+    e.dataTransfer.effectAllowed = 'move'
+  }
+
+  const handleDragOver = (e: React.DragEvent, castId: number) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    setDragOverCastId(castId)
+  }
+
+  const handleDragLeave = () => {
+    setDragOverCastId(null)
+  }
+
+  const handleDrop = async (e: React.DragEvent, targetCastId: number) => {
+    e.preventDefault()
+    setDragOverCastId(null)
+
+    if (!draggedCastId || draggedCastId === targetCastId) {
+      setDraggedCastId(null)
+      return
+    }
+
+    // フィルタリング中は並び替え不可
+    if (searchQuery || statusFilter || attributeFilter || documentFilter || activeFilter || posFilter || adminFilter || managerFilter || sortField) {
+      alert('並び替えはフィルタ・ソートをクリアしてから行ってください')
+      setDraggedCastId(null)
+      return
+    }
+
+    // キャストの並び順を更新
+    const draggedIndex = casts.findIndex(c => c.id === draggedCastId)
+    const targetIndex = casts.findIndex(c => c.id === targetCastId)
+
+    if (draggedIndex === -1 || targetIndex === -1) {
+      setDraggedCastId(null)
+      return
+    }
+
+    // 新しい並び順を作成
+    const newCasts = [...casts]
+    const [draggedCast] = newCasts.splice(draggedIndex, 1)
+    newCasts.splice(targetIndex, 0, draggedCast)
+
+    // display_orderを再計算して一時的に更新
+    const updatedCasts = newCasts.map((cast, index) => ({
+      ...cast,
+      display_order: index + 1
+    }))
+
+    setCasts(updatedCasts)
+    setDraggedCastId(null)
+
+    // データベースに保存
+    try {
+      const updates = updatedCasts.map((cast, index) => ({
+        id: cast.id,
+        display_order: index + 1
+      }))
+
+      for (const update of updates) {
+        await supabase
+          .from('casts')
+          .update({ display_order: update.display_order })
+          .eq('id', update.id)
+      }
+    } catch (error) {
+      console.error('並び順の保存エラー:', error)
+      alert('並び順の保存に失敗しました')
+      // エラー時はリロード
+      loadCasts()
+    }
+  }
+
+  const handleDragEnd = () => {
+    setDraggedCastId(null)
+    setDragOverCastId(null)
+  }
+
   const renderToggle = (castId: number, field: string, value: boolean | null) => {
     const isOn = value === true
     return (
@@ -664,10 +750,46 @@ export default function CastsPage() {
               {filteredCasts.map((cast) => (
                 <tr
                   key={cast.id}
-                  style={{ borderBottom: '1px solid #eee', cursor: 'pointer' }}
-                  onClick={() => openEditModal(cast)}
+                  draggable={!searchQuery && !statusFilter && !attributeFilter && !documentFilter && !activeFilter && !posFilter && !adminFilter && !managerFilter && !sortField}
+                  onDragStart={(e) => {
+                    e.stopPropagation()
+                    handleDragStart(e, cast.id)
+                  }}
+                  onDragOver={(e) => {
+                    e.stopPropagation()
+                    handleDragOver(e, cast.id)
+                  }}
+                  onDragLeave={handleDragLeave}
+                  onDrop={(e) => {
+                    e.stopPropagation()
+                    handleDrop(e, cast.id)
+                  }}
+                  onDragEnd={handleDragEnd}
+                  style={{
+                    borderBottom: '1px solid #eee',
+                    cursor: (!searchQuery && !statusFilter && !attributeFilter && !documentFilter && !activeFilter && !posFilter && !adminFilter && !managerFilter && !sortField) ? 'grab' : 'pointer',
+                    backgroundColor: dragOverCastId === cast.id ? '#e0f2fe' : draggedCastId === cast.id ? '#f0f0f0' : 'transparent',
+                    transition: 'background-color 0.2s',
+                    borderTop: dragOverCastId === cast.id ? '2px solid #3b82f6' : undefined,
+                    userSelect: 'none'
+                  }}
+                  onClick={(e) => {
+                    // ドラッグ中はクリックイベントを無視
+                    if (!draggedCastId) {
+                      openEditModal(cast)
+                    }
+                  }}
                 >
-                  <td style={tdStyleNameSticky}>{cast.name}</td>
+                  <td style={tdStyleNameSticky}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      {!searchQuery && !statusFilter && !attributeFilter && !documentFilter && !activeFilter && !posFilter && !adminFilter && !managerFilter && !sortField && (
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ opacity: 0.4 }}>
+                          <path d="M3 15h18v-2H3v2zm0 4h18v-2H3v2zm0-8h18V9H3v2zm0-6v2h18V5H3z" fill="currentColor"/>
+                        </svg>
+                      )}
+                      {cast.name}
+                    </div>
+                  </td>
                   <td style={tdStyle}>{cast.birthday ? cast.birthday.substring(5).replace('-', '') : '-'}</td>
                   <td style={tdStyle}>
                     {cast.status ? (
