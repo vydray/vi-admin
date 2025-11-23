@@ -123,49 +123,47 @@ export default function Home() {
 
         const items = order.order_items || []
 
-        if (items.length === 0) {
-          // 明細がない場合は伝票情報のみ
+        // 1行目：伝票ヘッダー（伝票情報のみ、明細は空欄）
+        rows.push([
+          order.receipt_number || '',
+          orderDate,
+          checkoutDatetime,
+          order.table_number || '',
+          String(cashAmount),
+          String(cardAmount),
+          String(otherAmount),
+          String(order.subtotal_excl_tax || 0),
+          String(order.total_incl_tax || 0),
+          order.staff_name || '', // 推し
+          '', // カテゴリー以降は空欄
+          '',
+          '',
+          '',
+          '',
+          ''
+        ])
+
+        // 2行目以降：明細行（伝票情報は空欄、明細のみ）
+        items.forEach((item: any) => {
           rows.push([
-            order.receipt_number || '',
-            orderDate,
-            checkoutDatetime,
-            order.table_number || '',
-            String(cashAmount),
-            String(cardAmount),
-            String(otherAmount),
-            String(order.subtotal_excl_tax || 0),
-            String(order.total_incl_tax || 0),
-            order.staff_name || '', // 推し
-            '',
-            '',
-            '',
-            '',
-            '',
-            ''
+            '', // 伝票番号
+            '', // 営業日
+            '', // 会計日時
+            '', // テーブル番号
+            '', // 現金
+            '', // カード
+            '', // その他
+            '', // 伝票税別小計
+            '', // 伝票合計
+            '', // 推し
+            item.category || '',
+            item.product_name || '',
+            item.cast_name || '',
+            String(item.quantity || 0),
+            String(item.unit_price || 0),
+            String(item.subtotal || 0)
           ])
-        } else {
-          // 各明細ごとに行を作成
-          items.forEach((item: any) => {
-            rows.push([
-              order.receipt_number || '',
-              orderDate,
-              checkoutDatetime,
-              order.table_number || '',
-              String(cashAmount),
-              String(cardAmount),
-              String(otherAmount),
-              String(order.subtotal_excl_tax || 0),
-              String(order.total_incl_tax || 0),
-              order.staff_name || '', // 推し
-              item.category || '',
-              item.product_name || '',
-              item.cast_name || '',
-              String(item.quantity || 0),
-              String(item.unit_price || 0),
-              String(item.subtotal || 0)
-            ])
-          })
-        }
+        })
       })
 
       // CSV文字列生成
