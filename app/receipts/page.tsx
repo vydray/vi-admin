@@ -676,11 +676,15 @@ export default function ReceiptsPage() {
         // 端数調整額を計算
         const roundingAdjustment = finalTotal - (itemsSubtotal + serviceFee + cardFee)
 
+        // レシート番号を生成
+        const receiptNumber = `${createFormData.table_number}-${Date.now()}`
+
         // 新しい注文を作成
         const { data: newOrder, error: orderError } = await supabase
           .from('orders')
           .insert({
             store_id: selectedStore,
+            receipt_number: receiptNumber,
             table_number: createFormData.table_number,
             guest_name: createFormData.guest_name || null,
             staff_name: createFormData.staff_name || null,
@@ -765,11 +769,15 @@ export default function ReceiptsPage() {
       // 端数調整額を計算
       const roundingAdjustment = totalInclTax - subtotalBeforeRounding
 
+      // レシート番号を生成
+      const receiptNumber = `${selectedReceipt.table_number}-${Date.now()}`
+
       // 新しい注文を作成
       const { data: newOrder, error: orderError } = await supabase
         .from('orders')
         .insert({
           store_id: selectedReceipt.store_id,
+          receipt_number: receiptNumber,
           table_number: selectedReceipt.table_number,
           guest_name: selectedReceipt.guest_name,
           staff_name: selectedReceipt.staff_name,
@@ -896,11 +904,15 @@ export default function ReceiptsPage() {
       // 端数調整額を計算
       const roundingAdjustment = totalInclTax - subtotalBeforeRounding
 
+      // レシート番号を生成
+      const receiptNumber = `${createFormData.table_number}-${Date.now()}`
+
       // 新しい注文を作成
       const { data: newOrder, error: orderError } = await supabase
         .from('orders')
         .insert({
           store_id: selectedStore,
+          receipt_number: receiptNumber,
           table_number: createFormData.table_number,
           guest_name: createFormData.guest_name || null,
           staff_name: createFormData.staff_name || null,
