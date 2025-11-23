@@ -40,10 +40,8 @@ export default function CastSalesPage() {
 
   const loadData = async () => {
     setLoading(true)
-    await Promise.all([
-      loadCasts(),
-      loadSalesData()
-    ])
+    await loadCasts()
+    await loadSalesData()
     setLoading(false)
   }
 
@@ -142,7 +140,9 @@ export default function CastSalesPage() {
       castSales.total = Object.values(castSales.dailySales).reduce((sum, amount) => sum + amount, 0)
     })
 
-    setSalesData(Array.from(salesMap.values()))
+    // 合計値が高い順にソート
+    const sortedData = Array.from(salesMap.values()).sort((a, b) => b.total - a.total)
+    setSalesData(sortedData)
   }
 
   const getDaysInMonth = () => {
