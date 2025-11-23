@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { format, eachDayOfInterval, addMonths, subMonths, startOfMonth, endOfMonth } from 'date-fns'
 import { ja } from 'date-fns/locale'
@@ -32,6 +32,15 @@ export default function CastSalesPage() {
   const [aggregationType, setAggregationType] = useState<AggregationType>('subtotal_only')
   const [salesData, setSalesData] = useState<CastSales[]>([])
   const [loading, setLoading] = useState(true)
+
+  // 通貨フォーマッターを1回だけ作成（再利用）
+  const currencyFormatter = useMemo(() => {
+    return new Intl.NumberFormat('ja-JP', {
+      style: 'currency',
+      currency: 'JPY',
+      minimumFractionDigits: 0
+    })
+  }, [])
 
   useEffect(() => {
     loadData()
@@ -148,21 +157,20 @@ export default function CastSalesPage() {
     setSalesData(sortedData)
   }
 
-  const getDaysInMonth = () => {
+  // 月内の日付一覧をメモ化
+  const days = useMemo(() => {
     const start = startOfMonth(selectedMonth)
     const end = endOfMonth(selectedMonth)
     return eachDayOfInterval({ start, end })
-  }
+  }, [selectedMonth])
 
+  // 通貨フォーマット関数
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('ja-JP', {
-      style: 'currency',
-      currency: 'JPY',
-      minimumFractionDigits: 0
-    }).format(amount)
+    return currencyFormatter.format(amount)
   }
 
-  const getAggregationLabel = () => {
+  // 集計方法のラベルをメモ化
+  const aggregationLabel = useMemo(() => {
     switch (aggregationType) {
       case 'subtotal_only':
         return '小計のみ'
@@ -171,7 +179,7 @@ export default function CastSalesPage() {
       default:
         return ''
     }
-  }
+  }, [aggregationType])
 
   if (loading) {
     return (
@@ -180,8 +188,6 @@ export default function CastSalesPage() {
       </div>
     )
   }
-
-  const days = getDaysInMonth()
 
   return (
     <div style={{
@@ -422,7 +428,7 @@ export default function CastSalesPage() {
         fontSize: '13px',
         color: '#64748b'
       }}>
-        <div style={{ marginBottom: '8px', fontWeight: '600' }}>集計方法: {getAggregationLabel()}</div>
+        <div style={{ marginBottom: '8px', fontWeight: '600' }}>集計方法: {aggregationLabel}</div>
         <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
           <div>• <strong>小計のみ</strong>: 担当テーブルの小計金額</div>
           <div>• <strong>商品売上のみ</strong>: 商品に紐づいたキャスト売上（指名料、ドリンクバックなど）</div>
