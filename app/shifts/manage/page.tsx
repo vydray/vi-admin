@@ -332,15 +332,31 @@ export default function ShiftManage() {
     })
 
     try {
-      // 削除処理
+      // 削除処理（バッチ化）
       if (deletes.length > 0) {
-        for (const del of deletes) {
+        // 該当するレコードを一括取得
+        const { data: locksToDelete } = await supabase
+          .from('shift_locks')
+          .select('id, cast_id, date, store_id')
+          .eq('store_id', deletes[0].store_id)
+          .in('cast_id', [...new Set(deletes.map(d => d.cast_id))])
+          .in('date', [...new Set(deletes.map(d => d.date))])
+
+        // 削除対象のIDをフィルタリング
+        const idsToDelete = locksToDelete?.filter(lock =>
+          deletes.some(del =>
+            lock.cast_id === del.cast_id &&
+            lock.date === del.date &&
+            lock.store_id === del.store_id
+          )
+        ).map(l => l.id) || []
+
+        // IDで一括削除
+        if (idsToDelete.length > 0) {
           await supabase
             .from('shift_locks')
             .delete()
-            .eq('cast_id', del.cast_id)
-            .eq('date', del.date)
-            .eq('store_id', del.store_id)
+            .in('id', idsToDelete)
         }
       }
 
@@ -467,19 +483,18 @@ export default function ShiftManage() {
     setCasts(updatedCasts)
     setDraggedCastId(null)
 
-    // データベースに保存
+    // データベースに保存（バッチ化）
     try {
       const updates = updatedCasts.map((cast, index) => ({
         id: cast.id,
         display_order: index + 1
       }))
 
-      for (const update of updates) {
-        await supabase
-          .from('casts')
-          .update({ display_order: update.display_order })
-          .eq('id', update.id)
-      }
+      // upsertでまとめて更新
+      await supabase
+        .from('casts')
+        .upsert(updates, { onConflict: 'id' })
+
     } catch (error) {
       console.error('並び順の保存エラー:', error)
       alert('並び順の保存に失敗しました')
