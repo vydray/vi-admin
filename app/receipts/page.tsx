@@ -830,6 +830,105 @@ export default function ReceiptsPage() {
     setIsCreateModalOpen(true)
   }
 
+  const saveNewReceiptWithoutPayment = async () => {
+    // 必須項目のチェック
+    if (!createFormData.table_number) {
+      alert('テーブル番号を入力してください')
+      return
+    }
+
+    if (!createFormData.staff_name) {
+      alert('推しを選択してください')
+      return
+    }
+
+    if (!createFormData.order_date) {
+      alert('注文日を入力してください')
+      return
+    }
+
+    if (!createFormData.checkout_datetime) {
+      alert('会計日時を入力してください')
+      return
+    }
+
+    // 少なくとも1つの商品が選択されているかチェック
+    const validItems = createItems.filter(item => item.product_name)
+    if (validItems.length === 0) {
+      alert('少なくとも1つの商品を選択してください')
+      return
+    }
+
+    try {
+      // 合計金額を計算（支払い情報なし）
+      const itemsSubtotal = validItems.reduce((sum, item) => sum + (item.unit_price * item.quantity), 0)
+      const serviceFee = Math.floor(itemsSubtotal * (serviceChargeRate / 100))
+      const subtotalBeforeRounding = itemsSubtotal + serviceFee
+      const totalInclTax = getRoundedTotal(subtotalBeforeRounding, roundingUnit, roundingMethod)
+
+      // 新しい注文を作成（支払い方法は未設定）
+      const { data: newOrder, error: orderError } = await supabase
+        .from('orders')
+        .insert({
+          store_id: selectedStore,
+          table_number: createFormData.table_number,
+          guest_name: createFormData.guest_name || null,
+          staff_name: createFormData.staff_name || null,
+          total_amount: itemsSubtotal,
+          total_incl_tax: totalInclTax,
+          payment_method: '-',
+          order_date: new Date(createFormData.order_date).toISOString(),
+          checkout_datetime: new Date(createFormData.checkout_datetime).toISOString()
+        })
+        .select()
+        .single()
+
+      if (orderError) throw orderError
+
+      // 注文明細を作成
+      const newItems = validItems.map(item => ({
+        order_id: newOrder.id,
+        product_name: item.product_name,
+        category: item.category || null,
+        cast_name: item.cast_name || null,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        unit_price_excl_tax: Math.round(item.unit_price / 1.1),
+        tax_amount: item.unit_price - Math.round(item.unit_price / 1.1),
+        subtotal: item.unit_price * item.quantity,
+        pack_number: 0,
+        store_id: selectedStore
+      }))
+
+      const { error: itemsError } = await supabase
+        .from('order_items')
+        .insert(newItems)
+
+      if (itemsError) throw itemsError
+
+      // 支払い情報を作成（全て0円で初期化）
+      const { error: paymentError } = await supabase
+        .from('payments')
+        .insert({
+          order_id: newOrder.id,
+          cash_amount: 0,
+          credit_card_amount: 0,
+          other_payment_amount: 0,
+          change_amount: 0,
+          store_id: selectedStore
+        })
+
+      if (paymentError) throw paymentError
+
+      alert('伝票を作成しました（未会計）')
+      setIsCreateModalOpen(false)
+      loadReceipts()
+    } catch (error) {
+      console.error('Error creating receipt:', error)
+      alert('伝票の作成に失敗しました')
+    }
+  }
+
   const addCreateItem = () => {
     setCreateItems([...createItems, {
       product_name: '',
@@ -2193,6 +2292,9 @@ export default function ReceiptsPage() {
               <div style={styles.modalFooterRight}>
                 <button onClick={() => setIsCreateModalOpen(false)} style={styles.cancelButton}>
                   キャンセル
+                </button>
+                <button onClick={saveNewReceiptWithoutPayment} style={styles.saveButton}>
+                  保存（未会計）
                 </button>
               </div>
             </div>
