@@ -40,8 +40,8 @@ export default function CastSalesPage() {
 
   const loadData = async () => {
     setLoading(true)
-    await loadCasts()
-    await loadSalesData()
+    const loadedCasts = await loadCasts()
+    await loadSalesData(loadedCasts)
     setLoading(false)
   }
 
@@ -57,10 +57,12 @@ export default function CastSalesPage() {
 
     if (!error && data) {
       setCasts(data)
+      return data
     }
+    return []
   }
 
-  const loadSalesData = async () => {
+  const loadSalesData = async (loadedCasts: Cast[]) => {
     const start = startOfMonth(selectedMonth)
     const end = endOfMonth(selectedMonth)
     const startDate = format(start, 'yyyy-MM-dd')
@@ -93,7 +95,7 @@ export default function CastSalesPage() {
     const salesMap = new Map<number, CastSales>()
 
     // キャストの初期化
-    casts.forEach(cast => {
+    loadedCasts.forEach(cast => {
       salesMap.set(cast.id, {
         castId: cast.id,
         castName: cast.name,
@@ -109,7 +111,7 @@ export default function CastSalesPage() {
       if (aggregationType === 'subtotal_only') {
         // 小計のみ: staff_nameで集計
         if (order.staff_name) {
-          const cast = casts.find(c => c.name === order.staff_name)
+          const cast = loadedCasts.find(c => c.name === order.staff_name)
           if (cast) {
             const castSales = salesMap.get(cast.id)
             if (castSales) {
@@ -122,7 +124,7 @@ export default function CastSalesPage() {
         if (order.order_items && Array.isArray(order.order_items)) {
           order.order_items.forEach((item: any) => {
             if (item.cast_name) {
-              const cast = casts.find(c => c.name === item.cast_name)
+              const cast = loadedCasts.find(c => c.name === item.cast_name)
               if (cast) {
                 const castSales = salesMap.get(cast.id)
                 if (castSales) {
