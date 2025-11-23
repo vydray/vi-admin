@@ -967,9 +967,10 @@ export default function ReceiptsPage() {
       alert('伝票を作成しました（未会計）')
       setIsCreateModalOpen(false)
       loadReceipts()
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating receipt:', error)
-      alert('伝票の作成に失敗しました')
+      const errorMessage = error?.message || error?.details || JSON.stringify(error)
+      alert(`伝票の作成に失敗しました: ${errorMessage}`)
     }
   }
 
