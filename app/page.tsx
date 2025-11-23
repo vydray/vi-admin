@@ -52,15 +52,16 @@ export default function Home() {
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1)
 
   // エクスポート設定
-  const [exportType, setExportType] = useState<'receipts' | 'monthly'>('receipts')
+  const [showExportModal, setShowExportModal] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
 
   useEffect(() => {
     fetchDashboardData()
   }, [storeId, selectedYear, selectedMonth])
 
-  const exportToCSV = async () => {
+  const exportToCSV = async (exportType: 'receipts' | 'monthly') => {
     setIsExporting(true)
+    setShowExportModal(false)
     try {
       // 選択された年月の開始日と終了日
       const monthStr = String(selectedMonth).padStart(2, '0')
@@ -365,27 +366,17 @@ export default function Home() {
             ))}
           </select>
 
-          <div style={styles.exportSection}>
-            <select
-              value={exportType}
-              onChange={(e) => setExportType(e.target.value as 'receipts' | 'monthly')}
-              style={styles.select}
-            >
-              <option value="receipts">会計伝票一覧</option>
-              <option value="monthly">月別データ</option>
-            </select>
-            <button
-              onClick={exportToCSV}
-              disabled={isExporting}
-              style={{
-                ...styles.exportButton,
-                opacity: isExporting ? 0.6 : 1,
-                cursor: isExporting ? 'not-allowed' : 'pointer'
-              }}
-            >
-              {isExporting ? 'エクスポート中...' : 'CSVエクスポート'}
-            </button>
-          </div>
+          <button
+            onClick={() => setShowExportModal(true)}
+            disabled={isExporting}
+            style={{
+              ...styles.exportButton,
+              opacity: isExporting ? 0.6 : 1,
+              cursor: isExporting ? 'not-allowed' : 'pointer'
+            }}
+          >
+            {isExporting ? 'エクスポート中...' : 'CSVエクスポート'}
+          </button>
         </div>
       </div>
 
@@ -446,6 +437,42 @@ export default function Home() {
           </ComposedChart>
         </ResponsiveContainer>
       </div>
+
+      {/* エクスポートモーダル */}
+      {showExportModal && (
+        <>
+          <div
+            style={styles.modalOverlay}
+            onClick={() => setShowExportModal(false)}
+          />
+          <div style={styles.exportModal}>
+            <h3 style={styles.exportModalTitle}>CSVエクスポート</h3>
+            <p style={styles.exportModalSubtitle}>
+              {selectedYear}年{selectedMonth}月のデータをエクスポートします
+            </p>
+            <div style={styles.exportModalButtons}>
+              <button
+                onClick={() => exportToCSV('receipts')}
+                style={styles.exportModalButton}
+              >
+                会計伝票一覧
+              </button>
+              <button
+                onClick={() => exportToCSV('monthly')}
+                style={styles.exportModalButton}
+              >
+                月別データ
+              </button>
+            </div>
+            <button
+              onClick={() => setShowExportModal(false)}
+              style={styles.exportModalCancel}
+            >
+              キャンセル
+            </button>
+          </div>
+        </>
+      )}
     </div>
   )
 }
@@ -501,14 +528,6 @@ const styles: { [key: string]: React.CSSProperties } = {
     backgroundColor: 'white',
     cursor: 'pointer',
   },
-  exportSection: {
-    display: 'flex',
-    gap: '10px',
-    alignItems: 'center',
-    marginLeft: '20px',
-    paddingLeft: '20px',
-    borderLeft: '2px solid #ddd',
-  },
   exportButton: {
     padding: '8px 16px',
     fontSize: '16px',
@@ -519,6 +538,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     cursor: 'pointer',
     fontWeight: '600',
     transition: 'background-color 0.2s',
+    marginLeft: '20px',
   },
   dateInfo: { fontSize: '16px', color: '#555', marginBottom: '30px' },
   grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' },
@@ -540,5 +560,64 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontWeight: 'bold',
     marginBottom: '20px',
     color: '#2c3e50',
+  },
+  modalOverlay: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '100%',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    zIndex: 1000,
+  },
+  exportModal: {
+    position: 'fixed',
+    top: '50%',
+    left: '50%',
+    transform: 'translate(-50%, -50%)',
+    backgroundColor: 'white',
+    borderRadius: '10px',
+    padding: '30px',
+    boxShadow: '0 4px 20px rgba(0,0,0,0.2)',
+    zIndex: 1001,
+    minWidth: '400px',
+  },
+  exportModalTitle: {
+    fontSize: '24px',
+    fontWeight: 'bold',
+    marginBottom: '10px',
+    color: '#2c3e50',
+  },
+  exportModalSubtitle: {
+    fontSize: '14px',
+    color: '#7f8c8d',
+    marginBottom: '25px',
+  },
+  exportModalButtons: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '10px',
+    marginBottom: '20px',
+  },
+  exportModalButton: {
+    padding: '15px 20px',
+    fontSize: '16px',
+    backgroundColor: '#28a745',
+    color: 'white',
+    border: 'none',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    fontWeight: '600',
+    transition: 'background-color 0.2s',
+  },
+  exportModalCancel: {
+    width: '100%',
+    padding: '12px 20px',
+    fontSize: '14px',
+    backgroundColor: '#6c757d',
+    color: 'white',
+    border: 'none',
+    borderRadius: '8px',
+    cursor: 'pointer',
   },
 }
