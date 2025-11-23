@@ -21,7 +21,6 @@ interface Payment {
   cash_amount: number
   credit_card_amount: number
   other_payment_amount: number
-  other_payment_method: string | null
   change_amount: number
 }
 
@@ -66,7 +65,6 @@ export default function ReceiptsPage() {
     cash_amount: 0,
     credit_card_amount: 0,
     other_payment_amount: 0,
-    other_payment_method: '',
     change_amount: 0
   })
   const [isEditItemModalOpen, setIsEditItemModalOpen] = useState(false)
@@ -107,7 +105,6 @@ export default function ReceiptsPage() {
     cash_amount: 0,
     credit_card_amount: 0,
     other_payment_amount: 0,
-    other_payment_method: '',
     change_amount: 0
   })
   const [createItems, setCreateItems] = useState<Array<{
@@ -151,7 +148,7 @@ export default function ReceiptsPage() {
               const methods: string[] = []
               if (paymentData.cash_amount > 0) methods.push('現金')
               if (paymentData.credit_card_amount > 0) methods.push('カード')
-              if (paymentData.other_payment_amount > 0) methods.push(paymentData.other_payment_method || 'その他')
+              if (paymentData.other_payment_amount > 0) methods.push('その他')
               paymentMethods = methods.length > 0 ? methods.join('・') : '-'
             }
 
@@ -336,7 +333,6 @@ export default function ReceiptsPage() {
         cash_amount: paymentData?.cash_amount || 0,
         credit_card_amount: paymentData?.credit_card_amount || 0,
         other_payment_amount: paymentData?.other_payment_amount || 0,
-        other_payment_method: paymentData?.other_payment_method || '',
         change_amount: paymentData?.change_amount || 0
       })
       setIsEditModalOpen(true)
@@ -372,7 +368,6 @@ export default function ReceiptsPage() {
             cash_amount: editPaymentData.cash_amount,
             credit_card_amount: editPaymentData.credit_card_amount,
             other_payment_amount: editPaymentData.other_payment_amount,
-            other_payment_method: editPaymentData.other_payment_method || null,
             change_amount: editPaymentData.change_amount
           })
           .eq('order_id', selectedReceipt.id)
@@ -386,7 +381,6 @@ export default function ReceiptsPage() {
             cash_amount: editPaymentData.cash_amount,
             credit_card_amount: editPaymentData.credit_card_amount,
             other_payment_amount: editPaymentData.other_payment_amount,
-            other_payment_method: editPaymentData.other_payment_method || null,
             change_amount: editPaymentData.change_amount,
             store_id: selectedReceipt.store_id
           })
@@ -555,7 +549,6 @@ export default function ReceiptsPage() {
             cash_amount: selectedReceipt.payment.cash_amount,
             credit_card_amount: selectedReceipt.payment.credit_card_amount,
             other_payment_amount: selectedReceipt.payment.other_payment_amount,
-            other_payment_method: selectedReceipt.payment.other_payment_method,
             change_amount: selectedReceipt.payment.change_amount,
             store_id: selectedReceipt.store_id
           })
@@ -584,7 +577,6 @@ export default function ReceiptsPage() {
       cash_amount: 0,
       credit_card_amount: 0,
       other_payment_amount: 0,
-      other_payment_method: '',
       change_amount: 0
     })
     setCreateItems([{
@@ -669,7 +661,6 @@ export default function ReceiptsPage() {
           cash_amount: createPaymentData.cash_amount,
           credit_card_amount: createPaymentData.credit_card_amount,
           other_payment_amount: createPaymentData.other_payment_amount,
-          other_payment_method: createPaymentData.other_payment_method || null,
           change_amount: createPaymentData.change_amount,
           store_id: selectedStore
         })
@@ -1288,16 +1279,6 @@ export default function ReceiptsPage() {
                     />
                   </div>
                   <div style={styles.formGroup}>
-                    <label style={styles.label}>その他支払方法</label>
-                    <input
-                      type="text"
-                      value={editPaymentData.other_payment_method}
-                      onChange={(e) => setEditPaymentData({ ...editPaymentData, other_payment_method: e.target.value })}
-                      style={styles.input}
-                      placeholder="例: PayPay"
-                    />
-                  </div>
-                  <div style={styles.formGroup}>
                     <label style={styles.label}>お釣り</label>
                     <input
                       type="number"
@@ -1854,16 +1835,6 @@ export default function ReceiptsPage() {
                       onChange={(e) => setCreatePaymentData({ ...createPaymentData, other_payment_amount: Number(e.target.value) })}
                       style={styles.input}
                       min="0"
-                    />
-                  </div>
-                  <div style={styles.formGroup}>
-                    <label style={styles.label}>その他支払方法</label>
-                    <input
-                      type="text"
-                      value={createPaymentData.other_payment_method}
-                      onChange={(e) => setCreatePaymentData({ ...createPaymentData, other_payment_method: e.target.value })}
-                      style={styles.input}
-                      placeholder="例: PayPay"
                     />
                   </div>
                   <div style={styles.formGroup}>
