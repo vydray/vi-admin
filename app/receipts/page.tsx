@@ -451,6 +451,63 @@ export default function ReceiptsPage() {
     setIsPaymentModalOpen(true)
   }
 
+  const handlePaymentMethodClick = (method: 'cash' | 'card' | 'other') => {
+    if (!selectedReceipt || !selectedReceipt.order_items) return
+
+    // 商品小計を計算
+    const itemsSubtotal = selectedReceipt.order_items.reduce((sum, item) => sum + item.subtotal, 0)
+    const serviceFee = Math.floor(itemsSubtotal * (serviceChargeRate / 100))
+    const subtotalBeforeRounding = itemsSubtotal + serviceFee
+    const roundedSubtotal = getRoundedTotal(subtotalBeforeRounding, roundingUnit, roundingMethod)
+
+    setActivePaymentInput(method)
+
+    if (method === 'cash') {
+      // 現金ボタン: カードやその他に金額が入っていない場合のみ満額入力
+      if (tempPaymentData.credit_card_amount === 0 && tempPaymentData.other_payment_amount === 0) {
+        setTempPaymentData({ ...tempPaymentData, cash_amount: roundedSubtotal })
+      }
+    } else if (method === 'card') {
+      // カードボタン: 残りの金額にカード手数料を加算して端数処理
+      const cashPaid = tempPaymentData.cash_amount
+      const otherPaid = tempPaymentData.other_payment_amount
+      const remaining = roundedSubtotal - cashPaid - otherPaid
+
+      if (remaining > 0) {
+        // カード手数料を計算
+        const cardFee = cardFeeRate > 0
+          ? Math.floor(remaining * (cardFeeRate / 100))
+          : 0
+
+        // カード手数料を含めた金額を端数処理
+        const cardAmountWithFee = remaining + cardFee
+        const roundedCardAmount = getRoundedTotal(cardAmountWithFee, roundingUnit, roundingMethod)
+
+        setTempPaymentData({ ...tempPaymentData, credit_card_amount: roundedCardAmount })
+      }
+    } else if (method === 'other') {
+      // その他ボタン: カード手数料を含めた最終合計から現金とカードを引いた残り
+      const cashPaid = tempPaymentData.cash_amount
+      const cardPaid = tempPaymentData.credit_card_amount
+
+      // カード手数料を計算
+      const remainingForCardFee = roundedSubtotal - cashPaid
+      const cardFee = cardPaid > 0 && cardFeeRate > 0 && remainingForCardFee > 0
+        ? Math.floor(remainingForCardFee * (cardFeeRate / 100))
+        : 0
+
+      // カード手数料を含めた合計を端数処理
+      const totalWithCardFeeBeforeRounding = roundedSubtotal + cardFee
+      const totalWithCardFee = getRoundedTotal(totalWithCardFeeBeforeRounding, roundingUnit, roundingMethod)
+
+      const remaining = totalWithCardFee - cashPaid - cardPaid
+
+      if (remaining > 0) {
+        setTempPaymentData({ ...tempPaymentData, other_payment_amount: remaining })
+      }
+    }
+  }
+
   const handlePaymentNumberClick = (num: string) => {
     const field = activePaymentInput === 'cash' ? 'cash_amount' : activePaymentInput === 'card' ? 'credit_card_amount' : 'other_payment_amount'
     const currentValue = tempPaymentData[field]
@@ -1747,7 +1804,7 @@ export default function ReceiptsPage() {
                   {/* 支払い方法ボタン */}
                   <div style={styles.paymentMethodButtons}>
                     <button
-                      onClick={() => setActivePaymentInput('cash')}
+                      onClick={() => handlePaymentMethodClick('cash')}
                       style={{
                         ...styles.paymentMethodButton,
                         backgroundColor: activePaymentInput === 'cash' ? '#4CAF50' : '#e0e0e0',
@@ -1757,7 +1814,7 @@ export default function ReceiptsPage() {
                       現金
                     </button>
                     <button
-                      onClick={() => setActivePaymentInput('card')}
+                      onClick={() => handlePaymentMethodClick('card')}
                       style={{
                         ...styles.paymentMethodButton,
                         backgroundColor: activePaymentInput === 'card' ? '#2196F3' : '#e0e0e0',
@@ -1772,7 +1829,7 @@ export default function ReceiptsPage() {
                       )}
                     </button>
                     <button
-                      onClick={() => setActivePaymentInput('other')}
+                      onClick={() => handlePaymentMethodClick('other')}
                       style={{
                         ...styles.paymentMethodButton,
                         backgroundColor: activePaymentInput === 'other' ? '#FF9800' : '#e0e0e0',
