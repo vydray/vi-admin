@@ -30,7 +30,6 @@ export default function CastSalesPage() {
   const [selectedStore, setSelectedStore] = useState(globalStoreId)
   const [selectedMonth, setSelectedMonth] = useState(new Date())
   const [aggregationType, setAggregationType] = useState<AggregationType>('subtotal_only')
-  const [casts, setCasts] = useState<Cast[]>([])
   const [salesData, setSalesData] = useState<CastSales[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -56,7 +55,6 @@ export default function CastSalesPage() {
       .order('name')
 
     if (!error && data) {
-      setCasts(data)
       return data
     }
     return []
@@ -94,6 +92,9 @@ export default function CastSalesPage() {
     // キャストごとの売上を集計
     const salesMap = new Map<number, CastSales>()
 
+    // キャスト名からキャストオブジェクトへのMapを作成（高速検索用）
+    const castNameMap = new Map(loadedCasts.map(c => [c.name, c]))
+
     // キャストの初期化
     loadedCasts.forEach(cast => {
       salesMap.set(cast.id, {
@@ -111,7 +112,7 @@ export default function CastSalesPage() {
       if (aggregationType === 'subtotal_only') {
         // 小計のみ: staff_nameで集計
         if (order.staff_name) {
-          const cast = loadedCasts.find(c => c.name === order.staff_name)
+          const cast = castNameMap.get(order.staff_name)
           if (cast) {
             const castSales = salesMap.get(cast.id)
             if (castSales) {
@@ -124,7 +125,7 @@ export default function CastSalesPage() {
         if (order.order_items && Array.isArray(order.order_items)) {
           order.order_items.forEach((item: any) => {
             if (item.cast_name) {
-              const cast = loadedCasts.find(c => c.name === item.cast_name)
+              const cast = castNameMap.get(item.cast_name)
               if (cast) {
                 const castSales = salesMap.get(cast.id)
                 if (castSales) {
