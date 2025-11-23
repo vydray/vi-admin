@@ -45,6 +45,7 @@ export default function CastSalesPage() {
   const [aggregationType, setAggregationType] = useState<AggregationType>('subtotal_only')
   const [salesData, setSalesData] = useState<CastSales[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   // 通貨フォーマッターを1回だけ作成（再利用）
   const currencyFormatter = useMemo(() => {
@@ -61,9 +62,16 @@ export default function CastSalesPage() {
 
   const loadData = async () => {
     setLoading(true)
-    const loadedCasts = await loadCasts()
-    await loadSalesData(loadedCasts)
-    setLoading(false)
+    setError(null)
+    try {
+      const loadedCasts = await loadCasts()
+      await loadSalesData(loadedCasts)
+    } catch (err) {
+      console.error('データ読み込みエラー:', err)
+      setError('データの読み込みに失敗しました。再度お試しください。')
+    } finally {
+      setLoading(false)
+    }
   }
 
   const loadCasts = async () => {
@@ -76,10 +84,10 @@ export default function CastSalesPage() {
       .order('display_order', { ascending: true, nullsFirst: false })
       .order('name')
 
-    if (!error && data) {
-      return data
+    if (error) {
+      throw new Error('キャストデータの取得に失敗しました')
     }
-    return []
+    return data || []
   }
 
   const loadSalesData = async (loadedCasts: Cast[]) => {
@@ -106,13 +114,12 @@ export default function CastSalesPage() {
       .lte('order_date', endDate + 'T23:59:59')
       .is('deleted_at', null)
 
-    if (ordersError || !orders) {
-      console.error('Error loading orders:', ordersError)
-      return
+    if (ordersError) {
+      throw new Error('売上データの取得に失敗しました')
     }
 
     // 型アサーション（Supabaseの型推論を補完）
-    const typedOrders = orders as unknown as Order[]
+    const typedOrders = (orders || []) as unknown as Order[]
 
     // キャストごとの売上を集計
     const salesMap = new Map<number, CastSales>()
@@ -199,6 +206,28 @@ export default function CastSalesPage() {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
         <div>読み込み中...</div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', gap: '16px' }}>
+        <div style={{ color: '#dc2626', fontSize: '16px' }}>{error}</div>
+        <button
+          onClick={loadData}
+          style={{
+            padding: '8px 16px',
+            fontSize: '14px',
+            backgroundColor: '#3b82f6',
+            color: '#fff',
+            border: 'none',
+            borderRadius: '6px',
+            cursor: 'pointer'
+          }}
+        >
+          再読み込み
+        </button>
       </div>
     )
   }
