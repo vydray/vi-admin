@@ -448,6 +448,27 @@ export default function ReceiptsPage() {
   }
 
   const calculateCreateReceiptTotals = () => {
+    // 必須項目のチェック
+    if (!createFormData.table_number) {
+      alert('テーブル番号を入力してください')
+      return
+    }
+
+    if (!createFormData.staff_name) {
+      alert('推しを選択してください')
+      return
+    }
+
+    if (!createFormData.order_date) {
+      alert('注文日を入力してください')
+      return
+    }
+
+    if (!createFormData.checkout_datetime) {
+      alert('会計日時を入力してください')
+      return
+    }
+
     // 少なくとも1つの商品が選択されているかチェック
     const validItems = createItems.filter(item => item.product_name)
     if (validItems.length === 0) {
@@ -654,6 +675,21 @@ export default function ReceiptsPage() {
         // 新規作成モード：新しい伝票を作成
         if (!createFormData.table_number) {
           alert('テーブル番号を入力してください')
+          return
+        }
+
+        if (!createFormData.staff_name) {
+          alert('推しを選択してください')
+          return
+        }
+
+        if (!createFormData.order_date) {
+          alert('注文日を入力してください')
+          return
+        }
+
+        if (!createFormData.checkout_datetime) {
+          alert('会計日時を入力してください')
           return
         }
 
@@ -1798,7 +1834,7 @@ export default function ReceiptsPage() {
           : `会計処理 - ${createFormData.table_number || '新規伝票'}`
 
         return (
-          <div style={styles.modalOverlay} onClick={() => setIsPaymentModalOpen(false)}>
+          <div style={{...styles.modalOverlay, zIndex: 2000}} onClick={() => setIsPaymentModalOpen(false)}>
             <div style={styles.paymentModal} onClick={(e) => e.stopPropagation()}>
               <div style={styles.modalHeader}>
                 <h2 style={styles.modalTitle}>{modalTitle}</h2>
@@ -2032,13 +2068,13 @@ export default function ReceiptsPage() {
               </div>
 
               <div style={styles.formGroup}>
-                <label style={styles.label}>推し</label>
+                <label style={styles.label}>推し <span style={{ color: 'red' }}>*</span></label>
                 <select
                   value={createFormData.staff_name}
                   onChange={(e) => setCreateFormData({ ...createFormData, staff_name: e.target.value })}
                   style={styles.input}
                 >
-                  <option value="">なし</option>
+                  <option value="">選択してください</option>
                   {casts.map((cast) => (
                     <option key={cast.id} value={cast.name}>
                       {cast.name}
@@ -2048,7 +2084,7 @@ export default function ReceiptsPage() {
               </div>
 
               <div style={styles.formGroup}>
-                <label style={styles.label}>注文日</label>
+                <label style={styles.label}>注文日 <span style={{ color: 'red' }}>*</span></label>
                 <input
                   type="date"
                   value={createFormData.order_date}
@@ -2058,7 +2094,7 @@ export default function ReceiptsPage() {
               </div>
 
               <div style={styles.formGroup}>
-                <label style={styles.label}>会計日時</label>
+                <label style={styles.label}>会計日時 <span style={{ color: 'red' }}>*</span></label>
                 <input
                   type="datetime-local"
                   value={createFormData.checkout_datetime}
