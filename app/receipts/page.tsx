@@ -91,8 +91,10 @@ export default function ReceiptsPage() {
   const [products, setProducts] = useState<any[]>([])
   const [categories, setCategories] = useState<any[]>([])
   const [casts, setCasts] = useState<any[]>([])
-  const [cardFeeRate, setCardFeeRate] = useState(0) // カード手数料率（例: 3.6）
-  const [serviceChargeRate, setServiceChargeRate] = useState(0) // サービス料率（例: 15）
+  const [cardFeeRate, setCardFeeRate] = useState(0) // カード手数料率
+  const [serviceChargeRate, setServiceChargeRate] = useState(0) // サービス料率
+  const [roundingUnit, setRoundingUnit] = useState(0) // 端数処理の単位
+  const [roundingMethod, setRoundingMethod] = useState(0) // 端数処理の方法（0: 切り上げ, 1: 切り捨て, 2: 四捨五入）
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [createFormData, setCreateFormData] = useState({
     table_number: '',
@@ -212,16 +214,40 @@ export default function ReceiptsPage() {
         .eq('store_id', selectedStore)
 
       if (settings) {
-        // card_fee_rateは%で保存されている（例: 3.6）
+        // card_fee_rateは小数で保存されている（例: 0.036 = 3.6%）
         const cardFee = Number(settings.find(s => s.setting_key === 'card_fee_rate')?.setting_value || 0)
-        setCardFeeRate(cardFee)
+        setCardFeeRate(cardFee * 100) // パーセント表示用に100倍
 
         // service_charge_rateは小数で保存されている（例: 0.15 = 15%）
         const serviceCharge = Number(settings.find(s => s.setting_key === 'service_charge_rate')?.setting_value || 0)
         setServiceChargeRate(serviceCharge * 100) // パーセント表示用に100倍
+
+        // rounding_unit（端数処理の単位、例: 100）
+        const roundUnit = Number(settings.find(s => s.setting_key === 'rounding_unit')?.setting_value || 0)
+        setRoundingUnit(roundUnit)
+
+        // rounding_method（端数処理の方法: 0=切り上げ, 1=切り捨て, 2=四捨五入）
+        const roundMethod = Number(settings.find(s => s.setting_key === 'rounding_method')?.setting_value || 0)
+        setRoundingMethod(roundMethod)
       }
     } catch (error) {
       console.error('Error loading system settings:', error)
+    }
+  }
+
+  // 端数処理を適用した金額を計算
+  const getRoundedTotal = (amount: number, unit: number, method: number): number => {
+    if (unit <= 0) return amount
+
+    switch (method) {
+      case 0: // 切り上げ
+        return Math.ceil(amount / unit) * unit
+      case 1: // 切り捨て
+        return Math.floor(amount / unit) * unit
+      case 2: // 四捨五入
+        return Math.round(amount / unit) * unit
+      default:
+        return amount
     }
   }
 
@@ -408,16 +434,20 @@ export default function ReceiptsPage() {
       const serviceFee = Math.floor(itemsSubtotal * (serviceChargeRate / 100))
 
       // サービス料込み小計
-      const subtotalWithService = itemsSubtotal + serviceFee
+      const subtotalBeforeRounding = itemsSubtotal + serviceFee
 
-      // カード手数料を計算（サービス料込み小計 - 現金 - その他 に対してカード手数料率を適用）
-      const remainingAmount = subtotalWithService - editPaymentData.cash_amount - editPaymentData.other_payment_amount
+      // 端数処理を適用
+      const roundedSubtotal = getRoundedTotal(subtotalBeforeRounding, roundingUnit, roundingMethod)
+
+      // カード手数料を計算（端数処理後の小計 - 現金 - その他 に対してカード手数料率を適用）
+      const remainingAmount = roundedSubtotal - editPaymentData.cash_amount - editPaymentData.other_payment_amount
       const cardFee = remainingAmount > 0 && cardFeeRate > 0
         ? Math.floor(remainingAmount * (cardFeeRate / 100))
         : 0
 
-      // 最終合計 = サービス料込み小計 + カード手数料
-      const finalTotal = subtotalWithService + cardFee
+      // カード手数料込みの合計に再度端数処理を適用
+      const totalBeforeRounding = roundedSubtotal + cardFee
+      const finalTotal = getRoundedTotal(totalBeforeRounding, roundingUnit, roundingMethod)
 
       // 支払い合計
       const totalPaid = editPaymentData.cash_amount + editPaymentData.credit_card_amount + editPaymentData.other_payment_amount
@@ -454,7 +484,10 @@ export default function ReceiptsPage() {
         if (paymentError) throw paymentError
       }
 
-      alert(`合計を再計算しました\n小計: ${formatCurrency(itemsSubtotal)}\nサービス料 (${serviceChargeRate}%): ${formatCurrency(serviceFee)}\n小計（サービス料込）: ${formatCurrency(subtotalWithService)}\nカード手数料 (${cardFeeRate}%): ${formatCurrency(cardFee)}\n合計: ${formatCurrency(finalTotal)}\nお釣り: ${formatCurrency(Math.max(0, change))}`)
+      const roundingAdjustment1 = roundedSubtotal - subtotalBeforeRounding
+      const roundingAdjustment2 = finalTotal - totalBeforeRounding
+
+      alert(`合計を再計算しました\n小計: ${formatCurrency(itemsSubtotal)}\nサービス料 (${serviceChargeRate}%): ${formatCurrency(serviceFee)}\n端数調整: ${formatCurrency(roundingAdjustment1)}\n小計（端数処理後）: ${formatCurrency(roundedSubtotal)}\nカード手数料 (${cardFeeRate}%): ${formatCurrency(cardFee)}\n端数調整: ${formatCurrency(roundingAdjustment2)}\n合計: ${formatCurrency(finalTotal)}\nお釣り: ${formatCurrency(Math.max(0, change))}`)
 
       // 伝票情報を再読み込み
       loadReceiptDetails(selectedReceipt)
@@ -1134,17 +1167,25 @@ export default function ReceiptsPage() {
                 // サービス料
                 const serviceFee = Math.floor(itemsSubtotal * (serviceChargeRate / 100))
 
-                // サービス料込み小計
-                const subtotalWithService = itemsSubtotal + serviceFee
+                // サービス料込み小計（端数処理前）
+                const subtotalBeforeRounding = itemsSubtotal + serviceFee
 
-                // カード手数料（サービス料込み小計 - 現金 - その他）に対して
-                const remainingAmount = subtotalWithService - editPaymentData.cash_amount - editPaymentData.other_payment_amount
+                // 端数処理を適用
+                const roundedSubtotal = getRoundedTotal(subtotalBeforeRounding, roundingUnit, roundingMethod)
+                const roundingAdjustment1 = roundedSubtotal - subtotalBeforeRounding
+
+                // カード手数料（端数処理後の小計 - 現金 - その他）に対して
+                const remainingAmount = roundedSubtotal - editPaymentData.cash_amount - editPaymentData.other_payment_amount
                 const cardFee = remainingAmount > 0 && cardFeeRate > 0
                   ? Math.floor(remainingAmount * (cardFeeRate / 100))
                   : 0
 
-                // 最終合計
-                const finalTotal = subtotalWithService + cardFee
+                // 最終合計（端数処理前）
+                const totalBeforeRounding = roundedSubtotal + cardFee
+
+                // 端数処理を適用
+                const finalTotal = getRoundedTotal(totalBeforeRounding, roundingUnit, roundingMethod)
+                const roundingAdjustment2 = finalTotal - totalBeforeRounding
 
                 return (
                   <div style={styles.totalsSummarySection}>
@@ -1162,11 +1203,19 @@ export default function ReceiptsPage() {
                         </span>
                       </div>
                     )}
+                    {roundingAdjustment1 !== 0 && (
+                      <div style={styles.summaryRow}>
+                        <span style={styles.summaryLabel}>端数調整</span>
+                        <span style={{ ...styles.summaryValue, color: roundingAdjustment1 < 0 ? '#d32f2f' : '#388e3c' }}>
+                          {roundingAdjustment1 < 0 ? '' : '+'}¥{roundingAdjustment1.toLocaleString()}
+                        </span>
+                      </div>
+                    )}
                     <div style={styles.summaryDivider}></div>
                     <div style={styles.summaryRow}>
-                      <span style={styles.summaryLabel}>小計（サービス料込）</span>
+                      <span style={styles.summaryLabel}>小計（端数処理後）</span>
                       <span style={styles.summaryValue}>
-                        {formatCurrency(subtotalWithService)}
+                        {formatCurrency(roundedSubtotal)}
                       </span>
                     </div>
                     {cardFee > 0 && (
@@ -1174,6 +1223,14 @@ export default function ReceiptsPage() {
                         <span style={styles.summaryLabel}>カード手数料 {cardFeeRate}% +</span>
                         <span style={styles.summaryValue}>
                           {formatCurrency(cardFee)}
+                        </span>
+                      </div>
+                    )}
+                    {roundingAdjustment2 !== 0 && (
+                      <div style={styles.summaryRow}>
+                        <span style={styles.summaryLabel}>端数調整</span>
+                        <span style={{ ...styles.summaryValue, color: roundingAdjustment2 < 0 ? '#d32f2f' : '#388e3c' }}>
+                          {roundingAdjustment2 < 0 ? '' : '+'}¥{roundingAdjustment2.toLocaleString()}
                         </span>
                       </div>
                     )}
