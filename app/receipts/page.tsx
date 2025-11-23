@@ -214,9 +214,9 @@ export default function ReceiptsPage() {
         .eq('store_id', selectedStore)
 
       if (settings) {
-        // card_fee_rateは小数で保存されている（例: 0.036 = 3.6%）
+        // card_fee_rateは整数で保存されている（例: 3.6 = 3.6%）
         const cardFee = Number(settings.find(s => s.setting_key === 'card_fee_rate')?.setting_value || 0)
-        setCardFeeRate(cardFee * 100) // パーセント表示用に100倍
+        setCardFeeRate(cardFee) // そのまま使う
 
         // service_charge_rateは小数で保存されている（例: 0.15 = 15%）
         const serviceCharge = Number(settings.find(s => s.setting_key === 'service_charge_rate')?.setting_value || 0)
