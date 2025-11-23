@@ -89,6 +89,34 @@ export default function ReceiptsPage() {
   const [products, setProducts] = useState<any[]>([])
   const [categories, setCategories] = useState<any[]>([])
   const [casts, setCasts] = useState<any[]>([])
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
+  const [createFormData, setCreateFormData] = useState({
+    table_number: '',
+    guest_name: '',
+    staff_name: '',
+    order_date: new Date().toISOString().split('T')[0],
+    checkout_datetime: new Date().toISOString().slice(0, 16)
+  })
+  const [createPaymentData, setCreatePaymentData] = useState({
+    cash_amount: 0,
+    credit_card_amount: 0,
+    other_payment_amount: 0,
+    other_payment_method: '',
+    change_amount: 0
+  })
+  const [createItems, setCreateItems] = useState<Array<{
+    product_name: string
+    category: string
+    cast_name: string
+    quantity: number
+    unit_price: number
+  }>>([{
+    product_name: '',
+    category: '',
+    cast_name: '',
+    quantity: 1,
+    unit_price: 0
+  }])
 
   useEffect(() => {
     loadReceipts()
@@ -418,6 +446,154 @@ export default function ReceiptsPage() {
     }
   }
 
+  const openCreateModal = () => {
+    setCreateFormData({
+      table_number: '',
+      guest_name: '',
+      staff_name: '',
+      order_date: new Date().toISOString().split('T')[0],
+      checkout_datetime: new Date().toISOString().slice(0, 16)
+    })
+    setCreatePaymentData({
+      cash_amount: 0,
+      credit_card_amount: 0,
+      other_payment_amount: 0,
+      other_payment_method: '',
+      change_amount: 0
+    })
+    setCreateItems([{
+      product_name: '',
+      category: '',
+      cast_name: '',
+      quantity: 1,
+      unit_price: 0
+    }])
+    setIsCreateModalOpen(true)
+  }
+
+  const createNewReceipt = async () => {
+    if (!createFormData.table_number) {
+      alert('テーブル番号を入力してください')
+      return
+    }
+
+    // 少なくとも1つの商品が選択されているかチェック
+    const validItems = createItems.filter(item => item.product_name)
+    if (validItems.length === 0) {
+      alert('少なくとも1つの商品を選択してください')
+      return
+    }
+
+    try {
+      // 合計金額を計算
+      const totalAmount = validItems.reduce((sum, item) => sum + (item.unit_price * item.quantity), 0)
+      const totalInclTax = totalAmount // すでに税込み価格
+
+      // 支払方法を決定
+      let paymentMethod = '-'
+      if (createPaymentData.cash_amount > 0) paymentMethod = '現金'
+      if (createPaymentData.credit_card_amount > 0) paymentMethod = paymentMethod === '-' ? 'カード' : '現金・カード'
+      if (createPaymentData.other_payment_amount > 0) paymentMethod = paymentMethod === '-' ? 'その他' : paymentMethod + '・その他'
+
+      // 新しい注文を作成
+      const { data: newOrder, error: orderError } = await supabase
+        .from('orders')
+        .insert({
+          store_id: selectedStore,
+          table_number: createFormData.table_number,
+          guest_name: createFormData.guest_name || null,
+          staff_name: createFormData.staff_name || null,
+          total_amount: totalAmount,
+          total_incl_tax: totalInclTax,
+          payment_method: paymentMethod,
+          order_date: new Date(createFormData.order_date).toISOString(),
+          checkout_datetime: new Date(createFormData.checkout_datetime).toISOString()
+        })
+        .select()
+        .single()
+
+      if (orderError) throw orderError
+
+      // 注文明細を作成
+      const newItems = validItems.map(item => ({
+        order_id: newOrder.id,
+        product_name: item.product_name,
+        category: item.category || null,
+        cast_name: item.cast_name || null,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        unit_price_excl_tax: Math.round(item.unit_price / 1.1),
+        tax_amount: item.unit_price - Math.round(item.unit_price / 1.1),
+        subtotal: item.unit_price * item.quantity,
+        pack_number: 0,
+        store_id: selectedStore
+      }))
+
+      const { error: itemsError } = await supabase
+        .from('order_items')
+        .insert(newItems)
+
+      if (itemsError) throw itemsError
+
+      // 支払い情報を作成
+      const { error: paymentError } = await supabase
+        .from('payments')
+        .insert({
+          order_id: newOrder.id,
+          cash_amount: createPaymentData.cash_amount,
+          credit_card_amount: createPaymentData.credit_card_amount,
+          other_payment_amount: createPaymentData.other_payment_amount,
+          other_payment_method: createPaymentData.other_payment_method || null,
+          change_amount: createPaymentData.change_amount,
+          store_id: selectedStore
+        })
+
+      if (paymentError) throw paymentError
+
+      alert('伝票を作成しました')
+      setIsCreateModalOpen(false)
+      loadReceipts()
+    } catch (error) {
+      console.error('Error creating receipt:', error)
+      alert('伝票の作成に失敗しました')
+    }
+  }
+
+  const addCreateItem = () => {
+    setCreateItems([...createItems, {
+      product_name: '',
+      category: '',
+      cast_name: '',
+      quantity: 1,
+      unit_price: 0
+    }])
+  }
+
+  const removeCreateItem = (index: number) => {
+    if (createItems.length === 1) {
+      alert('最低1つの明細が必要です')
+      return
+    }
+    setCreateItems(createItems.filter((_, i) => i !== index))
+  }
+
+  const updateCreateItem = (index: number, field: string, value: any) => {
+    const newItems = [...createItems]
+    newItems[index] = { ...newItems[index], [field]: value }
+
+    // 商品選択時に単価を自動設定
+    if (field === 'product_name') {
+      const product = products.find(p => p.name === value)
+      if (product) {
+        const category = categories.find(c => c.id === product.category_id)
+        newItems[index].category = category?.name || ''
+        newItems[index].unit_price = product.price || 0
+      }
+    }
+
+    setCreateItems(newItems)
+  }
+
   // 注文明細の編集開始（モーダルを開く）
   const startEditItem = (item: OrderItem) => {
     setEditingItem(item)
@@ -629,7 +805,10 @@ export default function ReceiptsPage() {
             </select>
           </div>
         </div>
-        <div style={styles.stats}>
+        <div style={styles.headerRight}>
+          <button onClick={openCreateModal} style={styles.createButton}>
+            + 新規伝票作成
+          </button>
           <div style={styles.statItem}>
             <span style={styles.statLabel}>総伝票数</span>
             <span style={styles.statValue}>{filteredReceipts.length}</span>
@@ -1192,6 +1371,247 @@ export default function ReceiptsPage() {
           </div>
         </div>
       )}
+
+      {/* Create New Receipt Modal */}
+      {isCreateModalOpen && (
+        <div style={styles.modalOverlay} onClick={() => setIsCreateModalOpen(false)}>
+          <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+            <div style={styles.modalHeader}>
+              <h2 style={styles.modalTitle}>新規伝票作成</h2>
+              <button
+                onClick={() => setIsCreateModalOpen(false)}
+                style={styles.closeButton}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={styles.modalBody}>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>テーブル番号 <span style={{ color: 'red' }}>*</span></label>
+                <input
+                  type="text"
+                  value={createFormData.table_number}
+                  onChange={(e) => setCreateFormData({ ...createFormData, table_number: e.target.value })}
+                  style={styles.input}
+                  placeholder="例: 1"
+                />
+              </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.label}>お客様名</label>
+                <input
+                  type="text"
+                  value={createFormData.guest_name}
+                  onChange={(e) => setCreateFormData({ ...createFormData, guest_name: e.target.value })}
+                  style={styles.input}
+                />
+              </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.label}>推し</label>
+                <select
+                  value={createFormData.staff_name}
+                  onChange={(e) => setCreateFormData({ ...createFormData, staff_name: e.target.value })}
+                  style={styles.input}
+                >
+                  <option value="">なし</option>
+                  {casts.map((cast) => (
+                    <option key={cast.id} value={cast.name}>
+                      {cast.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.label}>注文日</label>
+                <input
+                  type="date"
+                  value={createFormData.order_date}
+                  onChange={(e) => setCreateFormData({ ...createFormData, order_date: e.target.value })}
+                  style={styles.input}
+                />
+              </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.label}>会計日時</label>
+                <input
+                  type="datetime-local"
+                  value={createFormData.checkout_datetime}
+                  onChange={(e) => setCreateFormData({ ...createFormData, checkout_datetime: e.target.value })}
+                  style={styles.input}
+                />
+              </div>
+
+              {/* Order Items */}
+              <div style={styles.orderItemsSection}>
+                <h3 style={styles.sectionTitle}>注文明細 <span style={{ color: 'red' }}>*</span></h3>
+                {createItems.map((item, index) => (
+                  <div key={index} style={styles.createItemRow}>
+                    <div style={styles.createItemFields}>
+                      <div style={styles.formGroup}>
+                        <label style={styles.label}>カテゴリー</label>
+                        <select
+                          value={item.category}
+                          onChange={(e) => updateCreateItem(index, 'category', e.target.value)}
+                          style={styles.input}
+                        >
+                          <option value="">すべて</option>
+                          {categories.map((category) => (
+                            <option key={category.id} value={category.name}>
+                              {category.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div style={styles.formGroup}>
+                        <label style={styles.label}>商品名</label>
+                        <select
+                          value={item.product_name}
+                          onChange={(e) => updateCreateItem(index, 'product_name', e.target.value)}
+                          style={styles.input}
+                        >
+                          <option value="">選択してください</option>
+                          {products
+                            .filter(product => {
+                              if (!item.category) return true
+                              const category = categories.find(c => c.name === item.category)
+                              return product.category_id === category?.id
+                            })
+                            .map((product) => (
+                              <option key={product.id} value={product.name}>
+                                {product.name}
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+                      <div style={styles.formGroup}>
+                        <label style={styles.label}>キャスト</label>
+                        <select
+                          value={item.cast_name}
+                          onChange={(e) => updateCreateItem(index, 'cast_name', e.target.value)}
+                          style={styles.input}
+                        >
+                          <option value="">なし</option>
+                          {casts.map((cast) => (
+                            <option key={cast.id} value={cast.name}>
+                              {cast.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div style={styles.formGroup}>
+                        <label style={styles.label}>数量</label>
+                        <input
+                          type="number"
+                          value={item.quantity}
+                          onChange={(e) => updateCreateItem(index, 'quantity', Number(e.target.value))}
+                          style={styles.input}
+                          min="1"
+                        />
+                      </div>
+                      <div style={styles.formGroup}>
+                        <label style={styles.label}>単価</label>
+                        <input
+                          type="number"
+                          value={item.unit_price}
+                          onChange={(e) => updateCreateItem(index, 'unit_price', Number(e.target.value))}
+                          style={styles.input}
+                          min="0"
+                        />
+                      </div>
+                      <div style={styles.formGroup}>
+                        <label style={styles.label}>小計</label>
+                        <div style={styles.totalDisplay}>
+                          {formatCurrency(item.unit_price * item.quantity)}
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => removeCreateItem(index)}
+                      style={styles.removeItemButton}
+                    >
+                      削除
+                    </button>
+                  </div>
+                ))}
+                <button onClick={addCreateItem} style={styles.addItemButton}>
+                  + 明細を追加
+                </button>
+              </div>
+
+              {/* Payment Details */}
+              <div style={styles.paymentSection}>
+                <h3 style={styles.sectionTitle}>支払情報</h3>
+                <div style={styles.paymentEditGrid}>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>現金</label>
+                    <input
+                      type="number"
+                      value={createPaymentData.cash_amount}
+                      onChange={(e) => setCreatePaymentData({ ...createPaymentData, cash_amount: Number(e.target.value) })}
+                      style={styles.input}
+                      min="0"
+                    />
+                  </div>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>クレジットカード</label>
+                    <input
+                      type="number"
+                      value={createPaymentData.credit_card_amount}
+                      onChange={(e) => setCreatePaymentData({ ...createPaymentData, credit_card_amount: Number(e.target.value) })}
+                      style={styles.input}
+                      min="0"
+                    />
+                  </div>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>その他金額</label>
+                    <input
+                      type="number"
+                      value={createPaymentData.other_payment_amount}
+                      onChange={(e) => setCreatePaymentData({ ...createPaymentData, other_payment_amount: Number(e.target.value) })}
+                      style={styles.input}
+                      min="0"
+                    />
+                  </div>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>その他支払方法</label>
+                    <input
+                      type="text"
+                      value={createPaymentData.other_payment_method}
+                      onChange={(e) => setCreatePaymentData({ ...createPaymentData, other_payment_method: e.target.value })}
+                      style={styles.input}
+                      placeholder="例: PayPay"
+                    />
+                  </div>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>お釣り</label>
+                    <input
+                      type="number"
+                      value={createPaymentData.change_amount}
+                      onChange={(e) => setCreatePaymentData({ ...createPaymentData, change_amount: Number(e.target.value) })}
+                      style={styles.input}
+                      min="0"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style={styles.modalFooter}>
+              <div style={styles.modalFooterRight}>
+                <button onClick={() => setIsCreateModalOpen(false)} style={styles.cancelButton}>
+                  キャンセル
+                </button>
+                <button onClick={createNewReceipt} style={styles.saveButton}>
+                  作成
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -1206,6 +1626,21 @@ const styles: { [key: string]: React.CSSProperties } = {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  headerRight: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '20px',
+  },
+  createButton: {
+    padding: '10px 20px',
+    fontSize: '14px',
+    backgroundColor: '#28a745',
+    color: 'white',
+    border: 'none',
+    borderRadius: '6px',
+    cursor: 'pointer',
+    fontWeight: '600',
   },
   title: {
     fontSize: '28px',
@@ -1581,5 +2016,32 @@ const styles: { [key: string]: React.CSSProperties } = {
     borderRadius: '6px',
     cursor: 'pointer',
     width: '100%',
+  },
+  createItemRow: {
+    display: 'flex',
+    gap: '10px',
+    marginBottom: '15px',
+    padding: '15px',
+    backgroundColor: 'white',
+    borderRadius: '6px',
+    border: '1px solid #e9ecef',
+  },
+  createItemFields: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, 1fr)',
+    gap: '10px',
+    flex: 1,
+  },
+  removeItemButton: {
+    padding: '8px 16px',
+    fontSize: '13px',
+    backgroundColor: '#dc3545',
+    color: 'white',
+    border: 'none',
+    borderRadius: '6px',
+    cursor: 'pointer',
+    alignSelf: 'flex-start',
+    marginTop: '28px',
+    height: 'fit-content',
   },
 }
