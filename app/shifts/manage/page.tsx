@@ -41,7 +41,7 @@ interface ShiftLock {
 }
 
 export default function ShiftManage() {
-  const { storeId: globalStoreId } = useStore()
+  const { storeId: globalStoreId, stores } = useStore()
   const [selectedStore, setSelectedStore] = useState(globalStoreId)
   const [selectedMonth, setSelectedMonth] = useState(new Date())
   const [isFirstHalf, setIsFirstHalf] = useState(true)
@@ -823,8 +823,9 @@ export default function ShiftManage() {
                 cursor: 'pointer'
               }}
             >
-              <option value={1}>Memorable</option>
-              <option value={2}>Mistress Mirage</option>
+              {stores.map(store => (
+                <option key={store.id} value={store.id}>{store.name}</option>
+              ))}
             </select>
           </div>
 

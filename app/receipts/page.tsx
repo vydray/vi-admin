@@ -47,7 +47,7 @@ interface ReceiptWithDetails extends Receipt {
 }
 
 export default function ReceiptsPage() {
-  const { storeId: globalStoreId } = useStore()
+  const { storeId: globalStoreId, stores } = useStore()
   const [selectedStore, setSelectedStore] = useState(globalStoreId)
   const [receipts, setReceipts] = useState<ReceiptWithDetails[]>([])
   const [loading, setLoading] = useState(true)
@@ -1245,8 +1245,9 @@ export default function ReceiptsPage() {
               onChange={(e) => setSelectedStore(Number(e.target.value))}
               style={styles.storeSelectorDropdown}
             >
-              <option value={1}>Memorable</option>
-              <option value={2}>Mistress Mirage</option>
+              {stores.map(store => (
+                <option key={store.id} value={store.id}>{store.name}</option>
+              ))}
             </select>
           </div>
         </div>

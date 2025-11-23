@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useStore } from '@/contexts/StoreContext'
 
 interface Cast {
   id: number
@@ -45,6 +46,7 @@ interface CastPosition {
 }
 
 export default function CastsPage() {
+  const { stores } = useStore()
   const [casts, setCasts] = useState<Cast[]>([])
   const [filteredCasts, setFilteredCasts] = useState<Cast[]>([])
   const [loading, setLoading] = useState(true)
@@ -536,8 +538,9 @@ export default function CastsPage() {
             onChange={(e) => setSelectedStore(Number(e.target.value))}
             style={filterSelectStyle}
           >
-            <option value={1}>Memorable</option>
-            <option value={2}>Mistress Mirage</option>
+            {stores.map(store => (
+              <option key={store.id} value={store.id}>{store.name}</option>
+            ))}
           </select>
         </div>
 

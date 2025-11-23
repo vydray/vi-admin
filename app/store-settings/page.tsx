@@ -35,7 +35,7 @@ interface DisplaySettings {
 }
 
 export default function StoreSettingsPage() {
-  const { storeId: globalStoreId } = useStore()
+  const { storeId: globalStoreId, stores } = useStore()
   const [selectedStore, setSelectedStore] = useState(globalStoreId)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -344,8 +344,9 @@ export default function StoreSettingsPage() {
               cursor: 'pointer'
             }}
           >
-            <option value={1}>Memorable</option>
-            <option value={2}>Mistress Mirage</option>
+            {stores.map(store => (
+              <option key={store.id} value={store.id}>{store.name}</option>
+            ))}
           </select>
         </div>
       </div>

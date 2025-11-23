@@ -13,7 +13,7 @@ interface Category {
 }
 
 export default function CategoriesPage() {
-  const { storeId: globalStoreId } = useStore()
+  const { storeId: globalStoreId, stores } = useStore()
   const [selectedStore, setSelectedStore] = useState(globalStoreId)
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
@@ -387,8 +387,9 @@ export default function CategoriesPage() {
               cursor: 'pointer'
             }}
           >
-            <option value={1}>Memorable</option>
-            <option value={2}>Mistress Mirage</option>
+            {stores.map(store => (
+              <option key={store.id} value={store.id}>{store.name}</option>
+            ))}
           </select>
         </div>
       </div>
