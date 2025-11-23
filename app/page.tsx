@@ -51,9 +51,151 @@ export default function Home() {
   const [selectedYear, setSelectedYear] = useState(now.getFullYear())
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1)
 
+  // エクスポート設定
+  const [exportType, setExportType] = useState<'receipts' | 'monthly'>('receipts')
+  const [isExporting, setIsExporting] = useState(false)
+
   useEffect(() => {
     fetchDashboardData()
   }, [storeId, selectedYear, selectedMonth])
+
+  const exportToCSV = async () => {
+    setIsExporting(true)
+    try {
+      // 選択された年月の開始日と終了日
+      const monthStr = String(selectedMonth).padStart(2, '0')
+      const monthStart = `${selectedYear}-${monthStr}-01`
+      const lastDay = new Date(selectedYear, selectedMonth, 0).getDate()
+      const monthEnd = `${selectedYear}-${monthStr}-${String(lastDay).padStart(2, '0')}`
+
+      // 伝票データを取得（注文明細と支払情報も含む）
+      const { data: orders, error } = await supabase
+        .from('orders')
+        .select(`
+          *,
+          order_items(*),
+          payments(*)
+        `)
+        .eq('store_id', storeId)
+        .gte('order_date', monthStart)
+        .lte('order_date', monthEnd + 'T23:59:59')
+        .is('deleted_at', null)
+        .order('checkout_datetime', { ascending: true })
+
+      if (error) throw error
+
+      if (!orders || orders.length === 0) {
+        alert('エクスポートするデータがありません')
+        return
+      }
+
+      // CSV作成
+      const headers = [
+        '伝票番号',
+        '営業日',
+        '会計日時',
+        'テーブル番号',
+        '現金',
+        'カード',
+        'その他',
+        '伝票税別小計',
+        '伝票合計',
+        '推し',
+        'カテゴリー',
+        '商品名',
+        'キャスト名',
+        '個数',
+        '単位',
+        '合計'
+      ]
+
+      const rows: string[][] = []
+
+      orders.forEach((order: any) => {
+        const payment = Array.isArray(order.payments) ? order.payments[0] : order.payments
+        const cashAmount = payment?.cash_amount || 0
+        const cardAmount = payment?.credit_card_amount || 0
+        const otherAmount = payment?.other_payment_amount || 0
+
+        const orderDate = order.order_date ? new Date(order.order_date).toLocaleDateString('ja-JP') : ''
+        const checkoutDatetime = order.checkout_datetime ? new Date(order.checkout_datetime).toLocaleString('ja-JP') : ''
+
+        const items = order.order_items || []
+
+        if (items.length === 0) {
+          // 明細がない場合は伝票情報のみ
+          rows.push([
+            order.receipt_number || '',
+            orderDate,
+            checkoutDatetime,
+            order.table_number || '',
+            String(cashAmount),
+            String(cardAmount),
+            String(otherAmount),
+            String(order.subtotal_excl_tax || 0),
+            String(order.total_incl_tax || 0),
+            order.staff_name || '', // 推し
+            '',
+            '',
+            '',
+            '',
+            '',
+            ''
+          ])
+        } else {
+          // 各明細ごとに行を作成
+          items.forEach((item: any) => {
+            rows.push([
+              order.receipt_number || '',
+              orderDate,
+              checkoutDatetime,
+              order.table_number || '',
+              String(cashAmount),
+              String(cardAmount),
+              String(otherAmount),
+              String(order.subtotal_excl_tax || 0),
+              String(order.total_incl_tax || 0),
+              order.staff_name || '', // 推し
+              item.category || '',
+              item.product_name || '',
+              item.cast_name || '',
+              String(item.quantity || 0),
+              String(item.unit_price || 0),
+              String(item.subtotal || 0)
+            ])
+          })
+        }
+      })
+
+      // CSV文字列生成
+      const csvContent = [
+        headers.join(','),
+        ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+      ].join('\n')
+
+      // BOM付きUTF-8でダウンロード
+      const bom = '\uFEFF'
+      const blob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+
+      const filename = exportType === 'receipts'
+        ? `会計伝票一覧_${selectedYear}年${selectedMonth}月.csv`
+        : `月別データ_${selectedYear}年${selectedMonth}月.csv`
+
+      link.download = filename
+      link.click()
+      URL.revokeObjectURL(url)
+
+      alert('エクスポートが完了しました')
+    } catch (error) {
+      console.error('Export error:', error)
+      alert('エクスポートに失敗しました')
+    } finally {
+      setIsExporting(false)
+    }
+  }
 
   const fetchDashboardData = async () => {
     setLoading(true)
@@ -222,6 +364,28 @@ export default function Home() {
               </option>
             ))}
           </select>
+
+          <div style={styles.exportSection}>
+            <select
+              value={exportType}
+              onChange={(e) => setExportType(e.target.value as 'receipts' | 'monthly')}
+              style={styles.select}
+            >
+              <option value="receipts">会計伝票一覧</option>
+              <option value="monthly">月別データ</option>
+            </select>
+            <button
+              onClick={exportToCSV}
+              disabled={isExporting}
+              style={{
+                ...styles.exportButton,
+                opacity: isExporting ? 0.6 : 1,
+                cursor: isExporting ? 'not-allowed' : 'pointer'
+              }}
+            >
+              {isExporting ? 'エクスポート中...' : 'CSVエクスポート'}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -336,6 +500,25 @@ const styles: { [key: string]: React.CSSProperties } = {
     borderRadius: '5px',
     backgroundColor: 'white',
     cursor: 'pointer',
+  },
+  exportSection: {
+    display: 'flex',
+    gap: '10px',
+    alignItems: 'center',
+    marginLeft: '20px',
+    paddingLeft: '20px',
+    borderLeft: '2px solid #ddd',
+  },
+  exportButton: {
+    padding: '8px 16px',
+    fontSize: '16px',
+    backgroundColor: '#28a745',
+    color: 'white',
+    border: 'none',
+    borderRadius: '5px',
+    cursor: 'pointer',
+    fontWeight: '600',
+    transition: 'background-color 0.2s',
   },
   dateInfo: { fontSize: '16px', color: '#555', marginBottom: '30px' },
   grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' },
