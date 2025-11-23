@@ -1181,6 +1181,8 @@ const tdStyleNameSticky = {
   left: 0,
   backgroundColor: 'white',
   zIndex: 1,
+  whiteSpace: 'nowrap' as const,
+  minWidth: '120px'
 }
 
 const filterSelectStyle = {
