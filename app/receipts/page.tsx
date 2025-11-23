@@ -667,12 +667,6 @@ export default function ReceiptsPage() {
 
         const validItems = createItems.filter(item => item.product_name)
 
-        // 支払方法を決定
-        let paymentMethod = '-'
-        if (tempPaymentData.cash_amount > 0) paymentMethod = '現金'
-        if (tempPaymentData.credit_card_amount > 0) paymentMethod = paymentMethod === '-' ? 'カード' : '現金・カード'
-        if (tempPaymentData.other_payment_amount > 0) paymentMethod = paymentMethod === '-' ? 'その他' : paymentMethod + '・その他'
-
         // 新しい注文を作成
         const { data: newOrder, error: orderError } = await supabase
           .from('orders')
@@ -683,7 +677,6 @@ export default function ReceiptsPage() {
             staff_name: createFormData.staff_name || null,
             total_amount: itemsSubtotal,
             total_incl_tax: finalTotal,
-            payment_method: paymentMethod,
             order_date: new Date(createFormData.order_date).toISOString(),
             checkout_datetime: new Date(createFormData.checkout_datetime).toISOString()
           })
@@ -866,7 +859,7 @@ export default function ReceiptsPage() {
       const subtotalBeforeRounding = itemsSubtotal + serviceFee
       const totalInclTax = getRoundedTotal(subtotalBeforeRounding, roundingUnit, roundingMethod)
 
-      // 新しい注文を作成（支払い方法は未設定）
+      // 新しい注文を作成
       const { data: newOrder, error: orderError } = await supabase
         .from('orders')
         .insert({
@@ -876,7 +869,6 @@ export default function ReceiptsPage() {
           staff_name: createFormData.staff_name || null,
           total_amount: itemsSubtotal,
           total_incl_tax: totalInclTax,
-          payment_method: '-',
           order_date: new Date(createFormData.order_date).toISOString(),
           checkout_datetime: new Date(createFormData.checkout_datetime).toISOString()
         })
