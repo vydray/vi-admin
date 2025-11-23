@@ -12,6 +12,11 @@ interface Cast {
   display_order?: number | null
 }
 
+interface Store {
+  id: number
+  name: string
+}
+
 interface DailySales {
   [date: string]: number
 }
@@ -43,6 +48,7 @@ export default function CastSalesPage() {
   const [selectedStore, setSelectedStore] = useState(globalStoreId)
   const [selectedMonth, setSelectedMonth] = useState(new Date())
   const [aggregationType, setAggregationType] = useState<AggregationType>('subtotal_only')
+  const [stores, setStores] = useState<Store[]>([])
   const [salesData, setSalesData] = useState<CastSales[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -57,8 +63,33 @@ export default function CastSalesPage() {
   }, [])
 
   useEffect(() => {
+    loadStores()
+  }, [])
+
+  useEffect(() => {
     loadData()
   }, [selectedMonth, selectedStore, aggregationType])
+
+  const loadStores = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('stores')
+        .select('id, name')
+        .order('id')
+
+      if (error) {
+        throw new Error('店舗データの取得に失敗しました')
+      }
+      setStores(data || [])
+    } catch (err) {
+      console.error('店舗データ読み込みエラー:', err)
+      // 店舗データ取得失敗時はフォールバック（既存のハードコード値を使用）
+      setStores([
+        { id: 1, name: 'Memorable' },
+        { id: 2, name: 'Mistress Mirage' }
+      ])
+    }
+  }
 
   const loadData = async () => {
     setLoading(true)
@@ -271,8 +302,9 @@ export default function CastSalesPage() {
                 cursor: 'pointer'
               }}
             >
-              <option value={1}>Memorable</option>
-              <option value={2}>Mistress Mirage</option>
+              {stores.map(store => (
+                <option key={store.id} value={store.id}>{store.name}</option>
+              ))}
             </select>
           </div>
 
