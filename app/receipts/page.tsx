@@ -94,6 +94,7 @@ export default function ReceiptsPage() {
   const [roundingUnit, setRoundingUnit] = useState(0) // 端数処理の単位
   const [roundingMethod, setRoundingMethod] = useState(0) // 端数処理の方法（0: 切り上げ, 1: 切り捨て, 2: 四捨五入）
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false) // 会計処理モーダル
+  const [paymentModalMode, setPaymentModalMode] = useState<'edit' | 'create'>('edit') // 編集モードか新規作成モードか
   const [calculatedTotal, setCalculatedTotal] = useState(0) // 計算された合計金額
   const [tempPaymentData, setTempPaymentData] = useState({
     cash_amount: 0,
@@ -108,12 +109,6 @@ export default function ReceiptsPage() {
     staff_name: '',
     order_date: new Date().toISOString().split('T')[0],
     checkout_datetime: new Date().toISOString().slice(0, 16)
-  })
-  const [createPaymentData, setCreatePaymentData] = useState({
-    cash_amount: 0,
-    credit_card_amount: 0,
-    other_payment_amount: 0,
-    change_amount: 0
   })
   const [createItems, setCreateItems] = useState<Array<{
     product_name: string
@@ -448,14 +443,52 @@ export default function ReceiptsPage() {
       other_payment_amount: 0
     })
     setActivePaymentInput('cash')
+    setPaymentModalMode('edit')
+    setIsPaymentModalOpen(true)
+  }
+
+  const calculateCreateReceiptTotals = () => {
+    // 少なくとも1つの商品が選択されているかチェック
+    const validItems = createItems.filter(item => item.product_name)
+    if (validItems.length === 0) {
+      alert('少なくとも1つの商品を選択してください')
+      return
+    }
+
+    // 商品小計を計算
+    const itemsSubtotal = validItems.reduce((sum, item) => sum + (item.unit_price * item.quantity), 0)
+
+    // サービス料を計算
+    const serviceFee = Math.floor(itemsSubtotal * (serviceChargeRate / 100))
+
+    // サービス料込み小計
+    const subtotalBeforeRounding = itemsSubtotal + serviceFee
+
+    // 端数処理を適用
+    const roundedSubtotal = getRoundedTotal(subtotalBeforeRounding, roundingUnit, roundingMethod)
+
+    // 初期状態の合計を設定（カード手数料なし）
+    setCalculatedTotal(roundedSubtotal)
+    setTempPaymentData({
+      cash_amount: 0,
+      credit_card_amount: 0,
+      other_payment_amount: 0
+    })
+    setActivePaymentInput('cash')
+    setPaymentModalMode('create')
     setIsPaymentModalOpen(true)
   }
 
   const handlePaymentMethodClick = (method: 'cash' | 'card' | 'other') => {
-    if (!selectedReceipt || !selectedReceipt.order_items) return
+    // 商品小計を計算（編集モードと新規作成モードで分岐）
+    let itemsSubtotal = 0
+    if (paymentModalMode === 'edit' && selectedReceipt && selectedReceipt.order_items) {
+      itemsSubtotal = selectedReceipt.order_items.reduce((sum, item) => sum + item.subtotal, 0)
+    } else if (paymentModalMode === 'create') {
+      const validItems = createItems.filter(item => item.product_name)
+      itemsSubtotal = validItems.reduce((sum, item) => sum + (item.unit_price * item.quantity), 0)
+    }
 
-    // 商品小計を計算
-    const itemsSubtotal = selectedReceipt.order_items.reduce((sum, item) => sum + item.subtotal, 0)
     const serviceFee = Math.floor(itemsSubtotal * (serviceChargeRate / 100))
     const subtotalBeforeRounding = itemsSubtotal + serviceFee
     const roundedSubtotal = getRoundedTotal(subtotalBeforeRounding, roundingUnit, roundingMethod)
@@ -534,11 +567,15 @@ export default function ReceiptsPage() {
   }
 
   const completePayment = async () => {
-    if (!selectedReceipt || !selectedReceipt.order_items) return
-
     try {
-      // 商品小計を計算
-      const itemsSubtotal = selectedReceipt.order_items.reduce((sum, item) => sum + item.subtotal, 0)
+      // 商品小計を計算（編集モードと新規作成モードで分岐）
+      let itemsSubtotal = 0
+      if (paymentModalMode === 'edit' && selectedReceipt && selectedReceipt.order_items) {
+        itemsSubtotal = selectedReceipt.order_items.reduce((sum, item) => sum + item.subtotal, 0)
+      } else if (paymentModalMode === 'create') {
+        const validItems = createItems.filter(item => item.product_name)
+        itemsSubtotal = validItems.reduce((sum, item) => sum + (item.unit_price * item.quantity), 0)
+      }
 
       // サービス料を計算
       const serviceFee = Math.floor(itemsSubtotal * (serviceChargeRate / 100))
@@ -571,47 +608,122 @@ export default function ReceiptsPage() {
         return
       }
 
-      // 注文情報を更新
-      const { error: orderError } = await supabase
-        .from('orders')
-        .update({
-          total_incl_tax: finalTotal
-        })
-        .eq('id', selectedReceipt.id)
-
-      if (orderError) throw orderError
-
-      // 支払い情報を更新
-      if (selectedReceipt.payment) {
-        const { error: paymentError } = await supabase
-          .from('payments')
+      if (paymentModalMode === 'edit' && selectedReceipt) {
+        // 編集モード：既存の伝票を更新
+        const { error: orderError } = await supabase
+          .from('orders')
           .update({
-            cash_amount: tempPaymentData.cash_amount,
-            credit_card_amount: tempPaymentData.credit_card_amount,
-            other_payment_amount: tempPaymentData.other_payment_amount,
-            change_amount: Math.max(0, change)
+            total_incl_tax: finalTotal
           })
-          .eq('order_id', selectedReceipt.id)
+          .eq('id', selectedReceipt.id)
 
-        if (paymentError) throw paymentError
-      } else {
+        if (orderError) throw orderError
+
+        // 支払い情報を更新
+        if (selectedReceipt.payment) {
+          const { error: paymentError } = await supabase
+            .from('payments')
+            .update({
+              cash_amount: tempPaymentData.cash_amount,
+              credit_card_amount: tempPaymentData.credit_card_amount,
+              other_payment_amount: tempPaymentData.other_payment_amount,
+              change_amount: Math.max(0, change)
+            })
+            .eq('order_id', selectedReceipt.id)
+
+          if (paymentError) throw paymentError
+        } else {
+          const { error: paymentError } = await supabase
+            .from('payments')
+            .insert({
+              order_id: selectedReceipt.id,
+              cash_amount: tempPaymentData.cash_amount,
+              credit_card_amount: tempPaymentData.credit_card_amount,
+              other_payment_amount: tempPaymentData.other_payment_amount,
+              change_amount: Math.max(0, change),
+              store_id: selectedReceipt.store_id
+            })
+
+          if (paymentError) throw paymentError
+        }
+
+        alert('会計処理が完了しました')
+        setIsPaymentModalOpen(false)
+        loadReceiptDetails(selectedReceipt)
+      } else if (paymentModalMode === 'create') {
+        // 新規作成モード：新しい伝票を作成
+        if (!createFormData.table_number) {
+          alert('テーブル番号を入力してください')
+          return
+        }
+
+        const validItems = createItems.filter(item => item.product_name)
+
+        // 支払方法を決定
+        let paymentMethod = '-'
+        if (tempPaymentData.cash_amount > 0) paymentMethod = '現金'
+        if (tempPaymentData.credit_card_amount > 0) paymentMethod = paymentMethod === '-' ? 'カード' : '現金・カード'
+        if (tempPaymentData.other_payment_amount > 0) paymentMethod = paymentMethod === '-' ? 'その他' : paymentMethod + '・その他'
+
+        // 新しい注文を作成
+        const { data: newOrder, error: orderError } = await supabase
+          .from('orders')
+          .insert({
+            store_id: selectedStore,
+            table_number: createFormData.table_number,
+            guest_name: createFormData.guest_name || null,
+            staff_name: createFormData.staff_name || null,
+            total_amount: itemsSubtotal,
+            total_incl_tax: finalTotal,
+            payment_method: paymentMethod,
+            order_date: new Date(createFormData.order_date).toISOString(),
+            checkout_datetime: new Date(createFormData.checkout_datetime).toISOString()
+          })
+          .select()
+          .single()
+
+        if (orderError) throw orderError
+
+        // 注文明細を作成
+        const newItems = validItems.map(item => ({
+          order_id: newOrder.id,
+          product_name: item.product_name,
+          category: item.category || null,
+          cast_name: item.cast_name || null,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          unit_price_excl_tax: Math.round(item.unit_price / 1.1),
+          tax_amount: item.unit_price - Math.round(item.unit_price / 1.1),
+          subtotal: item.unit_price * item.quantity,
+          pack_number: 0,
+          store_id: selectedStore
+        }))
+
+        const { error: itemsError } = await supabase
+          .from('order_items')
+          .insert(newItems)
+
+        if (itemsError) throw itemsError
+
+        // 支払い情報を作成
         const { error: paymentError } = await supabase
           .from('payments')
           .insert({
-            order_id: selectedReceipt.id,
+            order_id: newOrder.id,
             cash_amount: tempPaymentData.cash_amount,
             credit_card_amount: tempPaymentData.credit_card_amount,
             other_payment_amount: tempPaymentData.other_payment_amount,
             change_amount: Math.max(0, change),
-            store_id: selectedReceipt.store_id
+            store_id: selectedStore
           })
 
         if (paymentError) throw paymentError
-      }
 
-      alert('会計処理が完了しました')
-      setIsPaymentModalOpen(false)
-      loadReceiptDetails(selectedReceipt)
+        alert('伝票を作成しました')
+        setIsPaymentModalOpen(false)
+        setIsCreateModalOpen(false)
+        loadReceipts()
+      }
     } catch (error) {
       console.error('Error completing payment:', error)
       alert('会計処理に失敗しました')
@@ -700,12 +812,6 @@ export default function ReceiptsPage() {
       order_date: new Date().toISOString().split('T')[0],
       checkout_datetime: new Date().toISOString().slice(0, 16)
     })
-    setCreatePaymentData({
-      cash_amount: 0,
-      credit_card_amount: 0,
-      other_payment_amount: 0,
-      change_amount: 0
-    })
     setCreateItems([{
       product_name: '',
       category: '',
@@ -714,93 +820,6 @@ export default function ReceiptsPage() {
       unit_price: 0
     }])
     setIsCreateModalOpen(true)
-  }
-
-  const createNewReceipt = async () => {
-    if (!createFormData.table_number) {
-      alert('テーブル番号を入力してください')
-      return
-    }
-
-    // 少なくとも1つの商品が選択されているかチェック
-    const validItems = createItems.filter(item => item.product_name)
-    if (validItems.length === 0) {
-      alert('少なくとも1つの商品を選択してください')
-      return
-    }
-
-    try {
-      // 合計金額を計算
-      const totalAmount = validItems.reduce((sum, item) => sum + (item.unit_price * item.quantity), 0)
-      const totalInclTax = totalAmount // すでに税込み価格
-
-      // 支払方法を決定
-      let paymentMethod = '-'
-      if (createPaymentData.cash_amount > 0) paymentMethod = '現金'
-      if (createPaymentData.credit_card_amount > 0) paymentMethod = paymentMethod === '-' ? 'カード' : '現金・カード'
-      if (createPaymentData.other_payment_amount > 0) paymentMethod = paymentMethod === '-' ? 'その他' : paymentMethod + '・その他'
-
-      // 新しい注文を作成
-      const { data: newOrder, error: orderError } = await supabase
-        .from('orders')
-        .insert({
-          store_id: selectedStore,
-          table_number: createFormData.table_number,
-          guest_name: createFormData.guest_name || null,
-          staff_name: createFormData.staff_name || null,
-          total_amount: totalAmount,
-          total_incl_tax: totalInclTax,
-          payment_method: paymentMethod,
-          order_date: new Date(createFormData.order_date).toISOString(),
-          checkout_datetime: new Date(createFormData.checkout_datetime).toISOString()
-        })
-        .select()
-        .single()
-
-      if (orderError) throw orderError
-
-      // 注文明細を作成
-      const newItems = validItems.map(item => ({
-        order_id: newOrder.id,
-        product_name: item.product_name,
-        category: item.category || null,
-        cast_name: item.cast_name || null,
-        quantity: item.quantity,
-        unit_price: item.unit_price,
-        unit_price_excl_tax: Math.round(item.unit_price / 1.1),
-        tax_amount: item.unit_price - Math.round(item.unit_price / 1.1),
-        subtotal: item.unit_price * item.quantity,
-        pack_number: 0,
-        store_id: selectedStore
-      }))
-
-      const { error: itemsError } = await supabase
-        .from('order_items')
-        .insert(newItems)
-
-      if (itemsError) throw itemsError
-
-      // 支払い情報を作成
-      const { error: paymentError } = await supabase
-        .from('payments')
-        .insert({
-          order_id: newOrder.id,
-          cash_amount: createPaymentData.cash_amount,
-          credit_card_amount: createPaymentData.credit_card_amount,
-          other_payment_amount: createPaymentData.other_payment_amount,
-          change_amount: createPaymentData.change_amount,
-          store_id: selectedStore
-        })
-
-      if (paymentError) throw paymentError
-
-      alert('伝票を作成しました')
-      setIsCreateModalOpen(false)
-      loadReceipts()
-    } catch (error) {
-      console.error('Error creating receipt:', error)
-      alert('伝票の作成に失敗しました')
-    }
   }
 
   const addCreateItem = () => {
@@ -1749,9 +1768,16 @@ export default function ReceiptsPage() {
       )}
 
       {/* Payment Modal */}
-      {isPaymentModalOpen && selectedReceipt && selectedReceipt.order_items && (() => {
-        // 計算ロジック
-        const itemsSubtotal = selectedReceipt.order_items.reduce((sum, item) => sum + item.subtotal, 0)
+      {isPaymentModalOpen && (() => {
+        // 計算ロジック（編集モードと新規作成モードで分岐）
+        let itemsSubtotal = 0
+        if (paymentModalMode === 'edit' && selectedReceipt && selectedReceipt.order_items) {
+          itemsSubtotal = selectedReceipt.order_items.reduce((sum, item) => sum + item.subtotal, 0)
+        } else if (paymentModalMode === 'create') {
+          const validItems = createItems.filter(item => item.product_name)
+          itemsSubtotal = validItems.reduce((sum, item) => sum + (item.unit_price * item.quantity), 0)
+        }
+
         const serviceFee = Math.floor(itemsSubtotal * (serviceChargeRate / 100))
         const subtotalBeforeRounding = itemsSubtotal + serviceFee
         const roundedSubtotal = getRoundedTotal(subtotalBeforeRounding, roundingUnit, roundingMethod)
@@ -1767,11 +1793,15 @@ export default function ReceiptsPage() {
         const totalPaid = tempPaymentData.cash_amount + tempPaymentData.credit_card_amount + tempPaymentData.other_payment_amount
         const change = totalPaid - finalTotal
 
+        const modalTitle = paymentModalMode === 'edit' && selectedReceipt
+          ? `会計処理 - ${selectedReceipt.table_number}`
+          : `会計処理 - ${createFormData.table_number || '新規伝票'}`
+
         return (
           <div style={styles.modalOverlay} onClick={() => setIsPaymentModalOpen(false)}>
             <div style={styles.paymentModal} onClick={(e) => e.stopPropagation()}>
               <div style={styles.modalHeader}>
-                <h2 style={styles.modalTitle}>会計処理 - {selectedReceipt.table_number}</h2>
+                <h2 style={styles.modalTitle}>{modalTitle}</h2>
                 <button onClick={() => setIsPaymentModalOpen(false)} style={styles.closeButton}>×</button>
               </div>
 
@@ -2134,50 +2164,19 @@ export default function ReceiptsPage() {
                 </button>
               </div>
 
-              {/* Payment Details */}
+              {/* Payment Details Display */}
               <div style={styles.paymentSection}>
-                <h3 style={styles.sectionTitle}>支払情報</h3>
-                <div style={styles.paymentEditGrid}>
-                  <div style={styles.formGroup}>
-                    <label style={styles.label}>現金</label>
-                    <input
-                      type="number"
-                      value={createPaymentData.cash_amount}
-                      onChange={(e) => setCreatePaymentData({ ...createPaymentData, cash_amount: Number(e.target.value) })}
-                      style={styles.input}
-                      min="0"
-                    />
-                  </div>
-                  <div style={styles.formGroup}>
-                    <label style={styles.label}>クレジットカード</label>
-                    <input
-                      type="number"
-                      value={createPaymentData.credit_card_amount}
-                      onChange={(e) => setCreatePaymentData({ ...createPaymentData, credit_card_amount: Number(e.target.value) })}
-                      style={styles.input}
-                      min="0"
-                    />
-                  </div>
-                  <div style={styles.formGroup}>
-                    <label style={styles.label}>その他金額</label>
-                    <input
-                      type="number"
-                      value={createPaymentData.other_payment_amount}
-                      onChange={(e) => setCreatePaymentData({ ...createPaymentData, other_payment_amount: Number(e.target.value) })}
-                      style={styles.input}
-                      min="0"
-                    />
-                  </div>
-                  <div style={styles.formGroup}>
-                    <label style={styles.label}>お釣り</label>
-                    <input
-                      type="number"
-                      value={createPaymentData.change_amount}
-                      onChange={(e) => setCreatePaymentData({ ...createPaymentData, change_amount: Number(e.target.value) })}
-                      style={styles.input}
-                      min="0"
-                    />
-                  </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+                  <h3 style={{ ...styles.sectionTitle, marginBottom: 0 }}>支払情報</h3>
+                  <button
+                    onClick={calculateCreateReceiptTotals}
+                    style={styles.calculateButton}
+                  >
+                    合計を計算
+                  </button>
+                </div>
+                <div style={{ fontSize: '13px', color: '#6c757d', marginBottom: '10px', fontStyle: 'italic' }}>
+                  ※ 商品を追加後、「合計を計算」ボタンをクリックして支払情報を入力してください
                 </div>
               </div>
             </div>
@@ -2186,9 +2185,6 @@ export default function ReceiptsPage() {
               <div style={styles.modalFooterRight}>
                 <button onClick={() => setIsCreateModalOpen(false)} style={styles.cancelButton}>
                   キャンセル
-                </button>
-                <button onClick={createNewReceipt} style={styles.saveButton}>
-                  作成
                 </button>
               </div>
             </div>
