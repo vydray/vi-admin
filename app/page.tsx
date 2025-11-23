@@ -107,6 +107,7 @@ export default function Home() {
         'キャスト名',
         '個数',
         '個別価格',
+        '合計',
         '消費税前金額',
         '合計'
       ]
@@ -145,14 +146,20 @@ export default function Home() {
           '',
           '',
           '',
+          '',
           ''
         ])
 
         // 2行目以降：明細行（伝票情報は空欄、推しは入力、明細のみ）
         items.forEach((item: any) => {
           // 消費税前金額を計算（100円単位で切り捨て）
+          const quantity = item.quantity || 0
           const unitPrice = item.unit_price || 0
           const unitPriceExclTax = Math.floor((unitPrice / 1.1) / 100) * 100
+
+          // 合計を計算
+          const subtotalIncTax = item.subtotal || 0  // 税込合計（既存のsubtotal）
+          const subtotalExclTax = unitPriceExclTax * quantity  // 税抜合計（税抜単価 × 個数）
 
           rows.push([
             '', // 伝票番号
@@ -168,10 +175,11 @@ export default function Home() {
             item.category || '',
             item.product_name || '',
             item.cast_name || '',
-            String(item.quantity || 0),
+            String(quantity), // 個数
             String(unitPrice), // 個別価格（税込単価）
+            String(subtotalIncTax), // 合計（税込）
             String(unitPriceExclTax), // 消費税前金額（税抜単価・100円単位切り捨て）
-            String(item.subtotal || 0)
+            String(subtotalExclTax) // 合計（税抜）
           ])
         })
       })
