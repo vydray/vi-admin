@@ -133,40 +133,44 @@ export default function ReceiptsPage() {
   const loadReceipts = async () => {
     setLoading(true)
     try {
+      // N+1問題を解決: ordersとpaymentsを1回のクエリで取得
       const { data: ordersData, error } = await supabase
         .from('orders')
-        .select('*')
+        .select(`
+          *,
+          payments (
+            cash_amount,
+            credit_card_amount,
+            other_payment_amount
+          )
+        `)
         .eq('store_id', selectedStore)
         .is('deleted_at', null)
         .order('checkout_datetime', { ascending: false })
 
       if (error) throw error
 
-      // 各orderに対してpayment情報を取得
+      // payment情報を整形
       if (ordersData) {
-        const receiptsWithPayments = await Promise.all(
-          ordersData.map(async (order) => {
-            const { data: paymentData } = await supabase
-              .from('payments')
-              .select('*')
-              .eq('order_id', order.id)
-              .single()
+        const receiptsWithPayments = ordersData.map((order: any) => {
+          let paymentMethods = '-'
 
-            let paymentMethods = '-'
-            if (paymentData) {
-              const methods: string[] = []
-              if (paymentData.cash_amount > 0) methods.push('現金')
-              if (paymentData.credit_card_amount > 0) methods.push('カード')
-              if (paymentData.other_payment_amount > 0) methods.push('その他')
-              paymentMethods = methods.length > 0 ? methods.join('・') : '-'
-            }
+          // paymentsは配列で返ってくるので、最初の要素を取得
+          const paymentData = order.payments?.[0]
 
-            return {
-              ...order,
-              payment_methods: paymentMethods
-            }
-          })
-        )
+          if (paymentData) {
+            const methods: string[] = []
+            if (paymentData.cash_amount > 0) methods.push('現金')
+            if (paymentData.credit_card_amount > 0) methods.push('カード')
+            if (paymentData.other_payment_amount > 0) methods.push('その他')
+            paymentMethods = methods.length > 0 ? methods.join('・') : '-'
+          }
+
+          return {
+            ...order,
+            payment_methods: paymentMethods
+          }
+        })
         setReceipts(receiptsWithPayments)
       } else {
         setReceipts([])
