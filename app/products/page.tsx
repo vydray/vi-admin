@@ -44,6 +44,10 @@ export default function ProductsPage() {
   const [editCategory, setEditCategory] = useState<number | null>(null)
   const [editNeedsCast, setEditNeedsCast] = useState(false)
 
+  // CSV入力用
+  const [showImportModal, setShowImportModal] = useState(false)
+  const [isDragging, setIsDragging] = useState(false)
+
   useEffect(() => {
     loadData()
   }, [selectedStore])
@@ -209,6 +213,138 @@ export default function ProductsPage() {
     return categories.find(c => c.id === categoryId)?.name || '不明'
   }
 
+  const exportToCSV = () => {
+    if (products.length === 0) {
+      alert('エクスポートする商品データがありません')
+      return
+    }
+
+    // CSVヘッダー
+    const headers = ['商品名', '価格', 'カテゴリー', '表示順', '有効', '指名必須']
+
+    // CSVデータ
+    const rows = products.map(product => [
+      product.name,
+      String(product.price),
+      getCategoryName(product.category_id),
+      String(product.display_order),
+      product.is_active ? '有効' : '無効',
+      product.needs_cast ? '必須' : '不要'
+    ])
+
+    // CSV文字列生成
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+    ].join('\n')
+
+    // BOM付きUTF-8でダウンロード
+    const bom = '\uFEFF'
+    const blob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `商品マスタ_店舗${selectedStore}.csv`
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const importFromCSV = async (file: File) => {
+    try {
+      const text = await file.text()
+      const lines = text.split('\n').filter(line => line.trim())
+
+      if (lines.length < 2) {
+        alert('CSVファイルにデータがありません')
+        return
+      }
+
+      // ヘッダーをスキップ
+      const dataLines = lines.slice(1)
+
+      let successCount = 0
+      let errorCount = 0
+
+      for (const line of dataLines) {
+        // CSVパース（簡易版）
+        const matches = line.match(/("(?:[^"]|"")*"|[^,]*)/g)
+        if (!matches || matches.length < 6) continue
+
+        const cells = matches.map(cell => cell.replace(/^"|"$/g, '').replace(/""/g, '"').trim())
+
+        const [name, priceStr, categoryName, displayOrderStr, isActiveStr, needsCastStr] = cells
+
+        // カテゴリー名からIDを取得
+        const category = categories.find(c => c.name === categoryName)
+        if (!category) {
+          console.warn(`カテゴリー「${categoryName}」が見つかりません: ${name}`)
+          errorCount++
+          continue
+        }
+
+        const price = parseInt(priceStr)
+        const displayOrder = parseInt(displayOrderStr)
+        const isActive = isActiveStr === '有効'
+        const needsCast = needsCastStr === '必須'
+
+        // 商品を登録
+        const { error } = await supabase
+          .from('products')
+          .insert({
+            name,
+            price,
+            category_id: category.id,
+            display_order: displayOrder,
+            is_active: isActive,
+            needs_cast: needsCast,
+            store_id: selectedStore
+          })
+
+        if (error) {
+          console.error(`商品登録エラー: ${name}`, error)
+          errorCount++
+        } else {
+          successCount++
+        }
+      }
+
+      await loadProducts()
+      setShowImportModal(false)
+      alert(`インポート完了\n成功: ${successCount}件\nエラー: ${errorCount}件`)
+    } catch (error) {
+      console.error('CSV読み込みエラー:', error)
+      alert('CSVファイルの読み込みに失敗しました')
+    }
+  }
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      importFromCSV(file)
+    }
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(false)
+
+    const file = e.dataTransfer.files[0]
+    if (file && file.name.endsWith('.csv')) {
+      importFromCSV(file)
+    } else {
+      alert('CSVファイルを選択してください')
+    }
+  }
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(true)
+  }
+
+  const handleDragLeave = () => {
+    setIsDragging(false)
+  }
+
   const renderToggle = (productId: number, value: boolean) => {
     return (
       <div
@@ -262,6 +398,38 @@ export default function ProductsPage() {
           <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: 0, color: '#1a1a1a' }}>
             商品管理
           </h1>
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <button
+              onClick={() => setShowImportModal(true)}
+              style={{
+                padding: '10px 20px',
+                backgroundColor: '#3b82f6',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: '600'
+              }}
+            >
+              CSV入力
+            </button>
+            <button
+              onClick={exportToCSV}
+              style={{
+                padding: '10px 20px',
+                backgroundColor: '#10b981',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: '600'
+              }}
+            >
+              CSV出力
+            </button>
+          </div>
         </div>
 
         {/* 店舗選択 */}
@@ -756,6 +924,107 @@ export default function ProductsPage() {
                 更新
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* CSV入力モーダル */}
+      {showImportModal && (
+        <div
+          onClick={() => setShowImportModal(false)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: 'white',
+              borderRadius: '12px',
+              padding: '30px',
+              width: '90%',
+              maxWidth: '500px'
+            }}
+          >
+            <h3 style={{ margin: '0 0 20px 0', fontSize: '18px', fontWeight: 'bold' }}>
+              商品マスタCSV入力
+            </h3>
+
+            <div
+              onDrop={handleDrop}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              style={{
+                border: `2px dashed ${isDragging ? '#3b82f6' : '#e2e8f0'}`,
+                borderRadius: '8px',
+                padding: '40px',
+                textAlign: 'center',
+                backgroundColor: isDragging ? '#eff6ff' : '#f8f9fa',
+                marginBottom: '20px',
+                transition: 'all 0.2s'
+              }}
+            >
+              <p style={{ margin: '0 0 15px 0', fontSize: '14px', color: '#64748b' }}>
+                CSVファイルをドラッグ&ドロップ
+              </p>
+              <p style={{ margin: '0 0 15px 0', fontSize: '12px', color: '#94a3b8' }}>
+                または
+              </p>
+              <label
+                style={{
+                  display: 'inline-block',
+                  padding: '10px 20px',
+                  backgroundColor: '#3b82f6',
+                  color: 'white',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '600'
+                }}
+              >
+                ファイルを選択
+                <input
+                  type="file"
+                  accept=".csv"
+                  onChange={handleFileSelect}
+                  style={{ display: 'none' }}
+                />
+              </label>
+            </div>
+
+            <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '20px' }}>
+              <p style={{ margin: '0 0 8px 0', fontWeight: '500' }}>CSV形式:</p>
+              <p style={{ margin: '0 0 4px 0' }}>商品名, 価格, カテゴリー, 表示順, 有効, 指名必須</p>
+              <p style={{ margin: '0', fontSize: '11px', color: '#94a3b8' }}>
+                ※1行目はヘッダー行として読み飛ばされます
+              </p>
+            </div>
+
+            <button
+              onClick={() => setShowImportModal(false)}
+              style={{
+                width: '100%',
+                padding: '10px',
+                backgroundColor: '#e2e8f0',
+                color: '#475569',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: '500'
+              }}
+            >
+              キャンセル
+            </button>
           </div>
         </div>
       )}
