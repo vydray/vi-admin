@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
 
@@ -48,7 +48,6 @@ interface CastPosition {
 export default function CastsPage() {
   const { stores } = useStore()
   const [casts, setCasts] = useState<Cast[]>([])
-  const [filteredCasts, setFilteredCasts] = useState<Cast[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedStore, setSelectedStore] = useState(2)
   const [positions, setPositions] = useState<CastPosition[]>([])
@@ -88,10 +87,6 @@ export default function CastsPage() {
     loadCasts()
     loadPositions()
   }, [selectedStore])
-
-  useEffect(() => {
-    filterAndSortCasts()
-  }, [casts, searchQuery, statusFilter, attributeFilter, documentFilter, activeFilter, posFilter, adminFilter, managerFilter, sortField, sortDirection])
 
   const loadCasts = async () => {
     setLoading(true)
@@ -156,7 +151,8 @@ export default function CastsPage() {
     setSortDirection('asc')
   }
 
-  const filterAndSortCasts = () => {
+  // フィルタリングとソートをメモ化
+  const filteredCasts = useMemo(() => {
     let result = [...casts]
 
     // 検索フィルター
@@ -235,8 +231,8 @@ export default function CastsPage() {
       })
     }
 
-    setFilteredCasts(result)
-  }
+    return result
+  }, [casts, searchQuery, statusFilter, attributeFilter, documentFilter, activeFilter, posFilter, adminFilter, managerFilter, sortField, sortDirection])
 
   // ユニークな値を取得
   const uniqueStatuses = Array.from(new Set(casts.map(c => c.status).filter((s): s is string => s !== null && s !== undefined)))
