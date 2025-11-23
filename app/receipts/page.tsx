@@ -32,7 +32,6 @@ interface Receipt {
   staff_name: string | null
   total_amount: number
   total_incl_tax: number
-  payment_method: string
   order_date: string
   checkout_datetime: string
   deleted_at: string | null
@@ -748,7 +747,6 @@ export default function ReceiptsPage() {
           staff_name: selectedReceipt.staff_name,
           total_amount: selectedReceipt.total_amount,
           total_incl_tax: selectedReceipt.total_incl_tax,
-          payment_method: selectedReceipt.payment_method,
           order_date: now,
           checkout_datetime: now
         })
