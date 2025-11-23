@@ -86,6 +86,8 @@ export default function ReceiptsPage() {
     quantity: 1,
     unit_price: 0
   })
+  const [castSearchTerm, setCastSearchTerm] = useState('')
+  const [showCastDropdown, setShowCastDropdown] = useState(false)
   const [products, setProducts] = useState<any[]>([])
   const [categories, setCategories] = useState<any[]>([])
   const [casts, setCasts] = useState<any[]>([])
@@ -368,6 +370,63 @@ export default function ReceiptsPage() {
     } catch (error) {
       console.error('Error deleting receipt:', error)
       alert('伝票の削除に失敗しました')
+    }
+  }
+
+  const calculateReceiptTotals = async () => {
+    if (!selectedReceipt || !selectedReceipt.order_items) return
+
+    try {
+      // 注文明細から合計を計算
+      const totalAmount = selectedReceipt.order_items.reduce((sum, item) => sum + item.total_price, 0)
+      const totalInclTax = totalAmount
+
+      // カードタックスを計算（クレジットカード決済の場合は3.6%の手数料）
+      const cardAmount = editPaymentData.credit_card_amount
+      const cardTax = Math.round(cardAmount * 0.036)
+
+      // 支払い総額（カードタックス込み）
+      const paymentTotal = editPaymentData.cash_amount + editPaymentData.credit_card_amount + editPaymentData.other_payment_amount + cardTax
+
+      // お釣りを計算
+      const change = paymentTotal - totalInclTax
+
+      // 注文情報を更新
+      const { error: orderError } = await supabase
+        .from('orders')
+        .update({
+          total_amount: totalAmount,
+          total_incl_tax: totalInclTax
+        })
+        .eq('id', selectedReceipt.id)
+
+      if (orderError) throw orderError
+
+      // お釣りを更新
+      setEditPaymentData({
+        ...editPaymentData,
+        change_amount: Math.max(0, change)
+      })
+
+      // 支払い情報も更新
+      if (selectedReceipt.payment) {
+        const { error: paymentError } = await supabase
+          .from('payments')
+          .update({
+            change_amount: Math.max(0, change)
+          })
+          .eq('order_id', selectedReceipt.id)
+
+        if (paymentError) throw paymentError
+      }
+
+      alert(`合計を再計算しました\n小計: ${formatCurrency(totalAmount)}\nカードタックス: ${formatCurrency(cardTax)}\n合計: ${formatCurrency(totalInclTax)}\nお釣り: ${formatCurrency(Math.max(0, change))}`)
+
+      // 伝票情報を再読み込み
+      loadReceiptDetails(selectedReceipt)
+    } catch (error) {
+      console.error('Error calculating totals:', error)
+      alert('合計の計算に失敗しました')
     }
   }
 
@@ -685,6 +744,8 @@ export default function ReceiptsPage() {
       quantity: 1,
       unit_price: 0
     })
+    setCastSearchTerm('')
+    setShowCastDropdown(false)
     setIsAddItemModalOpen(true)
   }
 
@@ -1033,7 +1094,15 @@ export default function ReceiptsPage() {
 
               {/* Payment Details Edit */}
               <div style={styles.paymentSection}>
-                <h3 style={styles.sectionTitle}>支払情報</h3>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+                  <h3 style={{ ...styles.sectionTitle, marginBottom: 0 }}>支払情報</h3>
+                  <button
+                    onClick={calculateReceiptTotals}
+                    style={styles.calculateButton}
+                  >
+                    💰 合計を計算
+                  </button>
+                </div>
                 <div style={styles.paymentEditGrid}>
                   <div style={styles.formGroup}>
                     <label style={styles.label}>現金</label>
@@ -1255,7 +1324,16 @@ export default function ReceiptsPage() {
 
       {/* Add Item Modal */}
       {isAddItemModalOpen && selectedReceipt && (
-        <div style={styles.modalOverlay} onClick={cancelAddItem}>
+        <div
+          style={styles.modalOverlay}
+          onClick={() => {
+            if (showCastDropdown) {
+              setShowCastDropdown(false)
+            } else {
+              cancelAddItem()
+            }
+          }}
+        >
           <div style={styles.itemModal} onClick={(e) => e.stopPropagation()}>
             <div style={styles.modalHeader}>
               <h2 style={styles.modalTitle}>注文明細を追加</h2>
@@ -1316,18 +1394,68 @@ export default function ReceiptsPage() {
 
               <div style={styles.formGroup}>
                 <label style={styles.label}>キャスト名</label>
-                <select
-                  value={newItemData.cast_name}
-                  onChange={(e) => setNewItemData({ ...newItemData, cast_name: e.target.value })}
-                  style={styles.input}
-                >
-                  <option value="">なし</option>
-                  {casts.map((cast) => (
-                    <option key={cast.id} value={cast.name}>
-                      {cast.name}
-                    </option>
-                  ))}
-                </select>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type="text"
+                    value={castSearchTerm}
+                    onChange={(e) => setCastSearchTerm(e.target.value)}
+                    onFocus={() => setShowCastDropdown(true)}
+                    placeholder="検索またはクリックして選択"
+                    style={styles.input}
+                  />
+                  {showCastDropdown && (
+                    <div style={styles.castDropdown}>
+                      <div
+                        style={styles.castOption}
+                        onClick={() => {
+                          setNewItemData({ ...newItemData, cast_name: '' })
+                          setCastSearchTerm('')
+                          setShowCastDropdown(false)
+                        }}
+                      >
+                        なし
+                      </div>
+                      {/* 推しを一番上に表示 */}
+                      {selectedReceipt?.staff_name && casts.find(c => c.name === selectedReceipt.staff_name) && (
+                        <div
+                          style={{ ...styles.castOption, backgroundColor: '#e3f2fd', fontWeight: 'bold' }}
+                          onClick={() => {
+                            setNewItemData({ ...newItemData, cast_name: selectedReceipt.staff_name || '' })
+                            setCastSearchTerm(selectedReceipt.staff_name || '')
+                            setShowCastDropdown(false)
+                          }}
+                        >
+                          {selectedReceipt.staff_name} ⭐
+                        </div>
+                      )}
+                      {/* 検索結果 */}
+                      {casts
+                        .filter(cast => {
+                          if (cast.name === selectedReceipt?.staff_name) return false
+                          if (!castSearchTerm) return true
+                          return cast.name.toLowerCase().includes(castSearchTerm.toLowerCase())
+                        })
+                        .map((cast) => (
+                          <div
+                            key={cast.id}
+                            style={styles.castOption}
+                            onClick={() => {
+                              setNewItemData({ ...newItemData, cast_name: cast.name })
+                              setCastSearchTerm(cast.name)
+                              setShowCastDropdown(false)
+                            }}
+                          >
+                            {cast.name}
+                          </div>
+                        ))}
+                    </div>
+                  )}
+                </div>
+                {newItemData.cast_name && !showCastDropdown && (
+                  <div style={{ marginTop: '5px', fontSize: '13px', color: '#28a745' }}>
+                    選択中: {newItemData.cast_name}
+                  </div>
+                )}
               </div>
 
               <div style={styles.formGroup}>
@@ -2043,5 +2171,35 @@ const styles: { [key: string]: React.CSSProperties } = {
     alignSelf: 'flex-start',
     marginTop: '28px',
     height: 'fit-content',
+  },
+  castDropdown: {
+    position: 'absolute' as const,
+    top: '100%',
+    left: 0,
+    right: 0,
+    maxHeight: '300px',
+    overflowY: 'auto' as const,
+    backgroundColor: 'white',
+    border: '1px solid #ced4da',
+    borderRadius: '6px',
+    marginTop: '4px',
+    boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+    zIndex: 1000,
+  },
+  castOption: {
+    padding: '10px 12px',
+    cursor: 'pointer',
+    borderBottom: '1px solid #e9ecef',
+    transition: 'background-color 0.2s',
+  },
+  calculateButton: {
+    padding: '8px 16px',
+    fontSize: '14px',
+    backgroundColor: '#ffc107',
+    color: '#000',
+    border: 'none',
+    borderRadius: '6px',
+    cursor: 'pointer',
+    fontWeight: '600',
   },
 }
