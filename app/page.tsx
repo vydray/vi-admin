@@ -143,7 +143,7 @@ export default function Home() {
           ''
         ])
 
-        // 2行目以降：明細行（伝票情報は空欄、明細のみ）
+        // 2行目以降：明細行（伝票情報は空欄、推しは入力、明細のみ）
         items.forEach((item: any) => {
           rows.push([
             '', // 伝票番号
@@ -155,7 +155,7 @@ export default function Home() {
             '', // その他
             '', // 伝票税別小計
             '', // 伝票合計
-            '', // 推し
+            order.staff_name || '', // 推し（入力）
             item.category || '',
             item.product_name || '',
             item.cast_name || '',
