@@ -150,6 +150,10 @@ export default function Home() {
 
         // 2行目以降：明細行（伝票情報は空欄、推しは入力、明細のみ）
         items.forEach((item: any) => {
+          // 消費税前金額を計算（10円単位で切り捨て）
+          const unitPrice = item.unit_price || 0
+          const unitPriceExclTax = Math.floor((unitPrice / 1.1) / 10) * 10
+
           rows.push([
             '', // 伝票番号
             '', // 営業日
@@ -165,8 +169,8 @@ export default function Home() {
             item.product_name || '',
             item.cast_name || '',
             String(item.quantity || 0),
-            String(item.unit_price || 0), // 個別価格（税込単価）
-            String(item.unit_price_excl_tax || 0), // 消費税前金額（税抜単価）
+            String(unitPrice), // 個別価格（税込単価）
+            String(unitPriceExclTax), // 消費税前金額（税抜単価・10円単位切り捨て）
             String(item.subtotal || 0)
           ])
         })
