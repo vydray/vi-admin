@@ -685,16 +685,18 @@ export default function ReceiptsPage() {
           .insert({
             store_id: selectedStore,
             receipt_number: receiptNumber,
+            visit_datetime: new Date(createFormData.checkout_datetime).toISOString(),
+            checkout_datetime: new Date(createFormData.checkout_datetime).toISOString(),
+            order_date: new Date(createFormData.order_date).toISOString(),
             table_number: createFormData.table_number,
             guest_name: createFormData.guest_name || null,
             staff_name: createFormData.staff_name || null,
+            visit_type: null,
             subtotal_excl_tax: subtotalExclTax,
             tax_amount: taxAmount,
             service_charge: serviceFee,
             rounding_adjustment: roundingAdjustment,
-            total_incl_tax: finalTotal,
-            order_date: new Date(createFormData.order_date).toISOString(),
-            checkout_datetime: new Date(createFormData.checkout_datetime).toISOString()
+            total_incl_tax: finalTotal
           })
           .select()
           .single()
@@ -778,16 +780,18 @@ export default function ReceiptsPage() {
         .insert({
           store_id: selectedReceipt.store_id,
           receipt_number: receiptNumber,
+          visit_datetime: now,
+          checkout_datetime: now,
+          order_date: now,
           table_number: selectedReceipt.table_number,
           guest_name: selectedReceipt.guest_name,
           staff_name: selectedReceipt.staff_name,
+          visit_type: null,
           subtotal_excl_tax: subtotalExclTax,
           tax_amount: taxAmount,
           service_charge: serviceFee,
           rounding_adjustment: roundingAdjustment,
-          total_incl_tax: totalInclTax,
-          order_date: now,
-          checkout_datetime: now
+          total_incl_tax: totalInclTax
         })
         .select()
         .single()
@@ -913,16 +917,18 @@ export default function ReceiptsPage() {
         .insert({
           store_id: selectedStore,
           receipt_number: receiptNumber,
+          visit_datetime: new Date(createFormData.checkout_datetime).toISOString(),
+          checkout_datetime: new Date(createFormData.checkout_datetime).toISOString(),
+          order_date: new Date(createFormData.order_date).toISOString(),
           table_number: createFormData.table_number,
           guest_name: createFormData.guest_name || null,
           staff_name: createFormData.staff_name || null,
+          visit_type: null,
           subtotal_excl_tax: subtotalExclTax,
           tax_amount: taxAmount,
           service_charge: serviceFee,
           rounding_adjustment: roundingAdjustment,
-          total_incl_tax: totalInclTax,
-          order_date: new Date(createFormData.order_date).toISOString(),
-          checkout_datetime: new Date(createFormData.checkout_datetime).toISOString()
+          total_incl_tax: totalInclTax
         })
         .select()
         .single()
