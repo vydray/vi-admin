@@ -6,6 +6,7 @@ import { format, eachDayOfInterval, addMonths, subMonths, startOfMonth, endOfMon
 import { ja } from 'date-fns/locale'
 import { useStore } from '@/contexts/StoreContext'
 import LoadingSpinner from '@/components/LoadingSpinner'
+import Button from '@/components/Button'
 
 interface Cast {
   id: number
@@ -242,20 +243,9 @@ export default function CastSalesPage() {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', gap: '16px' }}>
         <div style={{ color: '#dc2626', fontSize: '16px' }}>{error}</div>
-        <button
-          onClick={loadData}
-          style={{
-            padding: '8px 16px',
-            fontSize: '14px',
-            backgroundColor: '#3b82f6',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '6px',
-            cursor: 'pointer'
-          }}
-        >
+        <Button onClick={loadData} variant="primary" size="medium">
           再読み込み
-        </button>
+        </Button>
       </div>
     )
   }
@@ -307,37 +297,23 @@ export default function CastSalesPage() {
 
           {/* 月選択 */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <button
+            <Button
               onClick={() => setSelectedMonth(subMonths(selectedMonth, 1))}
-              style={{
-                padding: '6px 12px',
-                fontSize: '14px',
-                backgroundColor: '#f1f5f9',
-                color: '#475569',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: 'pointer'
-              }}
+              variant="outline"
+              size="small"
             >
               ←
-            </button>
+            </Button>
             <span style={{ fontSize: '16px', fontWeight: '600' }}>
               {format(selectedMonth, 'yyyy年M月', { locale: ja })}
             </span>
-            <button
+            <Button
               onClick={() => setSelectedMonth(addMonths(selectedMonth, 1))}
-              style={{
-                padding: '6px 12px',
-                fontSize: '14px',
-                backgroundColor: '#f1f5f9',
-                color: '#475569',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: 'pointer'
-              }}
+              variant="outline"
+              size="small"
             >
               →
-            </button>
+            </Button>
           </div>
 
           {/* 集計方法選択 */}

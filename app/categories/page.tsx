@@ -6,6 +6,8 @@ import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
 import { useConfirm } from '@/contexts/ConfirmContext'
 import LoadingSpinner from '@/components/LoadingSpinner'
+import Button from '@/components/Button'
+import Modal from '@/components/Modal'
 
 interface Category {
   id: number
@@ -529,203 +531,113 @@ export default function CategoriesPage() {
       </div>
 
       {/* 編集モーダル */}
-      {showEditModal && editingCategory && (
-        <div
-          onClick={() => setShowEditModal(false)}
+      <Modal
+        isOpen={showEditModal && !!editingCategory}
+        onClose={() => setShowEditModal(false)}
+        title="カテゴリー編集"
+      >
+        <input
+          type="text"
+          placeholder="カテゴリー名"
+          value={editName}
+          onChange={(e) => setEditName(e.target.value)}
           style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000
+            width: '100%',
+            padding: '10px 12px',
+            fontSize: '14px',
+            border: '1px solid #e2e8f0',
+            borderRadius: '6px',
+            marginBottom: '20px',
+            boxSizing: 'border-box'
           }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              backgroundColor: 'white',
-              borderRadius: '12px',
-              padding: '30px',
-              width: '90%',
-              maxWidth: '400px'
-            }}
-          >
-            <h3 style={{ margin: '0 0 20px 0', fontSize: '18px', fontWeight: 'bold' }}>
-              カテゴリー編集
-            </h3>
+        />
 
-            <input
-              type="text"
-              placeholder="カテゴリー名"
-              value={editName}
-              onChange={(e) => setEditName(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '10px 12px',
-                fontSize: '14px',
-                border: '1px solid #e2e8f0',
-                borderRadius: '6px',
-                marginBottom: '20px',
-                boxSizing: 'border-box'
-              }}
-            />
-
-            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-              <button
-                onClick={() => setShowEditModal(false)}
-                style={{
-                  padding: '10px 20px',
-                  backgroundColor: '#e2e8f0',
-                  color: '#475569',
-                  border: 'none',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: '500'
-                }}
-              >
-                キャンセル
-              </button>
-              <button
-                onClick={updateCategory}
-                style={{
-                  padding: '10px 20px',
-                  backgroundColor: '#3b82f6',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: '500'
-                }}
-              >
-                更新
-              </button>
-            </div>
-          </div>
+        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+          <Button onClick={() => setShowEditModal(false)} variant="outline">
+            キャンセル
+          </Button>
+          <Button onClick={updateCategory} variant="primary">
+            更新
+          </Button>
         </div>
-      )}
+      </Modal>
 
       {/* CSV入力モーダル */}
-      {showImportModal && (
+      <Modal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        title="カテゴリーマスタCSV入力"
+        maxWidth="500px"
+      >
+        <div style={{
+          padding: '12px',
+          backgroundColor: '#fef3c7',
+          borderRadius: '6px',
+          marginBottom: '20px',
+          border: '1px solid #fbbf24'
+        }}>
+          <p style={{ margin: 0, fontSize: '13px', color: '#92400e', fontWeight: '500' }}>
+            ⚠️ 既存のカテゴリーデータを全て削除し、CSVのデータに置き換えます
+          </p>
+        </div>
+
         <div
-          onClick={() => setShowImportModal(false)}
+          onDrop={handleDrop}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
           style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000
+            border: `2px dashed ${isDragging ? '#3b82f6' : '#e2e8f0'}`,
+            borderRadius: '8px',
+            padding: '40px',
+            textAlign: 'center',
+            backgroundColor: isDragging ? '#eff6ff' : '#f8f9fa',
+            marginBottom: '20px',
+            transition: 'all 0.2s'
           }}
         >
-          <div
-            onClick={(e) => e.stopPropagation()}
+          <p style={{ margin: '0 0 15px 0', fontSize: '14px', color: '#64748b' }}>
+            CSVファイルをドラッグ&ドロップ
+          </p>
+          <p style={{ margin: '0 0 15px 0', fontSize: '12px', color: '#94a3b8' }}>
+            または
+          </p>
+          <label
             style={{
-              backgroundColor: 'white',
-              borderRadius: '12px',
-              padding: '30px',
-              width: '90%',
-              maxWidth: '500px'
+              display: 'inline-block',
+              padding: '10px 20px',
+              backgroundColor: '#3b82f6',
+              color: 'white',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '14px',
+              fontWeight: '600'
             }}
           >
-            <h3 style={{ margin: '0 0 20px 0', fontSize: '18px', fontWeight: 'bold' }}>
-              カテゴリーマスタCSV入力
-            </h3>
-
-            <div style={{
-              padding: '12px',
-              backgroundColor: '#fef3c7',
-              borderRadius: '6px',
-              marginBottom: '20px',
-              border: '1px solid #fbbf24'
-            }}>
-              <p style={{ margin: 0, fontSize: '13px', color: '#92400e', fontWeight: '500' }}>
-                ⚠️ 既存のカテゴリーデータを全て削除し、CSVのデータに置き換えます
-              </p>
-            </div>
-
-            <div
-              onDrop={handleDrop}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              style={{
-                border: `2px dashed ${isDragging ? '#3b82f6' : '#e2e8f0'}`,
-                borderRadius: '8px',
-                padding: '40px',
-                textAlign: 'center',
-                backgroundColor: isDragging ? '#eff6ff' : '#f8f9fa',
-                marginBottom: '20px',
-                transition: 'all 0.2s'
-              }}
-            >
-              <p style={{ margin: '0 0 15px 0', fontSize: '14px', color: '#64748b' }}>
-                CSVファイルをドラッグ&ドロップ
-              </p>
-              <p style={{ margin: '0 0 15px 0', fontSize: '12px', color: '#94a3b8' }}>
-                または
-              </p>
-              <label
-                style={{
-                  display: 'inline-block',
-                  padding: '10px 20px',
-                  backgroundColor: '#3b82f6',
-                  color: 'white',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: '600'
-                }}
-              >
-                ファイルを選択
-                <input
-                  type="file"
-                  accept=".csv"
-                  onChange={handleFileSelect}
-                  style={{ display: 'none' }}
-                />
-              </label>
-            </div>
-
-            <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '20px' }}>
-              <p style={{ margin: '0 0 8px 0', fontWeight: '500' }}>CSV形式:</p>
-              <p style={{ margin: '0 0 4px 0' }}>カテゴリー名, 表示順, 推しファースト</p>
-              <p style={{ margin: '0 0 4px 0', fontSize: '11px', color: '#94a3b8' }}>
-                ※1行目はヘッダー行として読み飛ばされます
-              </p>
-              <p style={{ margin: '0', fontSize: '11px', color: '#94a3b8' }}>
-                ※データにエラーがある場合は詳細なエラーメッセージを表示します
-              </p>
-            </div>
-
-            <button
-              onClick={() => setShowImportModal(false)}
-              style={{
-                width: '100%',
-                padding: '10px',
-                backgroundColor: '#e2e8f0',
-                color: '#475569',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontSize: '14px',
-                fontWeight: '500'
-              }}
-            >
-              キャンセル
-            </button>
-          </div>
+            ファイルを選択
+            <input
+              type="file"
+              accept=".csv"
+              onChange={handleFileSelect}
+              style={{ display: 'none' }}
+            />
+          </label>
         </div>
-      )}
+
+        <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '20px' }}>
+          <p style={{ margin: '0 0 8px 0', fontWeight: '500' }}>CSV形式:</p>
+          <p style={{ margin: '0 0 4px 0' }}>カテゴリー名, 表示順, 推しファースト</p>
+          <p style={{ margin: '0 0 4px 0', fontSize: '11px', color: '#94a3b8' }}>
+            ※1行目はヘッダー行として読み飛ばされます
+          </p>
+          <p style={{ margin: '0', fontSize: '11px', color: '#94a3b8' }}>
+            ※データにエラーがある場合は詳細なエラーメッセージを表示します
+          </p>
+        </div>
+
+        <Button onClick={() => setShowImportModal(false)} variant="outline" fullWidth>
+          キャンセル
+        </Button>
+      </Modal>
     </div>
   )
 }
