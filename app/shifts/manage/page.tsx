@@ -781,7 +781,8 @@ export default function ShiftManage() {
     <div style={{
       backgroundColor: '#f7f9fc',
       minHeight: '100vh',
-      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+      paddingBottom: '60px'
     }}>
       <style jsx>{`
         @keyframes spin {
