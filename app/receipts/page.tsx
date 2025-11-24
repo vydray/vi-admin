@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
+import { useConfirm } from '@/contexts/ConfirmContext'
 import toast from 'react-hot-toast'
 
 interface OrderItem {
@@ -92,6 +93,7 @@ interface OrderWithPayment {
 
 export default function ReceiptsPage() {
   const { storeId: globalStoreId, stores } = useStore()
+  const { confirm } = useConfirm()
   const [selectedStore, setSelectedStore] = useState(globalStoreId)
   const [receipts, setReceipts] = useState<ReceiptWithDetails[]>([])
   const [loading, setLoading] = useState(true)
@@ -427,7 +429,7 @@ export default function ReceiptsPage() {
   }
 
   const deleteReceipt = async (receiptId: number) => {
-    if (!confirm('この伝票を削除してもよろしいですか？')) return
+    if (!await confirm('この伝票を削除してもよろしいですか？')) return
 
     try {
       const { error } = await supabase
@@ -803,7 +805,7 @@ export default function ReceiptsPage() {
 
   const duplicateReceipt = async () => {
     if (!selectedReceipt) return
-    if (!confirm('この伝票を複製してもよろしいですか？')) return
+    if (!await confirm('この伝票を複製してもよろしいですか？')) return
 
     try {
       const now = new Date().toISOString()
@@ -1127,7 +1129,7 @@ export default function ReceiptsPage() {
 
   // 注文明細の削除
   const deleteOrderItem = async (itemId: number) => {
-    if (!confirm('この注文明細を削除してもよろしいですか？')) return
+    if (!await confirm('この注文明細を削除してもよろしいですか？')) return
 
     try {
       const { error } = await supabase

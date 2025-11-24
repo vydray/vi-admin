@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
+import { useConfirm } from '@/contexts/ConfirmContext'
 
 interface Category {
   id: number
@@ -25,6 +26,7 @@ interface Product {
 
 export default function ProductsPage() {
   const { storeId: globalStoreId, stores } = useStore()
+  const { confirm } = useConfirm()
   const [selectedStore, setSelectedStore] = useState(globalStoreId)
   const [categories, setCategories] = useState<Category[]>([])
   const [products, setProducts] = useState<Product[]>([])
@@ -168,7 +170,7 @@ export default function ProductsPage() {
   }
 
   const deleteProduct = async (productId: number) => {
-    if (!confirm('この商品を削除しますか？')) {
+    if (!await confirm('この商品を削除しますか？')) {
       return
     }
 
@@ -348,7 +350,7 @@ export default function ProductsPage() {
       }
 
       // バリデーション成功、確認メッセージ
-      if (!confirm(`既存の商品データを全て削除し、${validatedData.length}件の商品を登録します。\nよろしいですか？`)) {
+      if (!await confirm(`既存の商品データを全て削除し、${validatedData.length}件の商品を登録します。\nよろしいですか？`)) {
         return
       }
 

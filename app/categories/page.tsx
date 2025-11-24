@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
+import { useConfirm } from '@/contexts/ConfirmContext'
 
 interface Category {
   id: number
@@ -15,6 +16,7 @@ interface Category {
 
 export default function CategoriesPage() {
   const { storeId: globalStoreId, stores } = useStore()
+  const { confirm } = useConfirm()
   const [selectedStore, setSelectedStore] = useState(globalStoreId)
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
@@ -113,7 +115,7 @@ export default function CategoriesPage() {
   }
 
   const deleteCategory = async (categoryId: number) => {
-    if (!confirm('このカテゴリーを削除しますか？\n※このカテゴリーに属する商品も全て削除されます')) {
+    if (!await confirm('このカテゴリーを削除しますか？\n※このカテゴリーに属する商品も全て削除されます')) {
       return
     }
 
@@ -250,7 +252,7 @@ export default function CategoriesPage() {
       }
 
       // バリデーション成功、確認メッセージ
-      if (!confirm(`既存のカテゴリーデータを全て削除し、${validatedData.length}件のカテゴリーを登録します。\nよろしいですか？`)) {
+      if (!await confirm(`既存のカテゴリーデータを全て削除し、${validatedData.length}件のカテゴリーを登録します。\nよろしいですか？`)) {
         return
       }
 

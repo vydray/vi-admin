@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, addMonths, subMonths, getDate } from 'date-fns'
 import { ja } from 'date-fns/locale'
 import { useStore } from '@/contexts/StoreContext'
+import { useConfirm } from '@/contexts/ConfirmContext'
 import { generateTimeOptions } from '@/lib/timeUtils'
 
 interface Cast {
@@ -33,6 +34,7 @@ interface AttendanceStatus {
 
 export default function AttendancePage() {
   const { storeId: globalStoreId, stores } = useStore()
+  const { confirm } = useConfirm()
   const [selectedStore, setSelectedStore] = useState(globalStoreId)
   const [selectedMonth, setSelectedMonth] = useState(new Date())
   const [casts, setCasts] = useState<Cast[]>([])
@@ -187,7 +189,7 @@ export default function AttendancePage() {
   }
 
   const deleteAttendanceStatus = async (statusId: string) => {
-    if (!confirm('このステータスを削除しますか？')) return
+    if (!await confirm('このステータスを削除しますか？')) return
 
     const { error } = await supabase
       .from('attendance_statuses')
@@ -350,7 +352,7 @@ export default function AttendancePage() {
     const existingAttendance = attendances.find(a => a.cast_id === parseInt(castId) && a.date === dateStr)
 
     if (existingAttendance) {
-      if (confirm('この勤怠記録を削除しますか？')) {
+      if (await confirm('この勤怠記録を削除しますか？')) {
         try {
           const { error } = await supabase
             .from('attendances')

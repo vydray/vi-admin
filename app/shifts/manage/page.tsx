@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, addMonths, subMonths, getDate } from 'date-fns'
 import { ja } from 'date-fns/locale'
 import { useStore } from '@/contexts/StoreContext'
+import { useConfirm } from '@/contexts/ConfirmContext'
 import { generateTimeOptions, formatShiftTime as formatShiftTimeUtil } from '@/lib/timeUtils'
 
 interface Cast {
@@ -43,6 +44,7 @@ interface ShiftLock {
 
 export default function ShiftManage() {
   const { storeId: globalStoreId, stores } = useStore()
+  const { confirm } = useConfirm()
   const [selectedStore, setSelectedStore] = useState(globalStoreId)
   const [selectedMonth, setSelectedMonth] = useState(new Date())
   const [isFirstHalf, setIsFirstHalf] = useState(true)
@@ -692,7 +694,7 @@ export default function ShiftManage() {
     const existingShift = shifts.find(s => s.cast_id === parseInt(castId) && s.date === dateStr)
 
     if (existingShift) {
-      if (confirm('このシフトを削除しますか？')) {
+      if (await confirm('このシフトを削除しますか？')) {
         try {
           const { error } = await supabase
             .from('shifts')
@@ -1589,7 +1591,7 @@ export default function ShiftManage() {
             {editingInfo && shiftRequests.find(r => r.cast_id === editingInfo.castId && r.date === editingInfo.dateStr) && (
               <button
                 onClick={async () => {
-                  if (confirm('この申請を却下しますか？')) {
+                  if (await confirm('この申請を却下しますか？')) {
                     const request = shiftRequests.find(r => r.cast_id === editingInfo.castId && r.date === editingInfo.dateStr)
                     if (request) {
                       const { error } = await supabase

@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo } from 'react'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
+import { useConfirm } from '@/contexts/ConfirmContext'
 
 interface Cast {
   id: number
@@ -48,6 +49,7 @@ interface CastPosition {
 
 export default function CastsPage() {
   const { stores } = useStore()
+  const { confirm } = useConfirm()
   const [casts, setCasts] = useState<Cast[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedStore, setSelectedStore] = useState(2)
@@ -384,7 +386,7 @@ export default function CastsPage() {
   }
 
   const handleDeleteCast = async (castId: number, castName: string) => {
-    if (!confirm(`${castName}を削除してもよろしいですか？\nこの操作は取り消せません。`)) {
+    if (!await confirm(`${castName}を削除してもよろしいですか？\nこの操作は取り消せません。`)) {
       return
     }
 
