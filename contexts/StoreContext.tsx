@@ -44,7 +44,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     try {
       const { data, error } = await supabase
         .from('stores')
-        .select('id, name')
+        .select('id, store_name')
         .order('id')
 
       if (error) throw error
@@ -53,7 +53,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         // データベースのカラム名に応じてマッピング
         const mappedData = data.map((store: any) => ({
           id: store.id,
-          name: store.name || store.store_name || `Store ${store.id}`
+          name: store.store_name
         }))
         setStores(mappedData)
         console.log('Stores loaded:', mappedData)

@@ -16,6 +16,7 @@ const menuItems = [
   { name: '伝票管理', path: '/receipts', icon: '🧾' },
   { name: '店舗設定', path: '/store-settings', icon: '🏪' },
   { name: '設定', path: '/settings', icon: '⚙️' },
+  { name: 'ログアウト', path: '/logout', icon: '🚪', isAction: true },
 ]
 
 export default function Sidebar() {
@@ -58,6 +59,29 @@ export default function Sidebar() {
       <nav style={styles.nav}>
         {menuItems.map((item) => {
           const isActive = pathname === item.path
+
+          // ログアウトの場合はボタンとして表示
+          if (item.isAction && item.path === '/logout') {
+            return (
+              <button
+                key={item.path}
+                onClick={logout}
+                style={{
+                  ...styles.navItem,
+                  ...styles.logoutNavItem,
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  width: '100%',
+                  textAlign: 'left',
+                }}
+              >
+                <span style={styles.icon}>{item.icon}</span>
+                <span>{item.name}</span>
+              </button>
+            )
+          }
+
           return (
             <Link
               key={item.path}
@@ -73,14 +97,6 @@ export default function Sidebar() {
           )
         })}
       </nav>
-
-      {/* ログアウトボタン */}
-      <div style={styles.footer}>
-        <button onClick={logout} style={styles.logoutButton}>
-          <span style={styles.icon}>🚪</span>
-          <span>ログアウト</span>
-        </button>
-      </div>
     </div>
   )
 }
@@ -142,6 +158,7 @@ const styles: { [key: string]: React.CSSProperties } = {
   nav: {
     flex: 1,
     padding: '20px 0',
+    paddingBottom: '30px',
     display: 'flex',
     flexDirection: 'column',
     gap: '5px',
@@ -160,26 +177,13 @@ const styles: { [key: string]: React.CSSProperties } = {
     backgroundColor: 'rgba(255,255,255,0.1)',
     borderLeft: '4px solid #3498db',
   },
+  logoutNavItem: {
+    marginTop: '10px',
+    borderTop: '1px solid rgba(255,255,255,0.1)',
+    paddingTop: '20px',
+  },
   icon: {
     marginRight: '12px',
     fontSize: '20px',
-  },
-  footer: {
-    padding: '20px',
-    borderTop: '1px solid rgba(255,255,255,0.1)',
-  },
-  logoutButton: {
-    display: 'flex',
-    alignItems: 'center',
-    width: '100%',
-    padding: '12px 15px',
-    backgroundColor: 'rgba(231, 76, 60, 0.8)',
-    border: 'none',
-    borderRadius: '6px',
-    color: 'white',
-    fontSize: '14px',
-    fontWeight: '500',
-    cursor: 'pointer',
-    transition: 'background-color 0.2s',
   },
 }
