@@ -31,13 +31,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     try {
       const { data, error } = await supabase
         .from('stores')
-        .select('id, name')
+        .select('*')
         .order('id')
 
       if (error) throw error
 
       if (data && data.length > 0) {
-        setStores(data)
+        // データベースのカラム名に応じてマッピング
+        const mappedData = data.map((store: any) => ({
+          id: store.id,
+          name: store.name || store.store_name || `Store ${store.id}`
+        }))
+        setStores(mappedData)
+        console.log('Stores loaded:', mappedData)
       } else {
         // フォールバック: データベースが空の場合
         setStores([
