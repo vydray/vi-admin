@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { format, eachDayOfInterval, addMonths, subMonths, startOfMonth, endOfMonth } from 'date-fns'
 import { ja } from 'date-fns/locale'
@@ -64,15 +64,7 @@ export default function CastSalesPage() {
     })
   }, [])
 
-  useEffect(() => {
-    loadStores()
-  }, [])
-
-  useEffect(() => {
-    loadData()
-  }, [selectedMonth, selectedStore, aggregationType])
-
-  const loadStores = async () => {
+  const loadStores = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from('stores')
@@ -91,23 +83,9 @@ export default function CastSalesPage() {
         { id: 2, name: 'Mistress Mirage' }
       ])
     }
-  }
+  }, [])
 
-  const loadData = async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const loadedCasts = await loadCasts()
-      await loadSalesData(loadedCasts)
-    } catch (err) {
-      console.error('データ読み込みエラー:', err)
-      setError('データの読み込みに失敗しました。再度お試しください。')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const loadCasts = async () => {
+  const loadCasts = useCallback(async () => {
     const { data, error } = await supabase
       .from('casts')
       .select('id, name, display_order')
@@ -121,9 +99,9 @@ export default function CastSalesPage() {
       throw new Error('キャストデータの取得に失敗しました')
     }
     return data || []
-  }
+  }, [selectedStore])
 
-  const loadSalesData = async (loadedCasts: Cast[]) => {
+  const loadSalesData = useCallback(async (loadedCasts: Cast[]) => {
     const start = startOfMonth(selectedMonth)
     const end = endOfMonth(selectedMonth)
     const startDate = format(start, 'yyyy-MM-dd')
@@ -209,7 +187,29 @@ export default function CastSalesPage() {
     // 合計値が高い順にソート
     const sortedData = Array.from(salesMap.values()).sort((a, b) => b.total - a.total)
     setSalesData(sortedData)
-  }
+  }, [selectedStore, selectedMonth, aggregationType])
+
+  const loadData = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const loadedCasts = await loadCasts()
+      await loadSalesData(loadedCasts)
+    } catch (err) {
+      console.error('データ読み込みエラー:', err)
+      setError('データの読み込みに失敗しました。再度お試しください。')
+    } finally {
+      setLoading(false)
+    }
+  }, [loadCasts, loadSalesData])
+
+  useEffect(() => {
+    loadStores()
+  }, [loadStores])
+
+  useEffect(() => {
+    loadData()
+  }, [loadData])
 
   // 月内の日付一覧をメモ化
   const days = useMemo(() => {

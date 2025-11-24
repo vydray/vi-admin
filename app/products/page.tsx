@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
@@ -54,17 +54,7 @@ export default function ProductsPage() {
   const [showImportModal, setShowImportModal] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
 
-  useEffect(() => {
-    loadData()
-  }, [selectedStore])
-
-  const loadData = async () => {
-    setLoading(true)
-    await Promise.all([loadCategories(), loadProducts()])
-    setLoading(false)
-  }
-
-  const loadCategories = async () => {
+  const loadCategories = useCallback(async () => {
     const { data, error } = await supabase
       .from('product_categories')
       .select('*')
@@ -74,9 +64,9 @@ export default function ProductsPage() {
     if (!error && data) {
       setCategories(data)
     }
-  }
+  }, [selectedStore])
 
-  const loadProducts = async () => {
+  const loadProducts = useCallback(async () => {
     const { data, error } = await supabase
       .from('products')
       .select('*')
@@ -86,7 +76,17 @@ export default function ProductsPage() {
     if (!error && data) {
       setProducts(data)
     }
-  }
+  }, [selectedStore])
+
+  const loadData = useCallback(async () => {
+    setLoading(true)
+    await Promise.all([loadCategories(), loadProducts()])
+    setLoading(false)
+  }, [loadCategories, loadProducts])
+
+  useEffect(() => {
+    loadData()
+  }, [loadData])
 
   const addProduct = async () => {
     if (!newProductName.trim() || !newProductPrice || !newProductCategory) {

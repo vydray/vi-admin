@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
 import { useConfirm } from '@/contexts/ConfirmContext'
@@ -179,7 +179,7 @@ export default function ReceiptsPage() {
     unit_price: 0
   }])
 
-  const loadReceipts = async () => {
+  const loadReceipts = useCallback(async () => {
     setLoading(true)
     try {
       // N+1問題を解決: ordersとpaymentsを1回のクエリで取得
@@ -230,9 +230,9 @@ export default function ReceiptsPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [selectedStore])
 
-  const loadMasterData = async () => {
+  const loadMasterData = useCallback(async () => {
     try {
       // 商品マスタを取得
       const { data: productsData } = await supabase
@@ -263,9 +263,9 @@ export default function ReceiptsPage() {
     } catch (error) {
       console.error('Error loading master data:', error)
     }
-  }
+  }, [selectedStore])
 
-  const loadSystemSettings = async () => {
+  const loadSystemSettings = useCallback(async () => {
     try {
       const { data: settings } = await supabase
         .from('system_settings')
@@ -292,7 +292,7 @@ export default function ReceiptsPage() {
     } catch (error) {
       console.error('Error loading system settings:', error)
     }
-  }
+  }, [selectedStore])
 
   // 端数処理を適用した金額を計算
   const getRoundedTotal = (amount: number, unit: number, method: number): number => {
@@ -314,7 +314,7 @@ export default function ReceiptsPage() {
     loadReceipts()
     loadMasterData()
     loadSystemSettings()
-  }, [selectedStore])
+  }, [loadReceipts, loadMasterData, loadSystemSettings])
 
   const loadReceiptDetails = async (receipt: Receipt) => {
     try {
