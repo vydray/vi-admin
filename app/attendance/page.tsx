@@ -391,10 +391,6 @@ export default function AttendancePage() {
   // 時間選択肢をメモ化
   const timeOptions = useMemo(() => generateTimeOptions(), [])
 
-  if (loading) {
-    return <LoadingSpinner />
-  }
-
   // 編集中のセルの情報を取得（メモ化）
   const editingInfo = useMemo(() => {
     if (!editingCell) return null
@@ -415,6 +411,10 @@ export default function AttendancePage() {
 
     return { castId, dateStr, cast, date, attendance }
   }, [editingCell, casts, attendances])
+
+  if (loading) {
+    return <LoadingSpinner />
+  }
 
   return (
     <div style={{
