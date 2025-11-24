@@ -5,6 +5,7 @@ import { useStore } from '@/contexts/StoreContext'
 import { supabase } from '@/lib/supabase'
 import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { getCurrentBusinessDay } from '@/lib/businessDay'
+import toast from 'react-hot-toast'
 
 interface DashboardData {
   todaySales: number
@@ -124,7 +125,7 @@ export default function Home() {
       if (error) throw error
 
       if (!orders || orders.length === 0) {
-        alert('エクスポートするデータがありません')
+        toast.error('エクスポートするデータがありません')
         return
       }
 
@@ -246,10 +247,10 @@ export default function Home() {
       link.click()
       URL.revokeObjectURL(url)
 
-      alert('エクスポートが完了しました')
+      toast.success('エクスポートが完了しました')
     } catch (error) {
       console.error('Export error:', error)
-      alert('エクスポートに失敗しました')
+      toast.error('エクスポートに失敗しました')
     } finally {
       setIsExporting(false)
     }

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
 
@@ -215,10 +216,10 @@ export default function StoreSettingsPage() {
 
       if (systemError) throw systemError
 
-      alert('設定を保存しました')
+      toast.success('設定を保存しました')
     } catch (error) {
       console.error('Error saving settings:', error)
-      alert('設定の保存に失敗しました')
+      toast.success('設定の保存に失敗しました')
     }
 
     setSaving(false)
@@ -265,10 +266,10 @@ export default function StoreSettingsPage() {
       // 設定を更新
       updateSetting('logo_url', data.publicUrl)
 
-      alert('ロゴをアップロードしました')
+      toast.success('ロゴをアップロードしました')
     } catch (error) {
       console.error('Upload error:', error)
-      alert('ロゴのアップロードに失敗しました')
+      toast.success('ロゴのアップロードに失敗しました')
     } finally {
       setUploading(false)
     }
@@ -278,7 +279,7 @@ export default function StoreSettingsPage() {
     const file = e.target.files?.[0]
     if (file) {
       if (!file.type.startsWith('image/')) {
-        alert('画像ファイルを選択してください')
+        toast.error('画像ファイルを選択してください')
         return
       }
       uploadImage(file)
@@ -292,7 +293,7 @@ export default function StoreSettingsPage() {
     const file = e.dataTransfer.files[0]
     if (file) {
       if (!file.type.startsWith('image/')) {
-        alert('画像ファイルを選択してください')
+        toast.error('画像ファイルを選択してください')
         return
       }
       uploadImage(file)

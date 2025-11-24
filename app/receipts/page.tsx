@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
+import toast from 'react-hot-toast'
 
 interface OrderItem {
   id: number
@@ -220,7 +221,7 @@ export default function ReceiptsPage() {
       }
     } catch (error) {
       console.error('Error loading receipts:', error)
-      alert('伝票の読み込みに失敗しました')
+      toast.error('伝票の読み込みに失敗しました')
     } finally {
       setLoading(false)
     }
@@ -394,7 +395,7 @@ export default function ReceiptsPage() {
       setIsEditModalOpen(true)
     } catch (error) {
       console.error('Error loading receipt details:', error)
-      alert('伝票の詳細読み込みに失敗しました')
+      toast.error('伝票の詳細読み込みに失敗しました')
     }
   }
 
@@ -416,12 +417,12 @@ export default function ReceiptsPage() {
 
       if (orderError) throw orderError
 
-      alert('伝票の基本情報を更新しました')
+      toast.success('伝票の基本情報を更新しました')
       setIsEditModalOpen(false)
       loadReceipts()
     } catch (error) {
       console.error('Error updating receipt:', error)
-      alert('伝票の更新に失敗しました')
+      toast.error('伝票の更新に失敗しました')
     }
   }
 
@@ -436,12 +437,12 @@ export default function ReceiptsPage() {
 
       if (error) throw error
 
-      alert('伝票を削除しました')
+      toast.success('伝票を削除しました')
       setIsEditModalOpen(false)
       loadReceipts()
     } catch (error) {
       console.error('Error deleting receipt:', error)
-      alert('伝票の削除に失敗しました')
+      toast.error('伝票の削除に失敗しました')
     }
   }
 
@@ -475,29 +476,29 @@ export default function ReceiptsPage() {
   const calculateCreateReceiptTotals = () => {
     // 必須項目のチェック
     if (!createFormData.table_number) {
-      alert('テーブル番号を入力してください')
+      toast.error('テーブル番号を入力してください')
       return
     }
 
     if (!createFormData.staff_name) {
-      alert('推しを選択してください')
+      toast.error('推しを選択してください')
       return
     }
 
     if (!createFormData.order_date) {
-      alert('注文日を入力してください')
+      toast.error('注文日を入力してください')
       return
     }
 
     if (!createFormData.checkout_datetime) {
-      alert('会計日時を入力してください')
+      toast.error('会計日時を入力してください')
       return
     }
 
     // 少なくとも1つの商品が選択されているかチェック
     const validItems = createItems.filter(item => item.product_name)
     if (validItems.length === 0) {
-      alert('少なくとも1つの商品を選択してください')
+      toast.error('少なくとも1つの商品を選択してください')
       return
     }
 
@@ -650,7 +651,7 @@ export default function ReceiptsPage() {
 
       // 支払い不足のチェック
       if (totalPaid < finalTotal) {
-        alert('支払い金額が不足しています')
+        toast.error('支払い金額が不足しています')
         return
       }
 
@@ -693,28 +694,28 @@ export default function ReceiptsPage() {
           if (paymentError) throw paymentError
         }
 
-        alert('会計処理が完了しました')
+        toast.success('会計処理が完了しました')
         setIsPaymentModalOpen(false)
         loadReceiptDetails(selectedReceipt)
       } else if (paymentModalMode === 'create') {
         // 新規作成モード：新しい伝票を作成
         if (!createFormData.table_number) {
-          alert('テーブル番号を入力してください')
+          toast.error('テーブル番号を入力してください')
           return
         }
 
         if (!createFormData.staff_name) {
-          alert('推しを選択してください')
+          toast.error('推しを選択してください')
           return
         }
 
         if (!createFormData.order_date) {
-          alert('注文日を入力してください')
+          toast.error('注文日を入力してください')
           return
         }
 
         if (!createFormData.checkout_datetime) {
-          alert('会計日時を入力してください')
+          toast.error('会計日時を入力してください')
           return
         }
 
@@ -789,14 +790,14 @@ export default function ReceiptsPage() {
 
         if (paymentError) throw paymentError
 
-        alert('伝票を作成しました')
+        toast.success('伝票を作成しました')
         setIsPaymentModalOpen(false)
         setIsCreateModalOpen(false)
         loadReceipts()
       }
     } catch (error) {
       console.error('Error completing payment:', error)
-      alert('会計処理に失敗しました')
+      toast.error('会計処理に失敗しました')
     }
   }
 
@@ -888,12 +889,12 @@ export default function ReceiptsPage() {
         if (paymentError) throw paymentError
       }
 
-      alert('伝票を複製しました')
+      toast.success('伝票を複製しました')
       setIsEditModalOpen(false)
       loadReceipts()
     } catch (error) {
       console.error('Error duplicating receipt:', error)
-      alert('伝票の複製に失敗しました')
+      toast.error('伝票の複製に失敗しました')
     }
   }
 
@@ -918,29 +919,29 @@ export default function ReceiptsPage() {
   const saveNewReceiptWithoutPayment = async () => {
     // 必須項目のチェック
     if (!createFormData.table_number) {
-      alert('テーブル番号を入力してください')
+      toast.error('テーブル番号を入力してください')
       return
     }
 
     if (!createFormData.staff_name) {
-      alert('推しを選択してください')
+      toast.error('推しを選択してください')
       return
     }
 
     if (!createFormData.order_date) {
-      alert('注文日を入力してください')
+      toast.error('注文日を入力してください')
       return
     }
 
     if (!createFormData.checkout_datetime) {
-      alert('会計日時を入力してください')
+      toast.error('会計日時を入力してください')
       return
     }
 
     // 少なくとも1つの商品が選択されているかチェック
     const validItems = createItems.filter(item => item.product_name)
     if (validItems.length === 0) {
-      alert('少なくとも1つの商品を選択してください')
+      toast.error('少なくとも1つの商品を選択してください')
       return
     }
 
@@ -1021,13 +1022,13 @@ export default function ReceiptsPage() {
 
       if (paymentError) throw paymentError
 
-      alert('伝票を作成しました（未会計）')
+      toast.success('伝票を作成しました（未会計）')
       setIsCreateModalOpen(false)
       loadReceipts()
     } catch (error: any) {
       console.error('Error creating receipt:', error)
       const errorMessage = error?.message || error?.details || JSON.stringify(error)
-      alert(`伝票の作成に失敗しました: ${errorMessage}`)
+      toast.error(`伝票の作成に失敗しました: ${errorMessage}`)
     }
   }
 
@@ -1043,7 +1044,7 @@ export default function ReceiptsPage() {
 
   const removeCreateItem = (index: number) => {
     if (createItems.length === 1) {
-      alert('最低1つの明細が必要です')
+      toast.error('最低1つの明細が必要です')
       return
     }
     setCreateItems(createItems.filter((_, i) => i !== index))
@@ -1111,7 +1112,7 @@ export default function ReceiptsPage() {
 
       if (error) throw error
 
-      alert('注文明細を更新しました')
+      toast.success('注文明細を更新しました')
       cancelEditItem()
 
       // 詳細を再読み込み
@@ -1120,7 +1121,7 @@ export default function ReceiptsPage() {
       }
     } catch (error) {
       console.error('Error updating order item:', error)
-      alert('注文明細の更新に失敗しました')
+      toast.error('注文明細の更新に失敗しました')
     }
   }
 
@@ -1136,7 +1137,7 @@ export default function ReceiptsPage() {
 
       if (error) throw error
 
-      alert('注文明細を削除しました')
+      toast.success('注文明細を削除しました')
 
       // 詳細を再読み込み
       if (selectedReceipt) {
@@ -1144,7 +1145,7 @@ export default function ReceiptsPage() {
       }
     } catch (error) {
       console.error('Error deleting order item:', error)
-      alert('注文明細の削除に失敗しました')
+      toast.error('注文明細の削除に失敗しました')
     }
   }
 
@@ -1178,7 +1179,7 @@ export default function ReceiptsPage() {
   const addOrderItem = async () => {
     if (!selectedReceipt) return
     if (!newItemData.product_name) {
-      alert('商品名を選択してください')
+      toast.error('商品名を選択してください')
       return
     }
 
@@ -1201,14 +1202,14 @@ export default function ReceiptsPage() {
 
       if (error) throw error
 
-      alert('注文明細を追加しました')
+      toast.success('注文明細を追加しました')
       cancelAddItem()
 
       // 詳細を再読み込み
       loadReceiptDetails(selectedReceipt)
     } catch (error) {
       console.error('Error adding order item:', error)
-      alert('注文明細の追加に失敗しました')
+      toast.error('注文明細の追加に失敗しました')
     }
   }
 

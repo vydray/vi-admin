@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useMemo } from 'react'
+import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
 
@@ -255,7 +256,7 @@ export default function CastsPage() {
 
     if (error) {
       console.error('Error updating cast:', error)
-      alert('更新に失敗しました')
+      toast.success('更新に失敗しました')
     } else {
       // 成功したらリロード
       loadCasts()
@@ -347,7 +348,7 @@ export default function CastsPage() {
 
       if (error) {
         console.error('Error creating cast:', error)
-        alert('作成に失敗しました')
+        toast.success('作成に失敗しました')
       } else {
         closeModal()
         loadCasts()
@@ -374,7 +375,7 @@ export default function CastsPage() {
 
       if (error) {
         console.error('Error updating cast:', error)
-        alert('更新に失敗しました')
+        toast.success('更新に失敗しました')
       } else {
         closeModal()
         loadCasts()
@@ -394,7 +395,7 @@ export default function CastsPage() {
 
     if (error) {
       console.error('Error deleting cast:', error)
-      alert('削除に失敗しました')
+      toast.success('削除に失敗しました')
     } else {
       loadCasts()
     }
@@ -433,7 +434,7 @@ export default function CastsPage() {
 
     // フィルタリング中は並び替え不可
     if (searchQuery || statusFilter || attributeFilter || documentFilter || activeFilter || posFilter || adminFilter || managerFilter || sortField) {
-      alert('並び替えはフィルタ・ソートをクリアしてから行ってください')
+      toast.error('並び替えはフィルタ・ソートをクリアしてから行ってください')
       setDraggedCastId(null)
       return
     }
@@ -474,7 +475,7 @@ export default function CastsPage() {
         .upsert(updates, { onConflict: 'id' })
     } catch (error) {
       console.error('並び順の保存エラー:', error)
-      alert('並び順の保存に失敗しました')
+      toast.success('並び順の保存に失敗しました')
       // エラー時はリロード
       loadCasts()
     }

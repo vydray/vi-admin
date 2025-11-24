@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
+import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
 
@@ -84,7 +85,7 @@ export default function ProductsPage() {
 
   const addProduct = async () => {
     if (!newProductName.trim() || !newProductPrice || !newProductCategory) {
-      alert('全ての項目を入力してください')
+      toast.error('全ての項目を入力してください')
       return
     }
 
@@ -94,7 +95,7 @@ export default function ProductsPage() {
     )
 
     if (isDuplicate) {
-      alert(`「${newProductName.trim()}」は既に登録されています`)
+      toast.error(`「${newProductName.trim()}」は既に登録されています`)
       return
     }
 
@@ -122,13 +123,13 @@ export default function ProductsPage() {
       setNewProductCategory(null)
       setNewProductNeedsCast(false)
     } else {
-      alert('商品の追加に失敗しました')
+      toast.success('商品の追加に失敗しました')
     }
   }
 
   const updateProduct = async () => {
     if (!editingProduct || !editName.trim() || !editPrice || !editCategory) {
-      alert('全ての項目を入力してください')
+      toast.error('全ての項目を入力してください')
       return
     }
 
@@ -139,7 +140,7 @@ export default function ProductsPage() {
     )
 
     if (isDuplicate) {
-      alert(`「${editName.trim()}」は既に登録されています`)
+      toast.error(`「${editName.trim()}」は既に登録されています`)
       return
     }
 
@@ -162,7 +163,7 @@ export default function ProductsPage() {
       setEditCategory(null)
       setEditNeedsCast(false)
     } else {
-      alert('商品の更新に失敗しました')
+      toast.success('商品の更新に失敗しました')
     }
   }
 
@@ -179,7 +180,7 @@ export default function ProductsPage() {
     if (!error) {
       await loadProducts()
     } else {
-      alert('商品の削除に失敗しました')
+      toast.success('商品の削除に失敗しました')
     }
   }
 
@@ -215,7 +216,7 @@ export default function ProductsPage() {
 
   const exportToCSV = () => {
     if (products.length === 0) {
-      alert('エクスポートする商品データがありません')
+      toast.error('エクスポートする商品データがありません')
       return
     }
 
@@ -255,7 +256,7 @@ export default function ProductsPage() {
       const lines = text.split('\n').filter(line => line.trim())
 
       if (lines.length < 2) {
-        alert('CSVファイルにデータがありません')
+        toast.error('CSVファイルにデータがありません')
         return
       }
 
@@ -342,7 +343,7 @@ export default function ProductsPage() {
       // エラーがある場合は詳細を表示して中断
       if (errors.length > 0) {
         const errorMessage = `CSVデータにエラーがあります：\n\n${errors.join('\n')}\n\n修正してから再度アップロードしてください。`
-        alert(errorMessage)
+        toast.error(errorMessage)
         return
       }
 
@@ -359,7 +360,7 @@ export default function ProductsPage() {
         .eq('store_id', selectedStore)
 
       if (deleteError) {
-        alert('既存データの削除に失敗しました')
+        toast.success('既存データの削除に失敗しました')
         console.error(deleteError)
         return
       }
@@ -375,7 +376,7 @@ export default function ProductsPage() {
         .insert(dataToInsert)
 
       if (insertError) {
-        alert('データの登録に失敗しました')
+        toast.success('データの登録に失敗しました')
         console.error(insertError)
         return
       }
@@ -383,10 +384,10 @@ export default function ProductsPage() {
       // 成功
       await loadProducts()
       setShowImportModal(false)
-      alert(`インポート完了\n${validatedData.length}件の商品を登録しました`)
+      toast.error(`インポート完了\n${validatedData.length}件の商品を登録しました`)
     } catch (error) {
       console.error('CSV読み込みエラー:', error)
-      alert('CSVファイルの読み込みに失敗しました')
+      toast.success('CSVファイルの読み込みに失敗しました')
     }
   }
 
@@ -405,7 +406,7 @@ export default function ProductsPage() {
     if (file && file.name.endsWith('.csv')) {
       importFromCSV(file)
     } else {
-      alert('CSVファイルを選択してください')
+      toast.error('CSVファイルを選択してください')
     }
   }
 

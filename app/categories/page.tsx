@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
 
@@ -46,7 +47,7 @@ export default function CategoriesPage() {
 
   const addCategory = async () => {
     if (!newCategoryName.trim()) {
-      alert('カテゴリー名を入力してください')
+      toast.error('カテゴリー名を入力してください')
       return
     }
 
@@ -55,7 +56,7 @@ export default function CategoriesPage() {
     )
 
     if (isDuplicate) {
-      alert(`「${newCategoryName.trim()}」は既に登録されています`)
+      toast.error(`「${newCategoryName.trim()}」は既に登録されています`)
       return
     }
 
@@ -76,13 +77,13 @@ export default function CategoriesPage() {
       await loadCategories()
       setNewCategoryName('')
     } else {
-      alert('カテゴリーの追加に失敗しました')
+      toast.success('カテゴリーの追加に失敗しました')
     }
   }
 
   const updateCategory = async () => {
     if (!editingCategory || !editName.trim()) {
-      alert('カテゴリー名を入力してください')
+      toast.error('カテゴリー名を入力してください')
       return
     }
 
@@ -92,7 +93,7 @@ export default function CategoriesPage() {
     )
 
     if (isDuplicate) {
-      alert(`「${editName.trim()}」は既に登録されています`)
+      toast.error(`「${editName.trim()}」は既に登録されています`)
       return
     }
 
@@ -107,7 +108,7 @@ export default function CategoriesPage() {
       setEditingCategory(null)
       setEditName('')
     } else {
-      alert('カテゴリーの更新に失敗しました')
+      toast.success('カテゴリーの更新に失敗しました')
     }
   }
 
@@ -124,7 +125,7 @@ export default function CategoriesPage() {
     if (!error) {
       await loadCategories()
     } else {
-      alert('カテゴリーの削除に失敗しました')
+      toast.success('カテゴリーの削除に失敗しました')
     }
   }
 
@@ -147,7 +148,7 @@ export default function CategoriesPage() {
 
   const exportToCSV = () => {
     if (categories.length === 0) {
-      alert('エクスポートするカテゴリーデータがありません')
+      toast.error('エクスポートするカテゴリーデータがありません')
       return
     }
 
@@ -184,7 +185,7 @@ export default function CategoriesPage() {
       const lines = text.split('\n').filter(line => line.trim())
 
       if (lines.length < 2) {
-        alert('CSVファイルにデータがありません')
+        toast.error('CSVファイルにデータがありません')
         return
       }
 
@@ -244,7 +245,7 @@ export default function CategoriesPage() {
       // エラーがある場合は詳細を表示して中断
       if (errors.length > 0) {
         const errorMessage = `CSVデータにエラーがあります：\n\n${errors.join('\n')}\n\n修正してから再度アップロードしてください。`
-        alert(errorMessage)
+        toast.error(errorMessage)
         return
       }
 
@@ -261,7 +262,7 @@ export default function CategoriesPage() {
         .eq('store_id', selectedStore)
 
       if (deleteError) {
-        alert('既存データの削除に失敗しました')
+        toast.success('既存データの削除に失敗しました')
         console.error(deleteError)
         return
       }
@@ -277,7 +278,7 @@ export default function CategoriesPage() {
         .insert(dataToInsert)
 
       if (insertError) {
-        alert('データの登録に失敗しました')
+        toast.success('データの登録に失敗しました')
         console.error(insertError)
         return
       }
@@ -285,10 +286,10 @@ export default function CategoriesPage() {
       // 成功
       await loadCategories()
       setShowImportModal(false)
-      alert(`インポート完了\n${validatedData.length}件のカテゴリーを登録しました`)
+      toast.error(`インポート完了\n${validatedData.length}件のカテゴリーを登録しました`)
     } catch (error) {
       console.error('CSV読み込みエラー:', error)
-      alert('CSVファイルの読み込みに失敗しました')
+      toast.success('CSVファイルの読み込みに失敗しました')
     }
   }
 
@@ -307,7 +308,7 @@ export default function CategoriesPage() {
     if (file && file.name.endsWith('.csv')) {
       importFromCSV(file)
     } else {
-      alert('CSVファイルを選択してください')
+      toast.error('CSVファイルを選択してください')
     }
   }
 

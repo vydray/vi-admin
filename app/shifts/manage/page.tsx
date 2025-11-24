@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
+import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, addMonths, subMonths, getDate } from 'date-fns'
 import { ja } from 'date-fns/locale'
@@ -373,10 +374,10 @@ export default function ShiftManage() {
       // 保存待ちの変更をクリア
       setPendingLocks(new Map())
 
-      alert('ロック設定を保存しました')
+      toast.success('ロック設定を保存しました')
     } catch (error) {
       console.error('保存エラー:', error)
-      alert('保存中にエラーが発生しました')
+      toast.success('保存中にエラーが発生しました')
     } finally {
       setIsSaving(false)
     }
@@ -497,7 +498,7 @@ export default function ShiftManage() {
 
     } catch (error) {
       console.error('並び順の保存エラー:', error)
-      alert('並び順の保存に失敗しました')
+      toast.success('並び順の保存に失敗しました')
       // エラー時はリロード
       loadCasts()
     }
@@ -592,7 +593,7 @@ export default function ShiftManage() {
 
   const saveShift = async () => {
     if (!editingCell || !tempTime.start || !tempTime.end) {
-      alert('時間を入力してください')
+      toast.error('時間を入力してください')
       return
     }
 
@@ -625,7 +626,7 @@ export default function ShiftManage() {
           .select()
 
         if (error) {
-          alert('更新エラー: ' + error.message)
+          toast.error('更新エラー: ' + error.message)
         } else {
           await loadShifts()
           setEditingCell(null)
@@ -645,7 +646,7 @@ export default function ShiftManage() {
           .select()
 
         if (error) {
-          alert('登録エラー: ' + error.message)
+          toast.error('登録エラー: ' + error.message)
         } else {
           // 対応するshift_requestがあれば承認済みに更新
           const request = shiftRequests.find(r => r.cast_id === parseInt(castId) && r.date === dateStr)
@@ -676,7 +677,7 @@ export default function ShiftManage() {
       }
     } catch (error) {
       console.error('Unexpected error:', error)
-      alert('予期しないエラーが発生しました')
+      toast.success('予期しないエラーが発生しました')
     }
   }
 
@@ -699,7 +700,7 @@ export default function ShiftManage() {
             .eq('id', existingShift.id)
 
           if (error) {
-            alert('削除エラー: ' + error.message)
+            toast.error('削除エラー: ' + error.message)
           } else {
             // 対応するshift_requestがあれば未承認に戻す
             const request = shiftRequests.find(r => r.cast_id === parseInt(castId) && r.date === dateStr)
@@ -716,11 +717,11 @@ export default function ShiftManage() {
           }
         } catch (error) {
           console.error('Unexpected error:', error)
-          alert('予期しないエラーが発生しました')
+          toast.success('予期しないエラーが発生しました')
         }
       }
     } else {
-      alert('削除するシフトが見つかりません')
+      toast.success('削除するシフトが見つかりません')
     }
   }
 
@@ -1601,7 +1602,7 @@ export default function ShiftManage() {
                         setEditingCell(null)
                         setIsNewShift(false)
                       } else {
-                        alert('エラーが発生しました: ' + error.message)
+                        toast.error('エラーが発生しました: ' + error.message)
                       }
                     }
                   }

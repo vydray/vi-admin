@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
+import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, addMonths, subMonths, getDate } from 'date-fns'
 import { ja } from 'date-fns/locale'
@@ -110,7 +111,7 @@ export default function AttendancePage() {
 
   const addAttendanceStatus = async () => {
     if (!newStatusName.trim()) {
-      alert('ステータス名を入力してください')
+      toast.error('ステータス名を入力してください')
       return
     }
 
@@ -119,7 +120,7 @@ export default function AttendancePage() {
     )
 
     if (isDuplicate) {
-      alert(`「${newStatusName.trim()}」は既に登録されています`)
+      toast.error(`「${newStatusName.trim()}」は既に登録されています`)
       return
     }
 
@@ -143,7 +144,7 @@ export default function AttendancePage() {
 
   const updateAttendanceStatus = async () => {
     if (!editingStatus || !newStatusName.trim()) {
-      alert('ステータス名を入力してください')
+      toast.error('ステータス名を入力してください')
       return
     }
 
@@ -153,7 +154,7 @@ export default function AttendancePage() {
     )
 
     if (isDuplicate) {
-      alert(`「${newStatusName.trim()}」は既に登録されています`)
+      toast.error(`「${newStatusName.trim()}」は既に登録されています`)
       return
     }
 
@@ -196,7 +197,7 @@ export default function AttendancePage() {
     if (!error) {
       await loadAttendanceStatuses()
     } else {
-      alert('ステータスの削除に失敗しました')
+      toast.success('ステータスの削除に失敗しました')
     }
   }
 
@@ -278,7 +279,7 @@ export default function AttendancePage() {
 
   const saveAttendance = async () => {
     if (!editingCell || !tempTime.clockIn) {
-      alert('出勤時間を入力してください')
+      toast.error('出勤時間を入力してください')
       return
     }
 
@@ -310,7 +311,7 @@ export default function AttendancePage() {
           .eq('id', existingAttendance.id)
 
         if (error) {
-          alert('更新エラー: ' + error.message)
+          toast.error('更新エラー: ' + error.message)
         } else {
           await loadAttendances()
           setEditingCell(null)
@@ -328,7 +329,7 @@ export default function AttendancePage() {
           })
 
         if (error) {
-          alert('登録エラー: ' + error.message)
+          toast.error('登録エラー: ' + error.message)
         } else {
           await loadAttendances()
           setEditingCell(null)
@@ -336,7 +337,7 @@ export default function AttendancePage() {
       }
     } catch (error) {
       console.error('Unexpected error:', error)
-      alert('予期しないエラーが発生しました')
+      toast.success('予期しないエラーが発生しました')
     }
   }
 
@@ -357,18 +358,18 @@ export default function AttendancePage() {
             .eq('id', existingAttendance.id)
 
           if (error) {
-            alert('削除エラー: ' + error.message)
+            toast.error('削除エラー: ' + error.message)
           } else {
             await loadAttendances()
             setEditingCell(null)
           }
         } catch (error) {
           console.error('Unexpected error:', error)
-          alert('予期しないエラーが発生しました')
+          toast.success('予期しないエラーが発生しました')
         }
       }
     } else {
-      alert('削除する勤怠記録が見つかりません')
+      toast.success('削除する勤怠記録が見つかりません')
     }
   }
 
