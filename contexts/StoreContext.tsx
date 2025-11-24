@@ -56,7 +56,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           name: store.store_name
         }))
         setStores(mappedData)
-        console.log('Stores loaded:', mappedData)
       } else {
         // フォールバック: データベースが空の場合
         setStores([

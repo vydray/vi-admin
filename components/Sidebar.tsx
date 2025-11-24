@@ -21,7 +21,7 @@ const menuItems = [
 
 export default function Sidebar() {
   const pathname = usePathname()
-  const { storeId, setStoreId } = useStore()
+  const { storeId, setStoreId, stores } = useStore()
   const { user, logout } = useAuth()
 
   const isSuperAdmin = user?.role === 'super_admin'
@@ -49,8 +49,11 @@ export default function Sidebar() {
               onChange={(e) => setStoreId(Number(e.target.value))}
               style={styles.select}
             >
-              <option value={1}>Memorable</option>
-              <option value={2}>Mistress Mirage</option>
+              {stores.map((store) => (
+                <option key={store.id} value={store.id}>
+                  {store.name}
+                </option>
+              ))}
             </select>
           </div>
         )}

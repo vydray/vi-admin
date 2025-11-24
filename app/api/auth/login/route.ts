@@ -15,17 +15,13 @@ export async function POST(request: NextRequest) {
     }
 
     // admin_usersテーブルからユーザーを検索
-    console.log('Attempting login for username:', username)
     const { data: user, error } = await supabase
       .from('admin_users')
       .select('id, username, password_hash, role, store_id, is_active')
       .eq('username', username)
       .single()
 
-    console.log('Supabase query result:', { user, error })
-
     if (error || !user) {
-      console.error('User not found or error:', error)
       return NextResponse.json(
         { error: 'ユーザー名またはパスワードが正しくありません' },
         { status: 401 }
@@ -41,12 +37,9 @@ export async function POST(request: NextRequest) {
     }
 
     // パスワードを検証
-    console.log('Comparing password...')
     const isPasswordValid = await bcrypt.compare(password, user.password_hash)
-    console.log('Password validation result:', isPasswordValid)
 
     if (!isPasswordValid) {
-      console.error('Password mismatch')
       return NextResponse.json(
         { error: 'ユーザー名またはパスワードが正しくありません' },
         { status: 401 }
@@ -61,7 +54,6 @@ export async function POST(request: NextRequest) {
       store_id: user.store_id,
     }
 
-    console.log('Setting session cookie for user:', sessionData.username)
     const cookieStore = await cookies()
     cookieStore.set('admin_session', JSON.stringify(sessionData), {
       httpOnly: true,
@@ -71,7 +63,6 @@ export async function POST(request: NextRequest) {
       path: '/',
     })
 
-    console.log('Login successful!')
     return NextResponse.json({
       success: true,
       user: sessionData,
