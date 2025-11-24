@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { getCurrentBusinessDay } from '@/lib/businessDay'
 import toast from 'react-hot-toast'
+import LoadingSpinner from '@/components/LoadingSpinner'
 
 interface DashboardData {
   todaySales: number
@@ -390,7 +391,7 @@ export default function Home() {
   }
 
   if (loading) {
-    return <div style={{ textAlign: 'center', padding: '50px', fontSize: '18px' }}>読み込み中...</div>
+    return <LoadingSpinner />
   }
 
   const avgMonthly = data.monthlyCustomers > 0 ? Math.round(data.monthlySales / data.monthlyCustomers) : 0

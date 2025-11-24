@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
+import LoadingSpinner from '@/components/LoadingSpinner'
 
 interface StoreSettings {
   store_name: string

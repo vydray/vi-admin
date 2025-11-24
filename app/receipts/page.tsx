@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
 import { useConfirm } from '@/contexts/ConfirmContext'
 import toast from 'react-hot-toast'
+import LoadingSpinner from '@/components/LoadingSpinner'
 
 interface OrderItem {
   id: number
@@ -1272,11 +1273,7 @@ export default function ReceiptsPage() {
   }
 
   if (loading) {
-    return (
-      <div style={styles.container}>
-        <div style={styles.loading}>読み込み中...</div>
-      </div>
-    )
+    return <LoadingSpinner />
   }
 
   return (

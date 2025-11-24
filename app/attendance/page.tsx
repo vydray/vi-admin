@@ -8,6 +8,7 @@ import { ja } from 'date-fns/locale'
 import { useStore } from '@/contexts/StoreContext'
 import { useConfirm } from '@/contexts/ConfirmContext'
 import { generateTimeOptions } from '@/lib/timeUtils'
+import LoadingSpinner from '@/components/LoadingSpinner'
 
 interface Cast {
   id: number
@@ -389,11 +390,7 @@ export default function AttendancePage() {
   const timeOptions = useMemo(() => generateTimeOptions(), [])
 
   if (loading) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
-        <div>読み込み中...</div>
-      </div>
-    )
+    return <LoadingSpinner />
   }
 
   // 編集中のセルの情報を取得（メモ化）
