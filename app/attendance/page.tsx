@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, addMonths, subMonths, getDate } from 'date-fns'
@@ -53,26 +53,7 @@ export default function AttendancePage() {
   const [newStatusName, setNewStatusName] = useState('')
   const [newStatusColor, setNewStatusColor] = useState('#4CAF50')
 
-  useEffect(() => {
-    loadData()
-  }, [selectedMonth, selectedStore])
-
-  useEffect(() => {
-    if (showStatusModal) {
-      loadAttendanceStatuses()
-    }
-  }, [showStatusModal, selectedStore])
-
-  const loadData = async () => {
-    setLoading(true)
-    await Promise.all([
-      loadCasts(),
-      loadAttendances()
-    ])
-    setLoading(false)
-  }
-
-  const loadCasts = async () => {
+  const loadCasts = useCallback(async () => {
     const { data, error } = await supabase
       .from('casts')
       .select('id, name')
@@ -84,9 +65,9 @@ export default function AttendancePage() {
     if (!error && data) {
       setCasts(data)
     }
-  }
+  }, [selectedStore])
 
-  const loadAttendances = async () => {
+  const loadAttendances = useCallback(async () => {
     const start = startOfMonth(selectedMonth)
     const end = endOfMonth(selectedMonth)
 
@@ -100,9 +81,18 @@ export default function AttendancePage() {
     if (!error && data) {
       setAttendances(data)
     }
-  }
+  }, [selectedMonth, selectedStore])
 
-  const loadAttendanceStatuses = async () => {
+  const loadData = useCallback(async () => {
+    setLoading(true)
+    await Promise.all([
+      loadCasts(),
+      loadAttendances()
+    ])
+    setLoading(false)
+  }, [loadCasts, loadAttendances])
+
+  const loadAttendanceStatuses = useCallback(async () => {
     const { data, error } = await supabase
       .from('attendance_statuses')
       .select('*')
@@ -112,7 +102,17 @@ export default function AttendancePage() {
     if (!error && data) {
       setAttendanceStatuses(data)
     }
-  }
+  }, [selectedStore])
+
+  useEffect(() => {
+    loadData()
+  }, [loadData])
+
+  useEffect(() => {
+    if (showStatusModal) {
+      loadAttendanceStatuses()
+    }
+  }, [showStatusModal, loadAttendanceStatuses])
 
   const addAttendanceStatus = async () => {
     if (!newStatusName.trim()) {
