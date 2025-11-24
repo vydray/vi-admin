@@ -27,6 +27,44 @@ interface DailySalesData {
   cumulative: number
 }
 
+interface Payment {
+  cash_amount: number
+  credit_card_amount: number
+  other_payment_amount: number
+}
+
+interface OrderItemExport {
+  product_name: string
+  category: string
+  cast_name: string
+  quantity: number
+  unit_price: number
+  subtotal: number
+}
+
+interface OrderExport {
+  id: number
+  receipt_number: string
+  order_date: string
+  checkout_datetime: string
+  table_number: string
+  staff_name: string
+  total_incl_tax: number
+  subtotal_excl_tax: number
+  order_items: OrderItemExport[]
+  payments: Payment[]
+}
+
+interface OrderWithPayment {
+  id: number
+  total_incl_tax: number
+  table_number: string
+  order_date: string
+  checkout_datetime: string
+  deleted_at: string | null
+  payments: Payment[]
+}
+
 export default function Home() {
   const { storeId, storeName } = useStore()
   const [data, setData] = useState<DashboardData>({
@@ -90,6 +128,9 @@ export default function Home() {
         return
       }
 
+      // 型アサーション
+      const typedOrders = orders as unknown as OrderExport[]
+
       // CSV作成
       const headers = [
         '伝票番号',
@@ -114,7 +155,7 @@ export default function Home() {
 
       const rows: string[][] = []
 
-      orders.forEach((order: any) => {
+      typedOrders.forEach((order: OrderExport) => {
         const payment = Array.isArray(order.payments) ? order.payments[0] : order.payments
         const cashAmount = payment?.cash_amount || 0
         const cardAmount = payment?.credit_card_amount || 0
@@ -126,7 +167,7 @@ export default function Home() {
         const items = order.order_items || []
 
         // 商品合計（サービス料・消費税が足される前の金額）
-        const itemsTotal = items.reduce((sum: number, item: any) => sum + (item.subtotal || 0), 0)
+        const itemsTotal = items.reduce((sum: number, item: OrderItemExport) => sum + (item.subtotal || 0), 0)
 
         // 1行目：伝票ヘッダー（伝票情報のみ、明細は空欄）
         rows.push([
@@ -151,7 +192,7 @@ export default function Home() {
         ])
 
         // 2行目以降：明細行（伝票情報は空欄、推しは入力、明細のみ）
-        items.forEach((item: any) => {
+        items.forEach((item: OrderItemExport) => {
           // 消費税前金額を計算（100円単位で切り捨て）
           const quantity = item.quantity || 0
           const unitPrice = item.unit_price || 0
@@ -259,45 +300,49 @@ export default function Home() {
       console.log('Today query (business day):', { todayBusinessDay, cutoffHour, todayOrders, todayError })
       console.log('Monthly query:', { monthStart, monthEnd, monthlyOrders, monthlyError })
 
+      // 型アサーション
+      const typedTodayOrders = (todayOrders || []) as unknown as OrderWithPayment[]
+      const typedMonthlyOrders = (monthlyOrders || []) as unknown as OrderWithPayment[]
+
       // 今日の集計
-      const todaySales = todayOrders?.reduce((sum, order) => sum + (Number(order.total_incl_tax) || 0), 0) || 0
-      const todayCashSales = todayOrders?.reduce((sum, order) => {
+      const todaySales = typedTodayOrders.reduce((sum, order) => sum + (Number(order.total_incl_tax) || 0), 0)
+      const todayCashSales = typedTodayOrders.reduce((sum, order) => {
         const payment = Array.isArray(order.payments) ? order.payments[0] : order.payments
         return sum + (Number(payment?.cash_amount) || 0)
-      }, 0) || 0
-      const todayCardSales = todayOrders?.reduce((sum, order) => {
+      }, 0)
+      const todayCardSales = typedTodayOrders.reduce((sum, order) => {
         const payment = Array.isArray(order.payments) ? order.payments[0] : order.payments
         return sum + (Number(payment?.credit_card_amount) || 0)
-      }, 0) || 0
-      const todayCredit = todayOrders?.reduce((sum, order) => {
+      }, 0)
+      const todayCredit = typedTodayOrders.reduce((sum, order) => {
         const payment = Array.isArray(order.payments) ? order.payments[0] : order.payments
         return sum + (Number(payment?.other_payment_amount) || 0)
-      }, 0) || 0
-      const todayUniqueTables = new Set(todayOrders?.map(o => o.table_number).filter(Boolean))
+      }, 0)
+      const todayUniqueTables = new Set(typedTodayOrders.map(o => o.table_number).filter(Boolean))
       const todayGroups = todayUniqueTables.size
 
       // 月間の集計
-      const monthlySales = monthlyOrders?.reduce((sum, order) => sum + (Number(order.total_incl_tax) || 0), 0) || 0
-      const monthlyCashSales = monthlyOrders?.reduce((sum, order) => {
+      const monthlySales = typedMonthlyOrders.reduce((sum, order) => sum + (Number(order.total_incl_tax) || 0), 0)
+      const monthlyCashSales = typedMonthlyOrders.reduce((sum, order) => {
         const payment = Array.isArray(order.payments) ? order.payments[0] : order.payments
         return sum + (Number(payment?.cash_amount) || 0)
-      }, 0) || 0
-      const monthlyCardSales = monthlyOrders?.reduce((sum, order) => {
+      }, 0)
+      const monthlyCardSales = typedMonthlyOrders.reduce((sum, order) => {
         const payment = Array.isArray(order.payments) ? order.payments[0] : order.payments
         return sum + (Number(payment?.credit_card_amount) || 0)
-      }, 0) || 0
-      const monthlyCredit = monthlyOrders?.reduce((sum, order) => {
+      }, 0)
+      const monthlyCredit = typedMonthlyOrders.reduce((sum, order) => {
         const payment = Array.isArray(order.payments) ? order.payments[0] : order.payments
         return sum + (Number(payment?.other_payment_amount) || 0)
-      }, 0) || 0
-      const monthlyUniqueTables = new Set(monthlyOrders?.map(o => o.table_number).filter(Boolean))
+      }, 0)
+      const monthlyUniqueTables = new Set(typedMonthlyOrders.map(o => o.table_number).filter(Boolean))
       const monthlyGroups = monthlyUniqueTables.size
 
       setData({
         todaySales,
         monthlySales,
-        todayCustomers: todayOrders?.length || 0,
-        monthlyCustomers: monthlyOrders?.length || 0,
+        todayCustomers: typedTodayOrders.length,
+        monthlyCustomers: typedMonthlyOrders.length,
         monthlyCashSales,
         monthlyCardSales,
         monthlyCredit,
@@ -318,9 +363,9 @@ export default function Home() {
         const dateStr = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-${dayStr}`
 
         // order_date（営業日）でフィルタリング
-        const daySales = monthlyOrders?.filter(order => {
+        const daySales = typedMonthlyOrders.filter(order => {
           return order.order_date?.startsWith(dateStr)
-        }).reduce((sum, order) => sum + (Number(order.total_incl_tax) || 0), 0) || 0
+        }).reduce((sum, order) => sum + (Number(order.total_incl_tax) || 0), 0)
 
         cumulative += daySales
 
