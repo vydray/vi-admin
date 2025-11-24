@@ -46,6 +46,49 @@ interface ReceiptWithDetails extends Receipt {
   payment_methods?: string
 }
 
+interface Product {
+  id: number
+  name: string
+  price: number
+  category_id: number
+  store_id: number
+}
+
+interface Category {
+  id: number
+  name: string
+  store_id: number
+}
+
+interface Cast {
+  id: number
+  name: string
+  is_active: boolean
+  show_in_pos: boolean
+  store_id: number
+}
+
+interface OrderWithPayment {
+  id: number
+  store_id: number
+  table_number: string
+  guest_name: string | null
+  staff_name: string | null
+  subtotal_excl_tax: number
+  tax_amount: number
+  service_charge: number
+  rounding_adjustment: number
+  total_incl_tax: number
+  order_date: string
+  checkout_datetime: string
+  deleted_at: string | null
+  payments?: Array<{
+    cash_amount: number
+    credit_card_amount: number
+    other_payment_amount: number
+  }>
+}
+
 export default function ReceiptsPage() {
   const { storeId: globalStoreId, stores } = useStore()
   const [selectedStore, setSelectedStore] = useState(globalStoreId)
@@ -92,9 +135,9 @@ export default function ReceiptsPage() {
   })
   const [castSearchTerm, setCastSearchTerm] = useState('')
   const [showCastDropdown, setShowCastDropdown] = useState(false)
-  const [products, setProducts] = useState<any[]>([])
-  const [categories, setCategories] = useState<any[]>([])
-  const [casts, setCasts] = useState<any[]>([])
+  const [products, setProducts] = useState<Product[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
+  const [casts, setCasts] = useState<Cast[]>([])
   const [cardFeeRate, setCardFeeRate] = useState(0) // カード手数料率
   const [serviceChargeRate, setServiceChargeRate] = useState(0) // サービス料率
   const [roundingUnit, setRoundingUnit] = useState(0) // 端数処理の単位
@@ -152,7 +195,7 @@ export default function ReceiptsPage() {
 
       // payment情報を整形
       if (ordersData) {
-        const receiptsWithPayments = ordersData.map((order: any) => {
+        const receiptsWithPayments = ordersData.map((order: OrderWithPayment) => {
           let paymentMethods = '-'
 
           // paymentsは配列で返ってくるので、最初の要素を取得
@@ -1006,7 +1049,7 @@ export default function ReceiptsPage() {
     setCreateItems(createItems.filter((_, i) => i !== index))
   }
 
-  const updateCreateItem = (index: number, field: string, value: any) => {
+  const updateCreateItem = (index: number, field: string, value: string | number) => {
     const newItems = [...createItems]
     newItems[index] = { ...newItems[index], [field]: value }
 
