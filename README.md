@@ -138,17 +138,19 @@
 ##### `attendance` (勤怠情報)
 ```sql
 - id: number
-- cast_id: number
+- cast_name: string (キャスト名で識別)
 - store_id: number
 - date: date
-- check_in_time: string
-- check_out_time: string
+- check_in_datetime: string (datetime形式)
+- check_out_datetime: string (datetime形式)
 - status: string (出勤/当欠/無欠/遅刻/早退/公欠/事前欠)
 - late_minutes: number (遅刻分数)
 - break_minutes: number (休憩分数)
 - daily_payment: number (日払い額)
 - created_at: timestamp
 ```
+
+**注意:** `cast_name`を使用しているため、キャスト名が重複しないように運用する必要があります。
 
 ##### `attendance_statuses` (勤怠ステータス設定)
 ```sql
@@ -466,12 +468,18 @@ Ubd24e1f2b324e3deb8377dd46593c33f
    - Store 2 = MistressMirage
 
 3. **TypeScriptの型定義**
-   - 各テーブルの型はインターフェースで定義すること
+   - 各テーブルの型は `types/` ディレクトリで一元管理
    - `any`型の使用は避ける
 
 4. **環境変数**
    - `.env.local`はgitにコミットしない
    - Service Role Keyは慎重に扱う（サーバーサイドのみ使用）
+
+5. **キャスト名の一意性制約**
+   - 同じ店舗（store_id）内で同じキャスト名は登録不可
+   - `attendance`テーブルで`cast_name`を使用しているため、名前の重複は集計エラーの原因となる
+   - vi-adminでは自動的にバリデーションが実行される
+   - POSシステムで直接データを登録する場合は、手動で重複チェックが必要
 
 ## トラブルシューティング
 

@@ -280,15 +280,53 @@ export default function CastsPage() {
   const handleSaveCast = async () => {
     if (!editingCast) return
 
+    // 名前の空白をトリム
+    const trimmedName = editingCast.name?.trim()
+
+    // 名前の入力チェック
+    if (!trimmedName) {
+      toast.error('キャスト名を入力してください')
+      return
+    }
+
     // 新規作成か編集かを判定（idが0なら新規）
     const isNewCast = editingCast.id === 0
+
+    // 同じ店舗で同じ名前のキャストがいないかチェック
+    const { data: existingCasts, error: checkError } = await supabase
+      .from('casts')
+      .select('id, name')
+      .eq('store_id', storeId)
+      .eq('name', trimmedName)
+
+    if (checkError) {
+      console.error('Error checking duplicate name:', checkError)
+      toast.error('名前の重複チェックに失敗しました')
+      return
+    }
+
+    // 重複チェック
+    if (existingCasts && existingCasts.length > 0) {
+      if (isNewCast) {
+        // 新規作成の場合：同じ名前が存在したらエラー
+        toast.error(`「${trimmedName}」は既に登録されています`)
+        return
+      } else {
+        // 編集の場合：自分以外で同じ名前が存在したらエラー
+        const duplicates = existingCasts.filter(c => c.id !== editingCast.id)
+        if (duplicates.length > 0) {
+          toast.error(`「${trimmedName}」は既に登録されています`)
+          return
+        }
+      }
+    }
 
     if (isNewCast) {
       // 新規作成
       const { error } = await supabase
         .from('casts')
         .insert({
-          name: editingCast.name,
+          name: trimmedName,
           employee_name: editingCast.employee_name,
           birthday: editingCast.birthday,
           status: editingCast.status,
@@ -312,8 +350,9 @@ export default function CastsPage() {
 
       if (error) {
         console.error('Error creating cast:', error)
-        toast.success('作成に失敗しました')
+        toast.error('作成に失敗しました')
       } else {
+        toast.success('キャストを作成しました')
         closeModal()
         loadCasts()
       }
@@ -322,7 +361,7 @@ export default function CastsPage() {
       const { error } = await supabase
         .from('casts')
         .update({
-          name: editingCast.name,
+          name: trimmedName,
           employee_name: editingCast.employee_name,
           birthday: editingCast.birthday,
           status: editingCast.status,
@@ -339,8 +378,9 @@ export default function CastsPage() {
 
       if (error) {
         console.error('Error updating cast:', error)
-        toast.success('更新に失敗しました')
+        toast.error('更新に失敗しました')
       } else {
+        toast.success('キャストを更新しました')
         closeModal()
         loadCasts()
       }
