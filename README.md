@@ -23,13 +23,12 @@
 - **フロントエンド:** Next.js 16 (App Router)
 - **言語:** TypeScript
 - **データベース:** Supabase (PostgreSQL)
-- **認証:** 今後実装予定
-- **デプロイ:** 未定（Vercel推奨）
+- **認証:** bcryptベースの独自認証システム
+- **デプロイ:** Vercel
 
 ## データベース構造
 
 ### Supabaseプロジェクト
-- **URL:** `https://ivgkberavxekkqgoavmo.supabase.co`
 - **プロジェクト:** POSシステムとシフトアプリと同じデータベースを共有
 
 ### 全テーブル一覧
@@ -346,10 +345,12 @@ vi-admin/
 ## 環境変数 (`.env.local`)
 
 ```env
-NEXT_PUBLIC_SUPABASE_URL=https://ivgkberavxekkqgoavmo.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+NEXT_PUBLIC_SUPABASE_URL=<your-supabase-project-url>
+NEXT_PUBLIC_SUPABASE_ANON_KEY=<your-supabase-anon-key>
+SUPABASE_SERVICE_KEY=<your-supabase-service-role-key>
 ```
+
+**注意:** 実際の認証情報は`.env.local`ファイルに記載してください。このファイルは`.gitignore`に含まれており、Gitにコミットされません。
 
 ## セットアップ
 
@@ -366,12 +367,19 @@ npm run dev
 
 ## 実装済み機能
 
+### ✅ 認証システム
+- ログイン画面
+- bcryptによるパスワードハッシュ化
+- セッション管理
+- パスワード変更機能
+- 店舗別アクセス制御
+
 ### ✅ ホーム画面 (`/`)
 - 4つのメニューカード
   - 👥 キャスト管理
-  - 📅 シフト管理
+  - 📅 シフト管理（実装予定）
   - ⏰ 勤怠管理
-  - 📊 レポート
+  - 📊 キャスト売上
 
 ### ✅ キャスト管理画面 (`/casts`)
 - キャスト一覧表示（店舗別）
@@ -379,6 +387,21 @@ npm run dev
 - LINE連携ステータス表示
 - 有効/無効フラグ表示
 - 登録日表示
+
+### ✅ 勤怠管理画面 (`/attendance`)
+- 月間勤怠カレンダー表示
+- 出退勤時刻の編集
+- POSシステムとのデータ連携
+
+### ✅ キャスト売上画面 (`/cast-sales`)
+- キャスト別売上集計
+- 日別・週別・月別集計
+- POSデータとの連携
+
+### ✅ 店舗設定画面 (`/store-settings`)
+- 店舗情報の編集
+- システム設定（税率、サービス料等）
+- 営業日切替時刻設定
 
 ## 実装予定機能
 
@@ -395,24 +418,11 @@ npm run dev
 - [ ] シフト希望の一覧・承認
 - [ ] シフト表のエクスポート（PDF/Excel）
 
-### 🚧 勤怠管理画面 (`/attendance`)
-- [ ] 勤怠データ一覧（POSデータ連携）
-- [ ] 出退勤時刻の編集
-- [ ] 遅刻・休憩時間の修正
-- [ ] 日払い額の確認・編集
-- [ ] 月次給与計算レポート
-
-### 🚧 レポート画面 (`/reports`)
-- [ ] 売上レポート（POSデータ連携）
-- [ ] キャスト別売上
-- [ ] 商品別売上
+### 🚧 レポート画面（拡張）
+- [ ] 商品別売上分析
 - [ ] 月次統計データ
 - [ ] グラフ表示（Chart.js等）
-
-### 🚧 認証機能
-- [ ] ログイン画面
-- [ ] 管理者権限チェック
-- [ ] セッション管理
+- [ ] データエクスポート（CSV/Excel）
 
 ## データ連携について
 
@@ -490,5 +500,5 @@ Ubd24e1f2b324e3deb8377dd46593c33f
 
 ---
 
-**最終更新:** 2025-11-13
-**作成者:** Claude Code
+**最終更新:** 2025-11-25
+**本番URL:** https://vi-admin-psi.vercel.app/
