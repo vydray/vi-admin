@@ -297,8 +297,12 @@ export default function Home() {
         .lte('order_date', monthEnd + 'T23:59:59')
         .is('deleted_at', null)
 
-      console.log('Today query (business day):', { todayBusinessDay, cutoffHour, todayOrders, todayError })
-      console.log('Monthly query:', { monthStart, monthEnd, monthlyOrders, monthlyError })
+      if (todayError) {
+        console.error('Today orders error:', todayError)
+      }
+      if (monthlyError) {
+        console.error('Monthly orders error:', monthlyError)
+      }
 
       // 型アサーション
       const typedTodayOrders = (todayOrders || []) as unknown as OrderWithPayment[]
