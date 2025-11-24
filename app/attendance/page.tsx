@@ -56,10 +56,11 @@ export default function AttendancePage() {
   const loadCasts = useCallback(async () => {
     const { data, error } = await supabase
       .from('casts')
-      .select('id, name')
+      .select('id, name, display_order')
       .eq('store_id', selectedStore)
       .eq('status', '在籍')
       .eq('is_active', true)
+      .order('display_order', { ascending: true, nullsFirst: false })
       .order('name')
 
     if (!error && data) {
