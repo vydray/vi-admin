@@ -21,8 +21,8 @@ interface Attendance {
   id: string
   cast_id: number
   date: string
-  clock_in: string
-  clock_out: string | null
+  check_in_time: string
+  check_out_time: string | null
   store_id: number
 }
 
@@ -91,7 +91,7 @@ export default function AttendancePage() {
     const end = endOfMonth(selectedMonth)
 
     const { data, error } = await supabase
-      .from('attendances')
+      .from('attendance')
       .select('*')
       .eq('store_id', selectedStore)
       .gte('date', format(start, 'yyyy-MM-dd'))
@@ -236,10 +236,10 @@ export default function AttendancePage() {
   }
 
   const formatAttendanceTime = (attendance: Attendance | undefined) => {
-    if (!attendance || !attendance.clock_in) return ''
+    if (!attendance || !attendance.check_in_time) return ''
 
-    const clockIn = attendance.clock_in.slice(0, 5)
-    const clockOut = attendance.clock_out ? attendance.clock_out.slice(0, 5) : '---'
+    const clockIn = attendance.check_in_time.slice(0, 5)
+    const clockOut = attendance.check_out_time ? attendance.check_out_time.slice(0, 5) : '---'
 
     // 0-5時を24-29時に変換
     const formatTime = (time: string) => {
@@ -270,8 +270,8 @@ export default function AttendancePage() {
 
     if (attendance) {
       setTempTime({
-        clockIn: convertTo24Plus(attendance.clock_in),
-        clockOut: attendance.clock_out ? convertTo24Plus(attendance.clock_out) : ''
+        clockIn: convertTo24Plus(attendance.check_in_time),
+        clockOut: attendance.check_out_time ? convertTo24Plus(attendance.check_out_time) : ''
       })
     } else {
       setTempTime({ clockIn: '', clockOut: '' })
@@ -308,10 +308,10 @@ export default function AttendancePage() {
       if (existingAttendance) {
         // 更新
         const { error } = await supabase
-          .from('attendances')
+          .from('attendance')
           .update({
-            clock_in: normalizedClockIn,
-            clock_out: normalizedClockOut
+            check_in_time: normalizedClockIn,
+            check_out_time: normalizedClockOut
           })
           .eq('id', existingAttendance.id)
 
@@ -324,12 +324,12 @@ export default function AttendancePage() {
       } else {
         // 新規作成
         const { error } = await supabase
-          .from('attendances')
+          .from('attendance')
           .insert({
             cast_id: parseInt(castId),
             date: dateStr,
-            clock_in: normalizedClockIn,
-            clock_out: normalizedClockOut,
+            check_in_time: normalizedClockIn,
+            check_out_time: normalizedClockOut,
             store_id: selectedStore
           })
 
@@ -358,7 +358,7 @@ export default function AttendancePage() {
       if (await confirm('この勤怠記録を削除しますか？')) {
         try {
           const { error } = await supabase
-            .from('attendances')
+            .from('attendance')
             .delete()
             .eq('id', existingAttendance.id)
 
