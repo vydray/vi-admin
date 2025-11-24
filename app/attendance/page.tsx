@@ -10,7 +10,6 @@ import { useConfirm } from '@/contexts/ConfirmContext'
 import { generateTimeOptions } from '@/lib/timeUtils'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
-import Modal from '@/components/Modal'
 
 interface Cast {
   id: number
@@ -19,10 +18,10 @@ interface Cast {
 
 interface Attendance {
   id: string
-  cast_id: number
+  cast_name: string
   date: string
-  check_in_time: string
-  check_out_time: string | null
+  check_in_datetime: string
+  check_out_datetime: string | null
   store_id: number
 }
 
@@ -73,7 +72,7 @@ export default function AttendancePage() {
 
     const { data, error } = await supabase
       .from('attendance')
-      .select('id, cast_id, date, check_in_time, check_out_time, store_id')
+      .select('id, cast_name, date, check_in_datetime, check_out_datetime, store_id')
       .eq('store_id', storeId)
       .gte('date', format(start, 'yyyy-MM-dd'))
       .lte('date', format(end, 'yyyy-MM-dd'))
@@ -228,7 +227,9 @@ export default function AttendancePage() {
 
   const getAttendanceForCell = (castId: number, date: Date) => {
     const dateStr = format(date, 'yyyy-MM-dd')
-    return attendances.find(a => a.cast_id === castId && a.date === dateStr)
+    const cast = casts.find(c => c.id === castId)
+    if (!cast) return undefined
+    return attendances.find(a => a.cast_name === cast.name && a.date === dateStr)
   }
 
   const getCellKey = (castId: number, date: Date) => {
@@ -236,10 +237,13 @@ export default function AttendancePage() {
   }
 
   const formatAttendanceTime = (attendance: Attendance | undefined) => {
-    if (!attendance || !attendance.check_in_time) return ''
+    if (!attendance || !attendance.check_in_datetime) return ''
 
-    const clockIn = attendance.check_in_time.slice(0, 5)
-    const clockOut = attendance.check_out_time ? attendance.check_out_time.slice(0, 5) : '---'
+    // datetimeから時刻部分を抽出 (HH:MM形式)
+    const clockIn = attendance.check_in_datetime.split('T')[1]?.slice(0, 5) || attendance.check_in_datetime.slice(11, 16)
+    const clockOut = attendance.check_out_datetime
+      ? (attendance.check_out_datetime.split('T')[1]?.slice(0, 5) || attendance.check_out_datetime.slice(11, 16))
+      : '---'
 
     // 0-5時を24-29時に変換
     const formatTime = (time: string) => {
@@ -260,18 +264,20 @@ export default function AttendancePage() {
     const attendance = getAttendanceForCell(castId, date)
 
     // 時間を24時間超えの形式に変換する関数
-    const convertTo24Plus = (time: string) => {
-      const [hours, minutes] = time.slice(0, 5).split(':').map(Number)
+    const convertTo24Plus = (datetime: string) => {
+      // datetimeから時刻部分を抽出
+      const time = datetime.split('T')[1]?.slice(0, 5) || datetime.slice(11, 16)
+      const [hours, minutes] = time.split(':').map(Number)
       if (hours >= 0 && hours <= 5) {
         return `${(hours + 24).toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`
       }
-      return time.slice(0, 5)
+      return time
     }
 
     if (attendance) {
       setTempTime({
-        clockIn: convertTo24Plus(attendance.check_in_time),
-        clockOut: attendance.check_out_time ? convertTo24Plus(attendance.check_out_time) : ''
+        clockIn: convertTo24Plus(attendance.check_in_datetime),
+        clockOut: attendance.check_out_datetime ? convertTo24Plus(attendance.check_out_datetime) : ''
       })
     } else {
       setTempTime({ clockIn: '', clockOut: '' })
@@ -291,18 +297,34 @@ export default function AttendancePage() {
     const [castId, ...dateParts] = editingCell.split('-')
     const dateStr = dateParts.join('-')
 
-    const existingAttendance = attendances.find(a => a.cast_id === parseInt(castId) && a.date === dateStr)
+    const cast = casts.find(c => c.id === parseInt(castId))
+    if (!cast) {
+      toast.error('キャストが見つかりません')
+      return
+    }
 
-    // 24時間超えの時間を正規化（25:00 → 01:00）
-    const normalizeTime = (time: string) => {
+    const existingAttendance = attendances.find(a => a.cast_name === cast.name && a.date === dateStr)
+
+    // 24時間超えの時間を正規化してdatetime形式に変換（25:00 → 翌日01:00）
+    const normalizeTime = (time: string, baseDate: string) => {
       if (!time) return null
       const [hours, minutes] = time.split(':').map(Number)
       const normalizedHours = hours >= 24 ? hours - 24 : hours
-      return `${normalizedHours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`
+
+      // 日付オブジェクトを作成
+      const date = new Date(baseDate)
+      if (hours >= 24) {
+        // 24時間を超えている場合は翌日
+        date.setDate(date.getDate() + 1)
+      }
+      date.setHours(normalizedHours, minutes, 0, 0)
+
+      // ISO形式で返す（タイムゾーンなし）
+      return date.toISOString().slice(0, 19)
     }
 
-    const normalizedClockIn = normalizeTime(tempTime.clockIn)
-    const normalizedClockOut = tempTime.clockOut ? normalizeTime(tempTime.clockOut) : null
+    const normalizedClockIn = normalizeTime(tempTime.clockIn, dateStr)
+    const normalizedClockOut = tempTime.clockOut ? normalizeTime(tempTime.clockOut, dateStr) : null
 
     try {
       if (existingAttendance) {
@@ -310,8 +332,8 @@ export default function AttendancePage() {
         const { error } = await supabase
           .from('attendance')
           .update({
-            check_in_time: normalizedClockIn,
-            check_out_time: normalizedClockOut
+            check_in_datetime: normalizedClockIn,
+            check_out_datetime: normalizedClockOut
           })
           .eq('id', existingAttendance.id)
 
@@ -326,10 +348,10 @@ export default function AttendancePage() {
         const { error } = await supabase
           .from('attendance')
           .insert({
-            cast_id: parseInt(castId),
+            cast_name: cast.name,
             date: dateStr,
-            check_in_time: normalizedClockIn,
-            check_out_time: normalizedClockOut,
+            check_in_datetime: normalizedClockIn,
+            check_out_datetime: normalizedClockOut,
             store_id: storeId
           })
 
@@ -352,7 +374,13 @@ export default function AttendancePage() {
     const [castId, ...dateParts] = editingCell.split('-')
     const dateStr = dateParts.join('-')
 
-    const existingAttendance = attendances.find(a => a.cast_id === parseInt(castId) && a.date === dateStr)
+    const cast = casts.find(c => c.id === parseInt(castId))
+    if (!cast) {
+      toast.error('キャストが見つかりません')
+      return
+    }
+
+    const existingAttendance = attendances.find(a => a.cast_name === cast.name && a.date === dateStr)
 
     if (existingAttendance) {
       if (await confirm('この勤怠記録を削除しますか？')) {
@@ -407,7 +435,7 @@ export default function AttendancePage() {
 
     if (isNaN(date.getTime())) return null
 
-    const attendance = attendances.find(a => a.cast_id === castId && a.date === dateStr)
+    const attendance = cast ? attendances.find(a => a.cast_name === cast.name && a.date === dateStr) : undefined
 
     return { castId, dateStr, cast, date, attendance }
   }, [editingCell, casts, attendances])
