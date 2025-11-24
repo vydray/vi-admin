@@ -468,12 +468,10 @@ export default function CastsPage() {
         display_order: index + 1
       }))
 
-      for (const update of updates) {
-        await supabase
-          .from('casts')
-          .update({ display_order: update.display_order })
-          .eq('id', update.id)
-      }
+      // N個のUPDATEクエリをまとめて1つのupsertに変更（N+1問題の解決）
+      await supabase
+        .from('casts')
+        .upsert(updates, { onConflict: 'id' })
     } catch (error) {
       console.error('並び順の保存エラー:', error)
       alert('並び順の保存に失敗しました')
