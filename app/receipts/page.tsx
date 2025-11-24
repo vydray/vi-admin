@@ -5,73 +5,10 @@ import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
 import { useConfirm } from '@/contexts/ConfirmContext'
 import toast from 'react-hot-toast'
+import { OrderItem, Payment, Receipt, ReceiptWithDetails, Product, Category, CastPOS } from '@/types'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
 import Modal from '@/components/Modal'
-
-interface OrderItem {
-  id: number
-  order_id: number
-  product_name: string
-  category: string | null
-  cast_name: string | null
-  quantity: number
-  unit_price: number
-  subtotal: number
-}
-
-interface Payment {
-  id: number
-  order_id: number
-  cash_amount: number
-  credit_card_amount: number
-  other_payment_amount: number
-  change_amount: number
-}
-
-interface Receipt {
-  id: number
-  store_id: number
-  table_number: string
-  guest_name: string | null
-  staff_name: string | null
-  subtotal_excl_tax: number
-  tax_amount: number
-  service_charge: number
-  rounding_adjustment: number
-  total_incl_tax: number
-  order_date: string
-  checkout_datetime: string
-  deleted_at: string | null
-}
-
-interface ReceiptWithDetails extends Receipt {
-  order_items?: OrderItem[]
-  payment?: Payment
-  payment_methods?: string
-}
-
-interface Product {
-  id: number
-  name: string
-  price: number
-  category_id: number
-  store_id: number
-}
-
-interface Category {
-  id: number
-  name: string
-  store_id: number
-}
-
-interface Cast {
-  id: number
-  name: string
-  is_active: boolean
-  show_in_pos: boolean
-  store_id: number
-}
 
 interface OrderWithPayment {
   id: number
@@ -142,7 +79,7 @@ export default function ReceiptsPage() {
   const [showCastDropdown, setShowCastDropdown] = useState(false)
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
-  const [casts, setCasts] = useState<Cast[]>([])
+  const [casts, setCasts] = useState<CastPOS[]>([])
   const [cardFeeRate, setCardFeeRate] = useState(0) // カード手数料率
   const [serviceChargeRate, setServiceChargeRate] = useState(0) // サービス料率
   const [roundingUnit, setRoundingUnit] = useState(0) // 端数処理の単位

@@ -5,14 +5,9 @@ import { supabase } from '@/lib/supabase'
 import { format, eachDayOfInterval, addMonths, subMonths, startOfMonth, endOfMonth } from 'date-fns'
 import { ja } from 'date-fns/locale'
 import { useStore } from '@/contexts/StoreContext'
+import { CastBasic, OrderItem } from '@/types'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
-
-interface Cast {
-  id: number
-  name: string
-  display_order?: number | null
-}
 
 interface DailySales {
   [date: string]: number
@@ -23,11 +18,6 @@ interface CastSales {
   castName: string
   dailySales: DailySales
   total: number
-}
-
-interface OrderItem {
-  cast_name: string | null
-  subtotal: number
 }
 
 interface Order {
@@ -74,7 +64,7 @@ export default function CastSalesPage() {
     return data || []
   }, [storeId])
 
-  const loadSalesData = useCallback(async (loadedCasts: Cast[]) => {
+  const loadSalesData = useCallback(async (loadedCasts: CastBasic[]) => {
     const start = startOfMonth(selectedMonth)
     const end = endOfMonth(selectedMonth)
     const startDate = format(start, 'yyyy-MM-dd')

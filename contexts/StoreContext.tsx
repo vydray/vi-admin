@@ -3,20 +3,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
-
-interface Store {
-  id: number
-  name: string
-}
-
-interface StoreContextType {
-  storeId: number
-  setStoreId: (id: number) => void
-  storeName: string
-  stores: Store[]
-  isLoading: boolean
-  canSwitchStore: boolean
-}
+import type { Store, StoreContextType } from '@/types'
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined)
 

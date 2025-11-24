@@ -2,10 +2,7 @@
 
 import { createContext, useContext, useState, ReactNode, useCallback } from 'react'
 import ConfirmModal from '@/components/ConfirmModal'
-
-interface ConfirmContextType {
-  confirm: (message: string) => Promise<boolean>
-}
+import type { ConfirmContextType } from '@/types'
 
 const ConfirmContext = createContext<ConfirmContextType | undefined>(undefined)
 

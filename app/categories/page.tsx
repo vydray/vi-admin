@@ -8,14 +8,7 @@ import { useConfirm } from '@/contexts/ConfirmContext'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
 import Modal from '@/components/Modal'
-
-interface Category {
-  id: number
-  name: string
-  display_order: number
-  store_id: number
-  show_oshi_first: boolean
-}
+import type { Category } from '@/types'
 
 export default function CategoriesPage() {
   const { storeId } = useStore()
@@ -65,7 +58,7 @@ export default function CategoriesPage() {
     }
 
     const maxDisplayOrder = categories.length > 0
-      ? Math.max(...categories.map(c => c.display_order))
+      ? Math.max(...categories.map(c => c.display_order || 0))
       : 0
 
     const { error } = await supabase
@@ -475,8 +468,8 @@ export default function CategoriesPage() {
                   >
                     <input
                       type="checkbox"
-                      checked={category.show_oshi_first}
-                      onChange={() => toggleOshiFirst(category.id, category.show_oshi_first)}
+                      checked={category.show_oshi_first || false}
+                      onChange={() => toggleOshiFirst(category.id, category.show_oshi_first || false)}
                       style={{
                         width: '16px',
                         height: '16px',

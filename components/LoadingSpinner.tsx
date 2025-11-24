@@ -1,10 +1,5 @@
 import { memo } from 'react'
-
-interface LoadingSpinnerProps {
-  fullScreen?: boolean
-  size?: 'small' | 'medium' | 'large'
-  text?: string
-}
+import { LoadingSpinnerProps } from '@/types'
 
 function LoadingSpinner({
   fullScreen = true,

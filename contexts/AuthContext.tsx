@@ -3,21 +3,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
-
-interface AdminUser {
-  id: number
-  username: string
-  role: 'super_admin' | 'store_admin'
-  store_id: number | null
-}
-
-interface AuthContextType {
-  user: AdminUser | null
-  isLoading: boolean
-  login: (username: string, password: string) => Promise<boolean>
-  logout: () => Promise<void>
-  isAuthenticated: boolean
-}
+import type { AdminUser, AuthContextType } from '@/types'
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 

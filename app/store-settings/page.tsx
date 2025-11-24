@@ -5,30 +5,7 @@ import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
 import Button from '@/components/Button'
-
-interface StoreSettings {
-  store_name: string
-  store_postal_code: string
-  store_address: string
-  store_phone: string
-  store_email: string
-  business_hours: string
-  closed_days: string
-  store_registration_number: string
-  footer_message: string
-  revenue_stamp_threshold: number
-  menu_template: string
-  logo_url: string
-}
-
-interface SystemSettings {
-  consumption_tax_rate: number
-  service_charge_rate: number
-  rounding_method: number
-  rounding_unit: number
-  card_fee_rate: number
-  business_day_cutoff_hour: number
-}
+import type { StoreSettings, SystemSettings } from '@/types'
 
 export default function StoreSettingsPage() {
   const { storeId } = useStore()

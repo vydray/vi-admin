@@ -1,13 +1,7 @@
 'use client'
 
 import { useEffect, memo } from 'react'
-
-interface ConfirmModalProps {
-  isOpen: boolean
-  message: string
-  onConfirm: () => void
-  onCancel: () => void
-}
+import { ConfirmModalProps } from '@/types'
 
 function ConfirmModal({ isOpen, message, onConfirm, onCancel }: ConfirmModalProps) {
   useEffect(() => {

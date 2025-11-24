@@ -1,12 +1,5 @@
-import { ReactNode, MouseEvent, memo } from 'react'
-
-interface ModalProps {
-  isOpen: boolean
-  onClose: () => void
-  title?: string
-  children: ReactNode
-  maxWidth?: string
-}
+import { MouseEvent, memo } from 'react'
+import { ModalProps } from '@/types'
 
 function Modal({
   isOpen,

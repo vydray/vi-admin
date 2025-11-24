@@ -10,6 +10,8 @@ import { useConfirm } from '@/contexts/ConfirmContext'
 import { generateTimeOptions, formatShiftTime as formatShiftTimeUtil } from '@/lib/timeUtils'
 import LoadingSpinner from '@/components/LoadingSpinner'
 
+// Note: These types are defined locally because they don't match the centralized types in @/types
+// The @/types versions have different required fields that don't align with this page's data queries
 interface Cast {
   id: number
   name: string

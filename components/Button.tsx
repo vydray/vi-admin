@@ -1,18 +1,5 @@
-import { CSSProperties, MouseEvent, ReactNode, memo } from 'react'
-
-type ButtonVariant = 'primary' | 'secondary' | 'success' | 'danger' | 'outline'
-type ButtonSize = 'small' | 'medium' | 'large'
-
-interface ButtonProps {
-  children: ReactNode
-  onClick?: (e: MouseEvent<HTMLButtonElement>) => void
-  variant?: ButtonVariant
-  size?: ButtonSize
-  disabled?: boolean
-  type?: 'button' | 'submit' | 'reset'
-  fullWidth?: boolean
-  style?: CSSProperties
-}
+import { CSSProperties, memo } from 'react'
+import { ButtonProps, ButtonVariant, ButtonSize } from '@/types'
 
 function Button({
   children,

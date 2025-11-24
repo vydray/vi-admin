@@ -8,24 +8,7 @@ import { useConfirm } from '@/contexts/ConfirmContext'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
 import Modal from '@/components/Modal'
-
-interface Category {
-  id: number
-  name: string
-  display_order: number
-  store_id: number
-}
-
-interface Product {
-  id: number
-  name: string
-  price: number
-  category_id: number
-  display_order: number
-  is_active: boolean
-  needs_cast: boolean
-  store_id: number
-}
+import type { Category, Product } from '@/types'
 
 export default function ProductsPage() {
   const { storeId } = useStore()
@@ -105,7 +88,7 @@ export default function ProductsPage() {
 
     const categoryProducts = products.filter(p => p.category_id === newProductCategory)
     const maxDisplayOrder = categoryProducts.length > 0
-      ? Math.max(...categoryProducts.map(p => p.display_order))
+      ? Math.max(...categoryProducts.map(p => p.display_order || 0))
       : 0
 
     const { error } = await supabase
@@ -204,7 +187,7 @@ export default function ProductsPage() {
     setEditName(product.name)
     setEditPrice(product.price.toString())
     setEditCategory(product.category_id)
-    setEditNeedsCast(product.needs_cast)
+    setEditNeedsCast(product.needs_cast || false)
     setShowEditModal(true)
   }
 
@@ -768,7 +751,7 @@ export default function ProductsPage() {
                       padding: '12px 20px',
                       textAlign: 'center'
                     }}>
-                      {renderToggle(product.id, product.is_active)}
+                      {renderToggle(product.id, product.is_active || false)}
                     </td>
                     <td
                       onClick={(e) => e.stopPropagation()}

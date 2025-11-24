@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { getCurrentBusinessDay } from '@/lib/businessDay'
 import toast from 'react-hot-toast'
+import { Payment } from '@/types'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
 
@@ -28,12 +29,6 @@ interface DailySalesData {
   day: string
   sales: number
   cumulative: number
-}
-
-interface Payment {
-  cash_amount: number
-  credit_card_amount: number
-  other_payment_amount: number
 }
 
 interface OrderItemExport {

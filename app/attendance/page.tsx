@@ -10,35 +10,13 @@ import { useConfirm } from '@/contexts/ConfirmContext'
 import { generateTimeOptions } from '@/lib/timeUtils'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
-
-interface Cast {
-  id: number
-  name: string
-}
-
-interface Attendance {
-  id: string
-  cast_name: string
-  date: string
-  check_in_datetime: string
-  check_out_datetime: string | null
-  store_id: number
-}
-
-interface AttendanceStatus {
-  id: string
-  name: string
-  color: string
-  is_active: boolean
-  order_index: number
-  store_id: number
-}
+import type { CastBasic, Attendance, AttendanceStatus } from '@/types'
 
 export default function AttendancePage() {
   const { storeId } = useStore()
   const { confirm } = useConfirm()
   const [selectedMonth, setSelectedMonth] = useState(new Date())
-  const [casts, setCasts] = useState<Cast[]>([])
+  const [casts, setCasts] = useState<CastBasic[]>([])
   const [attendances, setAttendances] = useState<Attendance[]>([])
   const [loading, setLoading] = useState(true)
   const [editingCell, setEditingCell] = useState<string | null>(null)

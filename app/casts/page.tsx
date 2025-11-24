@@ -8,47 +8,7 @@ import { useConfirm } from '@/contexts/ConfirmContext'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
 import Modal from '@/components/Modal'
-
-interface Cast {
-  id: number
-  line_number: string | null
-  name: string
-  twitter: string | null
-  password: string | null
-  instagram: string | null
-  password2: string | null
-  attendance_certificate: boolean | null
-  residence_record: boolean | null
-  contract_documents: boolean | null
-  submission_contract: string | null
-  employee_name: string | null
-  attributes: string | null
-  status: string | null
-  sales_previous_day: string | null
-  experience_date: string | null
-  hire_date: string | null
-  resignation_date: string | null
-  created_at: string
-  updated_at: string
-  store_id: number
-  show_in_pos: boolean
-  birthday: string | null
-  line_user_id: string | null
-  hourly_wage: number
-  commission_rate: number
-  is_admin: boolean
-  is_manager: boolean
-  line_msg_user_id: string | null
-  line_msg_state: string | null
-  line_msg_registered_at: string | null
-  is_active: boolean
-}
-
-interface CastPosition {
-  id: number
-  name: string
-  store_id: number
-}
+import type { Cast, CastPosition } from '@/types'
 
 export default function CastsPage() {
   const { storeId } = useStore()
