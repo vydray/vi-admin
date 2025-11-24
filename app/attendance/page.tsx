@@ -36,9 +36,8 @@ interface AttendanceStatus {
 }
 
 export default function AttendancePage() {
-  const { storeId: globalStoreId, stores } = useStore()
+  const { storeId } = useStore()
   const { confirm } = useConfirm()
-  const [selectedStore, setSelectedStore] = useState(globalStoreId)
   const [selectedMonth, setSelectedMonth] = useState(new Date())
   const [casts, setCasts] = useState<Cast[]>([])
   const [attendances, setAttendances] = useState<Attendance[]>([])
@@ -54,10 +53,10 @@ export default function AttendancePage() {
   const [newStatusColor, setNewStatusColor] = useState('#4CAF50')
 
   const loadCasts = useCallback(async () => {
-    const { data, error } = await supabase
+    const { data, error} = await supabase
       .from('casts')
       .select('id, name, display_order')
-      .eq('store_id', selectedStore)
+      .eq('store_id', storeId)
       .eq('status', '在籍')
       .eq('is_active', true)
       .order('display_order', { ascending: true, nullsFirst: false })
@@ -66,7 +65,7 @@ export default function AttendancePage() {
     if (!error && data) {
       setCasts(data)
     }
-  }, [selectedStore])
+  }, [storeId])
 
   const loadAttendances = useCallback(async () => {
     const start = startOfMonth(selectedMonth)
@@ -74,15 +73,15 @@ export default function AttendancePage() {
 
     const { data, error } = await supabase
       .from('attendance')
-      .select('*')
-      .eq('store_id', selectedStore)
+      .select('id, cast_id, date, check_in_time, check_out_time, store_id')
+      .eq('store_id', storeId)
       .gte('date', format(start, 'yyyy-MM-dd'))
       .lte('date', format(end, 'yyyy-MM-dd'))
 
     if (!error && data) {
       setAttendances(data)
     }
-  }, [selectedMonth, selectedStore])
+  }, [selectedMonth, storeId])
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -96,14 +95,14 @@ export default function AttendancePage() {
   const loadAttendanceStatuses = useCallback(async () => {
     const { data, error } = await supabase
       .from('attendance_statuses')
-      .select('*')
-      .eq('store_id', selectedStore)
+      .select('id, name, color, is_active, order_index, store_id')
+      .eq('store_id', storeId)
       .order('order_index')
 
     if (!error && data) {
       setAttendanceStatuses(data)
     }
-  }, [selectedStore])
+  }, [storeId])
 
   useEffect(() => {
     loadData()
@@ -137,7 +136,7 @@ export default function AttendancePage() {
         color: newStatusColor,
         is_active: false,
         order_index: attendanceStatuses.length,
-        store_id: selectedStore
+        store_id: storeId
       })
 
     if (!error) {
@@ -331,7 +330,7 @@ export default function AttendancePage() {
             date: dateStr,
             check_in_time: normalizedClockIn,
             check_out_time: normalizedClockOut,
-            store_id: selectedStore
+            store_id: storeId
           })
 
         if (error) {
@@ -444,33 +443,12 @@ export default function AttendancePage() {
           </Button>
         </div>
 
-        {/* 店舗・月選択 */}
+        {/* 月選択 */}
         <div style={{
           display: 'flex',
           alignItems: 'center',
           gap: '20px'
         }}>
-          {/* 店舗選択 */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <label style={{ fontSize: '14px', fontWeight: '500', color: '#475569' }}>店舗:</label>
-            <select
-              value={selectedStore}
-              onChange={(e) => setSelectedStore(Number(e.target.value))}
-              style={{
-                padding: '6px 12px',
-                fontSize: '14px',
-                border: '1px solid #e2e8f0',
-                borderRadius: '6px',
-                backgroundColor: '#fff',
-                cursor: 'pointer'
-              }}
-            >
-              {stores.map(store => (
-                <option key={store.id} value={store.id}>{store.name}</option>
-              ))}
-            </select>
-          </div>
-
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <Button
               onClick={() => setSelectedMonth(subMonths(selectedMonth, 1))}

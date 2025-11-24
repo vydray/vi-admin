@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, memo } from 'react'
 
 interface ConfirmModalProps {
   isOpen: boolean
@@ -9,7 +9,7 @@ interface ConfirmModalProps {
   onCancel: () => void
 }
 
-export default function ConfirmModal({ isOpen, message, onConfirm, onCancel }: ConfirmModalProps) {
+function ConfirmModal({ isOpen, message, onConfirm, onCancel }: ConfirmModalProps) {
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isOpen) {
@@ -117,3 +117,5 @@ export default function ConfirmModal({ isOpen, message, onConfirm, onCancel }: C
     </>
   )
 }
+
+export default memo(ConfirmModal)

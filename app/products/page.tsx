@@ -28,9 +28,8 @@ interface Product {
 }
 
 export default function ProductsPage() {
-  const { storeId: globalStoreId, stores } = useStore()
+  const { storeId } = useStore()
   const { confirm } = useConfirm()
-  const [selectedStore, setSelectedStore] = useState(globalStoreId)
   const [categories, setCategories] = useState<Category[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
@@ -57,26 +56,26 @@ export default function ProductsPage() {
   const loadCategories = useCallback(async () => {
     const { data, error } = await supabase
       .from('product_categories')
-      .select('*')
-      .eq('store_id', selectedStore)
+      .select('id, name, display_order, store_id')
+      .eq('store_id', storeId)
       .order('display_order')
 
     if (!error && data) {
       setCategories(data)
     }
-  }, [selectedStore])
+  }, [storeId])
 
   const loadProducts = useCallback(async () => {
     const { data, error } = await supabase
       .from('products')
-      .select('*')
-      .eq('store_id', selectedStore)
+      .select('id, name, price, category_id, display_order, is_active, needs_cast, store_id')
+      .eq('store_id', storeId)
       .order('display_order')
 
     if (!error && data) {
       setProducts(data)
     }
-  }, [selectedStore])
+  }, [storeId])
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -118,7 +117,7 @@ export default function ProductsPage() {
         display_order: maxDisplayOrder + 1,
         is_active: true,
         needs_cast: newProductNeedsCast,
-        store_id: selectedStore
+        store_id: storeId
       })
 
     if (!error) {
@@ -250,7 +249,7 @@ export default function ProductsPage() {
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `商品マスタ_店舗${selectedStore}.csv`
+    link.download = `商品マスタ_店舗${storeId}.csv`
     link.click()
     URL.revokeObjectURL(url)
   }
@@ -362,7 +361,7 @@ export default function ProductsPage() {
       const { error: deleteError } = await supabase
         .from('products')
         .delete()
-        .eq('store_id', selectedStore)
+        .eq('store_id', storeId)
 
       if (deleteError) {
         toast.success('既存データの削除に失敗しました')
@@ -373,7 +372,7 @@ export default function ProductsPage() {
       // 2. 新しいデータを一括登録
       const dataToInsert = validatedData.map(item => ({
         ...item,
-        store_id: selectedStore
+        store_id: storeId
       }))
 
       const { error: insertError } = await supabase
@@ -486,27 +485,6 @@ export default function ProductsPage() {
               CSV出力
             </Button>
           </div>
-        </div>
-
-        {/* 店舗選択 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <label style={{ fontSize: '14px', fontWeight: '500', color: '#475569' }}>店舗:</label>
-          <select
-            value={selectedStore}
-            onChange={(e) => setSelectedStore(Number(e.target.value))}
-            style={{
-              padding: '6px 12px',
-              fontSize: '14px',
-              border: '1px solid #e2e8f0',
-              borderRadius: '6px',
-              backgroundColor: '#fff',
-              cursor: 'pointer'
-            }}
-          >
-            {stores.map(store => (
-              <option key={store.id} value={store.id}>{store.name}</option>
-            ))}
-          </select>
         </div>
       </div>
 

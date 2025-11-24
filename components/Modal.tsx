@@ -1,4 +1,4 @@
-import { ReactNode, MouseEvent } from 'react'
+import { ReactNode, MouseEvent, memo } from 'react'
 
 interface ModalProps {
   isOpen: boolean
@@ -8,7 +8,7 @@ interface ModalProps {
   maxWidth?: string
 }
 
-export default function Modal({
+function Modal({
   isOpen,
   onClose,
   title,
@@ -68,3 +68,5 @@ export default function Modal({
     </div>
   )
 }
+
+export default memo(Modal)

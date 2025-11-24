@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useStore } from '@/contexts/StoreContext'
+import { useAuth } from '@/contexts/AuthContext'
 
 const menuItems = [
   { name: 'ホーム', path: '/', icon: '🏠' },
@@ -19,23 +20,41 @@ const menuItems = [
 
 export default function Sidebar() {
   const pathname = usePathname()
-  const { storeId, setStoreId, storeName } = useStore()
+  const { storeId, setStoreId } = useStore()
+  const { user, logout } = useAuth()
+
+  const isSuperAdmin = user?.role === 'super_admin'
 
   return (
     <div style={styles.sidebar}>
       <div style={styles.header}>
         <h2 style={styles.logo}>VI Admin</h2>
-        <div style={styles.storeSelector}>
-          <select
-            value={storeId}
-            onChange={(e) => setStoreId(Number(e.target.value))}
-            style={styles.select}
-          >
-            <option value={1}>Memorable</option>
-            <option value={2}>Mistress Mirage</option>
-          </select>
-        </div>
+
+        {/* ユーザー情報 */}
+        {user && (
+          <div style={styles.userInfo}>
+            <div style={styles.username}>👤 {user.username}</div>
+            <div style={styles.role}>
+              {user.role === 'super_admin' ? '全店舗管理者' : '店舗管理者'}
+            </div>
+          </div>
+        )}
+
+        {/* 店舗選択（super_adminのみ表示） */}
+        {isSuperAdmin && (
+          <div style={styles.storeSelector}>
+            <select
+              value={storeId}
+              onChange={(e) => setStoreId(Number(e.target.value))}
+              style={styles.select}
+            >
+              <option value={1}>Memorable</option>
+              <option value={2}>Mistress Mirage</option>
+            </select>
+          </div>
+        )}
       </div>
+
       <nav style={styles.nav}>
         {menuItems.map((item) => {
           const isActive = pathname === item.path
@@ -54,6 +73,14 @@ export default function Sidebar() {
           )
         })}
       </nav>
+
+      {/* ログアウトボタン */}
+      <div style={styles.footer}>
+        <button onClick={logout} style={styles.logoutButton}>
+          <span style={styles.icon}>🚪</span>
+          <span>ログアウト</span>
+        </button>
+      </div>
     </div>
   )
 }
@@ -83,6 +110,22 @@ const styles: { [key: string]: React.CSSProperties } = {
     marginBottom: '15px',
     color: 'white',
   },
+  userInfo: {
+    marginTop: '15px',
+    padding: '12px',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: '8px',
+    marginBottom: '10px',
+  },
+  username: {
+    fontSize: '14px',
+    fontWeight: '600',
+    marginBottom: '4px',
+  },
+  role: {
+    fontSize: '12px',
+    color: 'rgba(255,255,255,0.7)',
+  },
   storeSelector: {
     marginTop: '10px',
   },
@@ -102,6 +145,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     display: 'flex',
     flexDirection: 'column',
     gap: '5px',
+    overflowY: 'auto',
   },
   navItem: {
     display: 'flex',
@@ -119,5 +163,23 @@ const styles: { [key: string]: React.CSSProperties } = {
   icon: {
     marginRight: '12px',
     fontSize: '20px',
+  },
+  footer: {
+    padding: '20px',
+    borderTop: '1px solid rgba(255,255,255,0.1)',
+  },
+  logoutButton: {
+    display: 'flex',
+    alignItems: 'center',
+    width: '100%',
+    padding: '12px 15px',
+    backgroundColor: 'rgba(231, 76, 60, 0.8)',
+    border: 'none',
+    borderRadius: '6px',
+    color: 'white',
+    fontSize: '14px',
+    fontWeight: '500',
+    cursor: 'pointer',
+    transition: 'background-color 0.2s',
   },
 }

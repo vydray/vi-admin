@@ -44,9 +44,8 @@ interface ShiftLock {
 }
 
 export default function ShiftManage() {
-  const { storeId: globalStoreId, stores } = useStore()
+  const { storeId } = useStore()
   const { confirm } = useConfirm()
-  const [selectedStore, setSelectedStore] = useState(globalStoreId)
   const [selectedMonth, setSelectedMonth] = useState(new Date())
   const [isFirstHalf, setIsFirstHalf] = useState(true)
   const [casts, setCasts] = useState<Cast[]>([])
@@ -75,7 +74,7 @@ export default function ShiftManage() {
 
   useEffect(() => {
     loadData()
-  }, [selectedMonth, isFirstHalf, selectedStore])
+  }, [selectedMonth, isFirstHalf, storeId])
 
   const loadData = async () => {
     setLoading(true)
@@ -92,7 +91,7 @@ export default function ShiftManage() {
     const { data, error } = await supabase
       .from('casts')
       .select('id, name, display_order')
-      .eq('store_id', selectedStore)
+      .eq('store_id', storeId)
       .eq('status', '在籍')
       .eq('is_active', true)
       .order('display_order', { ascending: true, nullsFirst: false })
@@ -109,7 +108,7 @@ export default function ShiftManage() {
 
     const { data, error } = await supabase
       .from('shifts')
-      .select('*')
+      .select('id, cast_id, date, start_time, end_time, is_locked, is_confirmed')
       .gte('date', format(start, 'yyyy-MM-dd'))
       .lte('date', format(end, 'yyyy-MM-dd'))
 
@@ -124,7 +123,7 @@ export default function ShiftManage() {
 
     const { data, error } = await supabase
       .from('shift_requests')
-      .select('*')
+      .select('id, cast_id, date, start_time, end_time, status, is_locked')
       .eq('status', 'pending')
       .gte('date', format(start, 'yyyy-MM-dd'))
       .lte('date', format(end, 'yyyy-MM-dd'))
@@ -140,8 +139,8 @@ export default function ShiftManage() {
 
     const { data, error } = await supabase
       .from('shift_locks')
-      .select('*')
-      .eq('store_id', selectedStore)
+      .select('id, cast_id, date, lock_type')
+      .eq('store_id', storeId)
       .gte('date', format(start, 'yyyy-MM-dd'))
       .lte('date', format(end, 'yyyy-MM-dd'))
 
@@ -324,13 +323,13 @@ export default function ShiftManage() {
           cast_id: change.cast_id,
           date: change.date,
           lock_type: change.lock_type,
-          store_id: selectedStore
+          store_id: storeId
         })
       } else {
         deletes.push({
           cast_id: change.cast_id,
           date: change.date,
-          store_id: selectedStore
+          store_id: storeId
         })
       }
     })
@@ -530,7 +529,7 @@ export default function ShiftManage() {
           cast_id: castId,
           date: dateStr,
           lock_type: lockType,
-          store_id: selectedStore
+          store_id: storeId
         })
     }
 
@@ -644,7 +643,7 @@ export default function ShiftManage() {
             date: dateStr,
             start_time: normalizedStartTime,
             end_time: normalizedEndTime,
-            store_id: selectedStore
+            store_id: storeId
           })
           .select()
 
@@ -669,7 +668,7 @@ export default function ShiftManage() {
                 cast_id: parseInt(castId),
                 date: dateStr,
                 lock_type: 'confirmed',
-                store_id: selectedStore
+                store_id: storeId
               })
           }
 
@@ -809,27 +808,6 @@ export default function ShiftManage() {
           gap: '20px',
           marginBottom: '20px'
         }}>
-          {/* 店舗選択 */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <label style={{ fontSize: '14px', fontWeight: '500', color: '#475569' }}>店舗:</label>
-            <select
-              value={selectedStore}
-              onChange={(e) => setSelectedStore(Number(e.target.value))}
-              style={{
-                padding: '6px 12px',
-                fontSize: '14px',
-                border: '1px solid #e2e8f0',
-                borderRadius: '6px',
-                backgroundColor: '#fff',
-                cursor: 'pointer'
-              }}
-            >
-              {stores.map(store => (
-                <option key={store.id} value={store.id}>{store.name}</option>
-              ))}
-            </select>
-          </div>
-
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <button
               onClick={() => setSelectedMonth(subMonths(selectedMonth, 1))}

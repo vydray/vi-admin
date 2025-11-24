@@ -38,8 +38,7 @@ interface DisplaySettings {
 }
 
 export default function StoreSettingsPage() {
-  const { storeId: globalStoreId, stores } = useStore()
-  const [selectedStore, setSelectedStore] = useState(globalStoreId)
+  const { storeId } = useStore()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -76,7 +75,7 @@ export default function StoreSettingsPage() {
 
   useEffect(() => {
     loadSettings()
-  }, [selectedStore])
+  }, [storeId])
 
   const loadSettings = async () => {
     setLoading(true)
@@ -84,8 +83,8 @@ export default function StoreSettingsPage() {
     // 店舗設定を取得
     const { data, error } = await supabase
       .from('store_settings')
-      .select('*')
-      .eq('store_id', selectedStore)
+      .select('store_name, store_postal_code, store_address, store_phone, store_email, business_hours, closed_days, store_registration_number, footer_message, revenue_stamp_threshold, menu_template, logo_url')
+      .eq('store_id', storeId)
       .single()
 
     if (!error && data) {
@@ -125,7 +124,7 @@ export default function StoreSettingsPage() {
     const { data: systemSettingsData } = await supabase
       .from('system_settings')
       .select('setting_key, setting_value')
-      .eq('store_id', selectedStore)
+      .eq('store_id', storeId)
 
     if (systemSettingsData && systemSettingsData.length > 0) {
       const newSystemSettings: SystemSettings = {
@@ -193,7 +192,7 @@ export default function StoreSettingsPage() {
       const { error: storeError } = await supabase
         .from('store_settings')
         .upsert({
-          store_id: selectedStore,
+          store_id: storeId,
           ...settings
         })
 
@@ -201,15 +200,15 @@ export default function StoreSettingsPage() {
 
       // システム設定と表示設定を保存
       const systemSettingsArray = [
-        { store_id: selectedStore, setting_key: 'consumption_tax_rate', setting_value: systemSettings.consumption_tax_rate },
-        { store_id: selectedStore, setting_key: 'service_charge_rate', setting_value: systemSettings.service_charge_rate },
-        { store_id: selectedStore, setting_key: 'rounding_method', setting_value: systemSettings.rounding_method },
-        { store_id: selectedStore, setting_key: 'rounding_unit', setting_value: systemSettings.rounding_unit },
-        { store_id: selectedStore, setting_key: 'card_fee_rate', setting_value: systemSettings.card_fee_rate },
-        { store_id: selectedStore, setting_key: 'business_day_cutoff_hour', setting_value: systemSettings.business_day_cutoff_hour },
-        { store_id: selectedStore, setting_key: 'theme', setting_value: displaySettings.theme },
-        { store_id: selectedStore, setting_key: 'language', setting_value: displaySettings.language },
-        { store_id: selectedStore, setting_key: 'date_format', setting_value: displaySettings.date_format }
+        { store_id: storeId, setting_key: 'consumption_tax_rate', setting_value: systemSettings.consumption_tax_rate },
+        { store_id: storeId, setting_key: 'service_charge_rate', setting_value: systemSettings.service_charge_rate },
+        { store_id: storeId, setting_key: 'rounding_method', setting_value: systemSettings.rounding_method },
+        { store_id: storeId, setting_key: 'rounding_unit', setting_value: systemSettings.rounding_unit },
+        { store_id: storeId, setting_key: 'card_fee_rate', setting_value: systemSettings.card_fee_rate },
+        { store_id: storeId, setting_key: 'business_day_cutoff_hour', setting_value: systemSettings.business_day_cutoff_hour },
+        { store_id: storeId, setting_key: 'theme', setting_value: displaySettings.theme },
+        { store_id: storeId, setting_key: 'language', setting_value: displaySettings.language },
+        { store_id: storeId, setting_key: 'date_format', setting_value: displaySettings.date_format }
       ]
 
       const { error: systemError } = await supabase
@@ -245,7 +244,7 @@ export default function StoreSettingsPage() {
 
       // ファイル名を生成（タイムスタンプ + オリジナル名）
       const fileExt = file.name.split('.').pop()
-      const fileName = `${selectedStore}_${Date.now()}.${fileExt}`
+      const fileName = `${storeId}_${Date.now()}.${fileExt}`
       const filePath = `store-logos/${fileName}`
 
       // Supabase Storageにアップロード
@@ -331,27 +330,6 @@ export default function StoreSettingsPage() {
           <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: 0, color: '#1a1a1a' }}>
             店舗設定
           </h1>
-        </div>
-
-        {/* 店舗選択 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <label style={{ fontSize: '14px', fontWeight: '500', color: '#475569' }}>店舗:</label>
-          <select
-            value={selectedStore}
-            onChange={(e) => setSelectedStore(Number(e.target.value))}
-            style={{
-              padding: '6px 12px',
-              fontSize: '14px',
-              border: '1px solid #e2e8f0',
-              borderRadius: '6px',
-              backgroundColor: '#fff',
-              cursor: 'pointer'
-            }}
-          >
-            {stores.map(store => (
-              <option key={store.id} value={store.id}>{store.name}</option>
-            ))}
-          </select>
         </div>
       </div>
 

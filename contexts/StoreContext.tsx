@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/contexts/AuthContext'
 
 interface Store {
   id: number
@@ -14,14 +15,26 @@ interface StoreContextType {
   storeName: string
   stores: Store[]
   isLoading: boolean
+  canSwitchStore: boolean
 }
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined)
 
 export function StoreProvider({ children }: { children: ReactNode }) {
-  const [storeId, setStoreId] = useState<number>(2)
+  const { user, isLoading: authLoading } = useAuth()
+  const [storeId, setStoreIdState] = useState<number>(2)
   const [stores, setStores] = useState<Store[]>([])
   const [isLoading, setIsLoading] = useState(true)
+
+  // ユーザーの権限に基づいて店舗IDを初期化
+  useEffect(() => {
+    if (!authLoading && user) {
+      if (user.role === 'store_admin' && user.store_id) {
+        // store_adminの場合は自動的にそのstore_idを使用
+        setStoreIdState(user.store_id)
+      }
+    }
+  }, [user, authLoading])
 
   useEffect(() => {
     loadStores()
@@ -31,7 +44,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     try {
       const { data, error } = await supabase
         .from('stores')
-        .select('*')
+        .select('id, name')
         .order('id')
 
       if (error) throw error
@@ -65,6 +78,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const storeName = stores.find(s => s.id === storeId)?.name || 'Unknown'
 
+  // super_adminのみ店舗切り替え可能
+  const canSwitchStore = user?.role === 'super_admin'
+
+  // 店舗切り替え関数（権限チェック付き）
+  const setStoreId = (id: number) => {
+    if (canSwitchStore) {
+      setStoreIdState(id)
+    } else {
+      console.warn('店舗管理者は店舗を切り替えることができません')
+    }
+  }
+
   return (
     <StoreContext.Provider
       value={{
@@ -73,6 +98,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         storeName,
         stores,
         isLoading,
+        canSwitchStore,
       }}
     >
       {children}

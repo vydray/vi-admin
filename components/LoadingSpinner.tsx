@@ -1,10 +1,12 @@
+import { memo } from 'react'
+
 interface LoadingSpinnerProps {
   fullScreen?: boolean
   size?: 'small' | 'medium' | 'large'
   text?: string
 }
 
-export default function LoadingSpinner({
+function LoadingSpinner({
   fullScreen = true,
   size = 'medium',
   text = '読み込み中...'
@@ -59,3 +61,5 @@ export default function LoadingSpinner({
 
   return spinner
 }
+
+export default memo(LoadingSpinner)

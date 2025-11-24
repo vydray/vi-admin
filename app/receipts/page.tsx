@@ -95,9 +95,8 @@ interface OrderWithPayment {
 }
 
 export default function ReceiptsPage() {
-  const { storeId: globalStoreId, stores } = useStore()
+  const { storeId } = useStore()
   const { confirm } = useConfirm()
-  const [selectedStore, setSelectedStore] = useState(globalStoreId)
   const [receipts, setReceipts] = useState<ReceiptWithDetails[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
@@ -193,7 +192,7 @@ export default function ReceiptsPage() {
             other_payment_amount
           )
         `)
-        .eq('store_id', selectedStore)
+        .eq('store_id', storeId)
         .is('deleted_at', null)
         .order('checkout_datetime', { ascending: false })
 
@@ -230,29 +229,29 @@ export default function ReceiptsPage() {
     } finally {
       setLoading(false)
     }
-  }, [selectedStore])
+  }, [storeId])
 
   const loadMasterData = useCallback(async () => {
     try {
       // 商品マスタを取得
       const { data: productsData } = await supabase
         .from('products')
-        .select('*')
-        .eq('store_id', selectedStore)
+        .select('id, name, price, category_id, store_id')
+        .eq('store_id', storeId)
         .order('name')
 
       // カテゴリーマスタを取得
       const { data: categoriesData } = await supabase
         .from('product_categories')
-        .select('*')
-        .eq('store_id', selectedStore)
+        .select('id, name, store_id')
+        .eq('store_id', storeId)
         .order('name')
 
       // キャストマスタを取得（POS表示がオンの子のみ）
       const { data: castsData } = await supabase
         .from('casts')
-        .select('*')
-        .eq('store_id', selectedStore)
+        .select('id, name, is_active, show_in_pos, store_id')
+        .eq('store_id', storeId)
         .eq('is_active', true)
         .eq('show_in_pos', true)
         .order('name')
@@ -263,14 +262,14 @@ export default function ReceiptsPage() {
     } catch (error) {
       console.error('Error loading master data:', error)
     }
-  }, [selectedStore])
+  }, [storeId])
 
   const loadSystemSettings = useCallback(async () => {
     try {
       const { data: settings } = await supabase
         .from('system_settings')
         .select('setting_key, setting_value')
-        .eq('store_id', selectedStore)
+        .eq('store_id', storeId)
 
       if (settings) {
         // card_fee_rateは整数で保存されている（例: 3.6 = 3.6%）
@@ -292,7 +291,7 @@ export default function ReceiptsPage() {
     } catch (error) {
       console.error('Error loading system settings:', error)
     }
-  }, [selectedStore])
+  }, [storeId])
 
   // 端数処理を適用した金額を計算
   const getRoundedTotal = (amount: number, unit: number, method: number): number => {
@@ -328,26 +327,26 @@ export default function ReceiptsPage() {
       ] = await Promise.all([
         supabase
           .from('order_items')
-          .select('*')
+          .select('id, order_id, product_name, category, cast_name, quantity, unit_price, subtotal')
           .eq('order_id', receipt.id),
         supabase
           .from('payments')
-          .select('*')
+          .select('id, order_id, cash_amount, credit_card_amount, other_payment_amount, change_amount')
           .eq('order_id', receipt.id)
           .single(),
         supabase
           .from('products')
-          .select('*')
+          .select('id, name, price, category_id, store_id')
           .eq('store_id', receipt.store_id)
           .order('name'),
         supabase
           .from('product_categories')
-          .select('*')
+          .select('id, name, store_id')
           .eq('store_id', receipt.store_id)
           .order('name'),
         supabase
           .from('casts')
-          .select('*')
+          .select('id, name, is_active, show_in_pos, store_id')
           .eq('store_id', receipt.store_id)
           .eq('is_active', true)
           .eq('show_in_pos', true)
@@ -740,7 +739,7 @@ export default function ReceiptsPage() {
         const { data: newOrder, error: orderError } = await supabase
           .from('orders')
           .insert({
-            store_id: selectedStore,
+            store_id: storeId,
             receipt_number: receiptNumber,
             visit_datetime: new Date(createFormData.checkout_datetime).toISOString(),
             checkout_datetime: new Date(createFormData.checkout_datetime).toISOString(),
@@ -772,7 +771,7 @@ export default function ReceiptsPage() {
           tax_amount: item.unit_price - Math.round(item.unit_price / 1.1),
           subtotal: item.unit_price * item.quantity,
           pack_number: 0,
-          store_id: selectedStore
+          store_id: storeId
         }))
 
         const { error: itemsError } = await supabase
@@ -790,7 +789,7 @@ export default function ReceiptsPage() {
             credit_card_amount: tempPaymentData.credit_card_amount,
             other_payment_amount: tempPaymentData.other_payment_amount,
             change_amount: Math.max(0, change),
-            store_id: selectedStore
+            store_id: storeId
           })
 
         if (paymentError) throw paymentError
@@ -972,7 +971,7 @@ export default function ReceiptsPage() {
       const { data: newOrder, error: orderError } = await supabase
         .from('orders')
         .insert({
-          store_id: selectedStore,
+          store_id: storeId,
           receipt_number: receiptNumber,
           visit_datetime: new Date(createFormData.checkout_datetime).toISOString(),
           checkout_datetime: new Date(createFormData.checkout_datetime).toISOString(),
@@ -1004,7 +1003,7 @@ export default function ReceiptsPage() {
         tax_amount: item.unit_price - Math.round(item.unit_price / 1.1),
         subtotal: item.unit_price * item.quantity,
         pack_number: 0,
-        store_id: selectedStore
+        store_id: storeId
       }))
 
       const { error: itemsError } = await supabase
@@ -1022,7 +1021,7 @@ export default function ReceiptsPage() {
           credit_card_amount: 0,
           other_payment_amount: 0,
           change_amount: 0,
-          store_id: selectedStore
+          store_id: storeId
         })
 
       if (paymentError) throw paymentError
@@ -1283,18 +1282,6 @@ export default function ReceiptsPage() {
       <div style={styles.header}>
         <div>
           <h1 style={styles.title}>伝票管理</h1>
-          <div style={styles.storeSelector}>
-            <label style={styles.storeSelectorLabel}>店舗:</label>
-            <select
-              value={selectedStore}
-              onChange={(e) => setSelectedStore(Number(e.target.value))}
-              style={styles.storeSelectorDropdown}
-            >
-              {stores.map(store => (
-                <option key={store.id} value={store.id}>{store.name}</option>
-              ))}
-            </select>
-          </div>
         </div>
         <div style={styles.headerRight}>
           <Button onClick={openCreateModal} variant="success">

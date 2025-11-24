@@ -1,4 +1,4 @@
-import { CSSProperties, MouseEvent, ReactNode } from 'react'
+import { CSSProperties, MouseEvent, ReactNode, memo } from 'react'
 
 type ButtonVariant = 'primary' | 'secondary' | 'success' | 'danger' | 'outline'
 type ButtonSize = 'small' | 'medium' | 'large'
@@ -14,7 +14,7 @@ interface ButtonProps {
   style?: CSSProperties
 }
 
-export default function Button({
+function Button({
   children,
   onClick,
   variant = 'primary',
@@ -109,3 +109,5 @@ export default function Button({
     </button>
   )
 }
+
+export default memo(Button)

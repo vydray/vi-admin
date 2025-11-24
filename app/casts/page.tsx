@@ -51,11 +51,10 @@ interface CastPosition {
 }
 
 export default function CastsPage() {
-  const { stores } = useStore()
+  const { storeId } = useStore()
   const { confirm } = useConfirm()
   const [casts, setCasts] = useState<Cast[]>([])
   const [loading, setLoading] = useState(true)
-  const [selectedStore, setSelectedStore] = useState(2)
   const [positions, setPositions] = useState<CastPosition[]>([])
 
   // フィルタの一時的な状態（検索ボタンを押すまで適用されない）
@@ -92,14 +91,14 @@ export default function CastsPage() {
   useEffect(() => {
     loadCasts()
     loadPositions()
-  }, [selectedStore])
+  }, [storeId])
 
   const loadCasts = async () => {
     setLoading(true)
     const { data, error } = await supabase
       .from('casts')
-      .select('*')
-      .eq('store_id', selectedStore)
+      .select('id, line_number, name, twitter, password, instagram, password2, attendance_certificate, residence_record, contract_documents, submission_contract, employee_name, attributes, status, sales_previous_day, experience_date, hire_date, resignation_date, created_at, updated_at, store_id, show_in_pos, birthday, line_user_id, hourly_wage, commission_rate, is_admin, is_manager, line_msg_user_id, line_msg_state, line_msg_registered_at, is_active, display_order')
+      .eq('store_id', storeId)
       .order('display_order', { ascending: true, nullsFirst: false })
       .order('name')
 
@@ -114,8 +113,8 @@ export default function CastsPage() {
   const loadPositions = async () => {
     const { data, error } = await supabase
       .from('cast_positions')
-      .select('*')
-      .eq('store_id', selectedStore)
+      .select('id, name, store_id')
+      .eq('store_id', storeId)
       .order('name')
 
     if (error) {
@@ -296,7 +295,7 @@ export default function CastsPage() {
       resignation_date: null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-      store_id: selectedStore,
+      store_id: storeId,
       show_in_pos: true,
       birthday: null,
       line_user_id: null,
@@ -341,7 +340,7 @@ export default function CastsPage() {
           commission_rate: editingCast.commission_rate,
           twitter: editingCast.twitter,
           instagram: editingCast.instagram,
-          store_id: selectedStore,
+          store_id: storeId,
           show_in_pos: editingCast.show_in_pos,
           is_active: editingCast.is_active,
           is_admin: editingCast.is_admin,
@@ -531,19 +530,6 @@ export default function CastsPage() {
       </h1>
 
       <div style={{ marginBottom: '15px', display: 'flex', gap: '15px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-        <div>
-          <label style={{ display: 'block', marginBottom: '5px', fontSize: '13px', color: '#666' }}>店舗</label>
-          <select
-            value={selectedStore}
-            onChange={(e) => setSelectedStore(Number(e.target.value))}
-            style={filterSelectStyle}
-          >
-            {stores.map(store => (
-              <option key={store.id} value={store.id}>{store.name}</option>
-            ))}
-          </select>
-        </div>
-
         <div>
           <label style={{ display: 'block', marginBottom: '5px', fontSize: '13px', color: '#666' }}>名前検索</label>
           <input

@@ -14,11 +14,6 @@ interface Cast {
   display_order?: number | null
 }
 
-interface Store {
-  id: number
-  name: string
-}
-
 interface DailySales {
   [date: string]: number
 }
@@ -46,11 +41,9 @@ interface Order {
 type AggregationType = 'subtotal_only' | 'items_only'
 
 export default function CastSalesPage() {
-  const { storeId: globalStoreId } = useStore()
-  const [selectedStore, setSelectedStore] = useState(globalStoreId)
+  const { storeId } = useStore()
   const [selectedMonth, setSelectedMonth] = useState(new Date())
   const [aggregationType, setAggregationType] = useState<AggregationType>('subtotal_only')
-  const [stores, setStores] = useState<Store[]>([])
   const [salesData, setSalesData] = useState<CastSales[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -64,32 +57,12 @@ export default function CastSalesPage() {
     })
   }, [])
 
-  const loadStores = useCallback(async () => {
-    try {
-      const { data, error } = await supabase
-        .from('stores')
-        .select('id, name')
-        .order('id')
-
-      if (error) {
-        throw new Error('店舗データの取得に失敗しました')
-      }
-      setStores(data || [])
-    } catch (err) {
-      console.error('店舗データ読み込みエラー:', err)
-      // 店舗データ取得失敗時はフォールバック（既存のハードコード値を使用）
-      setStores([
-        { id: 1, name: 'Memorable' },
-        { id: 2, name: 'Mistress Mirage' }
-      ])
-    }
-  }, [])
 
   const loadCasts = useCallback(async () => {
     const { data, error } = await supabase
       .from('casts')
       .select('id, name, display_order')
-      .eq('store_id', selectedStore)
+      .eq('store_id', storeId)
       .eq('status', '在籍')
       .eq('is_active', true)
       .order('display_order', { ascending: true, nullsFirst: false })
@@ -99,7 +72,7 @@ export default function CastSalesPage() {
       throw new Error('キャストデータの取得に失敗しました')
     }
     return data || []
-  }, [selectedStore])
+  }, [storeId])
 
   const loadSalesData = useCallback(async (loadedCasts: Cast[]) => {
     const start = startOfMonth(selectedMonth)
@@ -120,7 +93,7 @@ export default function CastSalesPage() {
           subtotal
         )
       `)
-      .eq('store_id', selectedStore)
+      .eq('store_id', storeId)
       .gte('order_date', startDate)
       .lte('order_date', endDate + 'T23:59:59')
       .is('deleted_at', null)
@@ -187,7 +160,7 @@ export default function CastSalesPage() {
     // 合計値が高い順にソート
     const sortedData = Array.from(salesMap.values()).sort((a, b) => b.total - a.total)
     setSalesData(sortedData)
-  }, [selectedStore, selectedMonth, aggregationType])
+  }, [storeId, selectedMonth, aggregationType])
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -202,10 +175,6 @@ export default function CastSalesPage() {
       setLoading(false)
     }
   }, [loadCasts, loadSalesData])
-
-  useEffect(() => {
-    loadStores()
-  }, [loadStores])
 
   useEffect(() => {
     loadData()
@@ -275,27 +244,6 @@ export default function CastSalesPage() {
           gap: '20px',
           flexWrap: 'wrap'
         }}>
-          {/* 店舗選択 */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <label style={{ fontSize: '14px', fontWeight: '500', color: '#475569' }}>店舗:</label>
-            <select
-              value={selectedStore}
-              onChange={(e) => setSelectedStore(Number(e.target.value))}
-              style={{
-                padding: '6px 12px',
-                fontSize: '14px',
-                border: '1px solid #e2e8f0',
-                borderRadius: '6px',
-                backgroundColor: '#fff',
-                cursor: 'pointer'
-              }}
-            >
-              {stores.map(store => (
-                <option key={store.id} value={store.id}>{store.name}</option>
-              ))}
-            </select>
-          </div>
-
           {/* 月選択 */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <Button
