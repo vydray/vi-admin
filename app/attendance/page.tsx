@@ -9,6 +9,8 @@ import { useStore } from '@/contexts/StoreContext'
 import { useConfirm } from '@/contexts/ConfirmContext'
 import { generateTimeOptions } from '@/lib/timeUtils'
 import LoadingSpinner from '@/components/LoadingSpinner'
+import Button from '@/components/Button'
+import Modal from '@/components/Modal'
 
 interface Cast {
   id: number
@@ -432,21 +434,12 @@ export default function AttendancePage() {
           <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: 0, color: '#1a1a1a' }}>
             勤怠管理
           </h1>
-          <button
+          <Button
             onClick={() => setShowStatusModal(true)}
-            style={{
-              padding: '8px 16px',
-              backgroundColor: '#4A90E2',
-              color: 'white',
-              border: 'none',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              fontSize: '14px',
-              fontWeight: '500'
-            }}
+            variant="primary"
           >
             ステータス管理
-          </button>
+          </Button>
         </div>
 
         {/* 店舗・月選択 */}
@@ -477,37 +470,23 @@ export default function AttendancePage() {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <button
+            <Button
               onClick={() => setSelectedMonth(subMonths(selectedMonth, 1))}
-              style={{
-                padding: '6px 12px',
-                fontSize: '14px',
-                backgroundColor: '#f1f5f9',
-                color: '#475569',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: 'pointer'
-              }}
+              variant="secondary"
+              size="small"
             >
               ←
-            </button>
+            </Button>
             <span style={{ fontSize: '16px', fontWeight: '600' }}>
               {format(selectedMonth, 'yyyy年M月', { locale: ja })}
             </span>
-            <button
+            <Button
               onClick={() => setSelectedMonth(addMonths(selectedMonth, 1))}
-              style={{
-                padding: '6px 12px',
-                fontSize: '14px',
-                backgroundColor: '#f1f5f9',
-                color: '#475569',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: 'pointer'
-              }}
+              variant="secondary"
+              size="small"
             >
               →
-            </button>
+            </Button>
           </div>
         </div>
       </div>

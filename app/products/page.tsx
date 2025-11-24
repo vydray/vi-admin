@@ -6,6 +6,8 @@ import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
 import { useConfirm } from '@/contexts/ConfirmContext'
 import LoadingSpinner from '@/components/LoadingSpinner'
+import Button from '@/components/Button'
+import Modal from '@/components/Modal'
 
 interface Category {
   id: number
@@ -476,36 +478,12 @@ export default function ProductsPage() {
             商品管理
           </h1>
           <div style={{ display: 'flex', gap: '10px' }}>
-            <button
-              onClick={() => setShowImportModal(true)}
-              style={{
-                padding: '10px 20px',
-                backgroundColor: '#3b82f6',
-                color: 'white',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontSize: '14px',
-                fontWeight: '600'
-              }}
-            >
+            <Button onClick={() => setShowImportModal(true)} variant="primary">
               CSV入力
-            </button>
-            <button
-              onClick={exportToCSV}
-              style={{
-                padding: '10px 20px',
-                backgroundColor: '#10b981',
-                color: 'white',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontSize: '14px',
-                fontWeight: '600'
-              }}
-            >
+            </Button>
+            <Button onClick={exportToCSV} variant="success">
               CSV出力
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -631,21 +609,9 @@ export default function ProductsPage() {
             </label>
           </div>
 
-          <button
-            onClick={addProduct}
-            style={{
-              padding: '10px 30px',
-              backgroundColor: '#10b981',
-              color: 'white',
-              border: 'none',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              fontSize: '14px',
-              fontWeight: '600'
-            }}
-          >
+          <Button onClick={addProduct} variant="success">
             追加
-          </button>
+          </Button>
         </div>
 
         {/* カテゴリーフィルター */}
@@ -832,21 +798,13 @@ export default function ProductsPage() {
                         textAlign: 'center'
                       }}
                     >
-                      <button
+                      <Button
                         onClick={() => deleteProduct(product.id)}
-                        style={{
-                          padding: '6px 14px',
-                          backgroundColor: '#ef4444',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '5px',
-                          cursor: 'pointer',
-                          fontSize: '13px',
-                          fontWeight: '500'
-                        }}
+                        variant="danger"
+                        size="small"
                       >
                         削除
-                      </button>
+                      </Button>
                     </td>
                   </tr>
                 ))}
@@ -857,35 +815,12 @@ export default function ProductsPage() {
       </div>
 
       {/* 編集モーダル */}
-      {showEditModal && editingProduct && (
-        <div
-          onClick={() => setShowEditModal(false)}
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              backgroundColor: 'white',
-              borderRadius: '12px',
-              padding: '30px',
-              width: '90%',
-              maxWidth: '500px'
-            }}
-          >
-            <h3 style={{ margin: '0 0 20px 0', fontSize: '18px', fontWeight: 'bold' }}>
-              商品編集
-            </h3>
+      <Modal
+        isOpen={showEditModal && !!editingProduct}
+        onClose={() => setShowEditModal(false)}
+        title="商品編集"
+        maxWidth="500px"
+      >
 
             <div style={{ marginBottom: '15px' }}>
               <label style={{ display: 'block', marginBottom: '5px', fontSize: '13px', color: '#64748b', fontWeight: '500' }}>
@@ -970,72 +905,23 @@ export default function ProductsPage() {
               </label>
             </div>
 
-            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-              <button
-                onClick={() => setShowEditModal(false)}
-                style={{
-                  padding: '10px 20px',
-                  backgroundColor: '#e2e8f0',
-                  color: '#475569',
-                  border: 'none',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: '500'
-                }}
-              >
-                キャンセル
-              </button>
-              <button
-                onClick={updateProduct}
-                style={{
-                  padding: '10px 20px',
-                  backgroundColor: '#3b82f6',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: '500'
-                }}
-              >
-                更新
-              </button>
-            </div>
-          </div>
+        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+          <Button onClick={() => setShowEditModal(false)} variant="outline">
+            キャンセル
+          </Button>
+          <Button onClick={updateProduct} variant="primary">
+            更新
+          </Button>
         </div>
-      )}
+      </Modal>
 
       {/* CSV入力モーダル */}
-      {showImportModal && (
-        <div
-          onClick={() => setShowImportModal(false)}
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              backgroundColor: 'white',
-              borderRadius: '12px',
-              padding: '30px',
-              width: '90%',
-              maxWidth: '500px'
-            }}
-          >
-            <h3 style={{ margin: '0 0 20px 0', fontSize: '18px', fontWeight: 'bold' }}>
-              商品マスタCSV入力
-            </h3>
+      <Modal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        title="商品マスタCSV入力"
+        maxWidth="500px"
+      >
 
             <div style={{
               padding: '12px',
@@ -1102,25 +988,14 @@ export default function ProductsPage() {
               </p>
             </div>
 
-            <button
-              onClick={() => setShowImportModal(false)}
-              style={{
-                width: '100%',
-                padding: '10px',
-                backgroundColor: '#e2e8f0',
-                color: '#475569',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontSize: '14px',
-                fontWeight: '500'
-              }}
-            >
-              キャンセル
-            </button>
-          </div>
-        </div>
-      )}
+        <Button
+          onClick={() => setShowImportModal(false)}
+          variant="outline"
+          fullWidth
+        >
+          キャンセル
+        </Button>
+      </Modal>
     </div>
   )
 }

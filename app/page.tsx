@@ -7,6 +7,7 @@ import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
 import { getCurrentBusinessDay } from '@/lib/businessDay'
 import toast from 'react-hot-toast'
 import LoadingSpinner from '@/components/LoadingSpinner'
+import Button from '@/components/Button'
 
 interface DashboardData {
   todaySales: number
@@ -433,17 +434,13 @@ export default function Home() {
             ))}
           </select>
 
-          <button
+          <Button
             onClick={() => setShowExportModal(true)}
             disabled={isExporting}
-            style={{
-              ...styles.exportButton,
-              opacity: isExporting ? 0.6 : 1,
-              cursor: isExporting ? 'not-allowed' : 'pointer'
-            }}
+            variant="success"
           >
             {isExporting ? 'エクスポート中...' : 'CSVエクスポート'}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -518,25 +515,28 @@ export default function Home() {
               {selectedYear}年{selectedMonth}月のデータをエクスポートします
             </p>
             <div style={styles.exportModalButtons}>
-              <button
+              <Button
                 onClick={() => exportToCSV('receipts')}
-                style={styles.exportModalButton}
+                variant="primary"
+                fullWidth
               >
                 会計伝票一覧
-              </button>
-              <button
+              </Button>
+              <Button
                 onClick={() => exportToCSV('monthly')}
-                style={styles.exportModalButton}
+                variant="primary"
+                fullWidth
               >
                 月別データ
-              </button>
+              </Button>
             </div>
-            <button
+            <Button
               onClick={() => setShowExportModal(false)}
-              style={styles.exportModalCancel}
+              variant="outline"
+              fullWidth
             >
               キャンセル
-            </button>
+            </Button>
           </div>
         </>
       )}

@@ -6,6 +6,8 @@ import { useStore } from '@/contexts/StoreContext'
 import { useConfirm } from '@/contexts/ConfirmContext'
 import toast from 'react-hot-toast'
 import LoadingSpinner from '@/components/LoadingSpinner'
+import Button from '@/components/Button'
+import Modal from '@/components/Modal'
 
 interface OrderItem {
   id: number
@@ -1295,9 +1297,9 @@ export default function ReceiptsPage() {
           </div>
         </div>
         <div style={styles.headerRight}>
-          <button onClick={openCreateModal} style={styles.createButton}>
+          <Button onClick={openCreateModal} variant="success">
             + 新規伝票作成
-          </button>
+          </Button>
           <div style={styles.statItem}>
             <span style={styles.statLabel}>総伝票数</span>
             <span style={styles.statValue}>{filteredReceipts.length}</span>
@@ -1388,7 +1390,7 @@ export default function ReceiptsPage() {
           </label>
 
           {(searchTerm || startDate || endDate || filterStaffName || filterPaymentMethod || filterMinAmount || filterMaxAmount) && (
-            <button
+            <Button
               onClick={() => {
                 setSearchTerm('')
                 setStartDate('')
@@ -1398,10 +1400,10 @@ export default function ReceiptsPage() {
                 setFilterMinAmount('')
                 setFilterMaxAmount('')
               }}
-              style={styles.clearButton}
+              variant="secondary"
             >
               全フィルタクリア
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -1457,12 +1459,21 @@ export default function ReceiptsPage() {
           <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
             <div style={styles.modalHeader}>
               <h2 style={styles.modalTitle}>伝票編集 - ID: {selectedReceipt.id}</h2>
-              <button
+              <Button
                 onClick={() => setIsEditModalOpen(false)}
-                style={styles.closeButton}
+                variant="outline"
+                style={{
+                  fontSize: '28px',
+                  backgroundColor: 'transparent',
+                  border: 'none',
+                  padding: '0',
+                  width: '30px',
+                  height: '30px',
+                  color: '#6c757d'
+                }}
               >
                 ×
-              </button>
+              </Button>
             </div>
 
             <div style={styles.modalBody}>
@@ -1556,26 +1567,28 @@ export default function ReceiptsPage() {
                           <td style={styles.itemTd}>{formatCurrency(item.unit_price)}</td>
                           <td style={styles.itemTd}>{formatCurrency(item.subtotal)}</td>
                           <td style={styles.itemTd}>
-                            <button
+                            <Button
                               onClick={(e) => {
                                 e.stopPropagation()
                                 deleteOrderItem(item.id)
                               }}
-                              style={styles.itemDeleteButton}
+                              variant="danger"
+                              size="small"
                             >
                               削除
-                            </button>
+                            </Button>
                           </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
-                  <button
+                  <Button
                     onClick={openAddItemModal}
-                    style={styles.addItemButton}
+                    variant="primary"
+                    fullWidth
                   >
                     + 注文明細を追加
-                  </button>
+                  </Button>
                 </div>
               )}
 
@@ -1669,12 +1682,13 @@ export default function ReceiptsPage() {
               <div style={styles.paymentSection}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
                   <h3 style={{ ...styles.sectionTitle, marginBottom: 0 }}>支払情報</h3>
-                  <button
+                  <Button
                     onClick={calculateReceiptTotals}
-                    style={styles.calculateButton}
+                    variant="primary"
+                    style={{ backgroundColor: '#ffc107', color: '#000' }}
                   >
                     合計を計算
-                  </button>
+                  </Button>
                 </div>
                 <div style={styles.paymentEditGrid}>
                   <div style={styles.formGroup}>
@@ -1710,26 +1724,27 @@ export default function ReceiptsPage() {
 
             <div style={styles.modalFooter}>
               <div style={styles.modalFooterLeft}>
-                <button
+                <Button
                   onClick={() => deleteReceipt(selectedReceipt.id)}
-                  style={styles.deleteButtonModal}
+                  variant="danger"
                 >
                   削除
-                </button>
-                <button
+                </Button>
+                <Button
                   onClick={duplicateReceipt}
-                  style={styles.duplicateButton}
+                  variant="primary"
+                  style={{ backgroundColor: '#17a2b8' }}
                 >
                   複製
-                </button>
+                </Button>
               </div>
               <div style={styles.modalFooterRight}>
-                <button onClick={() => setIsEditModalOpen(false)} style={styles.cancelButton}>
+                <Button onClick={() => setIsEditModalOpen(false)} variant="secondary">
                   キャンセル
-                </button>
-                <button onClick={saveReceiptChanges} style={styles.saveButton}>
+                </Button>
+                <Button onClick={saveReceiptChanges} variant="success">
                   保存
-                </button>
+                </Button>
               </div>
             </div>
           </div>
@@ -1850,22 +1865,22 @@ export default function ReceiptsPage() {
             </div>
 
             <div style={styles.modalFooter}>
-              <button
+              <Button
                 onClick={() => {
                   deleteOrderItem(editingItem.id)
                   cancelEditItem()
                 }}
-                style={styles.deleteButtonModal}
+                variant="danger"
               >
                 削除
-              </button>
+              </Button>
               <div style={styles.modalFooterRight}>
-                <button onClick={cancelEditItem} style={styles.cancelButton}>
+                <Button onClick={cancelEditItem} variant="secondary">
                   キャンセル
-                </button>
-                <button onClick={saveEditItem} style={styles.saveButton}>
+                </Button>
+                <Button onClick={saveEditItem} variant="success">
                   保存
-                </button>
+                </Button>
               </div>
             </div>
           </div>
@@ -2039,12 +2054,12 @@ export default function ReceiptsPage() {
             </div>
 
             <div style={styles.modalFooter}>
-              <button onClick={cancelAddItem} style={styles.cancelButton}>
+              <Button onClick={cancelAddItem} variant="secondary">
                 キャンセル
-              </button>
-              <button onClick={addOrderItem} style={styles.saveButton}>
+              </Button>
+              <Button onClick={addOrderItem} variant="success">
                 追加
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -2085,7 +2100,21 @@ export default function ReceiptsPage() {
             <div style={styles.paymentModal} onClick={(e) => e.stopPropagation()}>
               <div style={styles.modalHeader}>
                 <h2 style={styles.modalTitle}>{modalTitle}</h2>
-                <button onClick={() => setIsPaymentModalOpen(false)} style={styles.closeButton}>×</button>
+                <Button
+                  onClick={() => setIsPaymentModalOpen(false)}
+                  variant="outline"
+                  style={{
+                    fontSize: '28px',
+                    backgroundColor: 'transparent',
+                    border: 'none',
+                    padding: '0',
+                    width: '30px',
+                    height: '30px',
+                    color: '#6c757d'
+                  }}
+                >
+                  ×
+                </Button>
               </div>
 
               <div style={styles.paymentModalBody}>
@@ -2116,22 +2145,26 @@ export default function ReceiptsPage() {
 
                   {/* 支払い方法ボタン */}
                   <div style={styles.paymentMethodButtons}>
-                    <button
+                    <Button
                       onClick={() => handlePaymentMethodClick('cash')}
+                      variant={activePaymentInput === 'cash' ? 'success' : 'outline'}
                       style={{
-                        ...styles.paymentMethodButton,
+                        flex: 1,
                         backgroundColor: activePaymentInput === 'cash' ? '#4CAF50' : '#e0e0e0',
-                        color: activePaymentInput === 'cash' ? 'white' : '#333'
+                        color: activePaymentInput === 'cash' ? 'white' : '#333',
+                        fontWeight: 'bold'
                       }}
                     >
                       現金
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       onClick={() => handlePaymentMethodClick('card')}
+                      variant={activePaymentInput === 'card' ? 'primary' : 'outline'}
                       style={{
-                        ...styles.paymentMethodButton,
+                        flex: 1,
                         backgroundColor: activePaymentInput === 'card' ? '#2196F3' : '#e0e0e0',
-                        color: activePaymentInput === 'card' ? 'white' : '#333'
+                        color: activePaymentInput === 'card' ? 'white' : '#333',
+                        fontWeight: 'bold'
                       }}
                     >
                       カード
@@ -2140,17 +2173,19 @@ export default function ReceiptsPage() {
                           (+{cardFeeRate}%)
                         </span>
                       )}
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       onClick={() => handlePaymentMethodClick('other')}
+                      variant={activePaymentInput === 'other' ? 'primary' : 'outline'}
                       style={{
-                        ...styles.paymentMethodButton,
+                        flex: 1,
                         backgroundColor: activePaymentInput === 'other' ? '#FF9800' : '#e0e0e0',
-                        color: activePaymentInput === 'other' ? 'white' : '#333'
+                        color: activePaymentInput === 'other' ? 'white' : '#333',
+                        fontWeight: 'bold'
                       }}
                     >
                       その他
-                    </button>
+                    </Button>
                   </div>
 
                   {/* 支払い金額入力 */}
@@ -2218,23 +2253,21 @@ export default function ReceiptsPage() {
 
                   {/* ボタン */}
                   <div style={styles.paymentModalButtons}>
-                    <button
+                    <Button
                       onClick={completePayment}
                       disabled={totalPaid < finalTotal}
-                      style={{
-                        ...styles.saveButton,
-                        flex: 1,
-                        opacity: totalPaid < finalTotal ? 0.6 : 1
-                      }}
+                      variant="success"
+                      style={{ flex: 1 }}
                     >
                       会計完了
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       onClick={() => setIsPaymentModalOpen(false)}
-                      style={{ ...styles.cancelButton, flex: 1 }}
+                      variant="secondary"
+                      style={{ flex: 1 }}
                     >
                       キャンセル
-                    </button>
+                    </Button>
                   </div>
                 </div>
 
@@ -2284,12 +2317,21 @@ export default function ReceiptsPage() {
           <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
             <div style={styles.modalHeader}>
               <h2 style={styles.modalTitle}>新規伝票作成</h2>
-              <button
+              <Button
                 onClick={() => setIsCreateModalOpen(false)}
-                style={styles.closeButton}
+                variant="outline"
+                style={{
+                  fontSize: '28px',
+                  backgroundColor: 'transparent',
+                  border: 'none',
+                  padding: '0',
+                  width: '30px',
+                  height: '30px',
+                  color: '#6c757d'
+                }}
               >
                 ×
-              </button>
+              </Button>
             </div>
 
             <div style={styles.modalBody}>
@@ -2434,29 +2476,32 @@ export default function ReceiptsPage() {
                         </div>
                       </div>
                     </div>
-                    <button
+                    <Button
                       onClick={() => removeCreateItem(index)}
-                      style={styles.removeItemButton}
+                      variant="danger"
+                      size="small"
+                      style={{ alignSelf: 'flex-start', marginTop: '28px', height: 'fit-content' }}
                     >
                       削除
-                    </button>
+                    </Button>
                   </div>
                 ))}
-                <button onClick={addCreateItem} style={styles.addItemButton}>
+                <Button onClick={addCreateItem} variant="primary" fullWidth>
                   + 明細を追加
-                </button>
+                </Button>
               </div>
 
               {/* Payment Details Display */}
               <div style={styles.paymentSection}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
                   <h3 style={{ ...styles.sectionTitle, marginBottom: 0 }}>支払情報</h3>
-                  <button
+                  <Button
                     onClick={calculateCreateReceiptTotals}
-                    style={styles.calculateButton}
+                    variant="primary"
+                    style={{ backgroundColor: '#ffc107', color: '#000' }}
                   >
                     合計を計算
-                  </button>
+                  </Button>
                 </div>
                 <div style={{ fontSize: '13px', color: '#6c757d', marginBottom: '10px', fontStyle: 'italic' }}>
                   ※ 商品を追加後、「合計を計算」ボタンをクリックして支払情報を入力してください
@@ -2466,12 +2511,12 @@ export default function ReceiptsPage() {
 
             <div style={styles.modalFooter}>
               <div style={styles.modalFooterRight}>
-                <button onClick={() => setIsCreateModalOpen(false)} style={styles.cancelButton}>
+                <Button onClick={() => setIsCreateModalOpen(false)} variant="secondary">
                   キャンセル
-                </button>
-                <button onClick={saveNewReceiptWithoutPayment} style={styles.saveButton}>
+                </Button>
+                <Button onClick={saveNewReceiptWithoutPayment} variant="success">
                   保存（未会計）
-                </button>
+                </Button>
               </div>
             </div>
           </div>

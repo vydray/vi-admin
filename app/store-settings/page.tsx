@@ -5,6 +5,7 @@ import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
 import LoadingSpinner from '@/components/LoadingSpinner'
+import Button from '@/components/Button'
 
 interface StoreSettings {
   store_name: string
@@ -772,21 +773,12 @@ export default function StoreSettingsPage() {
                   </label>
 
                   {settings.logo_url && (
-                    <button
+                    <Button
                       onClick={() => updateSetting('logo_url', '')}
-                      style={{
-                        padding: '8px 16px',
-                        backgroundColor: '#ef4444',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '5px',
-                        cursor: 'pointer',
-                        fontSize: '14px',
-                        fontWeight: '500'
-                      }}
+                      variant="danger"
                     >
                       削除
-                    </button>
+                    </Button>
                   )}
                 </div>
 
@@ -1177,22 +1169,13 @@ export default function StoreSettingsPage() {
               display: 'flex',
               justifyContent: 'flex-end'
             }}>
-              <button
+              <Button
                 onClick={saveSettings}
                 disabled={saving}
-                style={{
-                  padding: '12px 32px',
-                  backgroundColor: saving ? '#94a3b8' : '#10b981',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '8px',
-                  cursor: saving ? 'not-allowed' : 'pointer',
-                  fontSize: '15px',
-                  fontWeight: '600'
-                }}
+                variant="success"
               >
                 {saving ? '保存中...' : '設定を保存'}
-              </button>
+              </Button>
             </div>
           </>
         )}

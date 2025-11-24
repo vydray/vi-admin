@@ -6,6 +6,8 @@ import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
 import { useConfirm } from '@/contexts/ConfirmContext'
 import LoadingSpinner from '@/components/LoadingSpinner'
+import Button from '@/components/Button'
+import Modal from '@/components/Modal'
 
 interface Cast {
   id: number
@@ -646,53 +648,21 @@ export default function CastsPage() {
           </select>
         </div>
 
-        <button
-          onClick={applyFilters}
-          style={{
-            padding: '10px 24px',
-            backgroundColor: '#007AFF',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontSize: '14px',
-            fontWeight: 'bold'
-          }}
-        >
+        <Button onClick={applyFilters} variant="primary">
           検索
-        </button>
+        </Button>
 
-        <button
-          onClick={clearFilters}
-          style={{
-            padding: '10px 24px',
-            backgroundColor: '#f5f5f5',
-            color: '#333',
-            border: '1px solid #ddd',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontSize: '14px'
-          }}
-        >
+        <Button onClick={clearFilters} variant="outline">
           クリア
-        </button>
+        </Button>
 
-        <button
+        <Button
           onClick={openNewCastModal}
-          style={{
-            padding: '10px 24px',
-            backgroundColor: '#34C759',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontSize: '14px',
-            fontWeight: 'bold',
-            marginLeft: 'auto'
-          }}
+          variant="success"
+          style={{ marginLeft: 'auto' }}
         >
           ➕ 新規追加
-        </button>
+        </Button>
       </div>
 
       {loading ? (
@@ -820,24 +790,16 @@ export default function CastsPage() {
                   <td style={tdStyle}>{renderToggle(cast.id, 'is_admin', cast.is_admin)}</td>
                   <td style={tdStyle}>{renderToggle(cast.id, 'is_manager', cast.is_manager)}</td>
                   <td style={tdStyle}>
-                    <button
+                    <Button
                       onClick={(e) => {
                         e.stopPropagation()
                         handleDeleteCast(cast.id, cast.name)
                       }}
-                      style={{
-                        padding: '6px 12px',
-                        backgroundColor: '#FF3B30',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                        fontSize: '12px',
-                        fontWeight: 'bold'
-                      }}
+                      variant="danger"
+                      size="small"
                     >
                       削除
-                    </button>
+                    </Button>
                   </td>
                 </tr>
               ))}
@@ -851,13 +813,14 @@ export default function CastsPage() {
       </div>
 
       {/* 編集モーダル */}
-      {isModalOpen && editingCast && (
-        <div style={modalOverlayStyle} onClick={closeModal}>
-          <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
-            <h2 style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '20px' }}>
-              {editingCast.id === 0 ? 'キャスト新規追加' : 'キャスト情報編集'}
-            </h2>
-
+      <Modal
+        isOpen={isModalOpen && !!editingCast}
+        onClose={closeModal}
+        title={editingCast?.id === 0 ? 'キャスト新規追加' : 'キャスト情報編集'}
+        maxWidth="800px"
+      >
+        {editingCast && (
+          <>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
               <div>
                 <label style={labelStyle}>名前（源氏名）</label>
@@ -1095,38 +1058,29 @@ export default function CastsPage() {
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'space-between' }}>
               <div>
                 {editingCast.id !== 0 && (
-                  <button
+                  <Button
                     onClick={() => {
                       closeModal()
                       handleDeleteCast(editingCast.id, editingCast.name)
                     }}
-                    style={{
-                      padding: '10px 24px',
-                      backgroundColor: '#FF3B30',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '5px',
-                      fontSize: '14px',
-                      fontWeight: 'bold',
-                      cursor: 'pointer',
-                    }}
+                    variant="danger"
                   >
                     削除
-                  </button>
+                  </Button>
                 )}
               </div>
               <div style={{ display: 'flex', gap: '10px' }}>
-                <button onClick={closeModal} style={cancelButtonStyle}>
+                <Button onClick={closeModal} variant="outline">
                   キャンセル
-                </button>
-                <button onClick={handleSaveCast} style={saveButtonStyle}>
+                </Button>
+                <Button onClick={handleSaveCast} variant="primary">
                   {editingCast.id === 0 ? '作成' : '保存'}
-                </button>
+                </Button>
               </div>
             </div>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </Modal>
     </div>
   )
 }
