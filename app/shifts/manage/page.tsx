@@ -8,6 +8,7 @@ import { ja } from 'date-fns/locale'
 import { useStore } from '@/contexts/StoreContext'
 import { useConfirm } from '@/contexts/ConfirmContext'
 import { generateTimeOptions, formatShiftTime as formatShiftTimeUtil } from '@/lib/timeUtils'
+import { handleUnexpectedError, showErrorToast } from '@/lib/errorHandling'
 import LoadingSpinner from '@/components/LoadingSpinner'
 
 // Note: These types are defined locally because they don't match the centralized types in @/types
@@ -381,7 +382,7 @@ export default function ShiftManage() {
       toast.success('ロック設定を保存しました')
     } catch (error) {
       console.error('保存エラー:', error)
-      toast.success('保存中にエラーが発生しました')
+      toast.error('保存中にエラーが発生しました')
     } finally {
       setIsSaving(false)
     }
@@ -680,8 +681,7 @@ export default function ShiftManage() {
         }
       }
     } catch (error) {
-      console.error('Unexpected error:', error)
-      toast.success('予期しないエラーが発生しました')
+      handleUnexpectedError(error, { operation: 'シフトデータの保存' })
     }
   }
 
@@ -720,12 +720,11 @@ export default function ShiftManage() {
             setIsNewShift(false)
           }
         } catch (error) {
-          console.error('Unexpected error:', error)
-          toast.success('予期しないエラーが発生しました')
+          handleUnexpectedError(error, { operation: 'シフトデータの削除' })
         }
       }
     } else {
-      toast.success('削除するシフトが見つかりません')
+      showErrorToast('削除するシフトが見つかりません')
     }
   }
 

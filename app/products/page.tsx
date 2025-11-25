@@ -5,6 +5,7 @@ import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
 import { useConfirm } from '@/contexts/ConfirmContext'
+import { handleSupabaseError, handleUnexpectedError } from '@/lib/errorHandling'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
 import Modal from '@/components/Modal'
@@ -346,9 +347,7 @@ export default function ProductsPage() {
         .delete()
         .eq('store_id', storeId)
 
-      if (deleteError) {
-        toast.success('既存データの削除に失敗しました')
-        console.error(deleteError)
+      if (handleSupabaseError(deleteError, { operation: '既存データの削除' })) {
         return
       }
 
@@ -362,19 +361,16 @@ export default function ProductsPage() {
         .from('products')
         .insert(dataToInsert)
 
-      if (insertError) {
-        toast.success('データの登録に失敗しました')
-        console.error(insertError)
+      if (handleSupabaseError(insertError, { operation: 'データの登録' })) {
         return
       }
 
       // 成功
       await loadProducts()
       setShowImportModal(false)
-      toast.error(`インポート完了\n${validatedData.length}件の商品を登録しました`)
+      toast.success(`インポート完了\n${validatedData.length}件の商品を登録しました`)
     } catch (error) {
-      console.error('CSV読み込みエラー:', error)
-      toast.success('CSVファイルの読み込みに失敗しました')
+      handleUnexpectedError(error, { operation: 'CSVファイルの読み込み' })
     }
   }
 

@@ -5,6 +5,7 @@ import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
 import { useConfirm } from '@/contexts/ConfirmContext'
+import { handleSupabaseError } from '@/lib/errorHandling'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
 import Modal from '@/components/Modal'
@@ -62,8 +63,8 @@ export default function CastsPage() {
       .order('display_order', { ascending: true, nullsFirst: false })
       .order('name')
 
-    if (error) {
-      console.error('Error loading casts:', error)
+    if (handleSupabaseError(error, { operation: 'キャストの読み込み' })) {
+      // Error handled
     } else {
       setCasts(data || [])
     }
@@ -77,8 +78,8 @@ export default function CastsPage() {
       .eq('store_id', storeId)
       .order('name')
 
-    if (error) {
-      console.error('Error loading positions:', error)
+    if (handleSupabaseError(error, { operation: 'ポジションの読み込み' })) {
+      // Error handled
     } else {
       setPositions(data || [])
     }
@@ -218,9 +219,8 @@ export default function CastsPage() {
       .update({ [field]: value })
       .eq('id', castId)
 
-    if (error) {
-      console.error('Error updating cast:', error)
-      toast.success('更新に失敗しました')
+    if (handleSupabaseError(error, { operation: 'キャストの更新' })) {
+      // Error handled
     } else {
       // 成功したらリロード
       loadCasts()
@@ -299,9 +299,7 @@ export default function CastsPage() {
       .eq('store_id', storeId)
       .eq('name', trimmedName)
 
-    if (checkError) {
-      console.error('Error checking duplicate name:', checkError)
-      toast.error('名前の重複チェックに失敗しました')
+    if (handleSupabaseError(checkError, { operation: '名前の重複チェック' })) {
       return
     }
 
@@ -348,9 +346,8 @@ export default function CastsPage() {
           contract_documents: editingCast.contract_documents,
         })
 
-      if (error) {
-        console.error('Error creating cast:', error)
-        toast.error('作成に失敗しました')
+      if (handleSupabaseError(error, { operation: 'キャストの作成' })) {
+        // Error handled
       } else {
         toast.success('キャストを作成しました')
         closeModal()
@@ -376,9 +373,8 @@ export default function CastsPage() {
         })
         .eq('id', editingCast.id)
 
-      if (error) {
-        console.error('Error updating cast:', error)
-        toast.error('更新に失敗しました')
+      if (handleSupabaseError(error, { operation: 'キャストの更新' })) {
+        // Error handled
       } else {
         toast.success('キャストを更新しました')
         closeModal()

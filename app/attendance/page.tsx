@@ -8,6 +8,7 @@ import { ja } from 'date-fns/locale'
 import { useStore } from '@/contexts/StoreContext'
 import { useConfirm } from '@/contexts/ConfirmContext'
 import { generateTimeOptions } from '@/lib/timeUtils'
+import { handleUnexpectedError, showErrorToast } from '@/lib/errorHandling'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
 import type { CastBasic, Attendance, AttendanceStatus } from '@/types'
@@ -341,8 +342,7 @@ export default function AttendancePage() {
         }
       }
     } catch (error) {
-      console.error('Unexpected error:', error)
-      toast.success('予期しないエラーが発生しました')
+      handleUnexpectedError(error, { operation: '勤怠データの保存' })
     }
   }
 
@@ -375,12 +375,11 @@ export default function AttendancePage() {
             setEditingCell(null)
           }
         } catch (error) {
-          console.error('Unexpected error:', error)
-          toast.success('予期しないエラーが発生しました')
+          handleUnexpectedError(error, { operation: '勤怠データの削除' })
         }
       }
     } else {
-      toast.success('削除する勤怠記録が見つかりません')
+      showErrorToast('削除する勤怠記録が見つかりません')
     }
   }
 
