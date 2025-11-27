@@ -995,7 +995,9 @@ export default function CastsPage() {
                       </svg>
                     ) : (
                       <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="#666" strokeWidth="1.5">
-                        <line x1="4" y1="10" x2="16" y2="10" />
+                        <ellipse cx="10" cy="10" rx="6" ry="3.5" />
+                        <circle cx="10" cy="10" r="2" fill="#666" />
+                        <line x1="3" y1="17" x2="17" y2="3" />
                       </svg>
                     )}
                   </button>
@@ -1046,7 +1048,9 @@ export default function CastsPage() {
                       </svg>
                     ) : (
                       <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="#666" strokeWidth="1.5">
-                        <line x1="4" y1="10" x2="16" y2="10" />
+                        <ellipse cx="10" cy="10" rx="6" ry="3.5" />
+                        <circle cx="10" cy="10" r="2" fill="#666" />
+                        <line x1="3" y1="17" x2="17" y2="3" />
                       </svg>
                     )}
                   </button>
