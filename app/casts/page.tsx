@@ -983,14 +983,13 @@ export default function CastsPage() {
                       background: 'none',
                       border: 'none',
                       cursor: 'pointer',
-                      fontSize: '18px',
-                      padding: '4px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center'
+                      fontSize: '12px',
+                      padding: '4px 8px',
+                      color: '#666',
+                      textDecoration: 'underline'
                     }}
                   >
-                    {showTwitterPassword ? '👁️' : '👁️‍🗨️'}
+                    {showTwitterPassword ? '非表示' : '表示'}
                   </button>
                 </div>
               </div>
@@ -1027,14 +1026,13 @@ export default function CastsPage() {
                       background: 'none',
                       border: 'none',
                       cursor: 'pointer',
-                      fontSize: '18px',
-                      padding: '4px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center'
+                      fontSize: '12px',
+                      padding: '4px 8px',
+                      color: '#666',
+                      textDecoration: 'underline'
                     }}
                   >
-                    {showInstagramPassword ? '👁️' : '👁️‍🗨️'}
+                    {showInstagramPassword ? '非表示' : '表示'}
                   </button>
                 </div>
               </div>
