@@ -45,6 +45,33 @@ export interface CastBasic {
   name: string
 }
 
+// Optimized Cast type for list view (only fields actually displayed/used in UI)
+export interface CastListView {
+  id: number
+  name: string
+  employee_name: string | null
+  birthday: string | null
+  status: string | null
+  attributes: string | null
+  experience_date: string | null
+  hire_date: string | null
+  resignation_date: string | null
+  hourly_wage: number
+  commission_rate: number
+  residence_record: boolean | null
+  attendance_certificate: boolean | null
+  contract_documents: boolean | null
+  password: string | null
+  password2: string | null
+  twitter: string | null
+  instagram: string | null
+  show_in_pos: boolean
+  is_active: boolean
+  is_admin: boolean
+  is_manager: boolean
+  display_order?: number | null
+}
+
 // Cast type for POS operations
 export interface CastPOS {
   id: number

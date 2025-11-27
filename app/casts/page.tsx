@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useCallback } from 'react'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
@@ -9,12 +9,12 @@ import { handleSupabaseError } from '@/lib/errorHandling'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
 import Modal from '@/components/Modal'
-import type { Cast, CastPosition } from '@/types'
+import type { Cast, CastListView, CastPosition } from '@/types'
 
 export default function CastsPage() {
   const { storeId } = useStore()
   const { confirm } = useConfirm()
-  const [casts, setCasts] = useState<Cast[]>([])
+  const [casts, setCasts] = useState<CastListView[]>([])
   const [loading, setLoading] = useState(true)
   const [positions, setPositions] = useState<CastPosition[]>([])
 
@@ -38,7 +38,7 @@ export default function CastsPage() {
   const [adminFilter, setAdminFilter] = useState<string>('')
   const [managerFilter, setManagerFilter] = useState<string>('')
 
-  const [sortField, setSortField] = useState<keyof Cast | null>(null)
+  const [sortField, setSortField] = useState<keyof CastListView | null>(null)
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
 
   // モーダル状態
@@ -49,16 +49,11 @@ export default function CastsPage() {
   const [draggedCastId, setDraggedCastId] = useState<number | null>(null)
   const [dragOverCastId, setDragOverCastId] = useState<number | null>(null)
 
-  useEffect(() => {
-    loadCasts()
-    loadPositions()
-  }, [storeId])
-
-  const loadCasts = async () => {
+  const loadCasts = useCallback(async () => {
     setLoading(true)
     const { data, error } = await supabase
       .from('casts')
-      .select('id, line_number, name, twitter, password, instagram, password2, attendance_certificate, residence_record, contract_documents, submission_contract, employee_name, attributes, status, sales_previous_day, experience_date, hire_date, resignation_date, created_at, updated_at, store_id, show_in_pos, birthday, line_user_id, hourly_wage, commission_rate, is_admin, is_manager, line_msg_user_id, line_msg_state, line_msg_registered_at, is_active, display_order')
+      .select('id, name, employee_name, birthday, status, attributes, experience_date, hire_date, resignation_date, hourly_wage, commission_rate, residence_record, attendance_certificate, contract_documents, password, password2, twitter, instagram, show_in_pos, is_active, is_admin, is_manager, display_order')
       .eq('store_id', storeId)
       .order('display_order', { ascending: true, nullsFirst: false })
       .order('name')
@@ -69,9 +64,9 @@ export default function CastsPage() {
       setCasts(data || [])
     }
     setLoading(false)
-  }
+  }, [storeId])
 
-  const loadPositions = async () => {
+  const loadPositions = useCallback(async () => {
     const { data, error } = await supabase
       .from('cast_positions')
       .select('id, name, store_id')
@@ -83,9 +78,14 @@ export default function CastsPage() {
     } else {
       setPositions(data || [])
     }
-  }
+  }, [storeId])
 
-  const applyFilters = () => {
+  useEffect(() => {
+    loadCasts()
+    loadPositions()
+  }, [loadCasts, loadPositions])
+
+  const applyFilters = useCallback(() => {
     setSearchQuery(tempSearchQuery)
     setStatusFilter(tempStatusFilter)
     setAttributeFilter(tempAttributeFilter)
@@ -94,9 +94,9 @@ export default function CastsPage() {
     setPosFilter(tempPosFilter)
     setAdminFilter(tempAdminFilter)
     setManagerFilter(tempManagerFilter)
-  }
+  }, [tempSearchQuery, tempStatusFilter, tempAttributeFilter, tempDocumentFilter, tempActiveFilter, tempPosFilter, tempAdminFilter, tempManagerFilter])
 
-  const clearFilters = () => {
+  const clearFilters = useCallback(() => {
     setTempSearchQuery('')
     setTempStatusFilter('')
     setTempAttributeFilter('')
@@ -115,7 +115,7 @@ export default function CastsPage() {
     setManagerFilter('')
     setSortField(null)
     setSortDirection('asc')
-  }
+  }, [])
 
   // フィルタリングとソートをメモ化
   const filteredCasts = useMemo(() => {
@@ -204,16 +204,16 @@ export default function CastsPage() {
   const uniqueStatuses = Array.from(new Set(casts.map(c => c.status).filter((s): s is string => s !== null && s !== undefined)))
   const uniqueAttributes = Array.from(new Set(casts.map(c => c.attributes).filter((attr): attr is string => attr !== null && attr !== undefined)))
 
-  const handleSort = (field: keyof Cast) => {
+  const handleSort = useCallback((field: keyof CastListView) => {
     if (sortField === field) {
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
     } else {
       setSortField(field)
       setSortDirection('asc')
     }
-  }
+  }, [sortField, sortDirection])
 
-  const updateCastField = async (castId: number, field: string, value: boolean) => {
+  const updateCastField = useCallback(async (castId: number, field: string, value: boolean) => {
     const { error } = await supabase
       .from('casts')
       .update({ [field]: value })
@@ -225,14 +225,28 @@ export default function CastsPage() {
       // 成功したらリロード
       loadCasts()
     }
-  }
+  }, [loadCasts])
 
-  const openEditModal = (cast: Cast) => {
-    setEditingCast({ ...cast })
+  const openEditModal = useCallback((cast: CastListView) => {
+    // CastListView から Cast に変換（削除されたフィールドにデフォルト値を設定）
+    const fullCast: Cast = {
+      ...cast,
+      line_number: null,
+      line_user_id: null,
+      line_msg_user_id: null,
+      line_msg_state: null,
+      line_msg_registered_at: null,
+      submission_contract: null,
+      sales_previous_day: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      store_id: storeId,
+    }
+    setEditingCast(fullCast)
     setIsModalOpen(true)
-  }
+  }, [storeId])
 
-  const openNewCastModal = () => {
+  const openNewCastModal = useCallback(() => {
     // 新規キャストのデフォルト値を設定
     const newCast: Cast = {
       id: 0, // 新規作成時は0（保存時は無視される）
@@ -270,14 +284,14 @@ export default function CastsPage() {
     }
     setEditingCast(newCast)
     setIsModalOpen(true)
-  }
+  }, [storeId])
 
-  const closeModal = () => {
+  const closeModal = useCallback(() => {
     setIsModalOpen(false)
     setEditingCast(null)
-  }
+  }, [])
 
-  const handleSaveCast = async () => {
+  const handleSaveCast = useCallback(async () => {
     if (!editingCast) return
 
     // 名前の空白をトリム
@@ -381,14 +395,14 @@ export default function CastsPage() {
         loadCasts()
       }
     }
-  }
+  }, [editingCast, storeId, closeModal, loadCasts])
 
-  const handleDeleteCast = async (castId: number, castName: string) => {
+  const handleDeleteCast = useCallback(async (castId: number, castName: string) => {
     if (!await confirm(`${castName}を削除してもよろしいですか？\nこの操作は取り消せません。`)) {
       return
     }
 
-    const { error } = await supabase
+    const { error} = await supabase
       .from('casts')
       .delete()
       .eq('id', castId)
@@ -399,13 +413,13 @@ export default function CastsPage() {
     } else {
       loadCasts()
     }
-  }
+  }, [confirm, loadCasts])
 
-  const handleFieldChange = (field: keyof Cast, value: any) => {
+  const handleFieldChange = useCallback((field: keyof Cast, value: any) => {
     if (editingCast) {
       setEditingCast({ ...editingCast, [field]: value })
     }
-  }
+  }, [editingCast])
 
   // ドラッグ&ドロップハンドラー
   const handleDragStart = (e: React.DragEvent, castId: number) => {
