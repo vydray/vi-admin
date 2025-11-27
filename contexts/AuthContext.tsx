@@ -3,6 +3,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
+import { supabase } from '@/lib/supabase'
 import type { AdminUser, AuthContextType } from '@/types'
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -45,6 +46,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const data = await response.json()
 
       if (response.ok) {
+        // Supabase Authセッションをセット（RLS用）
+        if (data.session) {
+          await supabase.auth.setSession({
+            access_token: data.session.access_token,
+            refresh_token: data.session.refresh_token,
+          })
+        }
+
         setUser(data.user)
         toast.success('ログインしました')
         router.push('/')
@@ -62,6 +71,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     try {
+      // Supabase Authからもサインアウト（RLS用）
+      await supabase.auth.signOut()
+
       await fetch('/api/auth/logout', { method: 'POST' })
       setUser(null)
       toast.success('ログアウトしました')

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { getSupabaseServerClient, getSupabaseAuthClient } from '@/lib/supabase'
 import bcrypt from 'bcryptjs'
 import { cookies } from 'next/headers'
 
@@ -13,6 +13,8 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
+
+    const supabase = getSupabaseServerClient()
 
     // admin_usersテーブルからユーザーを検索
     const { data: user, error } = await supabase
@@ -46,6 +48,68 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // store_idが設定されていない場合はエラー
+    if (!user.store_id) {
+      return NextResponse.json(
+        { error: '店舗が設定されていません。管理者に連絡してください。' },
+        { status: 403 }
+      )
+    }
+
+    // === Supabase Auth連携（RLS用） ===
+    const authSecret = process.env.SUPABASE_AUTH_SECRET
+    let session: { access_token: string; refresh_token: string } | null = null
+
+    if (authSecret) {
+      const email = `admin_${user.id}@internal.local`
+
+      // 既存のSupabase Authユーザーを確認
+      const { data: existingUsers } = await supabase.auth.admin.listUsers()
+      const existingUser = existingUsers?.users?.find((u: { email?: string }) => u.email === email)
+
+      if (!existingUser) {
+        // 初回：Supabase Authユーザーを作成
+        const { error: createError } = await supabase.auth.admin.createUser({
+          email,
+          password: authSecret,
+          email_confirm: true,
+          app_metadata: {
+            store_id: user.store_id,
+            user_id: user.id,
+            role: user.role,
+            app: 'vi-admin'
+          }
+        })
+        if (createError) {
+          console.error('Auth user creation failed:', createError)
+        }
+      } else {
+        // 既存ユーザー：app_metadataを更新
+        await supabase.auth.admin.updateUserById(existingUser.id, {
+          app_metadata: {
+            store_id: user.store_id,
+            user_id: user.id,
+            role: user.role,
+            app: 'vi-admin'
+          }
+        })
+      }
+
+      // セッションを作成（anon keyのクライアントでsignIn）
+      const authClient = getSupabaseAuthClient()
+      const { data: signInData, error: signInError } = await authClient.auth.signInWithPassword({
+        email,
+        password: authSecret
+      })
+
+      if (!signInError && signInData.session) {
+        session = {
+          access_token: signInData.session.access_token,
+          refresh_token: signInData.session.refresh_token
+        }
+      }
+    }
+
     // セッションをCookieに保存（パスワードハッシュは含めない）
     const sessionData = {
       id: user.id,
@@ -66,6 +130,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       user: sessionData,
+      session, // Supabase Authセッション（RLS用）
     })
   } catch (error) {
     console.error('ログインエラー:', error)
