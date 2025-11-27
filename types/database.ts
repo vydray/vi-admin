@@ -61,10 +61,10 @@ export interface CastListView {
   residence_record: boolean | null
   attendance_certificate: boolean | null
   contract_documents: boolean | null
-  password: string | null
-  password2: string | null
   twitter: string | null
+  password: string | null
   instagram: string | null
+  password2: string | null
   show_in_pos: boolean
   is_active: boolean
   is_admin: boolean

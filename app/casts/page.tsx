@@ -53,7 +53,7 @@ export default function CastsPage() {
     setLoading(true)
     const { data, error } = await supabase
       .from('casts')
-      .select('id, name, employee_name, birthday, status, attributes, experience_date, hire_date, resignation_date, hourly_wage, commission_rate, residence_record, attendance_certificate, contract_documents, password, password2, twitter, instagram, show_in_pos, is_active, is_admin, is_manager, display_order')
+      .select('id, name, employee_name, birthday, status, attributes, experience_date, hire_date, resignation_date, hourly_wage, commission_rate, residence_record, attendance_certificate, contract_documents, twitter, password, instagram, password2, show_in_pos, is_active, is_admin, is_manager, display_order')
       .eq('store_id', storeId)
       .order('display_order', { ascending: true, nullsFirst: false })
       .order('name')
