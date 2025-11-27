@@ -983,13 +983,21 @@ export default function CastsPage() {
                       background: 'none',
                       border: 'none',
                       cursor: 'pointer',
-                      fontSize: '12px',
-                      padding: '4px 8px',
-                      color: '#666',
-                      textDecoration: 'underline'
+                      padding: '4px',
+                      display: 'flex',
+                      alignItems: 'center'
                     }}
                   >
-                    {showTwitterPassword ? '非表示' : '表示'}
+                    {showTwitterPassword ? (
+                      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="#666" strokeWidth="1.5">
+                        <ellipse cx="10" cy="10" rx="6" ry="3.5" />
+                        <circle cx="10" cy="10" r="2" fill="#666" />
+                      </svg>
+                    ) : (
+                      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="#666" strokeWidth="1.5">
+                        <line x1="4" y1="10" x2="16" y2="10" />
+                      </svg>
+                    )}
                   </button>
                 </div>
               </div>
@@ -1026,13 +1034,21 @@ export default function CastsPage() {
                       background: 'none',
                       border: 'none',
                       cursor: 'pointer',
-                      fontSize: '12px',
-                      padding: '4px 8px',
-                      color: '#666',
-                      textDecoration: 'underline'
+                      padding: '4px',
+                      display: 'flex',
+                      alignItems: 'center'
                     }}
                   >
-                    {showInstagramPassword ? '非表示' : '表示'}
+                    {showInstagramPassword ? (
+                      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="#666" strokeWidth="1.5">
+                        <ellipse cx="10" cy="10" rx="6" ry="3.5" />
+                        <circle cx="10" cy="10" r="2" fill="#666" />
+                      </svg>
+                    ) : (
+                      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="#666" strokeWidth="1.5">
+                        <line x1="4" y1="10" x2="16" y2="10" />
+                      </svg>
+                    )}
                   </button>
                 </div>
               </div>
