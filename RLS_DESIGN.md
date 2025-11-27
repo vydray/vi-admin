@@ -798,6 +798,64 @@ FOR ALL USING (
 
 ---
 
+## vi-admin用の追加ポリシー（anon key対応）
+
+### 背景
+
+vi-adminは**カスタム認証**（bcrypt + Cookie）を使用しており、Supabase Authを使用していない。
+そのため、`auth.jwt()`が機能せず、RLSポリシーによってデータアクセスが拒否される。
+
+### 解決策
+
+vi-adminは管理画面であり、すでにアプリレベルでログイン認証が実装されている。
+そのため、**anon roleに対して全アクセスを許可する追加ポリシー**を作成することで、
+既存のRLSポリシー（Supabase Auth用）を維持しつつ、vi-adminからのアクセスを許可する。
+
+### セキュリティ考慮
+
+| システム | 認証方式 | RLSの扱い |
+|---------|---------|----------|
+| **vi-admin** | カスタム認証（bcrypt） | anon roleで全アクセス許可 |
+| **シフトアプリ** | Supabase Auth（LINE連携） | auth.jwt()で店舗別制限 |
+| **POS** | Supabase Auth | auth.jwt()で店舗別制限 |
+
+**リスク軽減:**
+- vi-adminにはログイン認証がある（admin_usersテーブル）
+- PC専用アプリで、社内利用のみ
+- anon keyが漏洩しても、vi-adminのログインが必要
+
+### 追加ポリシーSQL
+
+以下のSQLを実行してvi-admin用のポリシーを追加：
+
+**ファイル:** `scripts/rls-add-anon-policy.sql`
+
+```sql
+-- vi-admin用の追加ポリシー（anon roleでもアクセス可能）
+CREATE POLICY "allow_anon_all" ON casts
+FOR ALL TO anon USING (true) WITH CHECK (true);
+
+-- 他のテーブルも同様...
+```
+
+### 実行方法
+
+1. Supabase Dashboard → **SQL Editor** に移動
+2. `scripts/rls-add-anon-policy.sql` の内容を貼り付け
+3. **Run** をクリック
+
+### 確認方法
+
+```sql
+-- anon用ポリシーが作成されたか確認
+SELECT tablename, policyname, roles
+FROM pg_policies
+WHERE schemaname = 'public' AND policyname = 'allow_anon_all'
+ORDER BY tablename;
+```
+
+---
+
 ## 更新履歴
 
 | 日付 | 変更内容 |
@@ -806,3 +864,4 @@ FOR ALL USING (
 | 2025-11-28 | 全テーブルRLSポリシーSQL追加 |
 | 2025-11-28 | 具体的な実装ガイド追加（コード例含む） |
 | 2025-11-28 | 将来の給料明細RLS設計を追加 |
+| 2025-11-28 | vi-admin用anon追加ポリシー追加 |
