@@ -44,6 +44,8 @@ export default function CastsPage() {
   // モーダル状態
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingCast, setEditingCast] = useState<Cast | null>(null)
+  const [showTwitterPassword, setShowTwitterPassword] = useState(false)
+  const [showInstagramPassword, setShowInstagramPassword] = useState(false)
 
   // ドラッグ&ドロップ状態
   const [draggedCastId, setDraggedCastId] = useState<number | null>(null)
@@ -243,6 +245,8 @@ export default function CastsPage() {
       store_id: storeId,
     }
     setEditingCast(fullCast)
+    setShowTwitterPassword(false)
+    setShowInstagramPassword(false)
     setIsModalOpen(true)
   }, [storeId])
 
@@ -283,12 +287,16 @@ export default function CastsPage() {
       is_active: true,
     }
     setEditingCast(newCast)
+    setShowTwitterPassword(false)
+    setShowInstagramPassword(false)
     setIsModalOpen(true)
   }, [storeId])
 
   const closeModal = useCallback(() => {
     setIsModalOpen(false)
     setEditingCast(null)
+    setShowTwitterPassword(false)
+    setShowInstagramPassword(false)
   }, [])
 
   const handleSaveCast = useCallback(async () => {
@@ -956,13 +964,35 @@ export default function CastsPage() {
 
               <div>
                 <label style={labelStyle}>Twitterパスワード</label>
-                <input
-                  type="password"
-                  value={editingCast.password || ''}
-                  onChange={(e) => handleFieldChange('password', e.target.value)}
-                  style={inputStyle}
-                  placeholder="Twitterのパスワード"
-                />
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type={showTwitterPassword ? 'text' : 'password'}
+                    value={editingCast.password || ''}
+                    onChange={(e) => handleFieldChange('password', e.target.value)}
+                    style={inputStyle}
+                    placeholder="Twitterのパスワード"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowTwitterPassword(!showTwitterPassword)}
+                    style={{
+                      position: 'absolute',
+                      right: '10px',
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      fontSize: '18px',
+                      padding: '4px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}
+                  >
+                    {showTwitterPassword ? '👁️' : '👁️‍🗨️'}
+                  </button>
+                </div>
               </div>
 
               <div>
@@ -978,13 +1008,35 @@ export default function CastsPage() {
 
               <div>
                 <label style={labelStyle}>Instagramパスワード</label>
-                <input
-                  type="password"
-                  value={editingCast.password2 || ''}
-                  onChange={(e) => handleFieldChange('password2', e.target.value)}
-                  style={inputStyle}
-                  placeholder="Instagramのパスワード"
-                />
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type={showInstagramPassword ? 'text' : 'password'}
+                    value={editingCast.password2 || ''}
+                    onChange={(e) => handleFieldChange('password2', e.target.value)}
+                    style={inputStyle}
+                    placeholder="Instagramのパスワード"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowInstagramPassword(!showInstagramPassword)}
+                    style={{
+                      position: 'absolute',
+                      right: '10px',
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      fontSize: '18px',
+                      padding: '4px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}
+                  >
+                    {showInstagramPassword ? '👁️' : '👁️‍🗨️'}
+                  </button>
+                </div>
               </div>
             </div>
 
