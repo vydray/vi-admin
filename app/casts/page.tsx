@@ -349,7 +349,9 @@ export default function CastsPage() {
           hourly_wage: editingCast.hourly_wage,
           commission_rate: editingCast.commission_rate,
           twitter: editingCast.twitter,
+          password: editingCast.password,
           instagram: editingCast.instagram,
+          password2: editingCast.password2,
           store_id: storeId,
           show_in_pos: editingCast.show_in_pos,
           is_active: editingCast.is_active,
@@ -383,7 +385,9 @@ export default function CastsPage() {
           hourly_wage: editingCast.hourly_wage,
           commission_rate: editingCast.commission_rate,
           twitter: editingCast.twitter,
+          password: editingCast.password,
           instagram: editingCast.instagram,
+          password2: editingCast.password2,
         })
         .eq('id', editingCast.id)
 
@@ -946,6 +950,18 @@ export default function CastsPage() {
                   value={editingCast.twitter || ''}
                   onChange={(e) => handleFieldChange('twitter', e.target.value)}
                   style={inputStyle}
+                  placeholder="@ユーザー名"
+                />
+              </div>
+
+              <div>
+                <label style={labelStyle}>Twitterパスワード</label>
+                <input
+                  type="password"
+                  value={editingCast.password || ''}
+                  onChange={(e) => handleFieldChange('password', e.target.value)}
+                  style={inputStyle}
+                  placeholder="Twitterのパスワード"
                 />
               </div>
 
@@ -956,6 +972,18 @@ export default function CastsPage() {
                   value={editingCast.instagram || ''}
                   onChange={(e) => handleFieldChange('instagram', e.target.value)}
                   style={inputStyle}
+                  placeholder="@ユーザー名"
+                />
+              </div>
+
+              <div>
+                <label style={labelStyle}>Instagramパスワード</label>
+                <input
+                  type="password"
+                  value={editingCast.password2 || ''}
+                  onChange={(e) => handleFieldChange('password2', e.target.value)}
+                  style={inputStyle}
+                  placeholder="Instagramのパスワード"
                 />
               </div>
             </div>
