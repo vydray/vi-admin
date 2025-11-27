@@ -356,9 +356,15 @@ SUPABASE_SERVICE_KEY=<your-supabase-service-role-key>
 
 ## セットアップ
 
+### 開発環境
+
 ```bash
 # 依存関係インストール
 npm install
+
+# 環境変数の設定
+cp .env.example .env.local
+# .env.localを編集してSupabaseの認証情報を設定
 
 # 開発サーバー起動
 npm run dev
@@ -366,6 +372,15 @@ npm run dev
 # ブラウザで開く
 # http://localhost:3000
 ```
+
+### 本番環境
+
+本番環境へのデプロイ方法については、[DEPLOYMENT.md](./DEPLOYMENT.md)を参照してください。
+
+**現在の本番環境:**
+- URL: https://vi-admin-psi.vercel.app/
+- ホスティング: Vercel
+- データベース: Supabase (共有)
 
 ## 実装済み機能
 
