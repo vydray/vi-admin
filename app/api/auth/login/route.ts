@@ -48,13 +48,16 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // store_idが設定されていない場合はエラー
-    if (!user.store_id) {
+    // store_adminの場合、store_idが必須
+    if (user.role === 'store_admin' && !user.store_id) {
       return NextResponse.json(
         { error: '店舗が設定されていません。管理者に連絡してください。' },
         { status: 403 }
       )
     }
+
+    // super_adminの場合はstore_id=nullでも許可（全店舗アクセス可能）
+    const isAllStore = user.role === 'super_admin'
 
     // === Supabase Auth連携（RLS用） ===
     const authSecret = process.env.SUPABASE_AUTH_SECRET
@@ -115,7 +118,8 @@ export async function POST(request: NextRequest) {
       id: user.id,
       username: user.username,
       role: user.role,
-      store_id: user.store_id,
+      storeId: user.store_id || 1, // super_adminの場合はデフォルト店舗1
+      isAllStore, // super_adminは全店舗アクセス可能
     }
 
     const cookieStore = await cookies()
