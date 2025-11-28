@@ -798,61 +798,86 @@ FOR ALL USING (
 
 ---
 
-## vi-admin用の追加ポリシー（anon key対応）
+## vi-admin用RLSポリシー（現在の設定）
 
-### 背景
+### 背景と試行錯誤
 
-vi-adminは**カスタム認証**（bcrypt + Cookie）を使用しており、Supabase Authを使用していない。
-そのため、`auth.jwt()`が機能せず、RLSポリシーによってデータアクセスが拒否される。
+vi-adminは**カスタム認証**（bcrypt + Cookie）+ **Supabase Auth連携**を使用。
 
-### 解決策
+**試行1: `TO anon`ポリシー** → ❌ 失敗
+- vi-adminはSupabase Authでログインしているため、`authenticated`ロールで接続
+- `TO anon`ポリシーは`anon`ロールにのみ適用されるため、機能しなかった
 
-vi-adminは管理画面であり、すでにアプリレベルでログイン認証が実装されている。
-そのため、**anon roleに対して全アクセスを許可する追加ポリシー**を作成することで、
-既存のRLSポリシー（Supabase Auth用）を維持しつつ、vi-adminからのアクセスを許可する。
+**試行2: `TO public`ポリシー（全ロール対象）** → ✅ 成功
+- `TO`句なしでポリシーを作成すると`{public}`（全ロール）に適用される
+- `anon`も`authenticated`も両方アクセス可能
+
+### 現在の設定（2025-11-28）
+
+全テーブルに以下のポリシーが適用済み：
+
+```sql
+-- 全ロール許可ポリシー（TOなし = {public}）
+CREATE POLICY "allow_all_access" ON [table_name]
+FOR ALL USING (true) WITH CHECK (true);
+```
 
 ### セキュリティ考慮
 
 | システム | 認証方式 | RLSの扱い |
 |---------|---------|----------|
-| **vi-admin** | カスタム認証（bcrypt） | anon roleで全アクセス許可 |
-| **シフトアプリ** | Supabase Auth（LINE連携） | auth.jwt()で店舗別制限 |
-| **POS** | Supabase Auth | auth.jwt()で店舗別制限 |
+| **vi-admin** | bcrypt + Supabase Auth | `allow_all_access`で全アクセス許可 |
+| **シフトアプリ** | Supabase Auth（LINE連携） | 将来：auth.jwt()で店舗別制限 |
+| **POS** | Supabase Auth | 将来：auth.jwt()で店舗別制限 |
 
 **リスク軽減:**
 - vi-adminにはログイン認証がある（admin_usersテーブル）
 - PC専用アプリで、社内利用のみ
 - anon keyが漏洩しても、vi-adminのログインが必要
 
-### 追加ポリシーSQL
-
-以下のSQLを実行してvi-admin用のポリシーを追加：
-
-**ファイル:** `scripts/rls-add-anon-policy.sql`
+### 適用済みポリシーSQL
 
 ```sql
--- vi-admin用の追加ポリシー（anon roleでもアクセス可能）
-CREATE POLICY "allow_anon_all" ON casts
-FOR ALL TO anon USING (true) WITH CHECK (true);
-
--- 他のテーブルも同様...
+-- 全テーブルに適用済み（25テーブル）
+DO $$
+DECLARE
+    t TEXT;
+    tables TEXT[] := ARRAY['casts', 'stores', 'system_settings', 'orders', 'order_items',
+        'attendance', 'products', 'payments', 'shifts', 'admin_users', 'users',
+        'current_order_items', 'table_status', 'monthly_targets', 'product_categories',
+        'store_settings', 'cast_positions', 'attendance_statuses', 'shift_requests',
+        'shift_locks', 'store_line_configs', 'line_register_requests',
+        'admin_emergency_logins', 'cash_counts', 'daily_reports'];
+BEGIN
+    FOREACH t IN ARRAY tables LOOP
+        EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
+        EXECUTE format('DROP POLICY IF EXISTS "allow_anon_all" ON %I', t);
+        EXECUTE format('CREATE POLICY "allow_all_access" ON %I FOR ALL USING (true) WITH CHECK (true)', t);
+    END LOOP;
+END $$;
 ```
-
-### 実行方法
-
-1. Supabase Dashboard → **SQL Editor** に移動
-2. `scripts/rls-add-anon-policy.sql` の内容を貼り付け
-3. **Run** をクリック
 
 ### 確認方法
 
 ```sql
--- anon用ポリシーが作成されたか確認
 SELECT tablename, policyname, roles
 FROM pg_policies
-WHERE schemaname = 'public' AND policyname = 'allow_anon_all'
+WHERE schemaname = 'public'
 ORDER BY tablename;
 ```
+
+### 将来の店舗別RLS（シフトアプリ・POS用）
+
+他アプリ完成時に、店舗別制限ポリシーを**追加**する：
+
+```sql
+-- 例：castsテーブルに店舗別制限を追加
+CREATE POLICY "casts_store_restriction" ON casts
+FOR ALL TO authenticated
+USING (store_id = (auth.jwt() -> 'app_metadata' ->> 'store_id')::integer);
+```
+
+`allow_all_access`と併存させることで、vi-adminは引き続き全データアクセス可能。
 
 ---
 
@@ -866,3 +891,5 @@ ORDER BY tablename;
 | 2025-11-28 | 将来の給料明細RLS設計を追加 |
 | 2025-11-28 | vi-admin用anon追加ポリシー追加 |
 | 2025-11-28 | **anon追加ポリシー実行完了**（25テーブル） |
+| 2025-11-28 | ❌ `TO anon`ポリシー失敗（authenticated roleで接続していた） |
+| 2025-11-28 | ✅ `allow_all_access`ポリシー（{public}）で解決 |
