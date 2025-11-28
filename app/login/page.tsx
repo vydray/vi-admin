@@ -165,25 +165,6 @@ export default function LoginPage() {
           </button>
         </form>
 
-        {/* フッター情報 */}
-        <div
-          style={{
-            marginTop: '30px',
-            padding: '15px',
-            backgroundColor: '#f9fafb',
-            borderRadius: '8px',
-            fontSize: '13px',
-            color: '#666',
-          }}
-        >
-          <p style={{ margin: '0 0 8px 0', fontWeight: '500' }}>
-            デフォルトアカウント:
-          </p>
-          <ul style={{ margin: 0, paddingLeft: '20px' }}>
-            <li>ユーザー名: admin</li>
-            <li>パスワード: password123</li>
-          </ul>
-        </div>
       </div>
 
       {/* ローディングオーバーレイ */}
