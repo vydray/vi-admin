@@ -593,7 +593,7 @@ export default function ShiftManage() {
   }
 
   const addShift = () => {
-    setTempTime({ start: '19:00', end: '23:30' })
+    setTempTime({ start: '18:00', end: '24:00' })
   }
 
   const saveShift = async () => {
