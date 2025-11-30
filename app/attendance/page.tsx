@@ -73,12 +73,18 @@ export default function AttendancePage() {
   const loadAttendanceStatuses = useCallback(async () => {
     const { data, error } = await supabase
       .from('attendance_statuses')
-      .select('id, name, color, is_active, order_index, store_id')
+      .select('id, status_name, color, display_order, store_id')
       .eq('store_id', storeId)
-      .order('order_index')
+      .order('display_order')
 
     if (!error && data) {
-      setAttendanceStatuses(data)
+      // status_name を name としてマッピング、is_active はデフォルトtrue
+      setAttendanceStatuses(data.map(s => ({
+        ...s,
+        name: s.status_name,
+        is_active: true,
+        order_index: s.display_order
+      })))
     }
   }, [storeId])
 
@@ -110,10 +116,9 @@ export default function AttendancePage() {
     const { error } = await supabase
       .from('attendance_statuses')
       .insert({
-        name: newStatusName.trim(),
+        status_name: newStatusName.trim(),
         color: newStatusColor,
-        is_active: false,
-        order_index: attendanceStatuses.length,
+        display_order: attendanceStatuses.length,
         store_id: storeId
       })
 
@@ -144,7 +149,7 @@ export default function AttendancePage() {
     const { error } = await supabase
       .from('attendance_statuses')
       .update({
-        name: newStatusName.trim(),
+        status_name: newStatusName.trim(),
         color: newStatusColor
       })
       .eq('id', editingStatus.id)
@@ -158,15 +163,9 @@ export default function AttendancePage() {
     }
   }
 
-  const toggleStatusActive = async (statusId: string, currentActive: boolean) => {
-    const { error } = await supabase
-      .from('attendance_statuses')
-      .update({ is_active: !currentActive })
-      .eq('id', statusId)
-
-    if (!error) {
-      await loadAttendanceStatuses()
-    }
+  // Note: is_activeカラムは現在のDBスキーマに存在しないため、この機能は無効化
+  const toggleStatusActive = async (_statusId: string, _currentActive: boolean) => {
+    toast.error('この機能は現在利用できません')
   }
 
   const deleteAttendanceStatus = async (statusId: string) => {
