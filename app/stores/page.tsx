@@ -20,6 +20,36 @@ interface NewStoreForm {
   store_code: string
   pos_username: string
   pos_password: string
+  admin_username: string
+  admin_password: string
+}
+
+interface PosUser {
+  id: number
+  username: string
+  password: string
+  role: string
+  is_active: boolean
+}
+
+interface AdminUser {
+  id: number
+  username: string
+  role: string
+  is_active: boolean
+}
+
+interface StoreCredentials {
+  posUsers: PosUser[]
+  adminUsers: AdminUser[]
+}
+
+interface EditingCredentials {
+  storeId: number
+  type: 'pos' | 'admin'
+  userId: number
+  username: string
+  password: string
 }
 
 export default function StoresPage() {
@@ -30,11 +60,17 @@ export default function StoresPage() {
   const [saving, setSaving] = useState(false)
   const [showAddForm, setShowAddForm] = useState(false)
   const [editingStore, setEditingStore] = useState<Store | null>(null)
+  const [expandedStoreId, setExpandedStoreId] = useState<number | null>(null)
+  const [storeCredentials, setStoreCredentials] = useState<{ [storeId: number]: StoreCredentials }>({})
+  const [loadingCredentials, setLoadingCredentials] = useState<number | null>(null)
+  const [editingCredentials, setEditingCredentials] = useState<EditingCredentials | null>(null)
   const [newStore, setNewStore] = useState<NewStoreForm>({
     store_name: '',
     store_code: '',
     pos_username: '',
-    pos_password: ''
+    pos_password: '',
+    admin_username: '',
+    admin_password: ''
   })
 
   // super_admin以外はリダイレクト
@@ -64,6 +100,34 @@ export default function StoresPage() {
       setStores(data || [])
     }
     setLoading(false)
+  }
+
+  const loadCredentials = async (storeId: number) => {
+    setLoadingCredentials(storeId)
+    try {
+      const response = await fetch(`/api/stores/${storeId}/credentials`)
+      if (response.ok) {
+        const data = await response.json()
+        setStoreCredentials(prev => ({ ...prev, [storeId]: data }))
+      } else {
+        toast.error('ユーザー情報の取得に失敗しました')
+      }
+    } catch (error) {
+      console.error('Error loading credentials:', error)
+      toast.error('ユーザー情報の取得に失敗しました')
+    }
+    setLoadingCredentials(null)
+  }
+
+  const toggleExpand = async (storeId: number) => {
+    if (expandedStoreId === storeId) {
+      setExpandedStoreId(null)
+    } else {
+      setExpandedStoreId(storeId)
+      if (!storeCredentials[storeId]) {
+        await loadCredentials(storeId)
+      }
+    }
   }
 
   const createStore = async () => {
@@ -109,22 +173,43 @@ export default function StoresPage() {
 
       const newStoreId = storeData.id
 
-      // 2. POSユーザーを作成
-      const { error: userError } = await supabase
-        .from('users')
-        .insert({
+      // 2. POSユーザーを作成（平文）
+      const posResponse = await fetch(`/api/stores/${newStoreId}/credentials`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'pos',
           username: newStore.pos_username.trim(),
           password: newStore.pos_password,
-          role: 'admin',
-          store_id: newStoreId
+          role: 'admin'
         })
+      })
 
-      if (userError) {
-        console.error('Error creating POS user:', userError)
-        toast.error('POSユーザーの作成に失敗しました（店舗は作成済み）')
+      if (!posResponse.ok) {
+        const posData = await posResponse.json()
+        toast.error(posData.error || 'POSユーザーの作成に失敗しました')
       }
 
-      // 3. 店舗設定を初期化
+      // 3. vi-adminユーザーを作成（任意、bcryptハッシュ化）
+      if (newStore.admin_username.trim() && newStore.admin_password.trim()) {
+        const adminResponse = await fetch(`/api/stores/${newStoreId}/credentials`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'admin',
+            username: newStore.admin_username.trim(),
+            password: newStore.admin_password,
+            role: 'store_admin'
+          })
+        })
+
+        if (!adminResponse.ok) {
+          const adminData = await adminResponse.json()
+          toast.error(adminData.error || 'vi-adminユーザーの作成に失敗しました')
+        }
+      }
+
+      // 4. 店舗設定を初期化
       await supabase
         .from('store_settings')
         .insert({
@@ -133,7 +218,7 @@ export default function StoresPage() {
         })
 
       toast.success('店舗を作成しました')
-      setNewStore({ store_name: '', store_code: '', pos_username: '', pos_password: '' })
+      setNewStore({ store_name: '', store_code: '', pos_username: '', pos_password: '', admin_username: '', admin_password: '' })
       setShowAddForm(false)
       loadStores()
     } catch (error) {
@@ -191,6 +276,48 @@ export default function StoresPage() {
       console.error('Error toggling store:', error)
       toast.error('店舗の状態変更に失敗しました')
     }
+  }
+
+  const startEditingCredentials = (storeId: number, type: 'pos' | 'admin', userId: number, currentUsername: string) => {
+    setEditingCredentials({
+      storeId,
+      type,
+      userId,
+      username: currentUsername,
+      password: ''
+    })
+  }
+
+  const saveCredentials = async () => {
+    if (!editingCredentials) return
+
+    setSaving(true)
+    try {
+      const response = await fetch(`/api/stores/${editingCredentials.storeId}/credentials`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: editingCredentials.type,
+          userId: editingCredentials.userId,
+          username: editingCredentials.username,
+          password: editingCredentials.password || undefined
+        })
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        toast.success(data.message)
+        setEditingCredentials(null)
+        await loadCredentials(editingCredentials.storeId)
+      } else {
+        toast.error(data.error)
+      }
+    } catch (error) {
+      console.error('Error saving credentials:', error)
+      toast.error('更新に失敗しました')
+    }
+    setSaving(false)
   }
 
   if (user?.role !== 'super_admin') {
@@ -286,15 +413,16 @@ export default function StoresPage() {
             </div>
           </div>
 
+          {/* POSユーザー設定 */}
           <div style={{
             backgroundColor: '#f0f9ff',
             border: '1px solid #bae6fd',
             borderRadius: '8px',
             padding: '15px',
-            marginBottom: '20px'
+            marginBottom: '15px'
           }}>
             <div style={{ fontSize: '14px', fontWeight: '600', color: '#0369a1', marginBottom: '10px' }}>
-              初期POSユーザー設定
+              POSユーザー設定（パスワードは平文保存）
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
               <div>
@@ -321,9 +449,62 @@ export default function StoresPage() {
                   POSパスワード <span style={{ color: '#ef4444' }}>*</span>
                 </label>
                 <input
-                  type="password"
+                  type="text"
                   value={newStore.pos_password}
                   onChange={(e) => setNewStore({ ...newStore, pos_password: e.target.value })}
+                  placeholder="パスワード"
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    fontSize: '14px',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '6px',
+                    boxSizing: 'border-box'
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* vi-adminユーザー設定 */}
+          <div style={{
+            backgroundColor: '#faf5ff',
+            border: '1px solid #e9d5ff',
+            borderRadius: '8px',
+            padding: '15px',
+            marginBottom: '20px'
+          }}>
+            <div style={{ fontSize: '14px', fontWeight: '600', color: '#7c3aed', marginBottom: '10px' }}>
+              vi-adminユーザー設定（オプション、パスワードはハッシュ化）
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+              <div>
+                <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500', color: '#374151' }}>
+                  vi-adminユーザー名
+                </label>
+                <input
+                  type="text"
+                  value={newStore.admin_username}
+                  onChange={(e) => setNewStore({ ...newStore, admin_username: e.target.value })}
+                  placeholder="例: store_admin"
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    fontSize: '14px',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '6px',
+                    boxSizing: 'border-box'
+                  }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500', color: '#374151' }}>
+                  vi-adminパスワード
+                </label>
+                <input
+                  type="password"
+                  value={newStore.admin_password}
+                  onChange={(e) => setNewStore({ ...newStore, admin_password: e.target.value })}
                   placeholder="パスワード"
                   style={{
                     width: '100%',
@@ -362,22 +543,20 @@ export default function StoresPage() {
             店舗がありません
           </div>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ backgroundColor: '#f8fafc' }}>
-                <th style={{ padding: '15px', textAlign: 'left', fontWeight: '600', color: '#475569', borderBottom: '1px solid #e2e8f0' }}>ID</th>
-                <th style={{ padding: '15px', textAlign: 'left', fontWeight: '600', color: '#475569', borderBottom: '1px solid #e2e8f0' }}>店舗名</th>
-                <th style={{ padding: '15px', textAlign: 'left', fontWeight: '600', color: '#475569', borderBottom: '1px solid #e2e8f0' }}>店舗コード</th>
-                <th style={{ padding: '15px', textAlign: 'center', fontWeight: '600', color: '#475569', borderBottom: '1px solid #e2e8f0' }}>状態</th>
-                <th style={{ padding: '15px', textAlign: 'left', fontWeight: '600', color: '#475569', borderBottom: '1px solid #e2e8f0' }}>作成日</th>
-                <th style={{ padding: '15px', textAlign: 'center', fontWeight: '600', color: '#475569', borderBottom: '1px solid #e2e8f0' }}>操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {stores.map((store) => (
-                <tr key={store.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                  <td style={{ padding: '15px', color: '#64748b' }}>{store.id}</td>
-                  <td style={{ padding: '15px' }}>
+          <div>
+            {stores.map((store) => (
+              <div key={store.id}>
+                {/* 店舗行 */}
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: '50px 1fr 120px 80px 120px 200px',
+                  alignItems: 'center',
+                  padding: '15px',
+                  borderBottom: '1px solid #e2e8f0',
+                  backgroundColor: expandedStoreId === store.id ? '#f8fafc' : 'transparent'
+                }}>
+                  <div style={{ color: '#64748b' }}>{store.id}</div>
+                  <div>
                     {editingStore?.id === store.id ? (
                       <input
                         type="text"
@@ -388,14 +567,14 @@ export default function StoresPage() {
                           fontSize: '14px',
                           border: '1px solid #3b82f6',
                           borderRadius: '4px',
-                          width: '100%'
+                          width: '200px'
                         }}
                       />
                     ) : (
                       <span style={{ fontWeight: '500', color: '#1a1a1a' }}>{store.store_name}</span>
                     )}
-                  </td>
-                  <td style={{ padding: '15px' }}>
+                  </div>
+                  <div>
                     {editingStore?.id === store.id ? (
                       <input
                         type="text"
@@ -406,7 +585,7 @@ export default function StoresPage() {
                           fontSize: '14px',
                           border: '1px solid #3b82f6',
                           borderRadius: '4px',
-                          width: '100px'
+                          width: '80px'
                         }}
                       />
                     ) : (
@@ -420,8 +599,8 @@ export default function StoresPage() {
                         {store.store_code}
                       </code>
                     )}
-                  </td>
-                  <td style={{ padding: '15px', textAlign: 'center' }}>
+                  </div>
+                  <div style={{ textAlign: 'center' }}>
                     <span style={{
                       display: 'inline-block',
                       padding: '4px 12px',
@@ -433,22 +612,25 @@ export default function StoresPage() {
                     }}>
                       {store.is_active ? '有効' : '無効'}
                     </span>
-                  </td>
-                  <td style={{ padding: '15px', color: '#64748b', fontSize: '14px' }}>
+                  </div>
+                  <div style={{ color: '#64748b', fontSize: '14px' }}>
                     {new Date(store.created_at).toLocaleDateString('ja-JP')}
-                  </td>
-                  <td style={{ padding: '15px', textAlign: 'center' }}>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
                     {editingStore?.id === store.id ? (
-                      <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                      <>
                         <Button onClick={updateStore} disabled={saving} variant="success">
                           保存
                         </Button>
                         <Button onClick={() => setEditingStore(null)} variant="secondary">
-                          キャンセル
+                          取消
                         </Button>
-                      </div>
+                      </>
                     ) : (
-                      <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                      <>
+                        <Button onClick={() => toggleExpand(store.id)} variant="secondary">
+                          {expandedStoreId === store.id ? '閉じる' : 'ユーザー'}
+                        </Button>
                         <Button onClick={() => setEditingStore(store)} variant="primary">
                           編集
                         </Button>
@@ -456,15 +638,156 @@ export default function StoresPage() {
                           onClick={() => toggleStoreActive(store)}
                           variant={store.is_active ? 'danger' : 'success'}
                         >
-                          {store.is_active ? '無効化' : '有効化'}
+                          {store.is_active ? '無効' : '有効'}
                         </Button>
-                      </div>
+                      </>
                     )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </div>
+                </div>
+
+                {/* 展開されたユーザー情報 */}
+                {expandedStoreId === store.id && (
+                  <div style={{
+                    padding: '20px',
+                    backgroundColor: '#f8fafc',
+                    borderBottom: '1px solid #e2e8f0'
+                  }}>
+                    {loadingCredentials === store.id ? (
+                      <div style={{ textAlign: 'center', color: '#94a3b8' }}>読み込み中...</div>
+                    ) : storeCredentials[store.id] ? (
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                        {/* POSユーザー */}
+                        <div style={{
+                          backgroundColor: '#f0f9ff',
+                          border: '1px solid #bae6fd',
+                          borderRadius: '8px',
+                          padding: '15px'
+                        }}>
+                          <div style={{ fontSize: '14px', fontWeight: '600', color: '#0369a1', marginBottom: '12px' }}>
+                            POSユーザー（パスワード平文）
+                          </div>
+                          {storeCredentials[store.id].posUsers.length === 0 ? (
+                            <div style={{ color: '#94a3b8', fontSize: '13px' }}>ユーザーなし</div>
+                          ) : (
+                            storeCredentials[store.id].posUsers.map(posUser => (
+                              <div key={posUser.id} style={{
+                                backgroundColor: '#fff',
+                                padding: '12px',
+                                borderRadius: '6px',
+                                marginBottom: '8px'
+                              }}>
+                                {editingCredentials?.userId === posUser.id && editingCredentials?.type === 'pos' ? (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                    <input
+                                      type="text"
+                                      value={editingCredentials.username}
+                                      onChange={(e) => setEditingCredentials({ ...editingCredentials, username: e.target.value })}
+                                      placeholder="ユーザー名"
+                                      style={{ padding: '8px', fontSize: '14px', border: '1px solid #e2e8f0', borderRadius: '4px' }}
+                                    />
+                                    <input
+                                      type="text"
+                                      value={editingCredentials.password}
+                                      onChange={(e) => setEditingCredentials({ ...editingCredentials, password: e.target.value })}
+                                      placeholder="新しいパスワード（変更しない場合は空）"
+                                      style={{ padding: '8px', fontSize: '14px', border: '1px solid #e2e8f0', borderRadius: '4px' }}
+                                    />
+                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                      <Button onClick={saveCredentials} disabled={saving} variant="success">
+                                        保存
+                                      </Button>
+                                      <Button onClick={() => setEditingCredentials(null)} variant="secondary">
+                                        取消
+                                      </Button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <div>
+                                      <div style={{ fontWeight: '500', marginBottom: '4px' }}>{posUser.username}</div>
+                                      <div style={{ fontSize: '12px', color: '#64748b' }}>
+                                        パスワード: <code style={{ backgroundColor: '#f1f5f9', padding: '2px 4px', borderRadius: '2px' }}>{posUser.password}</code>
+                                      </div>
+                                    </div>
+                                    <Button onClick={() => startEditingCredentials(store.id, 'pos', posUser.id, posUser.username)} variant="primary">
+                                      編集
+                                    </Button>
+                                  </div>
+                                )}
+                              </div>
+                            ))
+                          )}
+                        </div>
+
+                        {/* vi-adminユーザー */}
+                        <div style={{
+                          backgroundColor: '#faf5ff',
+                          border: '1px solid #e9d5ff',
+                          borderRadius: '8px',
+                          padding: '15px'
+                        }}>
+                          <div style={{ fontSize: '14px', fontWeight: '600', color: '#7c3aed', marginBottom: '12px' }}>
+                            vi-adminユーザー（パスワードハッシュ化）
+                          </div>
+                          {storeCredentials[store.id].adminUsers.length === 0 ? (
+                            <div style={{ color: '#94a3b8', fontSize: '13px' }}>ユーザーなし</div>
+                          ) : (
+                            storeCredentials[store.id].adminUsers.map(adminUser => (
+                              <div key={adminUser.id} style={{
+                                backgroundColor: '#fff',
+                                padding: '12px',
+                                borderRadius: '6px',
+                                marginBottom: '8px'
+                              }}>
+                                {editingCredentials?.userId === adminUser.id && editingCredentials?.type === 'admin' ? (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                    <input
+                                      type="text"
+                                      value={editingCredentials.username}
+                                      onChange={(e) => setEditingCredentials({ ...editingCredentials, username: e.target.value })}
+                                      placeholder="ユーザー名"
+                                      style={{ padding: '8px', fontSize: '14px', border: '1px solid #e2e8f0', borderRadius: '4px' }}
+                                    />
+                                    <input
+                                      type="password"
+                                      value={editingCredentials.password}
+                                      onChange={(e) => setEditingCredentials({ ...editingCredentials, password: e.target.value })}
+                                      placeholder="新しいパスワード（変更しない場合は空）"
+                                      style={{ padding: '8px', fontSize: '14px', border: '1px solid #e2e8f0', borderRadius: '4px' }}
+                                    />
+                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                      <Button onClick={saveCredentials} disabled={saving} variant="success">
+                                        保存
+                                      </Button>
+                                      <Button onClick={() => setEditingCredentials(null)} variant="secondary">
+                                        取消
+                                      </Button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <div>
+                                      <div style={{ fontWeight: '500', marginBottom: '4px' }}>{adminUser.username}</div>
+                                      <div style={{ fontSize: '12px', color: '#64748b' }}>
+                                        役割: {adminUser.role === 'super_admin' ? '全店舗管理者' : '店舗管理者'}
+                                      </div>
+                                    </div>
+                                    <Button onClick={() => startEditingCredentials(store.id, 'admin', adminUser.id, adminUser.username)} variant="primary">
+                                      編集
+                                    </Button>
+                                  </div>
+                                )}
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
         )}
       </div>
 
@@ -480,9 +803,10 @@ export default function StoresPage() {
           注意事項
         </div>
         <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '13px', color: '#78350f', lineHeight: '1.6' }}>
-          <li>店舗を作成すると、勤怠ステータス（8種類）が自動的に生成されます</li>
-          <li>POSユーザーは店舗作成時に1つだけ作成されます。追加ユーザーはSupabaseで直接追加してください</li>
+          <li>POSパスワードは<strong>平文</strong>で保存されます（POSシステムの仕様）</li>
+          <li>vi-adminパスワードは<strong>bcryptハッシュ化</strong>されて保存されます</li>
           <li>店舗を無効化しても、データは削除されません</li>
+          <li>「ユーザー」ボタンで各店舗のログイン情報を確認・編集できます</li>
         </ul>
       </div>
     </div>
