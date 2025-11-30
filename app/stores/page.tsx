@@ -421,12 +421,12 @@ export default function StoresPage() {
             marginBottom: '15px'
           }}>
             <div style={{ fontSize: '14px', fontWeight: '600', color: '#0369a1', marginBottom: '10px' }}>
-              POSユーザー設定（パスワードは平文保存）
+              POSユーザー設定（PASSは平文保存）
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
               <div>
                 <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500', color: '#374151' }}>
-                  POSユーザー名 <span style={{ color: '#ef4444' }}>*</span>
+                  POS ID <span style={{ color: '#ef4444' }}>*</span>
                 </label>
                 <input
                   type="text"
@@ -445,7 +445,7 @@ export default function StoresPage() {
               </div>
               <div>
                 <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500', color: '#374151' }}>
-                  POSパスワード <span style={{ color: '#ef4444' }}>*</span>
+                  POS PASS <span style={{ color: '#ef4444' }}>*</span>
                 </label>
                 <input
                   type="text"
@@ -474,12 +474,12 @@ export default function StoresPage() {
             marginBottom: '20px'
           }}>
             <div style={{ fontSize: '14px', fontWeight: '600', color: '#7c3aed', marginBottom: '10px' }}>
-              vi-adminユーザー設定（オプション、パスワードはハッシュ化）
+              vi-adminユーザー設定（オプション、PASSはハッシュ化）
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
               <div>
                 <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500', color: '#374151' }}>
-                  vi-adminユーザー名
+                  vi-admin ID
                 </label>
                 <input
                   type="text"
@@ -498,7 +498,7 @@ export default function StoresPage() {
               </div>
               <div>
                 <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500', color: '#374151' }}>
-                  vi-adminパスワード
+                  vi-admin PASS
                 </label>
                 <input
                   type="password"
@@ -677,21 +677,27 @@ export default function StoresPage() {
                               }}>
                                 {editingCredentials?.userId === posUser.id && editingCredentials?.type === 'pos' ? (
                                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                    <input
-                                      type="text"
-                                      value={editingCredentials.username}
-                                      onChange={(e) => setEditingCredentials({ ...editingCredentials, username: e.target.value })}
-                                      placeholder="ユーザー名"
-                                      style={{ padding: '8px', fontSize: '14px', border: '1px solid #e2e8f0', borderRadius: '4px' }}
-                                    />
-                                    <input
-                                      type="text"
-                                      value={editingCredentials.password}
-                                      onChange={(e) => setEditingCredentials({ ...editingCredentials, password: e.target.value })}
-                                      placeholder="新しいパスワード（変更しない場合は空）"
-                                      style={{ padding: '8px', fontSize: '14px', border: '1px solid #e2e8f0', borderRadius: '4px' }}
-                                    />
-                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                      <span style={{ fontSize: '13px', fontWeight: '600', color: '#0369a1', minWidth: '40px' }}>ID:</span>
+                                      <input
+                                        type="text"
+                                        value={editingCredentials.username}
+                                        onChange={(e) => setEditingCredentials({ ...editingCredentials, username: e.target.value })}
+                                        placeholder="ID"
+                                        style={{ flex: 1, padding: '8px', fontSize: '14px', border: '1px solid #e2e8f0', borderRadius: '4px' }}
+                                      />
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                      <span style={{ fontSize: '13px', fontWeight: '600', color: '#0369a1', minWidth: '40px' }}>PASS:</span>
+                                      <input
+                                        type="text"
+                                        value={editingCredentials.password}
+                                        onChange={(e) => setEditingCredentials({ ...editingCredentials, password: e.target.value })}
+                                        placeholder="変更しない場合は空"
+                                        style={{ flex: 1, padding: '8px', fontSize: '14px', border: '1px solid #e2e8f0', borderRadius: '4px' }}
+                                      />
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
                                       <Button onClick={saveCredentials} disabled={saving} variant="success">
                                         保存
                                       </Button>
@@ -702,10 +708,14 @@ export default function StoresPage() {
                                   </div>
                                 ) : (
                                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <div>
-                                      <div style={{ fontWeight: '500', marginBottom: '4px' }}>{posUser.username}</div>
-                                      <div style={{ fontSize: '12px', color: '#64748b' }}>
-                                        パスワード: <code style={{ backgroundColor: '#f1f5f9', padding: '2px 4px', borderRadius: '2px' }}>{posUser.password}</code>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span style={{ fontSize: '12px', fontWeight: '600', color: '#0369a1', minWidth: '36px' }}>ID:</span>
+                                        <code style={{ backgroundColor: '#e0f2fe', padding: '4px 10px', borderRadius: '4px', fontSize: '14px', fontWeight: '500' }}>{posUser.username}</code>
+                                      </div>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span style={{ fontSize: '12px', fontWeight: '600', color: '#0369a1', minWidth: '36px' }}>PASS:</span>
+                                        <code style={{ backgroundColor: '#e0f2fe', padding: '4px 10px', borderRadius: '4px', fontSize: '14px', fontWeight: '500' }}>{posUser.password || '未設定'}</code>
                                       </div>
                                     </div>
                                     <Button onClick={() => startEditingCredentials(store.id, 'pos', posUser.id, posUser.username)} variant="primary">
@@ -740,21 +750,27 @@ export default function StoresPage() {
                               }}>
                                 {editingCredentials?.userId === adminUser.id && editingCredentials?.type === 'admin' ? (
                                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                    <input
-                                      type="text"
-                                      value={editingCredentials.username}
-                                      onChange={(e) => setEditingCredentials({ ...editingCredentials, username: e.target.value })}
-                                      placeholder="ユーザー名"
-                                      style={{ padding: '8px', fontSize: '14px', border: '1px solid #e2e8f0', borderRadius: '4px' }}
-                                    />
-                                    <input
-                                      type="password"
-                                      value={editingCredentials.password}
-                                      onChange={(e) => setEditingCredentials({ ...editingCredentials, password: e.target.value })}
-                                      placeholder="新しいパスワード（変更しない場合は空）"
-                                      style={{ padding: '8px', fontSize: '14px', border: '1px solid #e2e8f0', borderRadius: '4px' }}
-                                    />
-                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                      <span style={{ fontSize: '13px', fontWeight: '600', color: '#7c3aed', minWidth: '40px' }}>ID:</span>
+                                      <input
+                                        type="text"
+                                        value={editingCredentials.username}
+                                        onChange={(e) => setEditingCredentials({ ...editingCredentials, username: e.target.value })}
+                                        placeholder="ID"
+                                        style={{ flex: 1, padding: '8px', fontSize: '14px', border: '1px solid #e2e8f0', borderRadius: '4px' }}
+                                      />
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                      <span style={{ fontSize: '13px', fontWeight: '600', color: '#7c3aed', minWidth: '40px' }}>PASS:</span>
+                                      <input
+                                        type="password"
+                                        value={editingCredentials.password}
+                                        onChange={(e) => setEditingCredentials({ ...editingCredentials, password: e.target.value })}
+                                        placeholder="変更しない場合は空"
+                                        style={{ flex: 1, padding: '8px', fontSize: '14px', border: '1px solid #e2e8f0', borderRadius: '4px' }}
+                                      />
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
                                       <Button onClick={saveCredentials} disabled={saving} variant="success">
                                         保存
                                       </Button>
@@ -765,10 +781,14 @@ export default function StoresPage() {
                                   </div>
                                 ) : (
                                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <div>
-                                      <div style={{ fontWeight: '500', marginBottom: '4px' }}>{adminUser.username}</div>
-                                      <div style={{ fontSize: '12px', color: '#64748b' }}>
-                                        役割: {adminUser.role === 'super_admin' ? '全店舗管理者' : '店舗管理者'}
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span style={{ fontSize: '12px', fontWeight: '600', color: '#7c3aed', minWidth: '36px' }}>ID:</span>
+                                        <code style={{ backgroundColor: '#f3e8ff', padding: '4px 10px', borderRadius: '4px', fontSize: '14px', fontWeight: '500' }}>{adminUser.username}</code>
+                                      </div>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span style={{ fontSize: '12px', fontWeight: '600', color: '#7c3aed', minWidth: '36px' }}>PASS:</span>
+                                        <span style={{ fontSize: '12px', color: '#94a3b8', fontStyle: 'italic' }}>ハッシュ化済み</span>
                                       </div>
                                     </div>
                                     <Button onClick={() => startEditingCredentials(store.id, 'admin', adminUser.id, adminUser.username)} variant="primary">
@@ -802,10 +822,10 @@ export default function StoresPage() {
           注意事項
         </div>
         <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '13px', color: '#78350f', lineHeight: '1.6' }}>
-          <li>POSパスワードは<strong>平文</strong>で保存されます（POSシステムの仕様）</li>
-          <li>vi-adminパスワードは<strong>bcryptハッシュ化</strong>されて保存されます</li>
+          <li>POS PASSは<strong>平文</strong>で保存されます（POSシステムの仕様）</li>
+          <li>vi-admin PASSは<strong>bcryptハッシュ化</strong>されて保存されます</li>
           <li>店舗を無効化しても、データは削除されません</li>
-          <li>「ユーザー」ボタンで各店舗のログイン情報を確認・編集できます</li>
+          <li>「ユーザー」ボタンで各店舗のID/PASSを確認・編集できます</li>
         </ul>
       </div>
     </div>
