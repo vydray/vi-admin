@@ -67,33 +67,32 @@ export default function LineSettingsPage() {
   const loadData = async () => {
     setLoading(true)
 
-    // 店舗一覧を取得
+    // 店舗一覧を取得（全店舗）
     const { data: storesData } = await supabase
       .from('stores')
       .select('id, store_name, store_code')
-      .eq('is_active', true)
       .order('id')
 
-    setStores(storesData || [])
+    const allStores = storesData || []
+    setStores(allStores)
 
-    // LINE設定一覧を取得
+    // LINE設定一覧を取得（joinなし）
     const { data: configsData, error } = await supabase
       .from('store_line_configs')
-      .select(`
-        *,
-        stores (
-          id,
-          store_name,
-          store_code
-        )
-      `)
+      .select('*')
       .order('store_id')
 
     if (error) {
       console.error('Error loading configs:', error)
       toast.error('LINE設定の読み込みに失敗しました')
     } else {
-      setConfigs(configsData || [])
+      // 店舗情報を手動でマージ
+      const storeMap = new Map(allStores.map(s => [s.id, s]))
+      const configsWithStores = (configsData || []).map(config => ({
+        ...config,
+        stores: storeMap.get(config.store_id)
+      }))
+      setConfigs(configsWithStores)
     }
     setLoading(false)
   }
