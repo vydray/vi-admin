@@ -255,7 +255,7 @@ export default function AttendancePage() {
       })
     } else {
       // 新規の場合はデフォルトで「出勤」を選択して時間も設定
-      setTempTime({ clockIn: '19:00', clockOut: '03:00', status: '出勤' })
+      setTempTime({ clockIn: '18:00', clockOut: '24:00', status: '出勤' })
     }
   }
 
@@ -263,8 +263,8 @@ export default function AttendancePage() {
     // 出勤系ステータスの場合は時間を設定、それ以外は時間なし
     const needsTime = status === '出勤' || status === '遅刻' || status === '早退' || status === 'リクエスト出勤'
     setTempTime({
-      clockIn: needsTime ? '19:00' : '',
-      clockOut: needsTime ? '03:00' : '',
+      clockIn: needsTime ? '18:00' : '',
+      clockOut: needsTime ? '24:00' : '',
       status
     })
   }
@@ -680,8 +680,8 @@ export default function AttendancePage() {
                     setTempTime({
                       ...tempTime,
                       status: newStatus,
-                      clockIn: needsTime ? (tempTime.clockIn || '19:00') : '',
-                      clockOut: needsTime ? (tempTime.clockOut || '03:00') : ''
+                      clockIn: needsTime ? (tempTime.clockIn || '18:00') : '',
+                      clockOut: needsTime ? (tempTime.clockOut || '24:00') : ''
                     })
                   }}
                   style={{
