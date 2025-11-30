@@ -254,7 +254,8 @@ export default function AttendancePage() {
         status: attendance.status || ''
       })
     } else {
-      setTempTime({ clockIn: '', clockOut: '', status: '' })
+      // 新規の場合はデフォルトで「出勤」を選択して時間も設定
+      setTempTime({ clockIn: '19:00', clockOut: '03:00', status: '出勤' })
     }
   }
 
