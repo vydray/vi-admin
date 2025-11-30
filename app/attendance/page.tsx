@@ -73,7 +73,7 @@ export default function AttendancePage() {
   const loadAttendanceStatuses = useCallback(async () => {
     const { data, error } = await supabase
       .from('attendance_statuses')
-      .select('id, status_name, color, display_order, store_id')
+      .select('id, status_name, code, color, display_order, store_id')
       .eq('store_id', storeId)
       .order('display_order')
 
