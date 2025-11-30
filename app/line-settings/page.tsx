@@ -616,19 +616,102 @@ export default function LineSettingsPage() {
         backgroundColor: '#eff6ff',
         border: '1px solid #bfdbfe',
         borderRadius: '8px',
-        padding: '15px',
+        padding: '20px',
         marginTop: '20px'
       }}>
-        <div style={{ fontSize: '14px', fontWeight: '600', color: '#1e40af', marginBottom: '8px' }}>
-          LINE Developers Console での取得方法
+        <div style={{ fontSize: '16px', fontWeight: '600', color: '#1e40af', marginBottom: '15px' }}>
+          LINE Developers Console での設定・取得方法
         </div>
-        <ol style={{ margin: 0, paddingLeft: '20px', fontSize: '13px', color: '#1e3a8a', lineHeight: '1.8' }}>
-          <li><a href="https://developers.line.biz/" target="_blank" rel="noopener noreferrer" style={{ color: '#2563eb' }}>LINE Developers Console</a> にログイン</li>
-          <li>対象のプロバイダー → Messaging APIチャネルを選択</li>
-          <li>「チャネル基本設定」タブ → Channel ID、Channel Secretを取得</li>
-          <li>「Messaging API設定」タブ → Channel Access Tokenを発行</li>
-          <li>Webhook URL: <code style={{ backgroundColor: '#dbeafe', padding: '2px 6px', borderRadius: '3px' }}>https://[your-domain]/api/line/webhook/[store_id]</code></li>
-        </ol>
+
+        {/* Step 1 */}
+        <div style={{ marginBottom: '20px' }}>
+          <div style={{ fontSize: '14px', fontWeight: '600', color: '#1e3a8a', marginBottom: '8px' }}>
+            Step 1: LINE Developers Console にアクセス
+          </div>
+          <div style={{ fontSize: '13px', color: '#374151', lineHeight: '1.7', paddingLeft: '12px' }}>
+            <a href="https://developers.line.biz/" target="_blank" rel="noopener noreferrer" style={{ color: '#2563eb' }}>
+              https://developers.line.biz/
+            </a> にログインし、対象のプロバイダーを選択（なければ新規作成）
+          </div>
+        </div>
+
+        {/* Step 2 */}
+        <div style={{ marginBottom: '20px' }}>
+          <div style={{ fontSize: '14px', fontWeight: '600', color: '#1e3a8a', marginBottom: '8px' }}>
+            Step 2: Messaging API チャネルを作成/選択
+          </div>
+          <div style={{ fontSize: '13px', color: '#374151', lineHeight: '1.7', paddingLeft: '12px' }}>
+            「新規チャネル作成」→「Messaging API」を選択し、必要情報を入力して作成<br />
+            ※既存のチャネルがあれば、そのチャネルを選択
+          </div>
+        </div>
+
+        {/* Step 3 */}
+        <div style={{ marginBottom: '20px' }}>
+          <div style={{ fontSize: '14px', fontWeight: '600', color: '#1e3a8a', marginBottom: '8px' }}>
+            Step 3: Channel ID・Channel Secret を取得
+          </div>
+          <div style={{ fontSize: '13px', color: '#374151', lineHeight: '1.7', paddingLeft: '12px' }}>
+            「チャネル基本設定」タブを開く<br />
+            • <strong>Channel ID</strong>: 「チャネルID」に表示されている数字<br />
+            • <strong>Channel Secret</strong>: 「チャネルシークレット」の値（表示ボタンで確認）
+          </div>
+        </div>
+
+        {/* Step 4 */}
+        <div style={{ marginBottom: '20px' }}>
+          <div style={{ fontSize: '14px', fontWeight: '600', color: '#1e3a8a', marginBottom: '8px' }}>
+            Step 4: Channel Access Token を発行
+          </div>
+          <div style={{ fontSize: '13px', color: '#374151', lineHeight: '1.7', paddingLeft: '12px' }}>
+            「Messaging API設定」タブを開く<br />
+            • ページ下部の「チャネルアクセストークン」セクション<br />
+            • 「発行」ボタンをクリックしてトークンを生成<br />
+            • <span style={{ color: '#dc2626' }}>※トークンは一度しか表示されないのでコピーして保存</span>
+          </div>
+        </div>
+
+        {/* Step 5 */}
+        <div style={{ marginBottom: '20px' }}>
+          <div style={{ fontSize: '14px', fontWeight: '600', color: '#1e3a8a', marginBottom: '8px' }}>
+            Step 5: Webhook URL を設定
+          </div>
+          <div style={{ fontSize: '13px', color: '#374151', lineHeight: '1.7', paddingLeft: '12px' }}>
+            同じ「Messaging API設定」タブで<br />
+            • 「Webhook URL」に以下を入力:
+            <div style={{
+              backgroundColor: '#dbeafe',
+              padding: '8px 12px',
+              borderRadius: '4px',
+              marginTop: '8px',
+              fontFamily: 'monospace',
+              fontSize: '12px'
+            }}>
+              https://[your-domain]/api/line/webhook/[store_id]
+            </div>
+            <div style={{ marginTop: '8px', fontSize: '12px', color: '#64748b' }}>
+              例: store_id=1 の場合 → https://example.com/api/line/webhook/1
+            </div>
+            • 「Webhookの利用」→ <strong>オン</strong><br />
+            • 「応答メッセージ」→ <strong>オフ</strong>（自動返信を無効化）
+          </div>
+        </div>
+
+        {/* Discord説明 */}
+        <div style={{
+          backgroundColor: '#f5f3ff',
+          border: '1px solid #c4b5fd',
+          borderRadius: '6px',
+          padding: '12px',
+          marginTop: '15px'
+        }}>
+          <div style={{ fontSize: '13px', fontWeight: '600', color: '#5b21b6', marginBottom: '6px' }}>
+            Discord Webhook URL（オプション）
+          </div>
+          <div style={{ fontSize: '12px', color: '#4c1d95', lineHeight: '1.6' }}>
+            Discordで通知を受け取りたい場合は、サーバー設定 → 連携サービス → ウェブフック から作成してURLをコピー
+          </div>
+        </div>
       </div>
     </div>
   )
