@@ -64,18 +64,12 @@ export default function AttendancePage() {
   const loadAttendanceStatuses = useCallback(async () => {
     const { data, error } = await supabase
       .from('attendance_statuses')
-      .select('id, status_name, code, color, display_order, store_id')
+      .select('id, name, code, color, is_active, order_index, store_id')
       .eq('store_id', storeId)
-      .order('display_order')
+      .order('order_index')
 
     if (!error && data) {
-      // status_name を name としてマッピング、is_active はデフォルトtrue
-      setAttendanceStatuses(data.map(s => ({
-        ...s,
-        name: s.status_name,
-        is_active: true,
-        order_index: s.display_order
-      })))
+      setAttendanceStatuses(data)
     }
   }, [storeId])
 
@@ -117,9 +111,9 @@ export default function AttendancePage() {
     const { error } = await supabase
       .from('attendance_statuses')
       .insert({
-        status_name: newStatusName.trim(),
+        name: newStatusName.trim(),
         color: newStatusColor,
-        display_order: attendanceStatuses.length,
+        order_index: attendanceStatuses.length,
         store_id: storeId
       })
 
@@ -150,7 +144,7 @@ export default function AttendancePage() {
     const { error } = await supabase
       .from('attendance_statuses')
       .update({
-        status_name: newStatusName.trim(),
+        name: newStatusName.trim(),
         color: newStatusColor
       })
       .eq('id', editingStatus.id)
