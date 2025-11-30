@@ -31,10 +31,10 @@ export async function GET(
     const { storeId } = await params
     const supabase = getSupabaseServerClient()
 
-    // POSユーザーを取得（password_hashカラムを使用）
+    // POSユーザーを取得（passwordカラムを使用）
     const { data: posUsers, error: posError } = await supabase
       .from('users')
-      .select('id, username, password_hash, role, is_active')
+      .select('id, username, password, role')
       .eq('store_id', parseInt(storeId))
       .order('id')
 
@@ -53,20 +53,9 @@ export async function GET(
       console.error('Error fetching admin users:', adminError)
     }
 
-    // POSユーザーのpassword_hashをpasswordにリネーム（UIとの互換性のため）
-    const posUsersFormatted = (posUsers || []).map(user => ({
-      ...user,
-      password: user.password_hash
-    }))
-
     return NextResponse.json({
-      posUsers: posUsersFormatted,
-      adminUsers: adminUsers || [],
-      debug: {
-        storeId,
-        posError: posError?.message,
-        adminError: adminError?.message
-      }
+      posUsers: posUsers || [],
+      adminUsers: adminUsers || []
     })
   } catch (error) {
     console.error('Error:', error)
@@ -93,13 +82,13 @@ export async function PUT(
 
     if (type === 'pos') {
       // POSユーザー更新（パスワードは平文）
-      const updateData: { username?: string; password_hash?: string } = {}
+      const updateData: { username?: string; password?: string } = {}
 
       if (username) {
         updateData.username = username.trim()
       }
       if (password) {
-        updateData.password_hash = password // 平文のまま保存
+        updateData.password = password // 平文のまま保存
       }
 
       if (Object.keys(updateData).length === 0) {
@@ -192,9 +181,8 @@ export async function POST(
         .insert({
           store_id: parseInt(storeId),
           username: username.trim(),
-          password_hash: password, // 平文
-          role: role || 'admin',
-          is_active: true
+          password: password, // 平文
+          role: role || 'admin'
         })
 
       if (error) {

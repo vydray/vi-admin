@@ -29,7 +29,6 @@ interface PosUser {
   username: string
   password: string
   role: string
-  is_active: boolean
 }
 
 interface AdminUser {
