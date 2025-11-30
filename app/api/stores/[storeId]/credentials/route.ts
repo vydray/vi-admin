@@ -31,11 +31,11 @@ export async function GET(
     const { storeId } = await params
     const supabase = getSupabaseServerClient()
 
-    // POSユーザーを取得
+    // POSユーザーを取得（password_hashカラムを使用）
     const { data: posUsers, error: posError } = await supabase
       .from('users')
-      .select('id, username, password, role, is_active')
-      .eq('store_id', storeId)
+      .select('id, username, password_hash, role, is_active')
+      .eq('store_id', parseInt(storeId))
       .order('id')
 
     if (posError) {
@@ -46,16 +46,27 @@ export async function GET(
     const { data: adminUsers, error: adminError } = await supabase
       .from('admin_users')
       .select('id, username, role, is_active')
-      .eq('store_id', storeId)
+      .eq('store_id', parseInt(storeId))
       .order('id')
 
     if (adminError) {
       console.error('Error fetching admin users:', adminError)
     }
 
+    // POSユーザーのpassword_hashをpasswordにリネーム（UIとの互換性のため）
+    const posUsersFormatted = (posUsers || []).map(user => ({
+      ...user,
+      password: user.password_hash
+    }))
+
     return NextResponse.json({
-      posUsers: posUsers || [],
-      adminUsers: adminUsers || []
+      posUsers: posUsersFormatted,
+      adminUsers: adminUsers || [],
+      debug: {
+        storeId,
+        posError: posError?.message,
+        adminError: adminError?.message
+      }
     })
   } catch (error) {
     console.error('Error:', error)
@@ -82,13 +93,13 @@ export async function PUT(
 
     if (type === 'pos') {
       // POSユーザー更新（パスワードは平文）
-      const updateData: { username?: string; password?: string } = {}
+      const updateData: { username?: string; password_hash?: string } = {}
 
       if (username) {
         updateData.username = username.trim()
       }
       if (password) {
-        updateData.password = password // 平文のまま保存
+        updateData.password_hash = password // 平文のまま保存
       }
 
       if (Object.keys(updateData).length === 0) {
@@ -181,7 +192,7 @@ export async function POST(
         .insert({
           store_id: parseInt(storeId),
           username: username.trim(),
-          password: password, // 平文
+          password_hash: password, // 平文
           role: role || 'admin',
           is_active: true
         })
