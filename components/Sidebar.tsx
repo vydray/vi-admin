@@ -16,6 +16,8 @@ const menuItems = [
   { name: '伝票管理', path: '/receipts', icon: '🧾' },
   { name: '店舗設定', path: '/store-settings', icon: '🏪' },
   { name: '設定', path: '/settings', icon: '⚙️' },
+  { name: '店舗管理', path: '/stores', icon: '🏢', superAdminOnly: true },
+  { name: 'LINE設定', path: '/line-settings', icon: '💬', superAdminOnly: true },
   { name: 'ログアウト', path: '/logout', icon: '🚪', isAction: true },
 ]
 
@@ -60,7 +62,9 @@ export default function Sidebar() {
       </div>
 
       <nav style={styles.nav}>
-        {menuItems.map((item) => {
+        {menuItems
+          .filter((item) => !item.superAdminOnly || isSuperAdmin)
+          .map((item) => {
           const isActive = pathname === item.path
 
           // ログアウトの場合はボタンとして表示
