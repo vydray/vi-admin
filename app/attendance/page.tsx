@@ -21,7 +21,7 @@ export default function AttendancePage() {
   const [attendances, setAttendances] = useState<Attendance[]>([])
   const [loading, setLoading] = useState(true)
   const [editingCell, setEditingCell] = useState<string | null>(null)
-  const [tempTime, setTempTime] = useState({ clockIn: '', clockOut: '' })
+  const [tempTime, setTempTime] = useState({ clockIn: '', clockOut: '', status: '' })
   const [showStatusModal, setShowStatusModal] = useState(false)
   const [attendanceStatuses, setAttendanceStatuses] = useState<AttendanceStatus[]>([])
   const [showAddStatus, setShowAddStatus] = useState(false)
@@ -51,7 +51,7 @@ export default function AttendancePage() {
 
     const { data, error } = await supabase
       .from('attendance')
-      .select('id, cast_name, date, check_in_datetime, check_out_datetime, store_id')
+      .select('id, cast_name, date, check_in_datetime, check_out_datetime, status, store_id')
       .eq('store_id', storeId)
       .gte('date', format(start, 'yyyy-MM-dd'))
       .lte('date', format(end, 'yyyy-MM-dd'))
@@ -60,15 +60,6 @@ export default function AttendancePage() {
       setAttendances(data)
     }
   }, [selectedMonth, storeId])
-
-  const loadData = useCallback(async () => {
-    setLoading(true)
-    await Promise.all([
-      loadCasts(),
-      loadAttendances()
-    ])
-    setLoading(false)
-  }, [loadCasts, loadAttendances])
 
   const loadAttendanceStatuses = useCallback(async () => {
     const { data, error } = await supabase
@@ -87,6 +78,16 @@ export default function AttendancePage() {
       })))
     }
   }, [storeId])
+
+  const loadData = useCallback(async () => {
+    setLoading(true)
+    await Promise.all([
+      loadCasts(),
+      loadAttendances(),
+      loadAttendanceStatuses()
+    ])
+    setLoading(false)
+  }, [loadCasts, loadAttendances, loadAttendanceStatuses])
 
   useEffect(() => {
     loadData()
@@ -254,20 +255,34 @@ export default function AttendancePage() {
 
     if (attendance) {
       setTempTime({
-        clockIn: convertTo24Plus(attendance.check_in_datetime),
-        clockOut: attendance.check_out_datetime ? convertTo24Plus(attendance.check_out_datetime) : ''
+        clockIn: attendance.check_in_datetime ? convertTo24Plus(attendance.check_in_datetime) : '',
+        clockOut: attendance.check_out_datetime ? convertTo24Plus(attendance.check_out_datetime) : '',
+        status: attendance.status || ''
       })
     } else {
-      setTempTime({ clockIn: '', clockOut: '' })
+      setTempTime({ clockIn: '', clockOut: '', status: '' })
     }
   }
 
-  const addAttendance = () => {
-    setTempTime({ clockIn: '19:00', clockOut: '03:00' })
+  const addAttendance = (status: string = '出勤') => {
+    // 出勤系ステータスの場合は時間を設定、それ以外は時間なし
+    const needsTime = status === '出勤' || status === '遅刻' || status === '早退' || status === 'リクエスト出勤'
+    setTempTime({
+      clockIn: needsTime ? '19:00' : '',
+      clockOut: needsTime ? '03:00' : '',
+      status
+    })
   }
 
   const saveAttendance = async () => {
-    if (!editingCell || !tempTime.clockIn) {
+    if (!editingCell || !tempTime.status) {
+      toast.error('ステータスを選択してください')
+      return
+    }
+
+    // 出勤系ステータスの場合は時間が必須
+    const needsTime = tempTime.status === '出勤' || tempTime.status === '遅刻' || tempTime.status === '早退' || tempTime.status === 'リクエスト出勤'
+    if (needsTime && !tempTime.clockIn) {
       toast.error('出勤時間を入力してください')
       return
     }
@@ -301,7 +316,7 @@ export default function AttendancePage() {
       return date.toISOString().slice(0, 19)
     }
 
-    const normalizedClockIn = normalizeTime(tempTime.clockIn, dateStr)
+    const normalizedClockIn = tempTime.clockIn ? normalizeTime(tempTime.clockIn, dateStr) : null
     const normalizedClockOut = tempTime.clockOut ? normalizeTime(tempTime.clockOut, dateStr) : null
 
     try {
@@ -311,7 +326,8 @@ export default function AttendancePage() {
           .from('attendance')
           .update({
             check_in_datetime: normalizedClockIn,
-            check_out_datetime: normalizedClockOut
+            check_out_datetime: normalizedClockOut,
+            status: tempTime.status
           })
           .eq('id', existingAttendance.id)
 
@@ -330,6 +346,7 @@ export default function AttendancePage() {
             date: dateStr,
             check_in_datetime: normalizedClockIn,
             check_out_datetime: normalizedClockOut,
+            status: tempTime.status,
             store_id: storeId
           })
 
@@ -588,7 +605,17 @@ export default function AttendancePage() {
                       >
                         {attendance && (
                           <div style={{ fontSize: '13px', color: '#1a1a1a' }}>
-                            {formatAttendanceTime(attendance)}
+                            {attendance.status && (
+                              <div style={{
+                                fontSize: '11px',
+                                fontWeight: '600',
+                                color: attendanceStatuses.find(s => s.name === attendance.status)?.color || '#475569',
+                                marginBottom: attendance.check_in_datetime ? '2px' : '0'
+                              }}>
+                                {attendance.status}
+                              </div>
+                            )}
+                            {attendance.check_in_datetime && formatAttendanceTime(attendance)}
                           </div>
                         )}
                       </td>
@@ -636,9 +663,10 @@ export default function AttendancePage() {
             </div>
           </div>
 
-          {/* 時間入力または新規追加ボタン */}
-          {tempTime.clockIn ? (
+          {/* ステータス選択または編集フォーム */}
+          {tempTime.status ? (
             <>
+              {/* ステータス表示・変更 */}
               <div style={{ marginBottom: '16px' }}>
                 <label style={{
                   display: 'block',
@@ -647,11 +675,20 @@ export default function AttendancePage() {
                   color: '#475569',
                   marginBottom: '6px'
                 }}>
-                  出勤時間
+                  ステータス
                 </label>
                 <select
-                  value={tempTime.clockIn}
-                  onChange={(e) => setTempTime({ ...tempTime, clockIn: e.target.value })}
+                  value={tempTime.status}
+                  onChange={(e) => {
+                    const newStatus = e.target.value
+                    const needsTime = newStatus === '出勤' || newStatus === '遅刻' || newStatus === '早退' || newStatus === 'リクエスト出勤'
+                    setTempTime({
+                      ...tempTime,
+                      status: newStatus,
+                      clockIn: needsTime ? (tempTime.clockIn || '19:00') : '',
+                      clockOut: needsTime ? (tempTime.clockOut || '03:00') : ''
+                    })
+                  }}
                   style={{
                     width: '100%',
                     padding: '8px 12px',
@@ -662,79 +699,116 @@ export default function AttendancePage() {
                     cursor: 'pointer'
                   }}
                 >
-                  {timeOptions.map(time => (
-                    <option key={time} value={time}>
-                      {time}
+                  {attendanceStatuses.map(status => (
+                    <option key={status.id} value={status.name}>
+                      {status.name}
                     </option>
                   ))}
                 </select>
               </div>
 
-              <div style={{ marginBottom: '20px' }}>
-                <label style={{
-                  display: 'block',
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  color: '#475569',
-                  marginBottom: '6px'
-                }}>
-                  退勤時間
-                </label>
-                <select
-                  value={tempTime.clockOut}
-                  onChange={(e) => setTempTime({ ...tempTime, clockOut: e.target.value })}
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    fontSize: '14px',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '6px',
-                    backgroundColor: '#fff',
-                    cursor: 'pointer'
-                  }}
-                >
-                  <option value="">未退勤</option>
-                  {timeOptions.map(time => (
-                    <option key={time} value={time}>{time}</option>
-                  ))}
-                </select>
-              </div>
+              {/* 出勤系ステータスの場合のみ時間入力を表示 */}
+              {(tempTime.status === '出勤' || tempTime.status === '遅刻' || tempTime.status === '早退' || tempTime.status === 'リクエスト出勤') && (
+                <>
+                  <div style={{ marginBottom: '16px' }}>
+                    <label style={{
+                      display: 'block',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      color: '#475569',
+                      marginBottom: '6px'
+                    }}>
+                      出勤時間
+                    </label>
+                    <select
+                      value={tempTime.clockIn}
+                      onChange={(e) => setTempTime({ ...tempTime, clockIn: e.target.value })}
+                      style={{
+                        width: '100%',
+                        padding: '8px 12px',
+                        fontSize: '14px',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '6px',
+                        backgroundColor: '#fff',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {timeOptions.map(time => (
+                        <option key={time} value={time}>
+                          {time}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div style={{ marginBottom: '20px' }}>
+                    <label style={{
+                      display: 'block',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      color: '#475569',
+                      marginBottom: '6px'
+                    }}>
+                      退勤時間
+                    </label>
+                    <select
+                      value={tempTime.clockOut}
+                      onChange={(e) => setTempTime({ ...tempTime, clockOut: e.target.value })}
+                      style={{
+                        width: '100%',
+                        padding: '8px 12px',
+                        fontSize: '14px',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '6px',
+                        backgroundColor: '#fff',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <option value="">未退勤</option>
+                      {timeOptions.map(time => (
+                        <option key={time} value={time}>{time}</option>
+                      ))}
+                    </select>
+                  </div>
+                </>
+              )}
             </>
           ) : (
             <div style={{
               marginBottom: '20px',
-              padding: '40px',
+              padding: '20px',
               backgroundColor: '#f8fafc',
-              borderRadius: '8px',
-              textAlign: 'center'
+              borderRadius: '8px'
             }}>
-              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" style={{ margin: '0 auto 16px', color: '#94a3b8' }}>
-                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 11h-4v4h-2v-4H7v-2h4V7h2v4h4v2z" fill="currentColor"/>
-              </svg>
-              <p style={{ fontSize: '14px', color: '#64748b', marginBottom: '16px' }}>
-                この日の勤怠記録はありません
+              <p style={{ fontSize: '14px', color: '#64748b', marginBottom: '12px', textAlign: 'center' }}>
+                ステータスを選択してください
               </p>
-              <button
-                onClick={addAttendance}
-                style={{
-                  padding: '8px 24px',
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  backgroundColor: '#2563eb',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '6px',
-                  cursor: 'pointer'
-                }}
-              >
-                勤怠記録を追加
-              </button>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'center' }}>
+                {attendanceStatuses.map(status => (
+                  <button
+                    key={status.id}
+                    onClick={() => addAttendance(status.name)}
+                    style={{
+                      padding: '8px 16px',
+                      fontSize: '13px',
+                      fontWeight: '500',
+                      backgroundColor: status.color,
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: '6px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {status.name}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
           {/* アクションボタン */}
           <div style={{ display: 'flex', gap: '8px' }}>
-            {tempTime.clockIn && (
+            {tempTime.status && (
               <>
                 <button
                   onClick={saveAttendance}

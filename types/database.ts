@@ -159,7 +159,7 @@ export interface Attendance {
   id: string
   cast_name: string
   date: string
-  check_in_datetime: string
+  check_in_datetime: string | null
   check_out_datetime: string | null
   store_id: number
   status?: string
