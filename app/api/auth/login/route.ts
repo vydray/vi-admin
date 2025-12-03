@@ -118,7 +118,7 @@ export async function POST(request: NextRequest) {
       id: user.id,
       username: user.username,
       role: user.role,
-      storeId: user.store_id || 1, // super_adminの場合はデフォルト店舗1
+      store_id: user.store_id || 1, // super_adminの場合はデフォルト店舗1
       isAllStore, // super_adminは全店舗アクセス可能
     }
 

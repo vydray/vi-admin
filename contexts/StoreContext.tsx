@@ -16,8 +16,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // ユーザーの権限に基づいて店舗IDを初期化
   useEffect(() => {
     if (!authLoading && user) {
-      if (user.role === 'store_admin' && user.store_id) {
-        // store_adminの場合は自動的にそのstore_idを使用
+      if (user.store_id) {
+        // ユーザーのstore_idを使用（super_admin/store_admin両方）
         setStoreIdState(user.store_id)
       }
     }
