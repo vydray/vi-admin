@@ -120,6 +120,7 @@ export async function POST(request: NextRequest) {
       role: user.role,
       store_id: user.store_id || 1, // super_adminの場合はデフォルト店舗1
       isAllStore, // super_adminは全店舗アクセス可能
+      session_created_at: new Date().toISOString(), // パスワード変更検知用
     }
 
     const cookieStore = await cookies()

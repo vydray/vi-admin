@@ -86,9 +86,22 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // 自分自身のセッションを更新（ログアウトされないように）
+    const updatedSession = {
+      ...session,
+      session_created_at: new Date().toISOString(),
+    }
+    cookieStore.set('admin_session', JSON.stringify(updatedSession), {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 24 * 7, // 7日間
+      path: '/',
+    })
+
     return NextResponse.json({
       success: true,
-      message: 'パスワードを変更しました'
+      message: 'パスワードを変更しました（他のセッションはログアウトされます）'
     })
   } catch (error) {
     console.error('パスワード変更エラー:', error)
