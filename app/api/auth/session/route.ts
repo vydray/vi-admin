@@ -13,8 +13,19 @@ export async function GET() {
 
     const session = JSON.parse(sessionCookie.value)
 
-    // パスワード変更後のセッション無効化チェック
+    // セッション有効期限チェック（24時間）
     if (session.session_created_at) {
+      const sessionCreated = new Date(session.session_created_at)
+      const now = new Date()
+      const hoursSinceLogin = (now.getTime() - sessionCreated.getTime()) / (1000 * 60 * 60)
+
+      // 24時間経過でセッション無効
+      if (hoursSinceLogin > 24) {
+        cookieStore.delete('admin_session')
+        return NextResponse.json({ user: null, reason: 'session_expired' }, { status: 401 })
+      }
+
+      // パスワード変更後のセッション無効化チェック
       const supabase = getSupabaseServerClient()
       const { data: user } = await supabase
         .from('admin_users')
@@ -23,14 +34,12 @@ export async function GET() {
         .single()
 
       if (user?.updated_at) {
-        const sessionCreated = new Date(session.session_created_at)
         const userUpdated = new Date(user.updated_at)
 
         // パスワード変更後はセッション無効
         if (userUpdated > sessionCreated) {
-          // セッションCookieを削除
           cookieStore.delete('admin_session')
-          return NextResponse.json({ user: null }, { status: 401 })
+          return NextResponse.json({ user: null, reason: 'password_changed' }, { status: 401 })
         }
       }
     }
