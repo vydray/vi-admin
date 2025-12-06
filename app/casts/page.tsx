@@ -1190,33 +1190,41 @@ export default function CastsPage() {
               </div>
 
               {/* 同一人物設定（super_admin かつ既存キャスト編集時のみ表示） */}
-              {isSuperAdmin && editingCast.id !== 0 && otherStoreCasts.length > 0 && (
+              {isSuperAdmin && editingCast.id !== 0 && (
                 <div style={{ marginTop: '20px' }}>
                   <h3 style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '12px', color: '#555' }}>🔗 同一人物設定（他店舗）</h3>
                   <p style={{ fontSize: '12px', color: '#888', marginBottom: '10px' }}>
                     この人が他店舗でも働いている場合、紐付けを設定できます
                   </p>
-                  <select
-                    value={editingCast.primary_cast_id || ''}
-                    onChange={(e) => handleFieldChange('primary_cast_id', e.target.value ? Number(e.target.value) : null)}
-                    style={{
-                      width: '100%',
-                      padding: '10px',
-                      border: '1px solid #ddd',
-                      borderRadius: '5px',
-                      fontSize: '14px'
-                    }}
-                  >
-                    <option value="">紐付けなし（この人がメイン）</option>
-                    {otherStoreCasts.map(cast => (
-                      <option key={cast.id} value={cast.id}>
-                        {cast.name}（{cast.store_name}）
-                      </option>
-                    ))}
-                  </select>
-                  {editingCast.primary_cast_id && (
-                    <p style={{ fontSize: '12px', color: '#2196F3', marginTop: '8px' }}>
-                      ↑ このキャストは上記のキャストと同一人物として紐付けられます
+                  {otherStoreCasts.length > 0 ? (
+                    <>
+                      <select
+                        value={editingCast.primary_cast_id || ''}
+                        onChange={(e) => handleFieldChange('primary_cast_id', e.target.value ? Number(e.target.value) : null)}
+                        style={{
+                          width: '100%',
+                          padding: '10px',
+                          border: '1px solid #ddd',
+                          borderRadius: '5px',
+                          fontSize: '14px'
+                        }}
+                      >
+                        <option value="">紐付けなし（この人がメイン）</option>
+                        {otherStoreCasts.map(cast => (
+                          <option key={cast.id} value={cast.id}>
+                            {cast.name}（{cast.store_name}）
+                          </option>
+                        ))}
+                      </select>
+                      {editingCast.primary_cast_id && (
+                        <p style={{ fontSize: '12px', color: '#2196F3', marginTop: '8px' }}>
+                          ↑ このキャストは上記のキャストと同一人物として紐付けられます
+                        </p>
+                      )}
+                    </>
+                  ) : (
+                    <p style={{ fontSize: '13px', color: '#999', padding: '10px', backgroundColor: '#f5f5f5', borderRadius: '5px' }}>
+                      他店舗に紐付け可能なキャストがいません
                     </p>
                   )}
                 </div>
