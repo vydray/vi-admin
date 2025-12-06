@@ -57,6 +57,7 @@ export default function CastsPage() {
   // 同一人物設定用
   const [otherStoreCasts, setOtherStoreCasts] = useState<{id: number, name: string, store_id: number, store_name: string}[]>([])
   const [stores, setStores] = useState<{id: number, name: string}[]>([])
+  const [selectedStoreForLink, setSelectedStoreForLink] = useState<number | null>(null)
 
   const loadCasts = useCallback(async () => {
     setLoading(true)
@@ -283,6 +284,7 @@ export default function CastsPage() {
     setEditingCast(fullCast)
     setShowTwitterPassword(false)
     setShowInstagramPassword(false)
+    setSelectedStoreForLink(null) // 店舗選択をリセット
     // super_adminの場合のみ他店舗のキャストを読み込む
     if (isSuperAdmin) {
       loadOtherStoreCasts()
@@ -337,6 +339,7 @@ export default function CastsPage() {
     setEditingCast(null)
     setShowTwitterPassword(false)
     setShowInstagramPassword(false)
+    setSelectedStoreForLink(null)
   }, [])
 
   const handleSaveCast = useCallback(async () => {
@@ -1196,35 +1199,76 @@ export default function CastsPage() {
                   <p style={{ fontSize: '12px', color: '#888', marginBottom: '10px' }}>
                     この人が他店舗でも働いている場合、紐付けを設定できます
                   </p>
-                  {otherStoreCasts.length > 0 ? (
-                    <>
-                      <select
-                        value={editingCast.primary_cast_id || ''}
-                        onChange={(e) => handleFieldChange('primary_cast_id', e.target.value ? Number(e.target.value) : null)}
-                        style={{
-                          width: '100%',
-                          padding: '10px',
-                          border: '1px solid #ddd',
-                          borderRadius: '5px',
-                          fontSize: '14px'
-                        }}
-                      >
-                        <option value="">紐付けなし（この人がメイン）</option>
-                        {otherStoreCasts.map(cast => (
-                          <option key={cast.id} value={cast.id}>
-                            {cast.name}（{cast.store_name}）
-                          </option>
-                        ))}
-                      </select>
+                  {stores.filter(s => s.id !== storeId).length > 0 ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {/* 店舗選択 */}
+                      <div>
+                        <label style={{ fontSize: '12px', color: '#666', marginBottom: '4px', display: 'block' }}>1. 店舗を選択</label>
+                        <select
+                          value={selectedStoreForLink || ''}
+                          onChange={(e) => {
+                            setSelectedStoreForLink(e.target.value ? Number(e.target.value) : null)
+                            handleFieldChange('primary_cast_id', null) // 店舗変更時はキャスト選択をリセット
+                          }}
+                          style={{
+                            width: '100%',
+                            padding: '10px',
+                            border: '1px solid #ddd',
+                            borderRadius: '5px',
+                            fontSize: '14px'
+                          }}
+                        >
+                          <option value="">店舗を選択してください</option>
+                          {stores.filter(s => s.id !== storeId).map(store => (
+                            <option key={store.id} value={store.id}>
+                              {store.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* キャスト選択（店舗選択後に表示） */}
+                      {selectedStoreForLink && (
+                        <div>
+                          <label style={{ fontSize: '12px', color: '#666', marginBottom: '4px', display: 'block' }}>2. キャストを選択</label>
+                          {otherStoreCasts.filter(c => c.store_id === selectedStoreForLink).length > 0 ? (
+                            <select
+                              value={editingCast.primary_cast_id || ''}
+                              onChange={(e) => handleFieldChange('primary_cast_id', e.target.value ? Number(e.target.value) : null)}
+                              style={{
+                                width: '100%',
+                                padding: '10px',
+                                border: '1px solid #ddd',
+                                borderRadius: '5px',
+                                fontSize: '14px'
+                              }}
+                            >
+                              <option value="">紐付けなし（この人がメイン）</option>
+                              {otherStoreCasts
+                                .filter(c => c.store_id === selectedStoreForLink)
+                                .map(cast => (
+                                  <option key={cast.id} value={cast.id}>
+                                    {cast.name}
+                                  </option>
+                                ))}
+                            </select>
+                          ) : (
+                            <p style={{ fontSize: '13px', color: '#999', padding: '10px', backgroundColor: '#f5f5f5', borderRadius: '5px' }}>
+                              この店舗には紐付け可能なキャストがいません
+                            </p>
+                          )}
+                        </div>
+                      )}
+
                       {editingCast.primary_cast_id && (
-                        <p style={{ fontSize: '12px', color: '#2196F3', marginTop: '8px' }}>
-                          ↑ このキャストは上記のキャストと同一人物として紐付けられます
+                        <p style={{ fontSize: '12px', color: '#2196F3', marginTop: '4px' }}>
+                          ✓ このキャストは選択したキャストと同一人物として紐付けられます
                         </p>
                       )}
-                    </>
+                    </div>
                   ) : (
                     <p style={{ fontSize: '13px', color: '#999', padding: '10px', backgroundColor: '#f5f5f5', borderRadius: '5px' }}>
-                      他店舗に紐付け可能なキャストがいません
+                      他店舗がありません
                     </p>
                   )}
                 </div>
