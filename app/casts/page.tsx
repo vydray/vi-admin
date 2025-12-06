@@ -94,11 +94,11 @@ export default function CastsPage() {
     // まず全店舗を取得
     const { data: storesData } = await supabase
       .from('stores')
-      .select('id, name')
-      .order('name')
+      .select('id, store_name')
+      .order('store_name')
 
     if (storesData) {
-      setStores(storesData)
+      setStores(storesData.map(s => ({ id: s.id, name: s.store_name })))
     }
 
     // 他店舗のキャストを取得
@@ -112,7 +112,7 @@ export default function CastsPage() {
     if (castsData && storesData) {
       const castsWithStoreName = castsData.map(cast => ({
         ...cast,
-        store_name: storesData.find(s => s.id === cast.store_id)?.name || '不明'
+        store_name: storesData.find(s => s.id === cast.store_id)?.store_name || '不明'
       }))
       setOtherStoreCasts(castsWithStoreName)
     }
