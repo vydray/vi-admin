@@ -5,6 +5,7 @@ import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
 import { useConfirm } from '@/contexts/ConfirmContext'
+import { useAuth } from '@/contexts/AuthContext'
 import { handleSupabaseError } from '@/lib/errorHandling'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
@@ -14,6 +15,8 @@ import type { Cast, CastListView, CastPosition } from '@/types'
 export default function CastsPage() {
   const { storeId } = useStore()
   const { confirm } = useConfirm()
+  const { user } = useAuth()
+  const isSuperAdmin = user?.role === 'super_admin'
   const [casts, setCasts] = useState<CastListView[]>([])
   const [loading, setLoading] = useState(true)
   const [positions, setPositions] = useState<CastPosition[]>([])
@@ -280,9 +283,12 @@ export default function CastsPage() {
     setEditingCast(fullCast)
     setShowTwitterPassword(false)
     setShowInstagramPassword(false)
-    loadOtherStoreCasts()  // 他店舗のキャストを読み込む
+    // super_adminの場合のみ他店舗のキャストを読み込む
+    if (isSuperAdmin) {
+      loadOtherStoreCasts()
+    }
     setIsModalOpen(true)
-  }, [storeId, loadOtherStoreCasts])
+  }, [storeId, loadOtherStoreCasts, isSuperAdmin])
 
   const openNewCastModal = useCallback(() => {
     // 新規キャストのデフォルト値を設定
@@ -1183,8 +1189,8 @@ export default function CastsPage() {
                 </div>
               </div>
 
-              {/* 同一人物設定（既存キャスト編集時のみ表示） */}
-              {editingCast.id !== 0 && otherStoreCasts.length > 0 && (
+              {/* 同一人物設定（super_admin かつ既存キャスト編集時のみ表示） */}
+              {isSuperAdmin && editingCast.id !== 0 && otherStoreCasts.length > 0 && (
                 <div style={{ marginTop: '20px' }}>
                   <h3 style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '12px', color: '#555' }}>🔗 同一人物設定（他店舗）</h3>
                   <p style={{ fontSize: '12px', color: '#888', marginBottom: '10px' }}>
