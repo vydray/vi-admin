@@ -51,11 +51,15 @@ export default function CastsPage() {
   const [draggedCastId, setDraggedCastId] = useState<number | null>(null)
   const [dragOverCastId, setDragOverCastId] = useState<number | null>(null)
 
+  // 同一人物設定用
+  const [otherStoreCasts, setOtherStoreCasts] = useState<{id: number, name: string, store_id: number, store_name: string}[]>([])
+  const [stores, setStores] = useState<{id: number, name: string}[]>([])
+
   const loadCasts = useCallback(async () => {
     setLoading(true)
     const { data, error } = await supabase
       .from('casts')
-      .select('id, name, employee_name, birthday, status, attributes, experience_date, hire_date, resignation_date, hourly_wage, commission_rate, residence_record, attendance_certificate, contract_documents, twitter, password, instagram, password2, show_in_pos, is_active, is_admin, is_manager, display_order')
+      .select('id, name, employee_name, birthday, status, attributes, experience_date, hire_date, resignation_date, hourly_wage, commission_rate, residence_record, attendance_certificate, contract_documents, twitter, password, instagram, password2, show_in_pos, is_active, is_admin, is_manager, display_order, primary_cast_id')
       .eq('store_id', storeId)
       .order('display_order', { ascending: true, nullsFirst: false })
       .order('name')
@@ -79,6 +83,35 @@ export default function CastsPage() {
       // Error handled
     } else {
       setPositions(data || [])
+    }
+  }, [storeId])
+
+  // 他店舗のキャスト一覧を読み込む（同一人物設定用）
+  const loadOtherStoreCasts = useCallback(async () => {
+    // まず全店舗を取得
+    const { data: storesData } = await supabase
+      .from('stores')
+      .select('id, name')
+      .order('name')
+
+    if (storesData) {
+      setStores(storesData)
+    }
+
+    // 他店舗のキャストを取得
+    const { data: castsData } = await supabase
+      .from('casts')
+      .select('id, name, store_id')
+      .neq('store_id', storeId)
+      .is('primary_cast_id', null)  // メインキャストのみ（既に紐付けられていないもの）
+      .order('name')
+
+    if (castsData && storesData) {
+      const castsWithStoreName = castsData.map(cast => ({
+        ...cast,
+        store_name: storesData.find(s => s.id === cast.store_id)?.name || '不明'
+      }))
+      setOtherStoreCasts(castsWithStoreName)
     }
   }, [storeId])
 
@@ -247,8 +280,9 @@ export default function CastsPage() {
     setEditingCast(fullCast)
     setShowTwitterPassword(false)
     setShowInstagramPassword(false)
+    loadOtherStoreCasts()  // 他店舗のキャストを読み込む
     setIsModalOpen(true)
-  }, [storeId])
+  }, [storeId, loadOtherStoreCasts])
 
   const openNewCastModal = useCallback(() => {
     // 新規キャストのデフォルト値を設定
@@ -396,6 +430,7 @@ export default function CastsPage() {
           password: editingCast.password,
           instagram: editingCast.instagram,
           password2: editingCast.password2,
+          primary_cast_id: editingCast.primary_cast_id,
         })
         .eq('id', editingCast.id)
 
@@ -1147,6 +1182,39 @@ export default function CastsPage() {
                   </label>
                 </div>
               </div>
+
+              {/* 同一人物設定（既存キャスト編集時のみ表示） */}
+              {editingCast.id !== 0 && otherStoreCasts.length > 0 && (
+                <div style={{ marginTop: '20px' }}>
+                  <h3 style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '12px', color: '#555' }}>🔗 同一人物設定（他店舗）</h3>
+                  <p style={{ fontSize: '12px', color: '#888', marginBottom: '10px' }}>
+                    この人が他店舗でも働いている場合、紐付けを設定できます
+                  </p>
+                  <select
+                    value={editingCast.primary_cast_id || ''}
+                    onChange={(e) => handleFieldChange('primary_cast_id', e.target.value ? Number(e.target.value) : null)}
+                    style={{
+                      width: '100%',
+                      padding: '10px',
+                      border: '1px solid #ddd',
+                      borderRadius: '5px',
+                      fontSize: '14px'
+                    }}
+                  >
+                    <option value="">紐付けなし（この人がメイン）</option>
+                    {otherStoreCasts.map(cast => (
+                      <option key={cast.id} value={cast.id}>
+                        {cast.name}（{cast.store_name}）
+                      </option>
+                    ))}
+                  </select>
+                  {editingCast.primary_cast_id && (
+                    <p style={{ fontSize: '12px', color: '#2196F3', marginTop: '8px' }}>
+                      ↑ このキャストは上記のキャストと同一人物として紐付けられます
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
 
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'space-between' }}>

@@ -37,6 +37,7 @@ export interface Cast {
   line_msg_registered_at: string | null
   is_active: boolean
   display_order?: number | null
+  primary_cast_id?: number | null  // 同一人物のメインcast_id（NULLなら自分がメイン）
 }
 
 // Simplified Cast type for listings (id and name only)
@@ -70,6 +71,7 @@ export interface CastListView {
   is_admin: boolean
   is_manager: boolean
   display_order?: number | null
+  primary_cast_id?: number | null
 }
 
 // Cast type for POS operations
