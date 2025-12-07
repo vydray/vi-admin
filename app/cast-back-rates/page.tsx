@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
-import { CastBasic, CastBackRate, BackType, Category } from '@/types'
+import { CastBasic, CastBackRate, BackType, Category, Product } from '@/types'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
 import toast from 'react-hot-toast'
@@ -37,6 +37,7 @@ export default function CastBackRatesPage() {
   const { storeId, storeName } = useStore()
   const [casts, setCasts] = useState<CastBasic[]>([])
   const [categories, setCategories] = useState<Category[]>([])
+  const [products, setProducts] = useState<Product[]>([])
   const [backRates, setBackRates] = useState<CastBackRate[]>([])
   const [selectedCastId, setSelectedCastId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
@@ -71,6 +72,17 @@ export default function CastBackRatesPage() {
       if (categoriesError) throw categoriesError
       setCategories(categoriesData || [])
 
+      // 商品一覧
+      const { data: productsData, error: productsError } = await supabase
+        .from('products')
+        .select('id, name, price, category_id, store_id')
+        .eq('store_id', storeId)
+        .eq('is_active', true)
+        .order('display_order')
+
+      if (productsError) throw productsError
+      setProducts(productsData || [])
+
       // バック率設定
       const { data: ratesData, error: ratesError } = await supabase
         .from('cast_back_rates')
@@ -103,6 +115,14 @@ export default function CastBackRatesPage() {
     if (!selectedCastId) return []
     return backRates.filter((r) => r.cast_id === selectedCastId)
   }, [backRates, selectedCastId])
+
+  // 選択中のカテゴリに属する商品一覧
+  const filteredProducts = useMemo(() => {
+    if (!editingRate.category) return []
+    const selectedCategory = categories.find(c => c.name === editingRate.category)
+    if (!selectedCategory) return []
+    return products.filter(p => p.category_id === selectedCategory.id)
+  }, [editingRate.category, categories, products])
 
   const openAddModal = () => {
     setEditingRate({
@@ -260,7 +280,6 @@ export default function CastBackRatesPage() {
                       <th style={styles.th}>バック方法</th>
                       <th style={styles.th}>SELF</th>
                       <th style={styles.th}>HELP</th>
-                      <th style={styles.th}>優先度</th>
                       <th style={styles.th}>操作</th>
                     </tr>
                   </thead>
@@ -275,14 +294,13 @@ export default function CastBackRatesPage() {
                         <td style={styles.td}>
                           {rate.back_type === 'ratio'
                             ? `${rate.self_back_ratio ?? rate.back_ratio}%`
-                            : `¥${rate.back_fixed_amount}`}
+                            : `¥${rate.back_fixed_amount.toLocaleString()}`}
                         </td>
                         <td style={styles.td}>
                           {rate.back_type === 'ratio'
-                            ? `${rate.help_back_ratio ?? rate.back_ratio}%`
-                            : `¥${rate.back_fixed_amount}`}
+                            ? `${rate.help_back_ratio ?? '-'}%`
+                            : `¥${rate.back_fixed_amount.toLocaleString()}`}
                         </td>
-                        <td style={styles.td}>{rate.priority}</td>
                         <td style={styles.td}>
                           <div style={styles.actions}>
                             <button
@@ -329,6 +347,7 @@ export default function CastBackRatesPage() {
                   setEditingRate({
                     ...editingRate,
                     category: e.target.value || null,
+                    product_name: null, // カテゴリ変更時に商品をリセット
                   })
                 }
                 style={styles.select}
@@ -343,9 +362,8 @@ export default function CastBackRatesPage() {
             </div>
 
             <div style={styles.formGroup}>
-              <label style={styles.label}>商品名（空欄でカテゴリ全体）</label>
-              <input
-                type="text"
+              <label style={styles.label}>商品名</label>
+              <select
                 value={editingRate.product_name || ''}
                 onChange={(e) =>
                   setEditingRate({
@@ -353,9 +371,19 @@ export default function CastBackRatesPage() {
                     product_name: e.target.value || null,
                   })
                 }
-                style={styles.input}
-                placeholder="空欄でカテゴリ全体に適用"
-              />
+                style={styles.select}
+                disabled={!editingRate.category}
+              >
+                <option value="">カテゴリ全体に適用</option>
+                {filteredProducts.map((product) => (
+                  <option key={product.id} value={product.name}>
+                    {product.name}
+                  </option>
+                ))}
+              </select>
+              {!editingRate.category && (
+                <p style={styles.hint}>先にカテゴリを選択してください</p>
+              )}
             </div>
 
             <div style={styles.formGroup}>
@@ -377,47 +405,31 @@ export default function CastBackRatesPage() {
 
             {editingRate.back_type === 'ratio' ? (
               <>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>基本バック率 (%)</label>
-                  <input
-                    type="number"
-                    value={editingRate.back_ratio}
-                    onChange={(e) =>
-                      setEditingRate({
-                        ...editingRate,
-                        back_ratio: parseFloat(e.target.value) || 0,
-                      })
-                    }
-                    style={styles.input}
-                    min="0"
-                    max="100"
-                    step="0.1"
-                  />
-                </div>
-
                 <div style={styles.formRow}>
                   <div style={styles.formGroup}>
-                    <label style={styles.label}>SELF時バック率 (任意)</label>
+                    <label style={styles.label}>SELF時バック率 (%)</label>
                     <input
                       type="number"
-                      value={editingRate.self_back_ratio ?? ''}
+                      value={editingRate.self_back_ratio ?? editingRate.back_ratio}
                       onChange={(e) =>
                         setEditingRate({
                           ...editingRate,
                           self_back_ratio: e.target.value
                             ? parseFloat(e.target.value)
-                            : null,
+                            : 0,
+                          back_ratio: e.target.value
+                            ? parseFloat(e.target.value)
+                            : 0,
                         })
                       }
                       style={styles.input}
                       min="0"
                       max="100"
-                      step="0.1"
-                      placeholder="空欄で基本率を使用"
+                      step="1"
                     />
                   </div>
                   <div style={styles.formGroup}>
-                    <label style={styles.label}>HELP時バック率 (任意)</label>
+                    <label style={styles.label}>HELP時バック率 (%)</label>
                     <input
                       type="number"
                       value={editingRate.help_back_ratio ?? ''}
@@ -432,7 +444,7 @@ export default function CastBackRatesPage() {
                       style={styles.input}
                       min="0"
                       max="100"
-                      step="0.1"
+                      step="1"
                       placeholder="空欄で店舗設定を使用"
                     />
                   </div>
@@ -456,23 +468,6 @@ export default function CastBackRatesPage() {
                 />
               </div>
             )}
-
-            <div style={styles.formGroup}>
-              <label style={styles.label}>優先度</label>
-              <input
-                type="number"
-                value={editingRate.priority}
-                onChange={(e) =>
-                  setEditingRate({
-                    ...editingRate,
-                    priority: parseInt(e.target.value) || 0,
-                  })
-                }
-                style={styles.input}
-                min="0"
-              />
-              <p style={styles.hint}>数値が大きいほど優先されます</p>
-            </div>
 
             <div style={styles.modalActions}>
               <Button
