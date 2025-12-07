@@ -261,11 +261,8 @@ export default function SalesSettingsPage() {
         salesAmount = settings.help_fixed_amount
       }
 
-      // 商品ごとの端数処理（商品ごとの場合のみ）
-      let rounded = salesAmount
-      if (isPerItem) {
-        rounded = applyRoundingPreview(salesAmount, roundingPosition, roundingType)
-      }
+      // 端数処理（常に商品単位で適用）
+      const rounded = applyRoundingPreview(salesAmount, roundingPosition, roundingType)
 
       return {
         ...item,
@@ -276,20 +273,15 @@ export default function SalesSettingsPage() {
       }
     })
 
-    // 商品計
-    const itemsTotal = isPerItem
-      ? results.reduce((sum, r) => sum + r.rounded, 0)
-      : results.reduce((sum, r) => sum + r.salesAmount, 0)
+    // 商品計（端数処理済みの値を合計）
+    const itemsTotal = results.reduce((sum, r) => sum + r.rounded, 0)
 
     // 設定値（排他的：どちらか一方のみ）
     const includeService = settings.exclude_service_charge ?? false
     const excludeConsumptionTax = settings.exclude_consumption_tax ?? false
 
-    // 商品計の端数処理（1回目）
-    let totalAfterFirstRounding = itemsTotal
-    if (!isPerItem) {
-      totalAfterFirstRounding = applyRoundingPreview(itemsTotal, roundingPosition, roundingType)
-    }
+    // 商品計（端数処理は商品単位で既に完了）
+    const totalAfterFirstRounding = itemsTotal
 
     // 税金処理
     // ※消費税抜きは商品ごとに処理済み（HELP割合計算前に税抜きする必要があるため）
@@ -343,9 +335,37 @@ export default function SalesSettingsPage() {
           <p style={styles.subtitle}>店舗: {storeName}</p>
         </div>
 
+        {/* 売上の集計方法 */}
+        <div style={styles.card}>
+          <h2 style={styles.cardTitle}>売上の集計方法</h2>
+          <p style={styles.cardDescription}>
+            売上計算に含める商品の範囲を選択してください
+          </p>
+
+          <div style={styles.formGroup}>
+            <select
+              value={settings.rounding_timing}
+              onChange={(e) =>
+                updateSetting('rounding_timing', e.target.value as RoundingTiming)
+              }
+              style={styles.select}
+            >
+              <option value="per_item">キャスト名が入っている商品のみ</option>
+              <option value="total">伝票のすべての商品を集計</option>
+            </select>
+            <p style={styles.hint}>
+              キャスト名が入っている商品のみ: キャストドリンク、シャンパンなど<br />
+              伝票のすべての商品を集計: セット料金なども含む
+            </p>
+          </div>
+        </div>
+
         {/* 端数処理設定 */}
         <div style={styles.card}>
           <h2 style={styles.cardTitle}>端数処理設定</h2>
+          <p style={styles.cardDescription}>
+            各商品の売上を端数処理してから合計します
+          </p>
 
           <div style={styles.formRow}>
             <div style={styles.formGroup}>
@@ -375,25 +395,6 @@ export default function SalesSettingsPage() {
               </select>
             </div>
           </div>
-
-          <div style={styles.formGroup}>
-            <label style={styles.label}>売上の集計方法</label>
-            <select
-              value={settings.rounding_timing}
-              onChange={(e) =>
-                updateSetting('rounding_timing', e.target.value as RoundingTiming)
-              }
-              style={styles.select}
-            >
-              <option value="per_item">キャスト名が入っている商品のみ</option>
-              <option value="total">伝票のすべての商品を集計</option>
-            </select>
-            <p style={styles.hint}>
-              キャスト名が入っている商品のみ: 各商品を個別に端数処理してから合計<br />
-              伝票のすべての商品を集計: すべての商品を合計した後に端数処理
-            </p>
-          </div>
-
         </div>
 
         {/* ヘルプ売上設定 */}
@@ -625,7 +626,7 @@ HELPバック率: 10%（キャストバック率設定）
                           <span>¥{item.salesAmount.toLocaleString()}</span>
                         </div>
                       )}
-                      {!item.notIncluded && settings.rounding_timing === 'per_item' && item.salesAmount !== item.rounded && (
+                      {!item.notIncluded && item.salesAmount !== item.rounded && (
                         <div style={{ ...styles.detailRow, color: '#3b82f6' }}>
                           <span>→ 端数処理</span>
                           <span>¥{item.rounded.toLocaleString()}</span>
@@ -636,7 +637,7 @@ HELPバック率: 10%（キャストバック率設定）
                       {item.notIncluded ? (
                         <span style={{ color: '#94a3b8' }}>売上: -</span>
                       ) : (
-                        <span>売上: ¥{(settings.rounding_timing === 'per_item' ? item.rounded : item.salesAmount).toLocaleString()}</span>
+                        <span>売上: ¥{item.rounded.toLocaleString()}</span>
                       )}
                     </div>
                   </div>
@@ -647,12 +648,6 @@ HELPバック率: 10%（キャストバック率設定）
                     <span>商品計</span>
                     <span>¥{preview.itemsTotal.toLocaleString()}</span>
                   </div>
-                  {!preview.isPerItem && preview.itemsTotal !== preview.totalAfterFirstRounding && (
-                    <div style={{ ...styles.totalRow, color: '#3b82f6' }}>
-                      <span>→ 端数処理</span>
-                      <span>¥{preview.totalAfterFirstRounding.toLocaleString()}</span>
-                    </div>
-                  )}
                   {preview.includeService && preview.serviceRate > 0 && (
                     <div style={styles.totalRow}>
                       <span>→ サービスTAX込（{Math.round(preview.serviceRate * 100)}%）</span>
@@ -684,7 +679,7 @@ HELPバック率: 10%（キャストバック率設定）
                   }`}
                 </div>
                 <div style={styles.summaryItem}>
-                  タイミング: {settings.rounding_timing === 'per_item' ? '商品ごと' : '合計時'}
+                  集計対象: {settings.rounding_timing === 'per_item' ? 'キャスト商品のみ' : '全商品'}
                 </div>
                 <div style={styles.summaryItem}>
                   HELP割合: {settings.help_ratio}%
