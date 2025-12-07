@@ -6,6 +6,7 @@ import { useStore } from '@/contexts/StoreContext'
 import { CastBasic, CastBackRate, BackType, Category, Product } from '@/types'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
+import HelpTooltip from '@/components/HelpTooltip'
 import toast from 'react-hot-toast'
 
 interface BackRateForm {
@@ -377,8 +378,14 @@ export default function CastBackRatesPage() {
                       <thead>
                         <tr>
                           <th style={styles.th}>商品名</th>
-                          <th style={styles.th}>SELF</th>
-                          <th style={styles.th}>HELP</th>
+                          <th style={styles.th}>
+                            SELF
+                            <HelpTooltip text="自分のテーブルで発生した売上に対するバック率" />
+                          </th>
+                          <th style={styles.th}>
+                            HELP
+                            <HelpTooltip text="他のキャストのテーブルで発生した売上に対するバック率。売上計算設定のHELP売上割合が適用された後の金額に対して計算されます。" width={280} />
+                          </th>
                           <th style={{ ...styles.th, width: '60px' }}></th>
                         </tr>
                       </thead>

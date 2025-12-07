@@ -13,6 +13,7 @@ import {
 import { getDefaultSalesSettings } from '@/lib/salesCalculation'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
+import HelpTooltip from '@/components/HelpTooltip'
 import toast from 'react-hot-toast'
 
 // 端数処理の位
@@ -375,7 +376,13 @@ export default function SalesSettingsPage() {
 
         {/* ヘルプ売上設定 */}
         <div style={styles.card}>
-          <h2 style={styles.cardTitle}>ヘルプ売上設定</h2>
+          <h2 style={styles.cardTitle}>
+            ヘルプ売上設定
+            <HelpTooltip
+              text="これは「売上」の計算設定です。商品価格の何％がHELPキャストの売上としてカウントされるかを設定します。バック（報酬）の計算は「キャストバック率設定」で行います。"
+              width={300}
+            />
+          </h2>
           <p style={styles.cardDescription}>
             SELF（担当テーブル）以外でキャストに紐づいた売上の計算方法
           </p>
@@ -399,7 +406,13 @@ export default function SalesSettingsPage() {
 
           {settings.help_calculation_method === 'ratio' && (
             <div style={styles.formGroup}>
-              <label style={styles.label}>ヘルプ売上割合 (%)</label>
+              <label style={styles.label}>
+                ヘルプ売上割合 (%)
+                <HelpTooltip
+                  text="例: 50%の場合、1000円の商品でHELPキャストの売上は500円になります。この500円に対してバック率が適用されます。"
+                  width={280}
+                />
+              </label>
               <input
                 type="number"
                 value={settings.help_ratio || ''}
