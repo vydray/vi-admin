@@ -44,6 +44,7 @@ export default function StoreSettingsPage() {
   }, [storeId])
 
   const loadSettings = async (currentStoreId: number) => {
+    console.log('loadSettings called with storeId:', currentStoreId)
     setLoading(true)
 
     // 店舗設定を取得
@@ -53,7 +54,10 @@ export default function StoreSettingsPage() {
       .eq('store_id', currentStoreId)
       .maybeSingle()
 
+    console.log('receipt_settings query result:', { data, error, currentStoreId })
+
     if (!error && data) {
+      console.log('Setting store settings with data:', data)
       setSettings({
         store_name: data.store_name || '',
         store_postal_code: data.store_postal_code || '',
@@ -68,6 +72,8 @@ export default function StoreSettingsPage() {
         menu_template: '',
         logo_url: data.logo_url || ''
       })
+    } else {
+      console.log('No data found or error:', { error, data })
     }
 
     // システム設定を取得
