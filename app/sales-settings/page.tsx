@@ -413,9 +413,9 @@ export default function SalesSettingsPage() {
 
                 {/* テーブルヘッダー */}
                 <div style={styles.tableHeader}>
-                  <span style={styles.tableHeaderItem}>商品名</span>
-                  <span style={styles.tableHeaderItem}>キャスト</span>
-                  <span style={styles.tableHeaderItem}>金額</span>
+                  <span style={styles.tableHeaderName}>商品名</span>
+                  <span style={styles.tableHeaderCast}>キャスト</span>
+                  <span style={styles.tableHeaderPrice}>金額</span>
                 </div>
 
                 {preview.items.map((item, idx) => (
@@ -680,17 +680,25 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   tableHeader: {
     display: 'flex',
-    justifyContent: 'space-between',
+    alignItems: 'center',
     padding: '8px 0',
     borderBottom: '1px solid #e2e8f0',
     marginBottom: '10px',
     fontSize: '11px',
     fontWeight: '600',
     color: '#64748b',
+    gap: '8px',
   },
-  tableHeaderItem: {
+  tableHeaderName: {
     flex: 1,
+  },
+  tableHeaderCast: {
+    width: '50px',
     textAlign: 'center' as const,
+  },
+  tableHeaderPrice: {
+    width: '70px',
+    textAlign: 'right' as const,
   },
   typeTag: {
     fontSize: '10px',
@@ -709,15 +717,17 @@ const styles: { [key: string]: React.CSSProperties } = {
   itemCast: {
     fontSize: '12px',
     color: '#64748b',
-    minWidth: '30px',
+    width: '50px',
     textAlign: 'center' as const,
+    flexShrink: 0,
   },
   itemPrice: {
     fontSize: '12px',
     color: '#1e293b',
     fontWeight: '500',
-    minWidth: '70px',
+    width: '70px',
     textAlign: 'right' as const,
+    flexShrink: 0,
   },
   receiptItem: {
     marginBottom: '15px',
