@@ -498,8 +498,11 @@ HELPバック率: 10%（キャストバック率設定）
                 onChange={(e) => {
                   if (e.target.checked) {
                     // 消費税抜きをONにしたらサービスTAX込みをOFFにする
-                    updateSetting('exclude_consumption_tax', true)
-                    updateSetting('exclude_service_charge', false)
+                    setSettings(prev => prev ? {
+                      ...prev,
+                      exclude_consumption_tax: true,
+                      exclude_service_charge: false
+                    } : prev)
                   } else {
                     updateSetting('exclude_consumption_tax', false)
                   }
@@ -518,8 +521,11 @@ HELPバック率: 10%（キャストバック率設定）
                 onChange={(e) => {
                   if (e.target.checked) {
                     // サービスTAX込みをONにしたら消費税抜きをOFFにする
-                    updateSetting('exclude_service_charge', true)
-                    updateSetting('exclude_consumption_tax', false)
+                    setSettings(prev => prev ? {
+                      ...prev,
+                      exclude_service_charge: true,
+                      exclude_consumption_tax: false
+                    } : prev)
                   } else {
                     updateSetting('exclude_service_charge', false)
                   }
