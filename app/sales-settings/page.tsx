@@ -491,10 +491,15 @@ HELPバック率: 10%（キャストバック率設定）
           </p>
 
           <div style={styles.checkboxGroup}>
-            <label style={styles.checkboxLabel}>
+            <label style={{
+              ...styles.checkboxLabel,
+              opacity: settings.exclude_service_charge ? 0.4 : 1,
+              cursor: settings.exclude_service_charge ? 'not-allowed' : 'pointer',
+            }}>
               <input
                 type="checkbox"
                 checked={settings.exclude_consumption_tax ?? false}
+                disabled={settings.exclude_service_charge ?? false}
                 onChange={(e) => {
                   if (e.target.checked) {
                     // 消費税抜きをONにしたらサービスTAX込みをOFFにする
@@ -507,17 +512,25 @@ HELPバック率: 10%（キャストバック率設定）
                     updateSetting('exclude_consumption_tax', false)
                   }
                 }}
-                style={styles.checkbox}
+                style={{
+                  ...styles.checkbox,
+                  cursor: settings.exclude_service_charge ? 'not-allowed' : 'pointer',
+                }}
               />
               <span>消費税抜きの金額で計算する（{systemSettings.tax_rate}%）</span>
             </label>
           </div>
 
           <div style={styles.checkboxGroup}>
-            <label style={styles.checkboxLabel}>
+            <label style={{
+              ...styles.checkboxLabel,
+              opacity: settings.exclude_consumption_tax ? 0.4 : 1,
+              cursor: settings.exclude_consumption_tax ? 'not-allowed' : 'pointer',
+            }}>
               <input
                 type="checkbox"
                 checked={settings.exclude_service_charge ?? false}
+                disabled={settings.exclude_consumption_tax ?? false}
                 onChange={(e) => {
                   if (e.target.checked) {
                     // サービスTAX込みをONにしたら消費税抜きをOFFにする
@@ -530,7 +543,10 @@ HELPバック率: 10%（キャストバック率設定）
                     updateSetting('exclude_service_charge', false)
                   }
                 }}
-                style={styles.checkbox}
+                style={{
+                  ...styles.checkbox,
+                  cursor: settings.exclude_consumption_tax ? 'not-allowed' : 'pointer',
+                }}
               />
               <span>サービスTAX込みの金額で計算する（{systemSettings.service_fee_rate}%）</span>
             </label>
