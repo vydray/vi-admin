@@ -5,40 +5,64 @@ import { supabase } from '@/lib/supabase'
 import { format, eachDayOfInterval, addMonths, subMonths, startOfMonth, endOfMonth } from 'date-fns'
 import { ja } from 'date-fns/locale'
 import { useStore } from '@/contexts/StoreContext'
-import { CastBasic, OrderItem } from '@/types'
+import { CastBasic, SalesSettings, CastBackRate } from '@/types'
+import { calculateCastSales, getDefaultSalesSettings, applyRounding } from '@/lib/salesCalculation'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
+import Link from 'next/link'
 
-interface DailySales {
-  [date: string]: number
+interface DailySalesData {
+  selfSales: number
+  helpSales: number
+  totalSales: number
+  backAmount: number
 }
 
-interface CastSales {
+interface DailySales {
+  [date: string]: DailySalesData
+}
+
+interface CastSalesData {
   castId: number
   castName: string
   dailySales: DailySales
-  total: number
+  totalSelf: number
+  totalHelp: number
+  totalSales: number
+  totalBack: number
+}
+
+interface OrderItemWithTax {
+  id: number
+  order_id: string
+  product_name: string
+  category: string | null
+  cast_name: string | null
+  quantity: number
+  unit_price: number
+  unit_price_excl_tax: number
+  subtotal: number
+  tax_amount: number
 }
 
 interface Order {
-  id: number
+  id: string
   staff_name: string | null
   order_date: string
-  total_incl_tax: number
-  order_items: OrderItem[]
+  order_items: OrderItemWithTax[]
 }
 
-type AggregationType = 'subtotal_only' | 'items_only'
+type ViewMode = 'total' | 'self_help' | 'back'
 
 export default function CastSalesPage() {
-  const { storeId } = useStore()
+  const { storeId, storeName } = useStore()
   const [selectedMonth, setSelectedMonth] = useState(new Date())
-  const [aggregationType, setAggregationType] = useState<AggregationType>('subtotal_only')
-  const [salesData, setSalesData] = useState<CastSales[]>([])
+  const [viewMode, setViewMode] = useState<ViewMode>('total')
+  const [salesData, setSalesData] = useState<CastSalesData[]>([])
+  const [salesSettings, setSalesSettings] = useState<SalesSettings | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // 通貨フォーマッターを1回だけ作成（再利用）
   const currencyFormatter = useMemo(() => {
     return new Intl.NumberFormat('ja-JP', {
       style: 'currency',
@@ -46,7 +70,6 @@ export default function CastSalesPage() {
       minimumFractionDigits: 0
     })
   }, [])
-
 
   const loadCasts = useCallback(async () => {
     const { data, error } = await supabase
@@ -64,23 +87,73 @@ export default function CastSalesPage() {
     return data || []
   }, [storeId])
 
-  const loadSalesData = useCallback(async (loadedCasts: CastBasic[]) => {
+  const loadSalesSettings = useCallback(async (): Promise<SalesSettings> => {
+    const { data, error } = await supabase
+      .from('sales_settings')
+      .select('*')
+      .eq('store_id', storeId)
+      .single()
+
+    if (error && error.code !== 'PGRST116') {
+      console.warn('売上設定の取得に失敗:', error)
+    }
+
+    if (data) {
+      return data as SalesSettings
+    }
+
+    // デフォルト設定を返す
+    const defaults = getDefaultSalesSettings(storeId)
+    return {
+      id: 0,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      ...defaults,
+    } as SalesSettings
+  }, [storeId])
+
+  const loadBackRates = useCallback(async (): Promise<CastBackRate[]> => {
+    const { data, error } = await supabase
+      .from('cast_back_rates')
+      .select('*')
+      .eq('store_id', storeId)
+      .eq('is_active', true)
+
+    if (error) {
+      console.warn('バック率設定の取得に失敗:', error)
+      return []
+    }
+
+    return (data || []) as CastBackRate[]
+  }, [storeId])
+
+  const loadSalesData = useCallback(async (
+    loadedCasts: CastBasic[],
+    settings: SalesSettings,
+    backRates: CastBackRate[]
+  ) => {
     const start = startOfMonth(selectedMonth)
     const end = endOfMonth(selectedMonth)
     const startDate = format(start, 'yyyy-MM-dd')
     const endDate = format(end, 'yyyy-MM-dd')
 
-    // オーダーデータを取得
+    // オーダーデータを取得（税抜き金額も含む）
     const { data: orders, error: ordersError } = await supabase
       .from('orders')
       .select(`
         id,
         staff_name,
         order_date,
-        total_incl_tax,
         order_items (
+          id,
+          product_name,
+          category,
           cast_name,
-          subtotal
+          quantity,
+          unit_price,
+          unit_price_excl_tax,
+          subtotal,
+          tax_amount
         )
       `)
       .eq('store_id', storeId)
@@ -92,14 +165,10 @@ export default function CastSalesPage() {
       throw new Error('売上データの取得に失敗しました')
     }
 
-    // 型アサーション（Supabaseの型推論を補完）
     const typedOrders = (orders || []) as unknown as Order[]
 
     // キャストごとの売上を集計
-    const salesMap = new Map<number, CastSales>()
-
-    // キャスト名からキャストオブジェクトへのMapを作成（高速検索用）
-    const castNameMap = new Map(loadedCasts.map(c => [c.name, c]))
+    const salesMap = new Map<number, CastSalesData>()
 
     // キャストの初期化
     loadedCasts.forEach(cast => {
@@ -107,92 +176,141 @@ export default function CastSalesPage() {
         castId: cast.id,
         castName: cast.name,
         dailySales: {},
-        total: 0
+        totalSelf: 0,
+        totalHelp: 0,
+        totalSales: 0,
+        totalBack: 0,
       })
     })
 
-    // 売上の集計
-    typedOrders.forEach((order) => {
-      const orderDate = format(new Date(order.order_date), 'yyyy-MM-dd')
-
-      if (aggregationType === 'subtotal_only') {
-        // 小計のみ: staff_nameで集計
-        if (order.staff_name) {
-          const cast = castNameMap.get(order.staff_name)
-          if (cast) {
-            const castSales = salesMap.get(cast.id)
-            if (castSales) {
-              castSales.dailySales[orderDate] = (castSales.dailySales[orderDate] || 0) + order.total_incl_tax
-            }
-          }
-        }
-      } else if (aggregationType === 'items_only') {
-        // 商品売上のみ: order_items.cast_nameで集計
-        order.order_items.forEach((item) => {
-          if (item.cast_name) {
-            const cast = castNameMap.get(item.cast_name)
-            if (cast) {
-              const castSales = salesMap.get(cast.id)
-              if (castSales) {
-                castSales.dailySales[orderDate] = (castSales.dailySales[orderDate] || 0) + item.subtotal
-              }
-            }
-          }
-        })
+    // 日別にオーダーをグループ化して処理
+    const ordersByDate = new Map<string, Order[]>()
+    typedOrders.forEach(order => {
+      const dateStr = format(new Date(order.order_date), 'yyyy-MM-dd')
+      if (!ordersByDate.has(dateStr)) {
+        ordersByDate.set(dateStr, [])
       }
+      ordersByDate.get(dateStr)!.push(order)
     })
 
-    // 合計を計算
-    salesMap.forEach(castSales => {
-      castSales.total = Object.values(castSales.dailySales).reduce((sum, amount) => sum + amount, 0)
+    // 各日のオーダーを処理
+    ordersByDate.forEach((dayOrders, dateStr) => {
+      // この日の売上を計算
+      const daySummaries = calculateCastSales(dayOrders, loadedCasts, settings, backRates)
+
+      // 各キャストの日別データを更新
+      daySummaries.forEach(summary => {
+        const castData = salesMap.get(summary.cast_id)
+        if (castData) {
+          castData.dailySales[dateStr] = {
+            selfSales: summary.self_sales,
+            helpSales: summary.help_sales,
+            totalSales: summary.total_sales,
+            backAmount: summary.total_back,
+          }
+          castData.totalSelf += summary.self_sales
+          castData.totalHelp += summary.help_sales
+          castData.totalSales += summary.total_sales
+          castData.totalBack += summary.total_back
+        }
+      })
     })
 
-    // 合計値が高い順にソート
-    const sortedData = Array.from(salesMap.values()).sort((a, b) => b.total - a.total)
+    // 合計時の端数処理（totalの場合）
+    if (settings.rounding_timing === 'total') {
+      salesMap.forEach(castData => {
+        castData.totalSelf = applyRounding(castData.totalSelf, settings.rounding_method)
+        castData.totalHelp = applyRounding(castData.totalHelp, settings.rounding_method)
+        castData.totalSales = castData.totalSelf + castData.totalHelp
+        castData.totalBack = applyRounding(castData.totalBack, settings.rounding_method)
+      })
+    }
+
+    // 売上順にソート
+    const sortedData = Array.from(salesMap.values())
+      .filter(d => d.totalSales > 0)
+      .sort((a, b) => b.totalSales - a.totalSales)
+
     setSalesData(sortedData)
-  }, [storeId, selectedMonth, aggregationType])
+  }, [storeId, selectedMonth])
 
   const loadData = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const loadedCasts = await loadCasts()
-      await loadSalesData(loadedCasts)
+      const [loadedCasts, settings, backRates] = await Promise.all([
+        loadCasts(),
+        loadSalesSettings(),
+        loadBackRates(),
+      ])
+      setSalesSettings(settings)
+      await loadSalesData(loadedCasts, settings, backRates)
     } catch (err) {
       console.error('データ読み込みエラー:', err)
       setError('データの読み込みに失敗しました。再度お試しください。')
     } finally {
       setLoading(false)
     }
-  }, [loadCasts, loadSalesData])
+  }, [loadCasts, loadSalesSettings, loadBackRates, loadSalesData])
 
   useEffect(() => {
     loadData()
   }, [loadData])
 
-  // 月内の日付一覧をメモ化
   const days = useMemo(() => {
     const start = startOfMonth(selectedMonth)
     const end = endOfMonth(selectedMonth)
     return eachDayOfInterval({ start, end })
   }, [selectedMonth])
 
-  // 通貨フォーマット関数
   const formatCurrency = (amount: number) => {
     return currencyFormatter.format(amount)
   }
 
-  // 集計方法のラベルをメモ化
-  const aggregationLabel = useMemo(() => {
-    switch (aggregationType) {
-      case 'subtotal_only':
-        return '小計のみ'
-      case 'items_only':
-        return '商品売上のみ'
+  const getDisplayValue = (data: DailySalesData | undefined): string => {
+    if (!data) return '¥0'
+    switch (viewMode) {
+      case 'total':
+        return formatCurrency(data.totalSales)
+      case 'self_help':
+        return `S:${formatCurrency(data.selfSales)} / H:${formatCurrency(data.helpSales)}`
+      case 'back':
+        return formatCurrency(data.backAmount)
       default:
-        return ''
+        return formatCurrency(data.totalSales)
     }
-  }, [aggregationType])
+  }
+
+  const getTotalDisplay = (cast: CastSalesData): string => {
+    switch (viewMode) {
+      case 'total':
+        return formatCurrency(cast.totalSales)
+      case 'self_help':
+        return `S:${formatCurrency(cast.totalSelf)} / H:${formatCurrency(cast.totalHelp)}`
+      case 'back':
+        return formatCurrency(cast.totalBack)
+      default:
+        return formatCurrency(cast.totalSales)
+    }
+  }
+
+  const settingsDescription = useMemo(() => {
+    if (!salesSettings) return ''
+    const parts: string[] = []
+    if (salesSettings.use_tax_excluded) parts.push('税抜')
+    if (salesSettings.rounding_method !== 'none') {
+      const methodLabel = {
+        floor_100: '100円切捨て',
+        floor_10: '10円切捨て',
+        round: '四捨五入',
+        none: '',
+      }[salesSettings.rounding_method]
+      const timingLabel = salesSettings.rounding_timing === 'per_item' ? '(商品毎)' : '(合計時)'
+      parts.push(methodLabel + timingLabel)
+    }
+    parts.push(`ヘルプ${salesSettings.help_ratio}%`)
+    return parts.join(' / ')
+  }, [salesSettings])
 
   if (loading) {
     return <LoadingSpinner />
@@ -224,9 +342,26 @@ export default function CastSalesPage() {
         borderRadius: '12px',
         boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
       }}>
-        <h1 style={{ margin: '0 0 20px 0', fontSize: '24px', fontWeight: '600', color: '#1a1a1a' }}>
-          キャスト売上
-        </h1>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
+          <div>
+            <h1 style={{ margin: '0 0 8px 0', fontSize: '24px', fontWeight: '600', color: '#1a1a1a' }}>
+              キャスト売上
+            </h1>
+            <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>
+              {storeName} | {settingsDescription}
+            </p>
+          </div>
+          <Link href="/sales-settings" style={{
+            padding: '8px 16px',
+            fontSize: '13px',
+            color: '#3498db',
+            textDecoration: 'none',
+            border: '1px solid #3498db',
+            borderRadius: '6px',
+          }}>
+            設定変更
+          </Link>
+        </div>
 
         <div style={{
           display: 'flex',
@@ -255,12 +390,12 @@ export default function CastSalesPage() {
             </Button>
           </div>
 
-          {/* 集計方法選択 */}
+          {/* 表示モード選択 */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <label style={{ fontSize: '14px', fontWeight: '500', color: '#475569' }}>集計方法:</label>
+            <label style={{ fontSize: '14px', fontWeight: '500', color: '#475569' }}>表示:</label>
             <select
-              value={aggregationType}
-              onChange={(e) => setAggregationType(e.target.value as AggregationType)}
+              value={viewMode}
+              onChange={(e) => setViewMode(e.target.value as ViewMode)}
               style={{
                 padding: '6px 12px',
                 fontSize: '14px',
@@ -270,8 +405,9 @@ export default function CastSalesPage() {
                 cursor: 'pointer'
               }}
             >
-              <option value="subtotal_only">小計のみ</option>
-              <option value="items_only">商品売上のみ</option>
+              <option value="total">合計売上</option>
+              <option value="self_help">SELF/HELP別</option>
+              <option value="back">バック金額</option>
             </select>
           </div>
         </div>
@@ -285,7 +421,7 @@ export default function CastSalesPage() {
         overflow: 'hidden'
       }}>
         <div style={{
-          maxHeight: 'calc(100vh - 250px)',
+          maxHeight: 'calc(100vh - 300px)',
           overflow: 'auto',
           position: 'relative'
         }}>
@@ -324,7 +460,7 @@ export default function CastSalesPage() {
                     backgroundColor: '#f8fafc',
                     color: day.getDay() === 0 ? '#dc2626' : day.getDay() === 6 ? '#2563eb' : '#475569',
                     fontWeight: '600',
-                    minWidth: '80px',
+                    minWidth: viewMode === 'self_help' ? '140px' : '80px',
                     zIndex: 10,
                     boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
                     fontSize: '12px'
@@ -341,65 +477,80 @@ export default function CastSalesPage() {
                   borderBottom: '2px solid #e2e8f0',
                   fontWeight: '600',
                   color: '#475569',
-                  minWidth: '120px',
+                  minWidth: viewMode === 'self_help' ? '180px' : '120px',
                   zIndex: 20,
                   boxShadow: '-2px 2px 4px rgba(0,0,0,0.05)'
                 }}>
-                  合計
+                  {viewMode === 'back' ? 'バック合計' : '売上合計'}
                 </th>
               </tr>
             </thead>
             <tbody>
-              {salesData.map((castSales) => (
-                <tr key={castSales.castId}>
-                  <td style={{
-                    position: 'sticky',
-                    left: 0,
-                    backgroundColor: '#fff',
-                    padding: '12px',
-                    borderBottom: '1px solid #e2e8f0',
-                    borderRight: '1px solid #e2e8f0',
-                    fontWeight: '500',
-                    color: '#1a1a1a',
-                    zIndex: 5,
-                    boxShadow: '2px 0 4px rgba(0,0,0,0.05)'
+              {salesData.length === 0 ? (
+                <tr>
+                  <td colSpan={days.length + 2} style={{
+                    padding: '40px',
+                    textAlign: 'center',
+                    color: '#64748b'
                   }}>
-                    {castSales.castName}
-                  </td>
-                  {days.map(day => {
-                    const dateStr = format(day, 'yyyy-MM-dd')
-                    const amount = castSales.dailySales[dateStr] || 0
-                    return (
-                      <td key={dateStr} style={{
-                        padding: '8px',
-                        borderBottom: '1px solid #e2e8f0',
-                        borderRight: '1px solid #e2e8f0',
-                        textAlign: 'right',
-                        backgroundColor: amount > 0 ? '#f0fdf4' : '#fff',
-                        color: amount > 0 ? '#166534' : '#94a3b8',
-                        fontSize: '13px'
-                      }}>
-                        {amount > 0 ? formatCurrency(amount) : '¥0'}
-                      </td>
-                    )
-                  })}
-                  <td style={{
-                    position: 'sticky',
-                    right: 0,
-                    backgroundColor: '#fef3c7',
-                    padding: '12px',
-                    borderBottom: '1px solid #e2e8f0',
-                    textAlign: 'right',
-                    fontWeight: '600',
-                    color: '#92400e',
-                    zIndex: 5,
-                    boxShadow: '-2px 0 4px rgba(0,0,0,0.05)',
-                    fontSize: '14px'
-                  }}>
-                    {formatCurrency(castSales.total)}
+                    この月のデータはありません
                   </td>
                 </tr>
-              ))}
+              ) : (
+                salesData.map((castSales) => (
+                  <tr key={castSales.castId}>
+                    <td style={{
+                      position: 'sticky',
+                      left: 0,
+                      backgroundColor: '#fff',
+                      padding: '12px',
+                      borderBottom: '1px solid #e2e8f0',
+                      borderRight: '1px solid #e2e8f0',
+                      fontWeight: '500',
+                      color: '#1a1a1a',
+                      zIndex: 5,
+                      boxShadow: '2px 0 4px rgba(0,0,0,0.05)'
+                    }}>
+                      {castSales.castName}
+                    </td>
+                    {days.map(day => {
+                      const dateStr = format(day, 'yyyy-MM-dd')
+                      const dayData = castSales.dailySales[dateStr]
+                      const hasData = dayData && dayData.totalSales > 0
+                      return (
+                        <td key={dateStr} style={{
+                          padding: '8px',
+                          borderBottom: '1px solid #e2e8f0',
+                          borderRight: '1px solid #e2e8f0',
+                          textAlign: 'right',
+                          backgroundColor: hasData ? '#f0fdf4' : '#fff',
+                          color: hasData ? '#166534' : '#94a3b8',
+                          fontSize: viewMode === 'self_help' ? '11px' : '13px',
+                          whiteSpace: 'nowrap'
+                        }}>
+                          {getDisplayValue(dayData)}
+                        </td>
+                      )
+                    })}
+                    <td style={{
+                      position: 'sticky',
+                      right: 0,
+                      backgroundColor: viewMode === 'back' ? '#dbeafe' : '#fef3c7',
+                      padding: '12px',
+                      borderBottom: '1px solid #e2e8f0',
+                      textAlign: 'right',
+                      fontWeight: '600',
+                      color: viewMode === 'back' ? '#1e40af' : '#92400e',
+                      zIndex: 5,
+                      boxShadow: '-2px 0 4px rgba(0,0,0,0.05)',
+                      fontSize: viewMode === 'self_help' ? '12px' : '14px',
+                      whiteSpace: 'nowrap'
+                    }}>
+                      {getTotalDisplay(castSales)}
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
@@ -415,10 +566,20 @@ export default function CastSalesPage() {
         fontSize: '13px',
         color: '#64748b'
       }}>
-        <div style={{ marginBottom: '8px', fontWeight: '600' }}>集計方法: {aggregationLabel}</div>
+        <div style={{ marginBottom: '12px', fontWeight: '600' }}>表示モード説明</div>
         <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
-          <div>• <strong>小計のみ</strong>: 担当テーブルの小計金額</div>
-          <div>• <strong>商品売上のみ</strong>: 商品に紐づいたキャスト売上（指名料、ドリンクバックなど）</div>
+          <div>
+            <strong>合計売上</strong>: SELF + HELP の合計
+          </div>
+          <div>
+            <strong>SELF/HELP別</strong>: S=担当テーブル / H=ヘルプ売上
+          </div>
+          <div>
+            <strong>バック金額</strong>: 売上に対するバック額
+          </div>
+        </div>
+        <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #e2e8f0' }}>
+          <strong>SELF判定</strong>: オーダーの担当キャスト(staff_name) = 商品に紐づくキャスト(cast_name) の場合
         </div>
       </div>
     </div>

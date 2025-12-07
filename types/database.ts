@@ -256,3 +256,162 @@ export interface CastPosition {
   name: string
   store_id: number
 }
+
+// ============================================================================
+// Sales & Compensation Settings (売上・報酬設定)
+// ============================================================================
+
+// 端数処理方法
+export type RoundingMethod = 'floor_100' | 'floor_10' | 'round' | 'none'
+
+// 端数処理タイミング
+export type RoundingTiming = 'per_item' | 'total'
+
+// ヘルプ計算方法
+export type HelpCalculationMethod = 'ratio' | 'fixed'
+
+// 給与形態
+export type PayType = 'hourly' | 'commission' | 'hourly_plus_commission' | 'sliding'
+
+// バック計算方法
+export type BackType = 'ratio' | 'fixed'
+
+// 保証期間
+export type GuaranteePeriod = 'day' | 'month'
+
+// 店舗別売上計算設定
+export interface SalesSettings {
+  id: number
+  store_id: number
+
+  // 端数処理設定
+  rounding_method: RoundingMethod
+  rounding_timing: RoundingTiming
+
+  // ヘルプ売上計算設定
+  help_calculation_method: HelpCalculationMethod
+  help_ratio: number          // ヘルプ割合（%）
+  help_fixed_amount: number   // ヘルプ固定額
+
+  // 税計算設定
+  use_tax_excluded: boolean   // true: 税抜き金額で計算
+
+  // バック計算対象設定
+  include_shimei_in_sales: boolean    // 指名料を売上に含める
+  include_drink_in_sales: boolean     // ドリンクを売上に含める
+  include_food_in_sales: boolean      // フードを売上に含める
+  include_extension_in_sales: boolean // 延長料金を売上に含める
+
+  description?: string | null
+
+  created_at: string
+  updated_at: string
+}
+
+// スライド制のレート設定
+export interface SlidingRate {
+  min: number    // 売上下限
+  max: number    // 売上上限（null/undefinedは上限なし）
+  rate: number   // バック率（%）
+}
+
+// 控除項目
+export interface DeductionItem {
+  name: string    // 控除名
+  amount: number  // 金額
+}
+
+// キャスト別報酬設定
+export interface CompensationSettings {
+  id: number
+  cast_id: number
+  store_id: number
+
+  // 給与形態
+  pay_type: PayType
+
+  // 時給設定
+  hourly_rate: number
+
+  // 歩合設定
+  commission_rate: number
+
+  // スライド制設定
+  sliding_rates: SlidingRate[] | null
+
+  // 保証設定
+  guarantee_enabled: boolean
+  guarantee_amount: number
+  guarantee_period: GuaranteePeriod
+
+  // 控除設定
+  deduction_enabled: boolean
+  deduction_items: DeductionItem[] | null
+
+  // 適用期間
+  valid_from: string
+  valid_to: string | null
+
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+// キャスト×商品別バック率
+export interface CastBackRate {
+  id: number
+  cast_id: number
+  store_id: number
+
+  // 商品識別
+  category: string | null        // NULLは全カテゴリ対象
+  product_name: string | null    // NULLはカテゴリ全体対象
+
+  // バック設定
+  back_type: BackType
+  back_ratio: number            // バック率（%）
+  back_fixed_amount: number     // バック固定額
+
+  // SELF/HELP別バック率
+  self_back_ratio: number | null  // NULLの場合はback_ratioを使用
+  help_back_ratio: number | null  // NULLの場合はsales_settings.help_ratioを使用
+
+  priority: number
+  is_active: boolean
+
+  created_at: string
+  updated_at: string
+}
+
+// ============================================================================
+// Sales Calculation Types (売上計算用)
+// ============================================================================
+
+// SELF/HELP判定結果
+export type SalesType = 'self' | 'help'
+
+// 計算済み売上アイテム
+export interface CalculatedSalesItem {
+  order_item_id: number
+  cast_id: number
+  cast_name: string
+  product_name: string
+  category: string | null
+  quantity: number
+  unit_price_excl_tax: number     // 税抜き単価
+  subtotal_excl_tax: number       // 税抜き小計
+  sales_type: SalesType           // SELF or HELP
+  back_ratio: number              // 適用されたバック率
+  back_amount: number             // バック金額
+}
+
+// キャスト別売上集計
+export interface CastSalesSummary {
+  cast_id: number
+  cast_name: string
+  self_sales: number        // SELF売上合計
+  help_sales: number        // HELP売上合計
+  total_sales: number       // 合計売上
+  total_back: number        // バック合計
+  items: CalculatedSalesItem[]
+}

@@ -15,6 +15,8 @@ const menuItems = [
   { name: 'カテゴリー管理', path: '/categories', icon: '📁' },
   { name: '伝票管理', path: '/receipts', icon: '🧾' },
   { name: '店舗設定', path: '/store-settings', icon: '🏪' },
+  { name: '売上設定', path: '/sales-settings', icon: '📊' },
+  { name: 'バック率設定', path: '/cast-back-rates', icon: '💵' },
   { name: '設定', path: '/settings', icon: '⚙️' },
   { name: '店舗管理', path: '/stores', icon: '🏢', superAdminOnly: true },
   { name: 'LINE設定', path: '/line-settings', icon: '💬', superAdminOnly: true },

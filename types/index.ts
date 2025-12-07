@@ -21,6 +21,21 @@ export type {
   SystemSettings,
   StoreSettings,
   CastPosition,
+  // Sales & Compensation types
+  RoundingMethod,
+  RoundingTiming,
+  HelpCalculationMethod,
+  PayType,
+  BackType,
+  GuaranteePeriod,
+  SalesSettings,
+  SlidingRate,
+  DeductionItem,
+  CompensationSettings,
+  CastBackRate,
+  SalesType,
+  CalculatedSalesItem,
+  CastSalesSummary,
 } from './database'
 
 // UI Component types
