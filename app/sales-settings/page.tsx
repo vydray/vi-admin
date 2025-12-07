@@ -229,8 +229,9 @@ export default function SalesSettingsPage() {
     ]
 
     const results = sampleItems.map(item => {
-      // キャスト名がない商品（needsCast=false）はキャスト売上に含めない
-      if (!item.needsCast) {
+      // 「商品ごと」モードの場合: キャスト名がある商品のみ対象
+      // 「合計」モードの場合: すべての商品を集計
+      if (isPerItem && !item.needsCast) {
         return {
           ...item,
           calcPrice: 0,
@@ -240,13 +241,13 @@ export default function SalesSettingsPage() {
         }
       }
 
-      // 商品ごとに処理の場合: 商品ごとに税引き＆端数処理
-      // 合計時に処理の場合: 税引きは合計時に行う（商品はそのまま）
+      // 消費税抜きは常に商品ごとに適用（HELPの割合計算前に税抜きする必要があるため）
+      // 端数処理のタイミングだけが「商品ごと」と「合計時」で異なる
       let calcPrice = item.basePrice
 
-      // 商品ごとの場合のみ、ここで消費税抜き
+      // 消費税抜きが有効なら、ここで商品ごとに税抜き
       // 浮動小数点の誤差を避けるため、整数演算で計算
-      if (isPerItem && excludeTax) {
+      if (excludeTax) {
         const taxPercent = Math.round(taxRate * 100) // 0.1 → 10
         calcPrice = Math.floor(calcPrice * 100 / (100 + taxPercent))
       }
@@ -290,23 +291,19 @@ export default function SalesSettingsPage() {
       totalAfterFirstRounding = applyRoundingPreview(itemsTotal, roundingPosition, roundingType)
     }
 
-    // 税金処理（排他的：消費税抜き or サービスTAX込み）
+    // 税金処理
+    // ※消費税抜きは商品ごとに処理済み（HELP割合計算前に税抜きする必要があるため）
+    // ここではサービスTAX込みのみ処理
     let totalAfterTaxAdjustment = totalAfterFirstRounding
-    // 消費税抜きは「商品ごと」の場合は既に各商品で処理済みなのでスキップ
-    if (excludeConsumptionTax && taxRate > 0 && !isPerItem) {
-      // 消費税抜き（合計時のみ）
-      const taxPercent = Math.round(taxRate * 100) // 0.1 → 10
-      totalAfterTaxAdjustment = Math.floor(totalAfterFirstRounding * 100 / (100 + taxPercent))
-    } else if (includeService && serviceRate > 0) {
+    if (includeService && serviceRate > 0) {
       // サービスTAX込み（常に合計時に適用）
       const servicePercent = Math.round(serviceRate * 100) // 0.15 → 15
       totalAfterTaxAdjustment = Math.floor(totalAfterFirstRounding * (100 + servicePercent) / 100)
     }
 
-    // 端数処理（2回目：税金処理後）
+    // 端数処理（2回目：サービスTAX適用後）
     let finalTotal = totalAfterTaxAdjustment
-    const needsSecondRounding = (!isPerItem && excludeConsumptionTax) || includeService
-    if (needsSecondRounding && totalAfterTaxAdjustment !== totalAfterFirstRounding) {
+    if (includeService && totalAfterTaxAdjustment !== totalAfterFirstRounding) {
       finalTotal = applyRoundingPreview(totalAfterTaxAdjustment, roundingPosition, roundingType)
     }
 
@@ -616,7 +613,7 @@ HELPバック率: 10%（キャストバック率設定）
                           </span>
                         )}
                       </div>
-                      {!item.notIncluded && settings.exclude_consumption_tax && settings.rounding_timing === 'per_item' && item.calcPrice !== item.basePrice && (
+                      {!item.notIncluded && settings.exclude_consumption_tax && item.calcPrice !== item.basePrice && (
                         <div style={styles.detailRow}>
                           <span>→ 消費税抜き</span>
                           <span>¥{item.calcPrice.toLocaleString()}</span>
@@ -656,19 +653,13 @@ HELPバック率: 10%（キャストバック率設定）
                       <span>¥{preview.totalAfterFirstRounding.toLocaleString()}</span>
                     </div>
                   )}
-                  {preview.excludeConsumptionTax && preview.taxRate > 0 && !preview.isPerItem && (
-                    <div style={styles.totalRow}>
-                      <span>→ 消費税抜き（{Math.round(preview.taxRate * 100)}%）</span>
-                      <span>¥{preview.totalAfterTaxAdjustment.toLocaleString()}</span>
-                    </div>
-                  )}
                   {preview.includeService && preview.serviceRate > 0 && (
                     <div style={styles.totalRow}>
                       <span>→ サービスTAX込（{Math.round(preview.serviceRate * 100)}%）</span>
                       <span>¥{preview.totalAfterTaxAdjustment.toLocaleString()}</span>
                     </div>
                   )}
-                  {((!preview.isPerItem && preview.excludeConsumptionTax) || preview.includeService) && preview.totalAfterTaxAdjustment !== preview.finalTotal && (
+                  {preview.includeService && preview.totalAfterTaxAdjustment !== preview.finalTotal && (
                     <div style={{ ...styles.totalRow, color: '#3b82f6' }}>
                       <span>→ 端数処理</span>
                       <span>¥{preview.finalTotal.toLocaleString()}</span>
