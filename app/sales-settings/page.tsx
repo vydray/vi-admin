@@ -477,10 +477,7 @@ export default function SalesSettingsPage() {
             </p>
           </div>
 
-          <div style={{
-            opacity: (settings.distribute_to_help ?? true) ? 1 : 0.4,
-            pointerEvents: (settings.distribute_to_help ?? true) ? 'auto' : 'none',
-          }}>
+          <div>
             <div style={styles.formGroup}>
               <label style={styles.label}>計算方法</label>
               <select
