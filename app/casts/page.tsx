@@ -63,7 +63,7 @@ export default function CastsPage() {
     setLoading(true)
     const { data, error } = await supabase
       .from('casts')
-      .select('id, name, employee_name, birthday, status, attributes, experience_date, hire_date, resignation_date, hourly_wage, commission_rate, residence_record, attendance_certificate, contract_documents, twitter, password, instagram, password2, show_in_pos, is_active, is_admin, is_manager, display_order, primary_cast_id')
+      .select('id, name, employee_name, birthday, status, attributes, experience_date, hire_date, resignation_date, residence_record, attendance_certificate, contract_documents, twitter, password, instagram, password2, show_in_pos, is_active, is_admin, is_manager, display_order, primary_cast_id')
       .eq('store_id', storeId)
       .order('display_order', { ascending: true, nullsFirst: false })
       .order('name')
@@ -319,8 +319,6 @@ export default function CastsPage() {
       show_in_pos: true,
       birthday: null,
       line_user_id: null,
-      hourly_wage: 0,
-      commission_rate: 0,
       is_admin: false,
       is_manager: false,
       line_msg_user_id: null,
@@ -397,8 +395,6 @@ export default function CastsPage() {
           experience_date: editingCast.experience_date,
           hire_date: editingCast.hire_date,
           resignation_date: editingCast.resignation_date,
-          hourly_wage: editingCast.hourly_wage,
-          commission_rate: editingCast.commission_rate,
           twitter: editingCast.twitter,
           password: editingCast.password,
           instagram: editingCast.instagram,
@@ -433,8 +429,6 @@ export default function CastsPage() {
           experience_date: editingCast.experience_date,
           hire_date: editingCast.hire_date,
           resignation_date: editingCast.resignation_date,
-          hourly_wage: editingCast.hourly_wage,
-          commission_rate: editingCast.commission_rate,
           twitter: editingCast.twitter,
           password: editingCast.password,
           instagram: editingCast.instagram,
@@ -751,12 +745,6 @@ export default function CastsPage() {
                 <th style={thStyleClickableSticky} onClick={() => handleSort('resignation_date')}>
                   退職日 {sortField === 'resignation_date' && (sortDirection === 'asc' ? '↑' : '↓')}
                 </th>
-                <th style={thStyleClickableSticky} onClick={() => handleSort('hourly_wage')}>
-                  時給 {sortField === 'hourly_wage' && (sortDirection === 'asc' ? '↑' : '↓')}
-                </th>
-                <th style={thStyleClickableSticky} onClick={() => handleSort('commission_rate')}>
-                  歩合率 {sortField === 'commission_rate' && (sortDirection === 'asc' ? '↑' : '↓')}
-                </th>
                 <th style={thStyleSticky}>住民票</th>
                 <th style={thStyleSticky}>在籍証明</th>
                 <th style={thStyleSticky}>契約書</th>
@@ -830,8 +818,6 @@ export default function CastsPage() {
                   <td style={tdStyle}>{cast.experience_date ? new Date(cast.experience_date).toLocaleDateString('ja-JP') : '-'}</td>
                   <td style={tdStyle}>{cast.hire_date ? new Date(cast.hire_date).toLocaleDateString('ja-JP') : '-'}</td>
                   <td style={tdStyle}>{cast.resignation_date ? new Date(cast.resignation_date).toLocaleDateString('ja-JP') : '-'}</td>
-                  <td style={tdStyle}>¥{cast.hourly_wage.toLocaleString()}</td>
-                  <td style={tdStyle}>{(cast.commission_rate * 100).toFixed(0)}%</td>
                   <td style={tdStyle}>{renderToggle(cast.id, 'residence_record', cast.residence_record)}</td>
                   <td style={tdStyle}>{renderToggle(cast.id, 'attendance_certificate', cast.attendance_certificate)}</td>
                   <td style={tdStyle}>{renderToggle(cast.id, 'contract_documents', cast.contract_documents)}</td>
@@ -970,27 +956,6 @@ export default function CastsPage() {
                   type="date"
                   value={editingCast.resignation_date || ''}
                   onChange={(e) => handleFieldChange('resignation_date', e.target.value)}
-                  style={inputStyle}
-                />
-              </div>
-
-              <div>
-                <label style={labelStyle}>時給</label>
-                <input
-                  type="number"
-                  value={editingCast.hourly_wage}
-                  onChange={(e) => handleFieldChange('hourly_wage', Number(e.target.value))}
-                  style={inputStyle}
-                />
-              </div>
-
-              <div>
-                <label style={labelStyle}>歩合率 (%)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={(editingCast.commission_rate * 100).toFixed(2)}
-                  onChange={(e) => handleFieldChange('commission_rate', Number(e.target.value) / 100)}
                   style={inputStyle}
                 />
               </div>

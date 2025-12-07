@@ -28,8 +28,6 @@ export interface Cast {
   show_in_pos: boolean
   birthday: string | null
   line_user_id: string | null
-  hourly_wage: number
-  commission_rate: number
   is_admin: boolean
   is_manager: boolean
   line_msg_user_id: string | null
@@ -57,8 +55,6 @@ export interface CastListView {
   experience_date: string | null
   hire_date: string | null
   resignation_date: string | null
-  hourly_wage: number
-  commission_rate: number
   residence_record: boolean | null
   attendance_certificate: boolean | null
   contract_documents: boolean | null
@@ -377,6 +373,9 @@ export interface CastBackRate {
   // SELF/HELP別バック率
   self_back_ratio: number | null  // NULLの場合はback_ratioを使用
   help_back_ratio: number | null  // NULLの場合はsales_settings.help_ratioを使用
+
+  // キャスト報酬設定（デフォルト設定用: category=null, product_name=null時）
+  hourly_wage: number | null     // 時給
 
   is_active: boolean
 

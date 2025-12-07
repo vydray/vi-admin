@@ -18,6 +18,7 @@ interface BackRateForm {
   back_fixed_amount: number
   self_back_ratio: number | null
   help_back_ratio: number | null
+  hourly_wage: number | null
 }
 
 const emptyForm: BackRateForm = {
@@ -29,6 +30,7 @@ const emptyForm: BackRateForm = {
   back_fixed_amount: 0,
   self_back_ratio: null,
   help_back_ratio: null,
+  hourly_wage: null,
 }
 
 export default function CastBackRatesPage() {
@@ -142,6 +144,7 @@ export default function CastBackRatesPage() {
       back_fixed_amount: rate.back_fixed_amount,
       self_back_ratio: rate.self_back_ratio,
       help_back_ratio: rate.help_back_ratio,
+      hourly_wage: rate.hourly_wage,
     })
     setIsEditing(true)
     setShowModal(true)
@@ -165,6 +168,7 @@ export default function CastBackRatesPage() {
         back_fixed_amount: editingRate.back_fixed_amount,
         self_back_ratio: editingRate.self_back_ratio,
         help_back_ratio: editingRate.help_back_ratio,
+        hourly_wage: editingRate.hourly_wage,
         is_active: true,
       }
 
@@ -273,7 +277,7 @@ export default function CastBackRatesPage() {
                     <tr>
                       <th style={styles.th}>カテゴリ</th>
                       <th style={styles.th}>商品名</th>
-                      <th style={styles.th}>バック方法</th>
+                      <th style={styles.th}>時給</th>
                       <th style={styles.th}>SELF</th>
                       <th style={styles.th}>HELP</th>
                       <th style={styles.th}>操作</th>
@@ -281,11 +285,15 @@ export default function CastBackRatesPage() {
                   </thead>
                   <tbody>
                     {filteredRates.map((rate) => (
-                      <tr key={rate.id}>
-                        <td style={styles.td}>{rate.category || '全て'}</td>
-                        <td style={styles.td}>{rate.product_name || '全て'}</td>
+                      <tr key={rate.id} style={!rate.category ? { backgroundColor: '#f0f9ff' } : {}}>
                         <td style={styles.td}>
-                          {rate.back_type === 'ratio' ? '割合' : '固定額'}
+                          {rate.category || <span style={{ color: '#3b82f6', fontWeight: 600 }}>デフォルト</span>}
+                        </td>
+                        <td style={styles.td}>{rate.product_name || '-'}</td>
+                        <td style={styles.td}>
+                          {!rate.category && rate.hourly_wage
+                            ? `¥${rate.hourly_wage.toLocaleString()}`
+                            : '-'}
                         </td>
                         <td style={styles.td}>
                           {rate.back_type === 'ratio'
@@ -378,9 +386,32 @@ export default function CastBackRatesPage() {
                 ))}
               </select>
               {!editingRate.category && (
-                <p style={styles.hint}>先にカテゴリを選択してください</p>
+                <p style={styles.hint}>「全カテゴリ」= キャストのデフォルト設定</p>
               )}
             </div>
+
+            {/* デフォルト設定（全カテゴリ）の場合は時給も設定可能 */}
+            {!editingRate.category && (
+              <div style={styles.formGroup}>
+                <label style={styles.label}>時給 (円)</label>
+                <input
+                  type="number"
+                  value={editingRate.hourly_wage ?? ''}
+                  onChange={(e) =>
+                    setEditingRate({
+                      ...editingRate,
+                      hourly_wage: e.target.value
+                        ? parseInt(e.target.value)
+                        : null,
+                    })
+                  }
+                  style={styles.input}
+                  min="0"
+                  step="100"
+                  placeholder="未設定"
+                />
+              </div>
+            )}
 
             <div style={styles.formGroup}>
               <label style={styles.label}>バック計算方法</label>
