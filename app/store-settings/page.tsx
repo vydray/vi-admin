@@ -38,17 +38,19 @@ export default function StoreSettingsPage() {
   })
 
   useEffect(() => {
-    loadSettings()
+    if (storeId) {
+      loadSettings(storeId)
+    }
   }, [storeId])
 
-  const loadSettings = async () => {
+  const loadSettings = async (currentStoreId: number) => {
     setLoading(true)
 
     // 店舗設定を取得
     const { data, error } = await supabase
       .from('receipt_settings')
       .select('store_name, store_postal_code, store_address, store_phone, store_email, business_hours, closed_days, store_registration_number, footer_message, revenue_stamp_threshold, receipt_templates, logo_url')
-      .eq('store_id', storeId)
+      .eq('store_id', currentStoreId)
       .maybeSingle()
 
     if (!error && data) {
@@ -88,7 +90,7 @@ export default function StoreSettingsPage() {
     const { data: systemSettingsData } = await supabase
       .from('system_settings')
       .select('setting_key, setting_value')
-      .eq('store_id', storeId)
+      .eq('store_id', currentStoreId)
 
     if (systemSettingsData && systemSettingsData.length > 0) {
       const newSystemSettings: SystemSettings = {
