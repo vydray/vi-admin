@@ -226,9 +226,10 @@ export default function SalesSettingsPage() {
       let calcPrice = item.basePrice
 
       // 商品ごとの場合のみ、ここで消費税抜き
+      // 浮動小数点の誤差を避けるため、整数演算で計算
       if (isPerItem && excludeTax) {
-        console.log(`税引き計算: ${item.basePrice} / (1 + ${taxRate}) = ${item.basePrice / (1 + taxRate)} → ${Math.floor(item.basePrice / (1 + taxRate))}`)
-        calcPrice = Math.floor(calcPrice / (1 + taxRate))
+        const taxPercent = Math.round(taxRate * 100) // 0.1 → 10
+        calcPrice = Math.floor(calcPrice * 100 / (100 + taxPercent))
       }
 
       let salesAmount = calcPrice
@@ -264,14 +265,18 @@ export default function SalesSettingsPage() {
     const excludeService = settings.exclude_service_charge ?? true
     let totalAfterTax = itemsTotal
     if (!isPerItem && excludeTax) {
-      totalAfterTax = Math.floor(itemsTotal / (1 + taxRate))
+      // 浮動小数点の誤差を避けるため、整数演算で計算
+      const taxPercent = Math.round(taxRate * 100) // 0.1 → 10
+      totalAfterTax = Math.floor(itemsTotal * 100 / (100 + taxPercent))
     }
 
     // サービスTAX抜き（合計時に計算）
     let totalBeforeRounding = totalAfterTax
     if (excludeService && serviceRate > 0) {
       // サービスTAXは合計に対してかかっているので、合計から逆算
-      totalBeforeRounding = Math.floor(totalAfterTax / (1 + serviceRate))
+      // 浮動小数点の誤差を避けるため、整数演算で計算
+      const servicePercent = Math.round(serviceRate * 100) // 0.1 → 10
+      totalBeforeRounding = Math.floor(totalAfterTax * 100 / (100 + servicePercent))
     }
 
     // 合計時の端数処理
