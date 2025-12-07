@@ -379,7 +379,13 @@ export default function SalesSettingsPage() {
           <h2 style={styles.cardTitle}>
             ヘルプ売上設定
             <HelpTooltip
-              text="これは「売上」の計算設定です。商品価格の何％がHELPキャストの売上としてカウントされるかを設定します。バック（報酬）の計算は「キャストバック率設定」で行います。"
+              text="【HELP売上の計算】商品売上 × HELP売上割合 = HELP売上
+
+例: 1000円の商品、HELP売上割合50%
+→ HELP売上 = 500円
+
+この500円に対してバック率が適用されます
+バック率はキャストバック率設定で設定"
               width={300}
             />
           </h2>
@@ -409,8 +415,14 @@ export default function SalesSettingsPage() {
               <label style={styles.label}>
                 ヘルプ売上割合 (%)
                 <HelpTooltip
-                  text="例: 50%の場合、1000円の商品でHELPキャストの売上は500円になります。この500円に対してバック率が適用されます。"
-                  width={280}
+                  text="【計算例】
+HELP売上割合: 50%
+商品価格: 1000円
+HELPバック率: 10%（キャストバック率設定）
+
+→ HELP売上 = 1000円 × 50% = 500円
+→ HELPバック = 500円 × 10% = 50円"
+                  width={300}
                 />
               </label>
               <input

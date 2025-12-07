@@ -433,11 +433,26 @@ export default function CastBackRatesPage() {
                           <th style={styles.th}>商品名</th>
                           <th style={styles.th}>
                             SELF
-                            <HelpTooltip text="自分のテーブルで発生した売上に対するバック率" />
+                            <HelpTooltip
+                              text="【計算式】商品売上 × SELFバック率 = バック額
+
+例: 1000円の商品、SELFバック率10%の場合
+→ 1000円 × 10% = 100円のバック"
+                              width={280}
+                            />
                           </th>
                           <th style={styles.th}>
                             HELP
-                            <HelpTooltip text="他のキャストのテーブルで発生した売上に対するバック率。売上計算設定のHELP売上割合が適用された後の金額に対して計算されます。" width={280} />
+                            <HelpTooltip
+                              text="【計算式】商品売上 × HELP売上割合 × HELPバック率 = バック額
+
+例: 1000円の商品、HELP売上割合50%、HELPバック率10%の場合
+→ 1000円 × 50% = 500円（HELP売上）
+→ 500円 × 10% = 50円のバック
+
+※HELP売上割合は売上計算設定で設定します"
+                              width={320}
+                            />
                           </th>
                           <th style={{ ...styles.th, width: '60px' }}></th>
                         </tr>
