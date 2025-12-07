@@ -292,19 +292,21 @@ export default function SalesSettingsPage() {
 
     // 税金処理（排他的：消費税抜き or サービスTAX込み）
     let totalAfterTaxAdjustment = totalAfterFirstRounding
-    if (excludeConsumptionTax && taxRate > 0) {
-      // 消費税抜き
+    // 消費税抜きは「商品ごと」の場合は既に各商品で処理済みなのでスキップ
+    if (excludeConsumptionTax && taxRate > 0 && !isPerItem) {
+      // 消費税抜き（合計時のみ）
       const taxPercent = Math.round(taxRate * 100) // 0.1 → 10
       totalAfterTaxAdjustment = Math.floor(totalAfterFirstRounding * 100 / (100 + taxPercent))
     } else if (includeService && serviceRate > 0) {
-      // サービスTAX込み
+      // サービスTAX込み（常に合計時に適用）
       const servicePercent = Math.round(serviceRate * 100) // 0.15 → 15
       totalAfterTaxAdjustment = Math.floor(totalAfterFirstRounding * (100 + servicePercent) / 100)
     }
 
     // 端数処理（2回目：税金処理後）
     let finalTotal = totalAfterTaxAdjustment
-    if ((excludeConsumptionTax || includeService) && totalAfterTaxAdjustment !== totalAfterFirstRounding) {
+    const needsSecondRounding = (!isPerItem && excludeConsumptionTax) || includeService
+    if (needsSecondRounding && totalAfterTaxAdjustment !== totalAfterFirstRounding) {
       finalTotal = applyRoundingPreview(totalAfterTaxAdjustment, roundingPosition, roundingType)
     }
 
@@ -378,7 +380,7 @@ export default function SalesSettingsPage() {
           </div>
 
           <div style={styles.formGroup}>
-            <label style={styles.label}>処理タイミング</label>
+            <label style={styles.label}>売上の集計方法</label>
             <select
               value={settings.rounding_timing}
               onChange={(e) =>
@@ -386,12 +388,12 @@ export default function SalesSettingsPage() {
               }
               style={styles.select}
             >
-              <option value="per_item">商品ごとに処理</option>
-              <option value="total">合計時に処理</option>
+              <option value="per_item">キャスト名が入っている商品のみ</option>
+              <option value="total">伝票のすべての商品を集計</option>
             </select>
             <p style={styles.hint}>
-              商品ごと: 各商品の売上を個別に端数処理してから合計<br />
-              合計時: すべての商品を合計した後に端数処理
+              キャスト名が入っている商品のみ: 各商品を個別に端数処理してから合計<br />
+              伝票のすべての商品を集計: すべての商品を合計した後に端数処理
             </p>
           </div>
 
@@ -614,7 +616,7 @@ HELPバック率: 10%（キャストバック率設定）
                           </span>
                         )}
                       </div>
-                      {!item.notIncluded && settings.exclude_consumption_tax && item.calcPrice !== item.basePrice && (
+                      {!item.notIncluded && settings.exclude_consumption_tax && settings.rounding_timing === 'per_item' && item.calcPrice !== item.basePrice && (
                         <div style={styles.detailRow}>
                           <span>→ 消費税抜き</span>
                           <span>¥{item.calcPrice.toLocaleString()}</span>
@@ -654,7 +656,7 @@ HELPバック率: 10%（キャストバック率設定）
                       <span>¥{preview.totalAfterFirstRounding.toLocaleString()}</span>
                     </div>
                   )}
-                  {preview.excludeConsumptionTax && preview.taxRate > 0 && (
+                  {preview.excludeConsumptionTax && preview.taxRate > 0 && !preview.isPerItem && (
                     <div style={styles.totalRow}>
                       <span>→ 消費税抜き（{Math.round(preview.taxRate * 100)}%）</span>
                       <span>¥{preview.totalAfterTaxAdjustment.toLocaleString()}</span>
@@ -666,7 +668,7 @@ HELPバック率: 10%（キャストバック率設定）
                       <span>¥{preview.totalAfterTaxAdjustment.toLocaleString()}</span>
                     </div>
                   )}
-                  {(preview.excludeConsumptionTax || preview.includeService) && preview.totalAfterTaxAdjustment !== preview.finalTotal && (
+                  {((!preview.isPerItem && preview.excludeConsumptionTax) || preview.includeService) && preview.totalAfterTaxAdjustment !== preview.finalTotal && (
                     <div style={{ ...styles.totalRow, color: '#3b82f6' }}>
                       <span>→ 端数処理</span>
                       <span>¥{preview.finalTotal.toLocaleString()}</span>
