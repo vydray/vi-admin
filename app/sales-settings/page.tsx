@@ -116,7 +116,7 @@ export default function SalesSettingsPage() {
       if (sysData) {
         const sysMap: Record<string, number> = {}
         sysData.forEach((row: { setting_key: string; setting_value: number }) => {
-          sysMap[row.setting_key] = row.setting_value
+          sysMap[row.setting_key] = Number(row.setting_value)
         })
         setSystemSettings(prev => ({
           ...prev,
