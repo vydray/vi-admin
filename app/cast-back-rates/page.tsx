@@ -116,6 +116,16 @@ export default function CastBackRatesPage() {
     return backRates.filter((r) => r.cast_id === selectedCastId)
   }, [backRates, selectedCastId])
 
+  // デフォルト設定（時給を含む）
+  const defaultSetting = useMemo(() => {
+    return filteredRates.find(r => !r.category)
+  }, [filteredRates])
+
+  // 商品別設定（デフォルト以外）
+  const productRates = useMemo(() => {
+    return filteredRates.filter(r => r.category)
+  }, [filteredRates])
+
   // 選択中のカテゴリに属する商品一覧
   const filteredProducts = useMemo(() => {
     if (!editingRate.category) return []
@@ -321,11 +331,56 @@ export default function CastBackRatesPage() {
                 </Button>
               </div>
 
-              {filteredRates.length === 0 ? (
+              {/* デフォルト設定（時給・基本バック率） */}
+              <div
+                style={styles.defaultCard}
+                onClick={() => defaultSetting && openEditModal(defaultSetting)}
+              >
+                <div style={styles.defaultCardHeader}>
+                  <span style={styles.defaultBadge}>デフォルト設定</span>
+                  {!defaultSetting && (
+                    <span style={styles.notSetLabel}>未設定（店舗設定を使用）</span>
+                  )}
+                </div>
+                {defaultSetting ? (
+                  <div style={styles.defaultCardContent}>
+                    <div style={styles.defaultItem}>
+                      <span style={styles.defaultItemLabel}>時給</span>
+                      <span style={styles.defaultItemValue}>
+                        {defaultSetting.hourly_wage
+                          ? `¥${defaultSetting.hourly_wage.toLocaleString()}`
+                          : '未設定'}
+                      </span>
+                    </div>
+                    <div style={styles.defaultItem}>
+                      <span style={styles.defaultItemLabel}>SELF</span>
+                      <span style={styles.defaultItemValue}>
+                        {defaultSetting.back_type === 'ratio'
+                          ? `${defaultSetting.self_back_ratio ?? defaultSetting.back_ratio}%`
+                          : `¥${defaultSetting.back_fixed_amount.toLocaleString()}`}
+                      </span>
+                    </div>
+                    <div style={styles.defaultItem}>
+                      <span style={styles.defaultItemLabel}>HELP</span>
+                      <span style={styles.defaultItemValue}>
+                        {defaultSetting.back_type === 'ratio'
+                          ? `${defaultSetting.help_back_ratio ?? '-'}%`
+                          : `¥${defaultSetting.back_fixed_amount.toLocaleString()}`}
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <p style={styles.defaultCardHint}>クリックしてデフォルト設定を追加</p>
+                )}
+              </div>
+
+              {/* 商品別設定 */}
+              <h3 style={styles.sectionTitle}>商品別バック率</h3>
+              {productRates.length === 0 ? (
                 <div style={styles.emptyState}>
-                  <p>バック率設定がありません</p>
+                  <p>商品別設定はありません</p>
                   <p style={styles.emptyHint}>
-                    店舗のデフォルト設定が適用されます
+                    上のデフォルト設定が全ての商品に適用されます
                   </p>
                 </div>
               ) : (
@@ -334,24 +389,20 @@ export default function CastBackRatesPage() {
                     <tr>
                       <th style={styles.th}>カテゴリ</th>
                       <th style={styles.th}>商品名</th>
-                      <th style={styles.th}>時給</th>
                       <th style={styles.th}>SELF</th>
                       <th style={styles.th}>HELP</th>
-                      <th style={styles.th}>操作</th>
+                      <th style={{ ...styles.th, width: '60px' }}>削除</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredRates.map((rate) => (
-                      <tr key={rate.id} style={!rate.category ? { backgroundColor: '#f0f9ff' } : {}}>
-                        <td style={styles.td}>
-                          {rate.category || <span style={{ color: '#3b82f6', fontWeight: 600 }}>デフォルト</span>}
-                        </td>
-                        <td style={styles.td}>{rate.product_name || '-'}</td>
-                        <td style={styles.td}>
-                          {!rate.category && rate.hourly_wage
-                            ? `¥${rate.hourly_wage.toLocaleString()}`
-                            : '-'}
-                        </td>
+                    {productRates.map((rate) => (
+                      <tr
+                        key={rate.id}
+                        style={styles.clickableRow}
+                        onClick={() => openEditModal(rate)}
+                      >
+                        <td style={styles.td}>{rate.category}</td>
+                        <td style={styles.td}>{rate.product_name || '(全商品)'}</td>
                         <td style={styles.td}>
                           {rate.back_type === 'ratio'
                             ? `${rate.self_back_ratio ?? rate.back_ratio}%`
@@ -363,20 +414,15 @@ export default function CastBackRatesPage() {
                             : `¥${rate.back_fixed_amount.toLocaleString()}`}
                         </td>
                         <td style={styles.td}>
-                          <div style={styles.actions}>
-                            <button
-                              onClick={() => openEditModal(rate)}
-                              style={styles.editBtn}
-                            >
-                              編集
-                            </button>
-                            <button
-                              onClick={() => handleDelete(rate.id)}
-                              style={styles.deleteBtn}
-                            >
-                              削除
-                            </button>
-                          </div>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleDelete(rate.id)
+                            }}
+                            style={styles.deleteBtn}
+                          >
+                            削除
+                          </button>
                         </td>
                       </tr>
                     ))}
@@ -672,6 +718,67 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '13px',
     marginTop: '10px',
   },
+  defaultCard: {
+    backgroundColor: '#f0f9ff',
+    borderRadius: '8px',
+    padding: '16px',
+    marginBottom: '20px',
+    cursor: 'pointer',
+    border: '1px solid #bfdbfe',
+    transition: 'all 0.2s',
+  },
+  defaultCardHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    marginBottom: '12px',
+  },
+  defaultBadge: {
+    backgroundColor: '#3b82f6',
+    color: 'white',
+    fontSize: '12px',
+    fontWeight: '600',
+    padding: '4px 10px',
+    borderRadius: '4px',
+  },
+  notSetLabel: {
+    fontSize: '13px',
+    color: '#64748b',
+  },
+  defaultCardContent: {
+    display: 'flex',
+    gap: '24px',
+  },
+  defaultCardHint: {
+    fontSize: '13px',
+    color: '#64748b',
+    margin: 0,
+  },
+  defaultItem: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '4px',
+  },
+  defaultItemLabel: {
+    fontSize: '12px',
+    color: '#64748b',
+  },
+  defaultItemValue: {
+    fontSize: '16px',
+    fontWeight: '600',
+    color: '#1e40af',
+  },
+  sectionTitle: {
+    fontSize: '14px',
+    fontWeight: '600',
+    color: '#64748b',
+    marginBottom: '12px',
+    marginTop: '8px',
+  },
+  clickableRow: {
+    cursor: 'pointer',
+    transition: 'background-color 0.2s',
+  },
   table: {
     width: '100%',
     borderCollapse: 'collapse' as const,
@@ -689,19 +796,6 @@ const styles: { [key: string]: React.CSSProperties } = {
     padding: '12px',
     borderBottom: '1px solid #ecf0f1',
     color: '#2c3e50',
-  },
-  actions: {
-    display: 'flex',
-    gap: '8px',
-  },
-  editBtn: {
-    padding: '4px 10px',
-    border: '1px solid #3498db',
-    borderRadius: '4px',
-    backgroundColor: 'white',
-    color: '#3498db',
-    cursor: 'pointer',
-    fontSize: '12px',
   },
   deleteBtn: {
     padding: '4px 10px',
