@@ -194,6 +194,8 @@ export default function SalesSettingsPage() {
 
     const taxRate = systemSettings.consumption_tax_rate
     const serviceRate = systemSettings.service_charge_rate
+    const excludeTax = settings.exclude_consumption_tax ?? true
+    const isPerItem = settings.rounding_timing === 'per_item'
 
     // サンプル伝票（推し: Aちゃん）
     // needsCast: true = キャスト名表示あり → キャスト売上に含む
@@ -219,12 +221,12 @@ export default function SalesSettingsPage() {
         }
       }
 
-      // 消費税抜き金額を計算（商品ごと）
+      // 商品ごとに処理の場合: 商品ごとに税引き＆端数処理
+      // 合計時に処理の場合: 税引きは合計時に行う（商品はそのまま）
       let calcPrice = item.basePrice
-      const excludeTax = settings.exclude_consumption_tax ?? true
 
-      // 消費税抜き（商品ごとに計算）
-      if (excludeTax) {
+      // 商品ごとの場合のみ、ここで消費税抜き
+      if (isPerItem && excludeTax) {
         calcPrice = Math.floor(calcPrice / (1 + taxRate))
       }
 
@@ -237,9 +239,9 @@ export default function SalesSettingsPage() {
         salesAmount = settings.help_fixed_amount
       }
 
-      // 商品ごとの端数処理
+      // 商品ごとの端数処理（商品ごとの場合のみ）
       let rounded = salesAmount
-      if (settings.rounding_timing === 'per_item') {
+      if (isPerItem) {
         rounded = applyRoundingPreview(salesAmount, roundingPosition, roundingType)
       }
 
@@ -252,32 +254,41 @@ export default function SalesSettingsPage() {
       }
     })
 
-    // 合計（商品ごとの端数処理後 or 端数処理前）
-    const itemsTotal = settings.rounding_timing === 'per_item'
+    // 商品計（税込み or 税引き後）
+    const itemsTotal = isPerItem
       ? results.reduce((sum, r) => sum + r.rounded, 0)
       : results.reduce((sum, r) => sum + r.salesAmount, 0)
 
-    // サービスTAX抜き（合計時に計算）
+    // 合計時に処理の場合: ここで消費税抜き
     const excludeService = settings.exclude_service_charge ?? true
-    let totalBeforeRounding = itemsTotal
+    let totalAfterTax = itemsTotal
+    if (!isPerItem && excludeTax) {
+      totalAfterTax = Math.floor(itemsTotal / (1 + taxRate))
+    }
+
+    // サービスTAX抜き（合計時に計算）
+    let totalBeforeRounding = totalAfterTax
     if (excludeService && serviceRate > 0) {
       // サービスTAXは合計に対してかかっているので、合計から逆算
-      totalBeforeRounding = Math.floor(itemsTotal / (1 + serviceRate))
+      totalBeforeRounding = Math.floor(totalAfterTax / (1 + serviceRate))
     }
 
     // 合計時の端数処理
     let totalAfterRounding = totalBeforeRounding
-    if (settings.rounding_timing === 'total') {
+    if (!isPerItem) {
       totalAfterRounding = applyRoundingPreview(totalBeforeRounding, roundingPosition, roundingType)
     }
 
     return {
       items: results,
       itemsTotal,
+      totalAfterTax,
       totalBeforeRounding,
       totalAfterRounding,
       serviceRate,
       excludeService,
+      excludeTax,
+      isPerItem,
     }
   }, [settings, roundingPosition, roundingType, systemSettings])
 
@@ -546,16 +557,22 @@ export default function SalesSettingsPage() {
 
                 <div style={styles.receiptTotal}>
                   <div style={styles.totalRow}>
-                    <span>商品計</span>
+                    <span>商品計{preview.isPerItem ? '（税引き後）' : ''}</span>
                     <span>¥{preview.itemsTotal.toLocaleString()}</span>
                   </div>
-                  {preview.excludeService && preview.serviceRate > 0 && preview.itemsTotal !== preview.totalBeforeRounding && (
+                  {!preview.isPerItem && preview.excludeTax && preview.itemsTotal !== preview.totalAfterTax && (
+                    <div style={styles.totalRow}>
+                      <span>→ 消費税抜き</span>
+                      <span>¥{preview.totalAfterTax.toLocaleString()}</span>
+                    </div>
+                  )}
+                  {preview.excludeService && preview.serviceRate > 0 && preview.totalAfterTax !== preview.totalBeforeRounding && (
                     <div style={styles.totalRow}>
                       <span>→ サービスTAX抜き</span>
                       <span>¥{preview.totalBeforeRounding.toLocaleString()}</span>
                     </div>
                   )}
-                  {settings.rounding_timing === 'total' && preview.totalBeforeRounding !== preview.totalAfterRounding && (
+                  {!preview.isPerItem && preview.totalBeforeRounding !== preview.totalAfterRounding && (
                     <div style={{ ...styles.totalRow, color: '#3b82f6' }}>
                       <span>→ 端数処理</span>
                       <span>¥{preview.totalAfterRounding.toLocaleString()}</span>
