@@ -378,7 +378,6 @@ export interface CastBackRate {
   self_back_ratio: number | null  // NULLの場合はback_ratioを使用
   help_back_ratio: number | null  // NULLの場合はsales_settings.help_ratioを使用
 
-  priority: number
   is_active: boolean
 
   created_at: string

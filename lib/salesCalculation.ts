@@ -88,10 +88,8 @@ export function getBackRatio(
   backRates: CastBackRate[],
   salesSettings: SalesSettings
 ): number {
-  // キャストのバック率を優先度順にフィルタ
-  const castRates = backRates
-    .filter(r => r.cast_id === castId && r.is_active)
-    .sort((a, b) => b.priority - a.priority)
+  // キャストのバック率をフィルタ
+  const castRates = backRates.filter(r => r.cast_id === castId && r.is_active)
 
   // 1. 商品名完全一致を探す
   const exactMatch = castRates.find(

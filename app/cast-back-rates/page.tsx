@@ -18,7 +18,6 @@ interface BackRateForm {
   back_fixed_amount: number
   self_back_ratio: number | null
   help_back_ratio: number | null
-  priority: number
 }
 
 const emptyForm: BackRateForm = {
@@ -30,7 +29,6 @@ const emptyForm: BackRateForm = {
   back_fixed_amount: 0,
   self_back_ratio: null,
   help_back_ratio: null,
-  priority: 0,
 }
 
 export default function CastBackRatesPage() {
@@ -89,7 +87,7 @@ export default function CastBackRatesPage() {
         .select('*')
         .eq('store_id', storeId)
         .eq('is_active', true)
-        .order('priority', { ascending: false })
+        .order('created_at', { ascending: false })
 
       if (ratesError) throw ratesError
       setBackRates((ratesData || []) as CastBackRate[])
@@ -144,7 +142,6 @@ export default function CastBackRatesPage() {
       back_fixed_amount: rate.back_fixed_amount,
       self_back_ratio: rate.self_back_ratio,
       help_back_ratio: rate.help_back_ratio,
-      priority: rate.priority,
     })
     setIsEditing(true)
     setShowModal(true)
@@ -168,7 +165,6 @@ export default function CastBackRatesPage() {
         back_fixed_amount: editingRate.back_fixed_amount,
         self_back_ratio: editingRate.self_back_ratio,
         help_back_ratio: editingRate.help_back_ratio,
-        priority: editingRate.priority,
         is_active: true,
       }
 
