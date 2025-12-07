@@ -272,6 +272,8 @@ export function getDefaultSalesSettings(storeId: number): Omit<SalesSettings, 'i
     help_ratio: 50,
     help_fixed_amount: 0,
     use_tax_excluded: true,
+    exclude_consumption_tax: true,
+    exclude_service_charge: true,
     include_shimei_in_sales: true,
     include_drink_in_sales: true,
     include_food_in_sales: false,

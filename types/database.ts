@@ -295,7 +295,9 @@ export interface SalesSettings {
   help_fixed_amount: number   // ヘルプ固定額
 
   // 税計算設定
-  use_tax_excluded: boolean   // true: 税抜き金額で計算
+  use_tax_excluded: boolean   // true: 税抜き金額で計算（後方互換用）
+  exclude_consumption_tax: boolean  // 消費税抜きで計算
+  exclude_service_charge: boolean   // サービスTAX抜きで計算
 
   // バック計算対象設定
   include_shimei_in_sales: boolean    // 指名料を売上に含める

@@ -8,6 +8,7 @@ import {
   RoundingMethod,
   RoundingTiming,
   HelpCalculationMethod,
+  SystemSettings,
 } from '@/types'
 import { getDefaultSalesSettings } from '@/lib/salesCalculation'
 import LoadingSpinner from '@/components/LoadingSpinner'
@@ -57,6 +58,14 @@ function applyRoundingPreview(amount: number, position: RoundingPosition, type: 
 export default function SalesSettingsPage() {
   const { storeId, storeName } = useStore()
   const [settings, setSettings] = useState<SalesSettings | null>(null)
+  const [systemSettings, setSystemSettings] = useState<SystemSettings>({
+    consumption_tax_rate: 10,
+    service_charge_rate: 10,
+    rounding_method: 0,
+    rounding_unit: 1,
+    card_fee_rate: 0,
+    business_day_cutoff_hour: 6,
+  })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
@@ -67,6 +76,7 @@ export default function SalesSettingsPage() {
   const loadSettings = useCallback(async () => {
     setLoading(true)
     try {
+      // 売上設定を読み込み
       const { data, error } = await supabase
         .from('sales_settings')
         .select('*')
@@ -95,6 +105,24 @@ export default function SalesSettingsPage() {
         const parsed = parseRoundingMethod(newData.rounding_method as RoundingMethod)
         setRoundingPosition(parsed.position)
         setRoundingType(parsed.type)
+      }
+
+      // システム設定（消費税率・サービス料率）を読み込み
+      const { data: sysData } = await supabase
+        .from('system_settings')
+        .select('setting_key, setting_value')
+        .eq('store_id', storeId)
+
+      if (sysData) {
+        const sysMap: Record<string, number> = {}
+        sysData.forEach((row: { setting_key: string; setting_value: number }) => {
+          sysMap[row.setting_key] = row.setting_value
+        })
+        setSystemSettings(prev => ({
+          ...prev,
+          consumption_tax_rate: sysMap.consumption_tax_rate ?? 10,
+          service_charge_rate: sysMap.service_charge_rate ?? 10,
+        }))
       }
     } catch (err) {
       console.error('設定読み込みエラー:', err)
@@ -132,7 +160,9 @@ export default function SalesSettingsPage() {
           help_calculation_method: settings.help_calculation_method,
           help_ratio: settings.help_ratio,
           help_fixed_amount: settings.help_fixed_amount,
-          use_tax_excluded: settings.use_tax_excluded,
+          use_tax_excluded: settings.exclude_consumption_tax || settings.exclude_service_charge,
+          exclude_consumption_tax: settings.exclude_consumption_tax ?? true,
+          exclude_service_charge: settings.exclude_service_charge ?? true,
           include_shimei_in_sales: settings.include_shimei_in_sales,
           include_drink_in_sales: settings.include_drink_in_sales,
           include_food_in_sales: settings.include_food_in_sales,
@@ -163,23 +193,40 @@ export default function SalesSettingsPage() {
   const preview = useMemo(() => {
     if (!settings) return null
 
+    const taxRate = systemSettings.consumption_tax_rate / 100
+    const serviceRate = systemSettings.service_charge_rate / 100
+
     // サンプル伝票（推し: Aちゃん）
     // needsCast: true = キャスト名表示あり → 商品ごとの端数処理対象外
     // needsCast: false = キャスト名表示なし → 商品ごとの端数処理対象
+    // basePrice: 税・サービス込み金額
     const sampleItems = [
-      { name: 'セット料金 60分', price: 5500, taxExcluded: 5000, isSelf: true, castName: '-', needsCast: false },
-      { name: 'キャストドリンク', price: 1100, taxExcluded: 1000, isSelf: true, castName: 'A', needsCast: true },
-      { name: 'シャンパン', price: 11000, taxExcluded: 10000, isSelf: true, castName: 'A', needsCast: true },
-      { name: 'ヘルプドリンク', price: 1100, taxExcluded: 1000, isSelf: false, castName: 'B', needsCast: true },
+      { name: 'セット料金 60分', basePrice: 6050, isSelf: true, castName: '-', needsCast: false },
+      { name: 'キャストドリンク', basePrice: 1210, isSelf: true, castName: 'A', needsCast: true },
+      { name: 'シャンパン', basePrice: 12100, isSelf: true, castName: 'A', needsCast: true },
+      { name: 'ヘルプドリンク', basePrice: 1210, isSelf: false, castName: 'B', needsCast: true },
     ]
 
     const results = sampleItems.map(item => {
-      const basePrice = settings.use_tax_excluded ? item.taxExcluded : item.price
-      let salesAmount = basePrice
+      // 税・サービス抜き金額を計算
+      let calcPrice = item.basePrice
+      const excludeTax = settings.exclude_consumption_tax ?? true
+      const excludeService = settings.exclude_service_charge ?? true
+
+      // サービスTAX抜き
+      if (excludeService) {
+        calcPrice = Math.floor(calcPrice / (1 + serviceRate))
+      }
+      // 消費税抜き
+      if (excludeTax) {
+        calcPrice = Math.floor(calcPrice / (1 + taxRate))
+      }
+
+      let salesAmount = calcPrice
 
       // HELPの場合はヘルプ割合を適用
       if (!item.isSelf && settings.help_calculation_method === 'ratio') {
-        salesAmount = Math.floor(basePrice * (settings.help_ratio / 100))
+        salesAmount = Math.floor(calcPrice * (settings.help_ratio / 100))
       } else if (!item.isSelf && settings.help_calculation_method === 'fixed') {
         salesAmount = settings.help_fixed_amount
       }
@@ -194,7 +241,7 @@ export default function SalesSettingsPage() {
 
       return {
         ...item,
-        basePrice,
+        calcPrice,
         salesAmount,
         rounded,
         skipRounding,
@@ -211,7 +258,7 @@ export default function SalesSettingsPage() {
     }
 
     return { items: results, totalBeforeRounding, totalAfterRounding }
-  }, [settings, roundingPosition, roundingType])
+  }, [settings, roundingPosition, roundingType, systemSettings])
 
   if (loading) {
     return <LoadingSpinner />
@@ -368,20 +415,41 @@ export default function SalesSettingsPage() {
         {/* 税計算設定 */}
         <div style={styles.card}>
           <h2 style={styles.cardTitle}>計算基準</h2>
+          <p style={styles.cardDescription}>
+            売上計算時に除外する税金を選択してください
+          </p>
 
           <div style={styles.checkboxGroup}>
             <label style={styles.checkboxLabel}>
               <input
                 type="checkbox"
-                checked={settings.use_tax_excluded}
+                checked={settings.exclude_consumption_tax ?? true}
                 onChange={(e) =>
-                  updateSetting('use_tax_excluded', e.target.checked)
+                  updateSetting('exclude_consumption_tax', e.target.checked)
                 }
                 style={styles.checkbox}
               />
-              <span>税抜き金額で計算する</span>
+              <span>消費税抜きの金額で計算する（{systemSettings.consumption_tax_rate}%）</span>
             </label>
           </div>
+
+          <div style={styles.checkboxGroup}>
+            <label style={styles.checkboxLabel}>
+              <input
+                type="checkbox"
+                checked={settings.exclude_service_charge ?? true}
+                onChange={(e) =>
+                  updateSetting('exclude_service_charge', e.target.checked)
+                }
+                style={styles.checkbox}
+              />
+              <span>サービスTAX抜きの金額で計算する（{systemSettings.service_charge_rate}%）</span>
+            </label>
+          </div>
+
+          <p style={styles.hint}>
+            ※ 税率は店舗設定から取得しています
+          </p>
         </div>
 
         {/* 保存ボタン */}
@@ -425,7 +493,7 @@ export default function SalesSettingsPage() {
                         {item.name}
                       </span>
                       <span style={styles.itemCast}>{item.castName}</span>
-                      <span style={styles.itemPrice}>¥{item.price.toLocaleString()}</span>
+                      <span style={styles.itemPrice}>¥{item.basePrice.toLocaleString()}</span>
                     </div>
                     <div style={styles.receiptItemDetails}>
                       <div style={styles.detailRow}>
@@ -440,10 +508,10 @@ export default function SalesSettingsPage() {
                           <span style={styles.skipTag}>端数処理対象外</span>
                         )}
                       </div>
-                      {settings.use_tax_excluded && (
+                      {(settings.exclude_consumption_tax || settings.exclude_service_charge) && item.calcPrice !== item.basePrice && (
                         <div style={styles.detailRow}>
-                          <span>→ 税抜き</span>
-                          <span>¥{item.taxExcluded.toLocaleString()}</span>
+                          <span>→ 税抜き計算</span>
+                          <span>¥{item.calcPrice.toLocaleString()}</span>
                         </div>
                       )}
                       {!item.isSelf && (
