@@ -200,10 +200,11 @@ export default function SalesSettingsPage() {
     // needsCast: false = キャスト名表示なし → 商品ごとの端数処理対象
     // basePrice: 税・サービス込み金額
     const sampleItems = [
-      { name: 'セット料金 60分', basePrice: 6050, isSelf: true, castName: '-', needsCast: false },
-      { name: 'キャストドリンク', basePrice: 1210, isSelf: true, castName: 'A', needsCast: true },
-      { name: 'シャンパン', basePrice: 12100, isSelf: true, castName: 'A', needsCast: true },
-      { name: 'ヘルプドリンク', basePrice: 1210, isSelf: false, castName: 'B', needsCast: true },
+      { name: 'セット料金 60分', basePrice: 3300, isSelf: true, castName: '-', needsCast: false },
+      { name: 'キャストドリンク', basePrice: 1100, isSelf: true, castName: 'A', needsCast: true },
+      { name: 'シャンパン', basePrice: 11000, isSelf: true, castName: 'A', needsCast: true },
+      { name: 'チェキ', basePrice: 1500, isSelf: true, castName: 'A', needsCast: true },
+      { name: 'ヘルプドリンク', basePrice: 1100, isSelf: false, castName: 'B', needsCast: true },
     ]
 
     const results = sampleItems.map(item => {
