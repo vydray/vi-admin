@@ -3,7 +3,13 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
-import { CastBasic, CastBackRate, BackType, Category, Product } from '@/types'
+import { CastBackRate, BackType, Category, Product } from '@/types'
+
+interface CastWithStatus {
+  id: number
+  name: string
+  status: string | null
+}
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
 import HelpTooltip from '@/components/HelpTooltip'
@@ -29,7 +35,7 @@ interface ProductWithRate {
 
 export default function CastBackRatesPage() {
   const { storeId, storeName } = useStore()
-  const [casts, setCasts] = useState<CastBasic[]>([])
+  const [casts, setCasts] = useState<CastWithStatus[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [backRates, setBackRates] = useState<CastBackRate[]>([])
@@ -47,15 +53,18 @@ export default function CastBackRatesPage() {
   const [bulkSelfRate, setBulkSelfRate] = useState<number>(0)
   const [bulkHelpRate, setBulkHelpRate] = useState<number | null>(null)
 
+  // 検索・フィルター
+  const [searchText, setSearchText] = useState('')
+  const [statusFilter, setStatusFilter] = useState<string>('在籍')
+
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
-      // キャスト一覧
+      // キャスト一覧（全ステータス取得してフィルター可能に）
       const { data: castsData, error: castsError } = await supabase
         .from('casts')
-        .select('id, name')
+        .select('id, name, status')
         .eq('store_id', storeId)
-        .eq('status', '在籍')
         .eq('is_active', true)
         .order('display_order', { ascending: true, nullsFirst: false })
         .order('name')
@@ -110,6 +119,17 @@ export default function CastBackRatesPage() {
   useEffect(() => {
     loadData()
   }, [loadData])
+
+  // フィルター済みキャスト一覧
+  const filteredCasts = useMemo(() => {
+    return casts.filter(cast => {
+      // ステータスフィルター
+      if (statusFilter && cast.status !== statusFilter) return false
+      // 名前検索
+      if (searchText && !cast.name.toLowerCase().includes(searchText.toLowerCase())) return false
+      return true
+    })
+  }, [casts, statusFilter, searchText])
 
   // 選択中のキャストのバック率一覧
   const castRates = useMemo(() => {
@@ -326,8 +346,30 @@ export default function CastBackRatesPage() {
         {/* キャスト選択サイドバー */}
         <div style={styles.sidebar}>
           <h3 style={styles.sidebarTitle}>キャスト選択</h3>
+
+          {/* 検索 */}
+          <input
+            type="text"
+            placeholder="名前で検索..."
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+            style={styles.searchInput}
+          />
+
+          {/* ステータスフィルター */}
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            style={styles.filterSelect}
+          >
+            <option value="">全て</option>
+            <option value="在籍">在籍</option>
+            <option value="体験">体験</option>
+            <option value="退店">退店</option>
+          </select>
+
           <div style={styles.castList}>
-            {casts.map((cast) => (
+            {filteredCasts.map((cast) => (
               <button
                 key={cast.id}
                 onClick={() => setSelectedCastId(cast.id)}
@@ -336,12 +378,23 @@ export default function CastBackRatesPage() {
                   ...(selectedCastId === cast.id ? styles.castItemActive : {}),
                 }}
               >
-                {cast.name}
+                <div style={styles.castInfo}>
+                  <span style={styles.castName}>{cast.name}</span>
+                  <span style={{
+                    ...styles.castStatus,
+                    color: cast.status === '在籍' ? '#10b981' : cast.status === '体験' ? '#f59e0b' : '#94a3b8',
+                  }}>
+                    {cast.status}
+                  </span>
+                </div>
                 <span style={styles.rateCount}>
                   ({backRates.filter((r) => r.cast_id === cast.id && r.category).length})
                 </span>
               </button>
             ))}
+            {filteredCasts.length === 0 && (
+              <p style={styles.noResults}>該当するキャストがいません</p>
+            )}
           </div>
         </div>
 
@@ -664,6 +717,25 @@ const styles: { [key: string]: React.CSSProperties } = {
     marginBottom: '15px',
     textTransform: 'uppercase' as const,
   },
+  searchInput: {
+    width: '100%',
+    padding: '8px 10px',
+    fontSize: '13px',
+    border: '1px solid #ddd',
+    borderRadius: '6px',
+    marginBottom: '10px',
+    boxSizing: 'border-box' as const,
+  },
+  filterSelect: {
+    width: '100%',
+    padding: '8px 10px',
+    fontSize: '13px',
+    border: '1px solid #ddd',
+    borderRadius: '6px',
+    marginBottom: '15px',
+    backgroundColor: 'white',
+    cursor: 'pointer',
+  },
   castList: {
     display: 'flex',
     flexDirection: 'column' as const,
@@ -690,6 +762,29 @@ const styles: { [key: string]: React.CSSProperties } = {
   rateCount: {
     fontSize: '12px',
     opacity: 0.7,
+    flexShrink: 0,
+  },
+  castInfo: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '2px',
+    flex: 1,
+    minWidth: 0,
+  },
+  castName: {
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap' as const,
+  },
+  castStatus: {
+    fontSize: '11px',
+    fontWeight: '500',
+  },
+  noResults: {
+    fontSize: '13px',
+    color: '#94a3b8',
+    textAlign: 'center' as const,
+    padding: '15px 0',
   },
   main: {
     flex: 1,
