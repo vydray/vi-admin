@@ -49,7 +49,7 @@ export default function StoreSettingsPage() {
       .from('receipt_settings')
       .select('store_name, store_postal_code, store_address, store_phone, store_email, business_hours, closed_days, store_registration_number, footer_message, revenue_stamp_threshold, receipt_templates, logo_url')
       .eq('store_id', storeId)
-      .single()
+      .maybeSingle()
 
     if (!error && data) {
       setSettings({
@@ -139,8 +139,7 @@ export default function StoreSettingsPage() {
       const { menu_template, ...settingsToSave } = settings
       const { error: storeError } = await supabase
         .from('receipt_settings')
-        .update(settingsToSave)
-        .eq('store_id', storeId)
+        .upsert({ store_id: storeId, ...settingsToSave }, { onConflict: 'store_id' })
 
       if (storeError) throw storeError
 
