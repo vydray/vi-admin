@@ -175,6 +175,7 @@ export default function SalesSettingsPage() {
         .update({
           rounding_method: combineRoundingMethod(roundingPosition, roundingType),
           rounding_timing: settings.rounding_timing,
+          distribute_to_help: settings.distribute_to_help ?? true,
           help_calculation_method: settings.help_calculation_method,
           help_ratio: settings.help_ratio,
           help_fixed_amount: settings.help_fixed_amount,
@@ -255,10 +256,16 @@ export default function SalesSettingsPage() {
       let salesAmount = calcPrice
 
       // HELPの場合はヘルプ割合を適用
-      if (!item.isSelf && settings.help_calculation_method === 'ratio') {
-        salesAmount = Math.floor(calcPrice * (settings.help_ratio / 100))
-      } else if (!item.isSelf && settings.help_calculation_method === 'fixed') {
-        salesAmount = settings.help_fixed_amount
+      // distribute_to_helpがfalseの場合、HELP売上は0
+      const distributeToHelp = settings.distribute_to_help ?? true
+      if (!item.isSelf) {
+        if (!distributeToHelp) {
+          salesAmount = 0
+        } else if (settings.help_calculation_method === 'ratio') {
+          salesAmount = Math.floor(calcPrice * (settings.help_ratio / 100))
+        } else if (settings.help_calculation_method === 'fixed') {
+          salesAmount = settings.help_fixed_amount
+        }
       }
 
       // 端数処理（常に商品単位で適用）
@@ -299,6 +306,18 @@ export default function SalesSettingsPage() {
       finalTotal = applyRoundingPreview(totalAfterTaxAdjustment, roundingPosition, roundingType)
     }
 
+    // キャストごとの売上集計
+    const castASales = results
+      .filter(r => r.castName === 'A' && !r.notIncluded)
+      .reduce((sum, r) => sum + r.rounded, 0)
+    const castBSales = results
+      .filter(r => r.castName === 'B' && !r.notIncluded)
+      .reduce((sum, r) => sum + r.rounded, 0)
+    // セット料金等（キャスト名なし）は推しの売上に加算
+    const noNameSales = results
+      .filter(r => r.castName === '-' && !r.notIncluded)
+      .reduce((sum, r) => sum + r.rounded, 0)
+
     return {
       items: results,
       itemsTotal,
@@ -310,6 +329,8 @@ export default function SalesSettingsPage() {
       includeService,
       excludeConsumptionTax,
       isPerItem,
+      castASales: castASales + noNameSales,
+      castBSales,
     }
   }, [settings, roundingPosition, roundingType, systemSettings])
 
@@ -416,22 +437,48 @@ export default function SalesSettingsPage() {
             SELF（担当テーブル）以外でキャストに紐づいた売上の計算方法
           </p>
 
-          <div style={styles.formGroup}>
-            <label style={styles.label}>計算方法</label>
-            <select
-              value={settings.help_calculation_method}
-              onChange={(e) =>
-                updateSetting(
-                  'help_calculation_method',
-                  e.target.value as HelpCalculationMethod
-                )
-              }
-              style={styles.select}
-            >
-              <option value="ratio">割合で計算</option>
-              <option value="fixed">固定額</option>
-            </select>
+          <div style={styles.checkboxGroup}>
+            <label style={styles.checkboxLabel}>
+              <input
+                type="checkbox"
+                checked={settings.distribute_to_help ?? true}
+                onChange={(e) => {
+                  setSettings(prev => prev ? {
+                    ...prev,
+                    distribute_to_help: e.target.checked,
+                    // ONにしてhelp_ratioが0なら初期値を設定
+                    help_ratio: e.target.checked && prev.help_ratio === 0 ? 50 : prev.help_ratio
+                  } : prev)
+                }}
+                style={styles.checkbox}
+              />
+              <span>ヘルプにも売上を分配する</span>
+            </label>
+            <p style={styles.hint}>
+              OFFの場合、ヘルプのドリンク等の売上は担当キャストのみに計上されます
+            </p>
           </div>
+
+          <div style={{
+            opacity: (settings.distribute_to_help ?? true) ? 1 : 0.4,
+            pointerEvents: (settings.distribute_to_help ?? true) ? 'auto' : 'none',
+          }}>
+            <div style={styles.formGroup}>
+              <label style={styles.label}>計算方法</label>
+              <select
+                value={settings.help_calculation_method}
+                onChange={(e) =>
+                  updateSetting(
+                    'help_calculation_method',
+                    e.target.value as HelpCalculationMethod
+                  )
+                }
+                style={styles.select}
+              >
+                <option value="ratio">割合で計算</option>
+                <option value="fixed">固定額</option>
+              </select>
+            </div>
 
           {settings.help_calculation_method === 'ratio' && (
             <div style={styles.formGroup}>
@@ -481,6 +528,7 @@ HELPバック率: 10%（キャストバック率設定）
               />
             </div>
           )}
+          </div>
         </div>
 
         {/* 税計算設定 */}
@@ -663,6 +711,25 @@ HELPバック率: 10%（キャストバック率設定）
                   <div style={styles.grandTotal}>
                     <span>最終売上</span>
                     <span>¥{preview.finalTotal.toLocaleString()}</span>
+                  </div>
+                </div>
+
+                {/* キャストごとの売上 */}
+                <div style={styles.castSalesSection}>
+                  <div style={styles.castSalesTitle}>キャストごとの売上</div>
+                  <div style={styles.castSalesRow}>
+                    <span style={styles.castSalesLabel}>
+                      <span style={styles.castABadge}>A</span>
+                      推し（SELF）
+                    </span>
+                    <span style={styles.castSalesValue}>¥{preview.castASales.toLocaleString()}</span>
+                  </div>
+                  <div style={styles.castSalesRow}>
+                    <span style={styles.castSalesLabel}>
+                      <span style={styles.castBBadge}>B</span>
+                      ヘルプ
+                    </span>
+                    <span style={styles.castSalesValue}>¥{preview.castBSales.toLocaleString()}</span>
                   </div>
                 </div>
               </div>
@@ -989,5 +1056,61 @@ const styles: { [key: string]: React.CSSProperties } = {
   summaryItem: {
     color: '#64748b',
     padding: '2px 0',
+  },
+  castSalesSection: {
+    marginTop: '15px',
+    padding: '12px',
+    backgroundColor: '#f0f9ff',
+    borderRadius: '8px',
+    border: '1px solid #bae6fd',
+  },
+  castSalesTitle: {
+    fontSize: '12px',
+    fontWeight: '600',
+    color: '#0369a1',
+    marginBottom: '10px',
+  },
+  castSalesRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '6px 0',
+    borderBottom: '1px solid #e0f2fe',
+  },
+  castSalesLabel: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    fontSize: '13px',
+    color: '#334155',
+  },
+  castSalesValue: {
+    fontSize: '14px',
+    fontWeight: '600',
+    color: '#0369a1',
+  },
+  castABadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '20px',
+    height: '20px',
+    borderRadius: '50%',
+    backgroundColor: '#ec4899',
+    color: 'white',
+    fontSize: '11px',
+    fontWeight: '600',
+  },
+  castBBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '20px',
+    height: '20px',
+    borderRadius: '50%',
+    backgroundColor: '#f59e0b',
+    color: 'white',
+    fontSize: '11px',
+    fontWeight: '600',
   },
 }

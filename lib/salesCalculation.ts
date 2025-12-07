@@ -265,6 +265,7 @@ export function getDefaultSalesSettings(storeId: number): Omit<SalesSettings, 'i
     store_id: storeId,
     rounding_method: 'floor_100',
     rounding_timing: 'total',
+    distribute_to_help: true,
     help_calculation_method: 'ratio',
     help_ratio: 50,
     help_fixed_amount: 0,

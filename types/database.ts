@@ -285,6 +285,7 @@ export interface SalesSettings {
   rounding_timing: RoundingTiming
 
   // ヘルプ売上計算設定
+  distribute_to_help: boolean // ヘルプにも売上を分配するか
   help_calculation_method: HelpCalculationMethod
   help_ratio: number          // ヘルプ割合（%）
   help_fixed_amount: number   // ヘルプ固定額
