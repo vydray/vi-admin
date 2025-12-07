@@ -932,15 +932,11 @@ export default function StoreSettingsPage() {
                     cursor: 'pointer'
                   }}
                 >
-                  <option value={0}>0時（午前0時）</option>
-                  <option value={1}>1時（午前1時）</option>
-                  <option value={2}>2時（午前2時）</option>
-                  <option value={3}>3時（午前3時）</option>
-                  <option value={4}>4時（午前4時）</option>
-                  <option value={5}>5時（午前5時）</option>
-                  <option value={6}>6時（午前6時）</option>
-                  <option value={7}>7時（午前7時）</option>
-                  <option value={8}>8時（午前8時）</option>
+                  {Array.from({ length: 24 }, (_, i) => (
+                    <option key={i} value={i}>
+                      {i}時（{i < 12 ? `午前${i}時` : i === 12 ? '正午' : `午後${i - 12}時`}）
+                    </option>
+                  ))}
                 </select>
                 <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
                   この時刻以降の会計は翌営業日として扱われます（例：6時設定の場合、午前1時の会計は前日の営業日として記録されます）
