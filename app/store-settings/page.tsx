@@ -46,6 +46,30 @@ export default function StoreSettingsPage() {
   const loadSettings = async (currentStoreId: number) => {
     setLoading(true)
 
+    // 店舗切り替え時に前の店舗のデータをクリア
+    setSettings({
+      store_name: '',
+      store_postal_code: '',
+      store_address: '',
+      store_phone: '',
+      store_email: '',
+      business_hours: '',
+      closed_days: '',
+      store_registration_number: '',
+      footer_message: '',
+      revenue_stamp_threshold: 50000,
+      menu_template: '',
+      logo_url: ''
+    })
+    setSystemSettings({
+      tax_rate: 10,
+      service_fee_rate: 15,
+      rounding_method: 0,
+      rounding_unit: 100,
+      card_fee_rate: 0,
+      business_day_start_hour: 6
+    })
+
     // 店舗設定を取得
     const { data, error } = await supabase
       .from('receipt_settings')
@@ -71,12 +95,10 @@ export default function StoreSettingsPage() {
     }
 
     // システム設定を取得
-    const { data: systemSettingsData, error: sysError } = await supabase
+    const { data: systemSettingsData } = await supabase
       .from('system_settings')
       .select('setting_key, setting_value')
       .eq('store_id', currentStoreId)
-
-    console.log('system_settings取得:', { currentStoreId, data: systemSettingsData, error: sysError })
 
     if (systemSettingsData && systemSettingsData.length > 0) {
       const newSystemSettings: SystemSettings = {
