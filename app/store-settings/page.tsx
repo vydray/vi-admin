@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
@@ -9,6 +9,7 @@ import type { StoreSettings, SystemSettings } from '@/types'
 
 export default function StoreSettingsPage() {
   const { storeId } = useStore()
+  const latestStoreIdRef = useRef(storeId)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -38,6 +39,7 @@ export default function StoreSettingsPage() {
   })
 
   useEffect(() => {
+    latestStoreIdRef.current = storeId
     if (storeId) {
       loadSettings(storeId)
     }
@@ -77,6 +79,11 @@ export default function StoreSettingsPage() {
       .eq('store_id', currentStoreId)
       .maybeSingle()
 
+    // storeIdが変わっていたら古いリクエストの結果を無視
+    if (latestStoreIdRef.current !== currentStoreId) {
+      return
+    }
+
     if (!error && data) {
       setSettings({
         store_name: data.store_name || '',
@@ -99,6 +106,11 @@ export default function StoreSettingsPage() {
       .from('system_settings')
       .select('setting_key, setting_value')
       .eq('store_id', currentStoreId)
+
+    // storeIdが変わっていたら古いリクエストの結果を無視
+    if (latestStoreIdRef.current !== currentStoreId) {
+      return
+    }
 
     if (systemSettingsData && systemSettingsData.length > 0) {
       const newSystemSettings: SystemSettings = {
