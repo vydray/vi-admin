@@ -227,6 +227,7 @@ export default function SalesSettingsPage() {
 
       // 商品ごとの場合のみ、ここで消費税抜き
       if (isPerItem && excludeTax) {
+        console.log(`税引き計算: ${item.basePrice} / (1 + ${taxRate}) = ${item.basePrice / (1 + taxRate)} → ${Math.floor(item.basePrice / (1 + taxRate))}`)
         calcPrice = Math.floor(calcPrice / (1 + taxRate))
       }
 
