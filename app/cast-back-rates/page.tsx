@@ -11,26 +11,19 @@ import toast from 'react-hot-toast'
 interface BackRateForm {
   id?: number
   cast_id: number
-  category: string | null
-  product_name: string | null
+  category: string
+  product_name: string
   back_type: BackType
   back_ratio: number
   back_fixed_amount: number
   self_back_ratio: number | null
   help_back_ratio: number | null
-  hourly_wage: number | null
 }
 
-const emptyForm: BackRateForm = {
-  cast_id: 0,
-  category: null,
-  product_name: null,
-  back_type: 'ratio',
-  back_ratio: 0,
-  back_fixed_amount: 0,
-  self_back_ratio: null,
-  help_back_ratio: null,
-  hourly_wage: null,
+interface ProductWithRate {
+  product: Product
+  categoryName: string
+  rate: CastBackRate | null
 }
 
 export default function CastBackRatesPage() {
@@ -42,9 +35,14 @@ export default function CastBackRatesPage() {
   const [selectedCastId, setSelectedCastId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [showModal, setShowModal] = useState(false)
-  const [editingRate, setEditingRate] = useState<BackRateForm>(emptyForm)
-  const [isEditing, setIsEditing] = useState(false)
+
+  // バック率編集モーダル
+  const [showRateModal, setShowRateModal] = useState(false)
+  const [editingRate, setEditingRate] = useState<BackRateForm | null>(null)
+
+  // 時給編集モーダル
+  const [showWageModal, setShowWageModal] = useState(false)
+  const [editingWage, setEditingWage] = useState<number | null>(null)
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -111,82 +109,95 @@ export default function CastBackRatesPage() {
   }, [loadData])
 
   // 選択中のキャストのバック率一覧
-  const filteredRates = useMemo(() => {
+  const castRates = useMemo(() => {
     if (!selectedCastId) return []
     return backRates.filter((r) => r.cast_id === selectedCastId)
   }, [backRates, selectedCastId])
 
-  // デフォルト設定（時給を含む）
+  // デフォルト設定（時給を取得）
   const defaultSetting = useMemo(() => {
-    return filteredRates.find(r => !r.category)
-  }, [filteredRates])
+    return castRates.find(r => !r.category)
+  }, [castRates])
 
-  // 商品別設定（デフォルト以外）
-  const productRates = useMemo(() => {
-    return filteredRates.filter(r => r.category)
-  }, [filteredRates])
+  // 全商品とそのバック率設定をマージ
+  const allProductsWithRates = useMemo((): ProductWithRate[] => {
+    return products.map(product => {
+      const category = categories.find(c => c.id === product.category_id)
+      const categoryName = category?.name || ''
 
-  // 選択中のカテゴリに属する商品一覧
-  const filteredProducts = useMemo(() => {
-    if (!editingRate.category) return []
-    const selectedCategory = categories.find(c => c.name === editingRate.category)
-    if (!selectedCategory) return []
-    return products.filter(p => p.category_id === selectedCategory.id)
-  }, [editingRate.category, categories, products])
+      // この商品に対するバック率設定を探す
+      const rate = castRates.find(r =>
+        r.category === categoryName &&
+        r.product_name === product.name
+      ) || null
 
-  const openAddModal = () => {
-    setEditingRate({
-      ...emptyForm,
-      cast_id: selectedCastId || 0,
+      return { product, categoryName, rate }
     })
-    setIsEditing(false)
-    setShowModal(true)
+  }, [products, categories, castRates])
+
+  // カテゴリでグループ化
+  const groupedProducts = useMemo(() => {
+    const groups: { [key: string]: ProductWithRate[] } = {}
+    allProductsWithRates.forEach(item => {
+      if (!groups[item.categoryName]) {
+        groups[item.categoryName] = []
+      }
+      groups[item.categoryName].push(item)
+    })
+    return groups
+  }, [allProductsWithRates])
+
+  const openRateModal = (item: ProductWithRate) => {
+    if (item.rate) {
+      setEditingRate({
+        id: item.rate.id,
+        cast_id: item.rate.cast_id,
+        category: item.categoryName,
+        product_name: item.product.name,
+        back_type: item.rate.back_type,
+        back_ratio: item.rate.back_ratio,
+        back_fixed_amount: item.rate.back_fixed_amount,
+        self_back_ratio: item.rate.self_back_ratio,
+        help_back_ratio: item.rate.help_back_ratio,
+      })
+    } else {
+      setEditingRate({
+        cast_id: selectedCastId || 0,
+        category: item.categoryName,
+        product_name: item.product.name,
+        back_type: 'ratio',
+        back_ratio: 0,
+        back_fixed_amount: 0,
+        self_back_ratio: null,
+        help_back_ratio: null,
+      })
+    }
+    setShowRateModal(true)
   }
 
-  const openEditModal = (rate: CastBackRate) => {
-    setEditingRate({
-      id: rate.id,
-      cast_id: rate.cast_id,
-      category: rate.category,
-      product_name: rate.product_name,
-      back_type: rate.back_type,
-      back_ratio: rate.back_ratio,
-      back_fixed_amount: rate.back_fixed_amount,
-      self_back_ratio: rate.self_back_ratio,
-      help_back_ratio: rate.help_back_ratio,
-      hourly_wage: rate.hourly_wage,
-    })
-    setIsEditing(true)
-    setShowModal(true)
-  }
-
-  const handleSave = async () => {
-    if (!editingRate.cast_id) {
+  const handleSaveRate = async () => {
+    if (!editingRate || !editingRate.cast_id) {
       toast.error('キャストを選択してください')
       return
     }
 
     setSaving(true)
     try {
-      const basePayload = {
+      const payload = {
         cast_id: editingRate.cast_id,
         store_id: storeId,
+        category: editingRate.category,
+        product_name: editingRate.product_name,
         back_type: editingRate.back_type,
         back_ratio: editingRate.back_ratio,
         back_fixed_amount: editingRate.back_fixed_amount,
         self_back_ratio: editingRate.self_back_ratio,
         help_back_ratio: editingRate.help_back_ratio,
+        hourly_wage: null,
         is_active: true,
       }
 
-      if (isEditing && editingRate.id) {
-        // 既存設定の更新
-        const payload = {
-          ...basePayload,
-          category: editingRate.category || null,
-          product_name: editingRate.product_name || null,
-          hourly_wage: editingRate.hourly_wage,
-        }
+      if (editingRate.id) {
         const { error } = await supabase
           .from('cast_back_rates')
           .update(payload)
@@ -195,68 +206,16 @@ export default function CastBackRatesPage() {
         if (error) throw error
         toast.success('バック率を更新しました')
       } else {
-        // カテゴリ指定で商品名が未指定の場合、全商品のエントリを自動作成
-        if (editingRate.category && !editingRate.product_name) {
-          const categoryProducts = filteredProducts
+        const { error } = await supabase
+          .from('cast_back_rates')
+          .insert(payload)
 
-          if (categoryProducts.length === 0) {
-            toast.error('このカテゴリには商品がありません')
-            setSaving(false)
-            return
-          }
-
-          // 既存の設定を確認
-          const existingProductNames = backRates
-            .filter(r =>
-              r.cast_id === editingRate.cast_id &&
-              r.category === editingRate.category &&
-              r.product_name !== null
-            )
-            .map(r => r.product_name)
-
-          // 新規追加する商品のみをフィルタ
-          const newProducts = categoryProducts.filter(
-            p => !existingProductNames.includes(p.name)
-          )
-
-          if (newProducts.length === 0) {
-            toast.error('全ての商品に既に設定があります')
-            setSaving(false)
-            return
-          }
-
-          // 全商品のエントリを作成
-          const payloads = newProducts.map(product => ({
-            ...basePayload,
-            category: editingRate.category,
-            product_name: product.name,
-            hourly_wage: null,
-          }))
-
-          const { error } = await supabase
-            .from('cast_back_rates')
-            .insert(payloads)
-
-          if (error) throw error
-          toast.success(`${newProducts.length}件の商品バック率を追加しました`)
-        } else {
-          // 通常の追加（デフォルト設定または個別商品）
-          const payload = {
-            ...basePayload,
-            category: editingRate.category || null,
-            product_name: editingRate.product_name || null,
-            hourly_wage: editingRate.hourly_wage,
-          }
-          const { error } = await supabase
-            .from('cast_back_rates')
-            .insert(payload)
-
-          if (error) throw error
-          toast.success('バック率を追加しました')
-        }
+        if (error) throw error
+        toast.success('バック率を追加しました')
       }
 
-      setShowModal(false)
+      setShowRateModal(false)
+      setEditingRate(null)
       loadData()
     } catch (err) {
       console.error('保存エラー:', err)
@@ -266,7 +225,57 @@ export default function CastBackRatesPage() {
     }
   }
 
-  const handleDelete = async (id: number) => {
+  const openWageModal = () => {
+    setEditingWage(defaultSetting?.hourly_wage ?? null)
+    setShowWageModal(true)
+  }
+
+  const handleSaveWage = async () => {
+    if (!selectedCastId) return
+
+    setSaving(true)
+    try {
+      if (defaultSetting) {
+        // 既存のデフォルト設定を更新
+        const { error } = await supabase
+          .from('cast_back_rates')
+          .update({ hourly_wage: editingWage })
+          .eq('id', defaultSetting.id)
+
+        if (error) throw error
+      } else {
+        // 新規作成
+        const { error } = await supabase
+          .from('cast_back_rates')
+          .insert({
+            cast_id: selectedCastId,
+            store_id: storeId,
+            category: null,
+            product_name: null,
+            back_type: 'ratio',
+            back_ratio: 0,
+            back_fixed_amount: 0,
+            self_back_ratio: null,
+            help_back_ratio: null,
+            hourly_wage: editingWage,
+            is_active: true,
+          })
+
+        if (error) throw error
+      }
+
+      toast.success('時給を更新しました')
+      setShowWageModal(false)
+      loadData()
+    } catch (err) {
+      console.error('保存エラー:', err)
+      toast.error('保存に失敗しました')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDeleteRate = async (id: number) => {
     if (!confirm('このバック率設定を削除しますか？')) return
 
     try {
@@ -313,7 +322,7 @@ export default function CastBackRatesPage() {
               >
                 {cast.name}
                 <span style={styles.rateCount}>
-                  ({backRates.filter((r) => r.cast_id === cast.id).length})
+                  ({backRates.filter((r) => r.cast_id === cast.id && r.category).length})
                 </span>
               </button>
             ))}
@@ -324,110 +333,93 @@ export default function CastBackRatesPage() {
         <div style={styles.main}>
           {selectedCast ? (
             <>
+              {/* ヘッダー：キャスト名 + 時給 */}
               <div style={styles.mainHeader}>
-                <h2 style={styles.mainTitle}>{selectedCast.name} のバック率設定</h2>
-                <Button onClick={openAddModal} variant="primary" size="small">
-                  + 新規追加
-                </Button>
-              </div>
-
-              {/* デフォルト設定（時給・基本バック率） */}
-              <div
-                style={styles.defaultCard}
-                onClick={() => defaultSetting && openEditModal(defaultSetting)}
-              >
-                <div style={styles.defaultCardHeader}>
-                  <span style={styles.defaultBadge}>デフォルト設定</span>
-                  {!defaultSetting && (
-                    <span style={styles.notSetLabel}>未設定（店舗設定を使用）</span>
-                  )}
-                </div>
-                {defaultSetting ? (
-                  <div style={styles.defaultCardContent}>
-                    <div style={styles.defaultItem}>
-                      <span style={styles.defaultItemLabel}>時給</span>
-                      <span style={styles.defaultItemValue}>
-                        {defaultSetting.hourly_wage
-                          ? `¥${defaultSetting.hourly_wage.toLocaleString()}`
-                          : '未設定'}
-                      </span>
-                    </div>
-                    <div style={styles.defaultItem}>
-                      <span style={styles.defaultItemLabel}>SELF</span>
-                      <span style={styles.defaultItemValue}>
-                        {defaultSetting.back_type === 'ratio'
-                          ? `${defaultSetting.self_back_ratio ?? defaultSetting.back_ratio}%`
-                          : `¥${defaultSetting.back_fixed_amount.toLocaleString()}`}
-                      </span>
-                    </div>
-                    <div style={styles.defaultItem}>
-                      <span style={styles.defaultItemLabel}>HELP</span>
-                      <span style={styles.defaultItemValue}>
-                        {defaultSetting.back_type === 'ratio'
-                          ? `${defaultSetting.help_back_ratio ?? '-'}%`
-                          : `¥${defaultSetting.back_fixed_amount.toLocaleString()}`}
-                      </span>
-                    </div>
+                <div style={styles.headerLeft}>
+                  <h2 style={styles.mainTitle}>{selectedCast.name}</h2>
+                  <div style={styles.wageDisplay}>
+                    <span style={styles.wageLabel}>時給:</span>
+                    <span style={styles.wageValue}>
+                      {defaultSetting?.hourly_wage
+                        ? `¥${defaultSetting.hourly_wage.toLocaleString()}`
+                        : '未設定'}
+                    </span>
+                    <button onClick={openWageModal} style={styles.wageEditBtn}>
+                      編集
+                    </button>
                   </div>
-                ) : (
-                  <p style={styles.defaultCardHint}>クリックしてデフォルト設定を追加</p>
-                )}
+                </div>
               </div>
 
-              {/* 商品別設定 */}
-              <h3 style={styles.sectionTitle}>商品別バック率</h3>
-              {productRates.length === 0 ? (
+              {/* 商品別バック率一覧 */}
+              {products.length === 0 ? (
                 <div style={styles.emptyState}>
-                  <p>商品別設定はありません</p>
+                  <p>商品が登録されていません</p>
                   <p style={styles.emptyHint}>
-                    上のデフォルト設定が全ての商品に適用されます
+                    商品管理から商品を追加してください
                   </p>
                 </div>
               ) : (
-                <table style={styles.table}>
-                  <thead>
-                    <tr>
-                      <th style={styles.th}>カテゴリ</th>
-                      <th style={styles.th}>商品名</th>
-                      <th style={styles.th}>SELF</th>
-                      <th style={styles.th}>HELP</th>
-                      <th style={{ ...styles.th, width: '60px' }}>削除</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {productRates.map((rate) => (
-                      <tr
-                        key={rate.id}
-                        style={styles.clickableRow}
-                        onClick={() => openEditModal(rate)}
-                      >
-                        <td style={styles.td}>{rate.category}</td>
-                        <td style={styles.td}>{rate.product_name || '(全商品)'}</td>
-                        <td style={styles.td}>
-                          {rate.back_type === 'ratio'
-                            ? `${rate.self_back_ratio ?? rate.back_ratio}%`
-                            : `¥${rate.back_fixed_amount.toLocaleString()}`}
-                        </td>
-                        <td style={styles.td}>
-                          {rate.back_type === 'ratio'
-                            ? `${rate.help_back_ratio ?? '-'}%`
-                            : `¥${rate.back_fixed_amount.toLocaleString()}`}
-                        </td>
-                        <td style={styles.td}>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleDelete(rate.id)
+                Object.entries(groupedProducts).map(([categoryName, items]) => (
+                  <div key={categoryName} style={styles.categorySection}>
+                    <h3 style={styles.categoryTitle}>{categoryName}</h3>
+                    <table style={styles.table}>
+                      <thead>
+                        <tr>
+                          <th style={styles.th}>商品名</th>
+                          <th style={styles.th}>SELF</th>
+                          <th style={styles.th}>HELP</th>
+                          <th style={{ ...styles.th, width: '60px' }}></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {items.map((item) => (
+                          <tr
+                            key={item.product.id}
+                            style={{
+                              ...styles.clickableRow,
+                              ...(item.rate ? {} : styles.unsetRow),
                             }}
-                            style={styles.deleteBtn}
+                            onClick={() => openRateModal(item)}
                           >
-                            削除
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                            <td style={styles.td}>{item.product.name}</td>
+                            <td style={styles.td}>
+                              {item.rate ? (
+                                item.rate.back_type === 'ratio'
+                                  ? `${item.rate.self_back_ratio ?? item.rate.back_ratio}%`
+                                  : `¥${item.rate.back_fixed_amount.toLocaleString()}`
+                              ) : (
+                                <span style={styles.unsetText}>-</span>
+                              )}
+                            </td>
+                            <td style={styles.td}>
+                              {item.rate ? (
+                                item.rate.back_type === 'ratio'
+                                  ? `${item.rate.help_back_ratio ?? '-'}%`
+                                  : `¥${item.rate.back_fixed_amount.toLocaleString()}`
+                              ) : (
+                                <span style={styles.unsetText}>-</span>
+                              )}
+                            </td>
+                            <td style={styles.td}>
+                              {item.rate && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    handleDeleteRate(item.rate!.id)
+                                  }}
+                                  style={styles.deleteBtn}
+                                >
+                                  削除
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ))
               )}
             </>
           ) : (
@@ -438,83 +430,13 @@ export default function CastBackRatesPage() {
         </div>
       </div>
 
-      {/* 編集モーダル */}
-      {showModal && (
-        <div style={styles.modalOverlay} onClick={() => setShowModal(false)}>
+      {/* バック率編集モーダル */}
+      {showRateModal && editingRate && (
+        <div style={styles.modalOverlay} onClick={() => setShowRateModal(false)}>
           <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
             <h3 style={styles.modalTitle}>
-              {isEditing ? 'バック率を編集' : 'バック率を追加'}
+              {editingRate.product_name} のバック率
             </h3>
-
-            <div style={styles.formGroup}>
-              <label style={styles.label}>カテゴリ</label>
-              <select
-                value={editingRate.category || ''}
-                onChange={(e) =>
-                  setEditingRate({
-                    ...editingRate,
-                    category: e.target.value || null,
-                    product_name: null, // カテゴリ変更時に商品をリセット
-                  })
-                }
-                style={styles.select}
-              >
-                <option value="">全カテゴリ</option>
-                {categories.map((cat) => (
-                  <option key={cat.id} value={cat.name}>
-                    {cat.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div style={styles.formGroup}>
-              <label style={styles.label}>商品名</label>
-              <select
-                value={editingRate.product_name || ''}
-                onChange={(e) =>
-                  setEditingRate({
-                    ...editingRate,
-                    product_name: e.target.value || null,
-                  })
-                }
-                style={styles.select}
-                disabled={!editingRate.category}
-              >
-                <option value="">カテゴリ全体に適用</option>
-                {filteredProducts.map((product) => (
-                  <option key={product.id} value={product.name}>
-                    {product.name}
-                  </option>
-                ))}
-              </select>
-              {!editingRate.category && (
-                <p style={styles.hint}>「全カテゴリ」= キャストのデフォルト設定</p>
-              )}
-            </div>
-
-            {/* デフォルト設定（全カテゴリ）の場合は時給も設定可能 */}
-            {!editingRate.category && (
-              <div style={styles.formGroup}>
-                <label style={styles.label}>時給 (円)</label>
-                <input
-                  type="number"
-                  value={editingRate.hourly_wage ?? ''}
-                  onChange={(e) =>
-                    setEditingRate({
-                      ...editingRate,
-                      hourly_wage: e.target.value
-                        ? parseInt(e.target.value)
-                        : null,
-                    })
-                  }
-                  style={styles.input}
-                  min="0"
-                  step="100"
-                  placeholder="未設定"
-                />
-              </div>
-            )}
 
             <div style={styles.formGroup}>
               <label style={styles.label}>バック計算方法</label>
@@ -534,52 +456,50 @@ export default function CastBackRatesPage() {
             </div>
 
             {editingRate.back_type === 'ratio' ? (
-              <>
-                <div style={styles.formRow}>
-                  <div style={styles.formGroup}>
-                    <label style={styles.label}>SELF時バック率 (%)</label>
-                    <input
-                      type="number"
-                      value={editingRate.self_back_ratio ?? editingRate.back_ratio}
-                      onChange={(e) =>
-                        setEditingRate({
-                          ...editingRate,
-                          self_back_ratio: e.target.value
-                            ? parseFloat(e.target.value)
-                            : 0,
-                          back_ratio: e.target.value
-                            ? parseFloat(e.target.value)
-                            : 0,
-                        })
-                      }
-                      style={styles.input}
-                      min="0"
-                      max="100"
-                      step="1"
-                    />
-                  </div>
-                  <div style={styles.formGroup}>
-                    <label style={styles.label}>HELP時バック率 (%)</label>
-                    <input
-                      type="number"
-                      value={editingRate.help_back_ratio ?? ''}
-                      onChange={(e) =>
-                        setEditingRate({
-                          ...editingRate,
-                          help_back_ratio: e.target.value
-                            ? parseFloat(e.target.value)
-                            : null,
-                        })
-                      }
-                      style={styles.input}
-                      min="0"
-                      max="100"
-                      step="1"
-                      placeholder="空欄で店舗設定を使用"
-                    />
-                  </div>
+              <div style={styles.formRow}>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>SELF時バック率 (%)</label>
+                  <input
+                    type="number"
+                    value={editingRate.self_back_ratio ?? editingRate.back_ratio}
+                    onChange={(e) =>
+                      setEditingRate({
+                        ...editingRate,
+                        self_back_ratio: e.target.value
+                          ? parseFloat(e.target.value)
+                          : 0,
+                        back_ratio: e.target.value
+                          ? parseFloat(e.target.value)
+                          : 0,
+                      })
+                    }
+                    style={styles.input}
+                    min="0"
+                    max="100"
+                    step="1"
+                  />
                 </div>
-              </>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>HELP時バック率 (%)</label>
+                  <input
+                    type="number"
+                    value={editingRate.help_back_ratio ?? ''}
+                    onChange={(e) =>
+                      setEditingRate({
+                        ...editingRate,
+                        help_back_ratio: e.target.value
+                          ? parseFloat(e.target.value)
+                          : null,
+                      })
+                    }
+                    style={styles.input}
+                    min="0"
+                    max="100"
+                    step="1"
+                    placeholder="空欄でSELFと同じ"
+                  />
+                </div>
+              </div>
             ) : (
               <div style={styles.formGroup}>
                 <label style={styles.label}>バック固定額 (円)</label>
@@ -601,7 +521,7 @@ export default function CastBackRatesPage() {
 
             <div style={styles.modalActions}>
               <Button
-                onClick={() => setShowModal(false)}
+                onClick={() => setShowRateModal(false)}
                 variant="outline"
                 size="medium"
                 disabled={saving}
@@ -609,7 +529,50 @@ export default function CastBackRatesPage() {
                 キャンセル
               </Button>
               <Button
-                onClick={handleSave}
+                onClick={handleSaveRate}
+                variant="primary"
+                size="medium"
+                disabled={saving}
+              >
+                {saving ? '保存中...' : '保存'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 時給編集モーダル */}
+      {showWageModal && (
+        <div style={styles.modalOverlay} onClick={() => setShowWageModal(false)}>
+          <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+            <h3 style={styles.modalTitle}>時給設定</h3>
+
+            <div style={styles.formGroup}>
+              <label style={styles.label}>時給 (円)</label>
+              <input
+                type="number"
+                value={editingWage ?? ''}
+                onChange={(e) =>
+                  setEditingWage(e.target.value ? parseInt(e.target.value) : null)
+                }
+                style={styles.input}
+                min="0"
+                step="100"
+                placeholder="未設定"
+              />
+            </div>
+
+            <div style={styles.modalActions}>
+              <Button
+                onClick={() => setShowWageModal(false)}
+                variant="outline"
+                size="medium"
+                disabled={saving}
+              >
+                キャンセル
+              </Button>
+              <Button
+                onClick={handleSaveWage}
                 variant="primary"
                 size="medium"
                 disabled={saving}
@@ -701,13 +664,47 @@ const styles: { [key: string]: React.CSSProperties } = {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: '20px',
+    marginBottom: '24px',
+    paddingBottom: '16px',
+    borderBottom: '1px solid #ecf0f1',
+  },
+  headerLeft: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '20px',
   },
   mainTitle: {
     fontSize: '20px',
     fontWeight: '600',
     color: '#2c3e50',
     margin: 0,
+  },
+  wageDisplay: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    backgroundColor: '#f0f9ff',
+    padding: '8px 12px',
+    borderRadius: '6px',
+  },
+  wageLabel: {
+    fontSize: '13px',
+    color: '#64748b',
+  },
+  wageValue: {
+    fontSize: '16px',
+    fontWeight: '600',
+    color: '#1e40af',
+  },
+  wageEditBtn: {
+    padding: '4px 8px',
+    border: '1px solid #3b82f6',
+    borderRadius: '4px',
+    backgroundColor: 'white',
+    color: '#3b82f6',
+    cursor: 'pointer',
+    fontSize: '12px',
+    marginLeft: '4px',
   },
   emptyState: {
     textAlign: 'center' as const,
@@ -718,66 +715,18 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '13px',
     marginTop: '10px',
   },
-  defaultCard: {
-    backgroundColor: '#f0f9ff',
-    borderRadius: '8px',
-    padding: '16px',
-    marginBottom: '20px',
-    cursor: 'pointer',
-    border: '1px solid #bfdbfe',
-    transition: 'all 0.2s',
+  categorySection: {
+    marginBottom: '24px',
   },
-  defaultCardHeader: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '10px',
-    marginBottom: '12px',
-  },
-  defaultBadge: {
-    backgroundColor: '#3b82f6',
-    color: 'white',
-    fontSize: '12px',
-    fontWeight: '600',
-    padding: '4px 10px',
-    borderRadius: '4px',
-  },
-  notSetLabel: {
-    fontSize: '13px',
-    color: '#64748b',
-  },
-  defaultCardContent: {
-    display: 'flex',
-    gap: '24px',
-  },
-  defaultCardHint: {
-    fontSize: '13px',
-    color: '#64748b',
-    margin: 0,
-  },
-  defaultItem: {
-    display: 'flex',
-    flexDirection: 'column' as const,
-    gap: '4px',
-  },
-  defaultItemLabel: {
-    fontSize: '12px',
-    color: '#64748b',
-  },
-  defaultItemValue: {
-    fontSize: '16px',
-    fontWeight: '600',
-    color: '#1e40af',
-  },
-  sectionTitle: {
+  categoryTitle: {
     fontSize: '14px',
     fontWeight: '600',
-    color: '#64748b',
-    marginBottom: '12px',
-    marginTop: '8px',
-  },
-  clickableRow: {
-    cursor: 'pointer',
-    transition: 'background-color 0.2s',
+    color: '#3b82f6',
+    marginBottom: '8px',
+    padding: '4px 8px',
+    backgroundColor: '#eff6ff',
+    borderRadius: '4px',
+    display: 'inline-block',
   },
   table: {
     width: '100%',
@@ -785,7 +734,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '14px',
   },
   th: {
-    padding: '12px',
+    padding: '10px 12px',
     textAlign: 'left' as const,
     borderBottom: '2px solid #ecf0f1',
     fontWeight: '600',
@@ -793,9 +742,19 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '13px',
   },
   td: {
-    padding: '12px',
+    padding: '10px 12px',
     borderBottom: '1px solid #ecf0f1',
     color: '#2c3e50',
+  },
+  clickableRow: {
+    cursor: 'pointer',
+    transition: 'background-color 0.2s',
+  },
+  unsetRow: {
+    backgroundColor: '#fafafa',
+  },
+  unsetText: {
+    color: '#cbd5e1',
   },
   deleteBtn: {
     padding: '4px 10px',
@@ -822,7 +781,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     backgroundColor: 'white',
     borderRadius: '10px',
     padding: '25px',
-    width: '500px',
+    width: '400px',
     maxWidth: '90vw',
     maxHeight: '90vh',
     overflowY: 'auto' as const,
@@ -862,11 +821,6 @@ const styles: { [key: string]: React.CSSProperties } = {
     border: '1px solid #ddd',
     borderRadius: '6px',
     boxSizing: 'border-box' as const,
-  },
-  hint: {
-    fontSize: '12px',
-    color: '#7f8c8d',
-    marginTop: '5px',
   },
   modalActions: {
     display: 'flex',
