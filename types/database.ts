@@ -287,7 +287,6 @@ export interface SalesSettings {
   // 端数処理設定
   rounding_method: RoundingMethod
   rounding_timing: RoundingTiming
-  skip_rounding_for_cast_items: boolean  // キャスト名表示商品を端数処理対象外にする
 
   // ヘルプ売上計算設定
   help_calculation_method: HelpCalculationMethod

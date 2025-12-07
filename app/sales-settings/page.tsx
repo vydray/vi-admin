@@ -156,7 +156,6 @@ export default function SalesSettingsPage() {
         .update({
           rounding_method: combineRoundingMethod(roundingPosition, roundingType),
           rounding_timing: settings.rounding_timing,
-          skip_rounding_for_cast_items: settings.skip_rounding_for_cast_items ?? true,
           help_calculation_method: settings.help_calculation_method,
           help_ratio: settings.help_ratio,
           help_fixed_amount: settings.help_fixed_amount,
@@ -208,6 +207,17 @@ export default function SalesSettingsPage() {
     ]
 
     const results = sampleItems.map(item => {
+      // キャスト名がない商品（needsCast=false）はキャスト売上に含めない
+      if (!item.needsCast) {
+        return {
+          ...item,
+          calcPrice: 0,
+          salesAmount: 0,
+          rounded: 0,
+          notIncluded: true,
+        }
+      }
+
       // 税・サービス抜き金額を計算
       let calcPrice = item.basePrice
       const excludeTax = settings.exclude_consumption_tax ?? true
@@ -232,10 +242,8 @@ export default function SalesSettingsPage() {
       }
 
       // 商品ごとの端数処理
-      // skip_rounding_for_cast_items=true かつ needsCast=true の場合は対象外
       let rounded = salesAmount
-      const skipRounding = (settings.skip_rounding_for_cast_items ?? true) && item.needsCast
-      if (settings.rounding_timing === 'per_item' && !skipRounding) {
+      if (settings.rounding_timing === 'per_item') {
         rounded = applyRoundingPreview(salesAmount, roundingPosition, roundingType)
       }
 
@@ -244,7 +252,7 @@ export default function SalesSettingsPage() {
         calcPrice,
         salesAmount,
         rounded,
-        skipRounding,
+        notIncluded: false,
       }
     })
 
@@ -333,25 +341,6 @@ export default function SalesSettingsPage() {
             </p>
           </div>
 
-          {settings.rounding_timing === 'per_item' && (
-            <div style={styles.checkboxGroup}>
-              <label style={styles.checkboxLabel}>
-                <input
-                  type="checkbox"
-                  checked={settings.skip_rounding_for_cast_items ?? true}
-                  onChange={(e) =>
-                    updateSetting('skip_rounding_for_cast_items', e.target.checked)
-                  }
-                  style={styles.checkbox}
-                />
-                <span>キャスト名表示商品は端数処理対象外にする</span>
-              </label>
-              <p style={styles.hint}>
-                オン: ドリンクなど（キャスト名あり）は端数処理しない<br />
-                オフ: すべての商品を端数処理する
-              </p>
-            </div>
-          )}
         </div>
 
         {/* ヘルプ売上設定 */}
@@ -497,30 +486,31 @@ export default function SalesSettingsPage() {
                     </div>
                     <div style={styles.receiptItemDetails}>
                       <div style={styles.detailRow}>
-                        <span style={{
-                          ...styles.typeTag,
-                          color: item.isSelf ? '#10b981' : '#f59e0b',
-                          backgroundColor: item.isSelf ? '#d1fae5' : '#fef3c7',
-                        }}>
-                          {item.isSelf ? 'SELF' : 'HELP'}
-                        </span>
-                        {settings.rounding_timing === 'per_item' && item.skipRounding && (
-                          <span style={styles.skipTag}>端数処理対象外</span>
+                        {item.notIncluded ? (
+                          <span style={styles.skipTag}>売上対象外</span>
+                        ) : (
+                          <span style={{
+                            ...styles.typeTag,
+                            color: item.isSelf ? '#10b981' : '#f59e0b',
+                            backgroundColor: item.isSelf ? '#d1fae5' : '#fef3c7',
+                          }}>
+                            {item.isSelf ? 'SELF' : 'HELP'}
+                          </span>
                         )}
                       </div>
-                      {(settings.exclude_consumption_tax || settings.exclude_service_charge) && item.calcPrice !== item.basePrice && (
+                      {!item.notIncluded && (settings.exclude_consumption_tax || settings.exclude_service_charge) && item.calcPrice !== item.basePrice && (
                         <div style={styles.detailRow}>
                           <span>→ 税抜き計算</span>
                           <span>¥{item.calcPrice.toLocaleString()}</span>
                         </div>
                       )}
-                      {!item.isSelf && (
+                      {!item.notIncluded && !item.isSelf && (
                         <div style={styles.detailRow}>
                           <span>→ HELP {settings.help_ratio}%</span>
                           <span>¥{item.salesAmount.toLocaleString()}</span>
                         </div>
                       )}
-                      {settings.rounding_timing === 'per_item' && !item.skipRounding && item.salesAmount !== item.rounded && (
+                      {!item.notIncluded && settings.rounding_timing === 'per_item' && item.salesAmount !== item.rounded && (
                         <div style={{ ...styles.detailRow, color: '#3b82f6' }}>
                           <span>→ 端数処理</span>
                           <span>¥{item.rounded.toLocaleString()}</span>
@@ -528,7 +518,11 @@ export default function SalesSettingsPage() {
                       )}
                     </div>
                     <div style={styles.receiptItemTotal}>
-                      売上: ¥{(settings.rounding_timing === 'per_item' && !item.skipRounding ? item.rounded : item.salesAmount).toLocaleString()}
+                      {item.notIncluded ? (
+                        <span style={{ color: '#94a3b8' }}>売上: -</span>
+                      ) : (
+                        <span>売上: ¥{(settings.rounding_timing === 'per_item' ? item.rounded : item.salesAmount).toLocaleString()}</span>
+                      )}
                     </div>
                   </div>
                 ))}
