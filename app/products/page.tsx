@@ -92,12 +92,15 @@ export default function ProductsPage() {
       ? Math.max(...categoryProducts.map(p => p.display_order || 0))
       : 0
 
+    const productName = newProductName.trim()
+    const categoryId = newProductCategory
+
     const { error } = await supabase
       .from('products')
       .insert({
-        name: newProductName.trim(),
+        name: productName,
         price: parseInt(newProductPrice),
-        category_id: newProductCategory,
+        category_id: categoryId,
         display_order: maxDisplayOrder + 1,
         is_active: true,
         needs_cast: newProductNeedsCast,
@@ -105,13 +108,82 @@ export default function ProductsPage() {
       })
 
     if (!error) {
+      // 商品追加成功時、既存のバック率設定を持つキャストに自動で設定を作成
+      await autoCreateBackRatesForNewProduct(productName, categoryId)
+
       await loadProducts()
       setNewProductName('')
       setNewProductPrice('')
       setNewProductCategory(null)
       setNewProductNeedsCast(false)
+      toast.success('商品を追加しました')
     } else {
-      toast.success('商品の追加に失敗しました')
+      toast.error('商品の追加に失敗しました')
+    }
+  }
+
+  // 新商品のバック率設定を自動作成
+  const autoCreateBackRatesForNewProduct = async (productName: string, categoryId: number) => {
+    try {
+      // カテゴリ名を取得
+      const category = categories.find(c => c.id === categoryId)
+      if (!category) return
+
+      // この店舗の全てのバック率設定を取得（同じカテゴリで商品指定があるもの）
+      const { data: existingRates, error: fetchError } = await supabase
+        .from('cast_back_rates')
+        .select('*')
+        .eq('store_id', storeId)
+        .eq('category', category.name)
+        .eq('is_active', true)
+        .not('product_name', 'is', null)
+
+      if (fetchError) {
+        console.error('バック率設定の取得エラー:', fetchError)
+        return
+      }
+
+      if (!existingRates || existingRates.length === 0) {
+        // 商品単位の設定がない場合はスキップ
+        return
+      }
+
+      // キャストごとにグループ化し、同じカテゴリに設定があるキャストにのみ新商品の設定を追加
+      const castIds = [...new Set(existingRates.map(r => r.cast_id))]
+
+      // 新商品用の設定を作成（各キャストの最初の設定をテンプレートとして使用）
+      const newRates = castIds.map(castId => {
+        const templateRate = existingRates.find(r => r.cast_id === castId)
+        if (!templateRate) return null
+
+        return {
+          cast_id: castId,
+          store_id: storeId,
+          category: category.name,
+          product_name: productName,
+          back_type: templateRate.back_type,
+          back_ratio: templateRate.back_ratio,
+          back_fixed_amount: templateRate.back_fixed_amount,
+          self_back_ratio: templateRate.self_back_ratio,
+          help_back_ratio: templateRate.help_back_ratio,
+          hourly_wage: null,
+          is_active: true
+        }
+      }).filter(Boolean)
+
+      if (newRates.length > 0) {
+        const { error: insertError } = await supabase
+          .from('cast_back_rates')
+          .insert(newRates)
+
+        if (insertError) {
+          console.error('バック率設定の自動作成エラー:', insertError)
+        } else {
+          console.log(`${newRates.length}件のバック率設定を自動作成しました`)
+        }
+      }
+    } catch (err) {
+      console.error('バック率自動作成エラー:', err)
     }
   }
 

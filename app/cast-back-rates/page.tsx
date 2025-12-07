@@ -158,21 +158,25 @@ export default function CastBackRatesPage() {
 
     setSaving(true)
     try {
-      const payload = {
+      const basePayload = {
         cast_id: editingRate.cast_id,
         store_id: storeId,
-        category: editingRate.category || null,
-        product_name: editingRate.product_name || null,
         back_type: editingRate.back_type,
         back_ratio: editingRate.back_ratio,
         back_fixed_amount: editingRate.back_fixed_amount,
         self_back_ratio: editingRate.self_back_ratio,
         help_back_ratio: editingRate.help_back_ratio,
-        hourly_wage: editingRate.hourly_wage,
         is_active: true,
       }
 
       if (isEditing && editingRate.id) {
+        // 既存設定の更新
+        const payload = {
+          ...basePayload,
+          category: editingRate.category || null,
+          product_name: editingRate.product_name || null,
+          hourly_wage: editingRate.hourly_wage,
+        }
         const { error } = await supabase
           .from('cast_back_rates')
           .update(payload)
@@ -181,12 +185,65 @@ export default function CastBackRatesPage() {
         if (error) throw error
         toast.success('バック率を更新しました')
       } else {
-        const { error } = await supabase
-          .from('cast_back_rates')
-          .insert(payload)
+        // カテゴリ指定で商品名が未指定の場合、全商品のエントリを自動作成
+        if (editingRate.category && !editingRate.product_name) {
+          const categoryProducts = filteredProducts
 
-        if (error) throw error
-        toast.success('バック率を追加しました')
+          if (categoryProducts.length === 0) {
+            toast.error('このカテゴリには商品がありません')
+            setSaving(false)
+            return
+          }
+
+          // 既存の設定を確認
+          const existingProductNames = backRates
+            .filter(r =>
+              r.cast_id === editingRate.cast_id &&
+              r.category === editingRate.category &&
+              r.product_name !== null
+            )
+            .map(r => r.product_name)
+
+          // 新規追加する商品のみをフィルタ
+          const newProducts = categoryProducts.filter(
+            p => !existingProductNames.includes(p.name)
+          )
+
+          if (newProducts.length === 0) {
+            toast.error('全ての商品に既に設定があります')
+            setSaving(false)
+            return
+          }
+
+          // 全商品のエントリを作成
+          const payloads = newProducts.map(product => ({
+            ...basePayload,
+            category: editingRate.category,
+            product_name: product.name,
+            hourly_wage: null,
+          }))
+
+          const { error } = await supabase
+            .from('cast_back_rates')
+            .insert(payloads)
+
+          if (error) throw error
+          toast.success(`${newProducts.length}件の商品バック率を追加しました`)
+        } else {
+          // 通常の追加（デフォルト設定または個別商品）
+          const payload = {
+            ...basePayload,
+            category: editingRate.category || null,
+            product_name: editingRate.product_name || null,
+            hourly_wage: editingRate.hourly_wage,
+          }
+          const { error } = await supabase
+            .from('cast_back_rates')
+            .insert(payload)
+
+          if (error) throw error
+          toast.success('バック率を追加しました')
+        }
       }
 
       setShowModal(false)
