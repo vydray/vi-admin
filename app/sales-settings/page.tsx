@@ -373,14 +373,16 @@ export default function SalesSettingsPage() {
               <label style={styles.label}>ヘルプ売上割合 (%)</label>
               <input
                 type="number"
-                value={settings.help_ratio}
-                onChange={(e) =>
-                  updateSetting('help_ratio', parseFloat(e.target.value) || 0)
-                }
+                value={settings.help_ratio || ''}
+                onChange={(e) => {
+                  const val = e.target.value === '' ? 0 : Math.min(100, Math.max(0, parseInt(e.target.value) || 0))
+                  updateSetting('help_ratio', val)
+                }}
                 style={styles.input}
                 min="0"
                 max="100"
-                step="0.1"
+                step="1"
+                placeholder="0"
               />
             </div>
           )}
@@ -390,13 +392,15 @@ export default function SalesSettingsPage() {
               <label style={styles.label}>ヘルプ固定額 (円)</label>
               <input
                 type="number"
-                value={settings.help_fixed_amount}
-                onChange={(e) =>
-                  updateSetting('help_fixed_amount', parseInt(e.target.value) || 0)
-                }
+                value={settings.help_fixed_amount || ''}
+                onChange={(e) => {
+                  const val = e.target.value === '' ? 0 : Math.max(0, parseInt(e.target.value) || 0)
+                  updateSetting('help_fixed_amount', val)
+                }}
                 style={styles.input}
                 min="0"
                 step="100"
+                placeholder="0"
               />
             </div>
           )}
