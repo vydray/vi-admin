@@ -128,6 +128,7 @@ export default function SalesSettingsPage() {
         .update({
           rounding_method: combineRoundingMethod(roundingPosition, roundingType),
           rounding_timing: settings.rounding_timing,
+          skip_rounding_for_cast_items: settings.skip_rounding_for_cast_items ?? true,
           help_calculation_method: settings.help_calculation_method,
           help_ratio: settings.help_ratio,
           help_fixed_amount: settings.help_fixed_amount,
@@ -183,9 +184,11 @@ export default function SalesSettingsPage() {
         salesAmount = settings.help_fixed_amount
       }
 
-      // 商品ごとの端数処理（needsCast=falseの商品のみ対象）
+      // 商品ごとの端数処理
+      // skip_rounding_for_cast_items=true かつ needsCast=true の場合は対象外
       let rounded = salesAmount
-      if (settings.rounding_timing === 'per_item' && !item.needsCast) {
+      const skipRounding = (settings.skip_rounding_for_cast_items ?? true) && item.needsCast
+      if (settings.rounding_timing === 'per_item' && !skipRounding) {
         rounded = applyRoundingPreview(salesAmount, roundingPosition, roundingType)
       }
 
@@ -194,6 +197,7 @@ export default function SalesSettingsPage() {
         basePrice,
         salesAmount,
         rounded,
+        skipRounding,
       }
     })
 
@@ -281,6 +285,26 @@ export default function SalesSettingsPage() {
               合計時: すべての商品を合計した後に端数処理
             </p>
           </div>
+
+          {settings.rounding_timing === 'per_item' && (
+            <div style={styles.checkboxGroup}>
+              <label style={styles.checkboxLabel}>
+                <input
+                  type="checkbox"
+                  checked={settings.skip_rounding_for_cast_items ?? true}
+                  onChange={(e) =>
+                    updateSetting('skip_rounding_for_cast_items', e.target.checked)
+                  }
+                  style={styles.checkbox}
+                />
+                <span>キャスト名表示商品は端数処理対象外にする</span>
+              </label>
+              <p style={styles.hint}>
+                オン: ドリンクなど（キャスト名あり）は端数処理しない<br />
+                オフ: すべての商品を端数処理する
+              </p>
+            </div>
+          )}
         </div>
 
         {/* ヘルプ売上設定 */}
@@ -412,7 +436,7 @@ export default function SalesSettingsPage() {
                         }}>
                           {item.isSelf ? 'SELF' : 'HELP'}
                         </span>
-                        {settings.rounding_timing === 'per_item' && item.needsCast && (
+                        {settings.rounding_timing === 'per_item' && item.skipRounding && (
                           <span style={styles.skipTag}>端数処理対象外</span>
                         )}
                       </div>
@@ -428,7 +452,7 @@ export default function SalesSettingsPage() {
                           <span>¥{item.salesAmount.toLocaleString()}</span>
                         </div>
                       )}
-                      {settings.rounding_timing === 'per_item' && !item.needsCast && item.salesAmount !== item.rounded && (
+                      {settings.rounding_timing === 'per_item' && !item.skipRounding && item.salesAmount !== item.rounded && (
                         <div style={{ ...styles.detailRow, color: '#3b82f6' }}>
                           <span>→ 端数処理</span>
                           <span>¥{item.rounded.toLocaleString()}</span>
@@ -436,7 +460,7 @@ export default function SalesSettingsPage() {
                       )}
                     </div>
                     <div style={styles.receiptItemTotal}>
-                      売上: ¥{(settings.rounding_timing === 'per_item' && !item.needsCast ? item.rounded : item.salesAmount).toLocaleString()}
+                      売上: ¥{(settings.rounding_timing === 'per_item' && !item.skipRounding ? item.rounded : item.salesAmount).toLocaleString()}
                     </div>
                   </div>
                 ))}
