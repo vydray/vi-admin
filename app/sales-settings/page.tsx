@@ -162,11 +162,12 @@ export default function SalesSettingsPage() {
   const preview = useMemo(() => {
     if (!settings) return null
 
-    // サンプル伝票
+    // サンプル伝票（推し: Aちゃん）
     const sampleItems = [
-      { name: 'キャストドリンク', price: 1100, taxExcluded: 1000, isSelf: true },
-      { name: 'シャンパン', price: 11000, taxExcluded: 10000, isSelf: true },
-      { name: 'ヘルプドリンク', price: 1100, taxExcluded: 1000, isSelf: false },
+      { name: 'セット料金 60分', price: 5500, taxExcluded: 5000, isSelf: true, castName: 'A' },
+      { name: 'キャストドリンク', price: 1100, taxExcluded: 1000, isSelf: true, castName: 'A' },
+      { name: 'シャンパン', price: 11000, taxExcluded: 10000, isSelf: true, castName: 'A' },
+      { name: 'ヘルプドリンク', price: 1100, taxExcluded: 1000, isSelf: false, castName: 'B' },
     ]
 
     const results = sampleItems.map(item => {
@@ -379,12 +380,18 @@ export default function SalesSettingsPage() {
           {preview && (
             <>
               <div style={styles.receiptPreview}>
-                <div style={styles.receiptHeader}>サンプル伝票</div>
+                <div style={styles.receiptHeader}>
+                  <span>サンプル伝票</span>
+                  <span style={styles.oshiLabel}>推し: A</span>
+                </div>
 
                 {preview.items.map((item, idx) => (
                   <div key={idx} style={styles.receiptItem}>
                     <div style={styles.receiptItemHeader}>
-                      <span style={styles.itemName}>{item.name}</span>
+                      <span style={styles.itemName}>
+                        {item.name}
+                        <span style={styles.castLabel}>({item.castName})</span>
+                      </span>
                       <span style={{
                         ...styles.itemType,
                         color: item.isSelf ? '#10b981' : '#f59e0b'
@@ -611,12 +618,29 @@ const styles: { [key: string]: React.CSSProperties } = {
     marginBottom: '15px',
   },
   receiptHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     fontSize: '14px',
     fontWeight: '600',
     color: '#475569',
     paddingBottom: '10px',
     borderBottom: '1px dashed #cbd5e1',
     marginBottom: '10px',
+  },
+  oshiLabel: {
+    fontSize: '12px',
+    fontWeight: '600',
+    color: '#ec4899',
+    backgroundColor: '#fdf2f8',
+    padding: '2px 8px',
+    borderRadius: '4px',
+  },
+  castLabel: {
+    fontSize: '11px',
+    color: '#94a3b8',
+    marginLeft: '6px',
+    fontWeight: '400',
   },
   receiptItem: {
     marginBottom: '15px',
