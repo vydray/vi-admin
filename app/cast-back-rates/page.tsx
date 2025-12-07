@@ -40,9 +40,11 @@ export default function CastBackRatesPage() {
   const [showRateModal, setShowRateModal] = useState(false)
   const [editingRate, setEditingRate] = useState<BackRateForm | null>(null)
 
-  // 時給編集モーダル
-  const [showWageModal, setShowWageModal] = useState(false)
-  const [editingWage, setEditingWage] = useState<number | null>(null)
+  // 一括設定モーダル
+  const [showBulkModal, setShowBulkModal] = useState(false)
+  const [bulkCategory, setBulkCategory] = useState<string>('')
+  const [bulkSelfRate, setBulkSelfRate] = useState<number>(0)
+  const [bulkHelpRate, setBulkHelpRate] = useState<number | null>(null)
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -113,11 +115,6 @@ export default function CastBackRatesPage() {
     if (!selectedCastId) return []
     return backRates.filter((r) => r.cast_id === selectedCastId)
   }, [backRates, selectedCastId])
-
-  // デフォルト設定（時給を取得）
-  const defaultSetting = useMemo(() => {
-    return castRates.find(r => !r.category)
-  }, [castRates])
 
   // 全商品とそのバック率設定をマージ
   const allProductsWithRates = useMemo((): ProductWithRate[] => {
@@ -225,47 +222,65 @@ export default function CastBackRatesPage() {
     }
   }
 
-  const openWageModal = () => {
-    setEditingWage(defaultSetting?.hourly_wage ?? null)
-    setShowWageModal(true)
+  const openBulkModal = (categoryName: string) => {
+    setBulkCategory(categoryName)
+    setBulkSelfRate(0)
+    setBulkHelpRate(null)
+    setShowBulkModal(true)
   }
 
-  const handleSaveWage = async () => {
-    if (!selectedCastId) return
+  const handleBulkSave = async () => {
+    if (!selectedCastId || !bulkCategory) return
 
     setSaving(true)
     try {
-      if (defaultSetting) {
-        // 既存のデフォルト設定を更新
-        const { error } = await supabase
-          .from('cast_back_rates')
-          .update({ hourly_wage: editingWage })
-          .eq('id', defaultSetting.id)
+      // このカテゴリの全商品を取得
+      const categoryProducts = products.filter(p => {
+        const cat = categories.find(c => c.id === p.category_id)
+        return cat?.name === bulkCategory
+      })
 
-        if (error) throw error
-      } else {
-        // 新規作成
-        const { error } = await supabase
-          .from('cast_back_rates')
-          .insert({
-            cast_id: selectedCastId,
-            store_id: storeId,
-            category: null,
-            product_name: null,
-            back_type: 'ratio',
-            back_ratio: 0,
-            back_fixed_amount: 0,
-            self_back_ratio: null,
-            help_back_ratio: null,
-            hourly_wage: editingWage,
-            is_active: true,
-          })
-
-        if (error) throw error
+      if (categoryProducts.length === 0) {
+        toast.error('商品がありません')
+        setSaving(false)
+        return
       }
 
-      toast.success('時給を更新しました')
-      setShowWageModal(false)
+      // 各商品に対してバック率を設定/更新
+      for (const product of categoryProducts) {
+        const existingRate = castRates.find(r =>
+          r.category === bulkCategory &&
+          r.product_name === product.name
+        )
+
+        const payload = {
+          cast_id: selectedCastId,
+          store_id: storeId,
+          category: bulkCategory,
+          product_name: product.name,
+          back_type: 'ratio' as BackType,
+          back_ratio: bulkSelfRate,
+          back_fixed_amount: 0,
+          self_back_ratio: bulkSelfRate,
+          help_back_ratio: bulkHelpRate,
+          hourly_wage: null,
+          is_active: true,
+        }
+
+        if (existingRate) {
+          await supabase
+            .from('cast_back_rates')
+            .update(payload)
+            .eq('id', existingRate.id)
+        } else {
+          await supabase
+            .from('cast_back_rates')
+            .insert(payload)
+        }
+      }
+
+      toast.success(`${categoryProducts.length}件の商品に一括設定しました`)
+      setShowBulkModal(false)
       loadData()
     } catch (err) {
       console.error('保存エラー:', err)
@@ -333,22 +348,9 @@ export default function CastBackRatesPage() {
         <div style={styles.main}>
           {selectedCast ? (
             <>
-              {/* ヘッダー：キャスト名 + 時給 */}
+              {/* ヘッダー：キャスト名 */}
               <div style={styles.mainHeader}>
-                <div style={styles.headerLeft}>
-                  <h2 style={styles.mainTitle}>{selectedCast.name}</h2>
-                  <div style={styles.wageDisplay}>
-                    <span style={styles.wageLabel}>時給:</span>
-                    <span style={styles.wageValue}>
-                      {defaultSetting?.hourly_wage
-                        ? `¥${defaultSetting.hourly_wage.toLocaleString()}`
-                        : '未設定'}
-                    </span>
-                    <button onClick={openWageModal} style={styles.wageEditBtn}>
-                      編集
-                    </button>
-                  </div>
-                </div>
+                <h2 style={styles.mainTitle}>{selectedCast.name} のバック率設定</h2>
               </div>
 
               {/* 商品別バック率一覧 */}
@@ -362,7 +364,15 @@ export default function CastBackRatesPage() {
               ) : (
                 Object.entries(groupedProducts).map(([categoryName, items]) => (
                   <div key={categoryName} style={styles.categorySection}>
-                    <h3 style={styles.categoryTitle}>{categoryName}</h3>
+                    <div style={styles.categoryHeader}>
+                      <h3 style={styles.categoryTitle}>{categoryName}</h3>
+                      <button
+                        onClick={() => openBulkModal(categoryName)}
+                        style={styles.bulkBtn}
+                      >
+                        一括設定
+                      </button>
+                    </div>
                     <table style={styles.table}>
                       <thead>
                         <tr>
@@ -541,30 +551,51 @@ export default function CastBackRatesPage() {
         </div>
       )}
 
-      {/* 時給編集モーダル */}
-      {showWageModal && (
-        <div style={styles.modalOverlay} onClick={() => setShowWageModal(false)}>
+      {/* 一括設定モーダル */}
+      {showBulkModal && (
+        <div style={styles.modalOverlay} onClick={() => setShowBulkModal(false)}>
           <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
-            <h3 style={styles.modalTitle}>時給設定</h3>
+            <h3 style={styles.modalTitle}>{bulkCategory} 一括設定</h3>
 
-            <div style={styles.formGroup}>
-              <label style={styles.label}>時給 (円)</label>
-              <input
-                type="number"
-                value={editingWage ?? ''}
-                onChange={(e) =>
-                  setEditingWage(e.target.value ? parseInt(e.target.value) : null)
-                }
-                style={styles.input}
-                min="0"
-                step="100"
-                placeholder="未設定"
-              />
+            <p style={styles.bulkHint}>
+              このカテゴリの全商品に同じバック率を設定します
+            </p>
+
+            <div style={styles.formRow}>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>SELF時バック率 (%)</label>
+                <input
+                  type="number"
+                  value={bulkSelfRate}
+                  onChange={(e) =>
+                    setBulkSelfRate(e.target.value ? parseFloat(e.target.value) : 0)
+                  }
+                  style={styles.input}
+                  min="0"
+                  max="100"
+                  step="1"
+                />
+              </div>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>HELP時バック率 (%)</label>
+                <input
+                  type="number"
+                  value={bulkHelpRate ?? ''}
+                  onChange={(e) =>
+                    setBulkHelpRate(e.target.value ? parseFloat(e.target.value) : null)
+                  }
+                  style={styles.input}
+                  min="0"
+                  max="100"
+                  step="1"
+                  placeholder="空欄でSELFと同じ"
+                />
+              </div>
             </div>
 
             <div style={styles.modalActions}>
               <Button
-                onClick={() => setShowWageModal(false)}
+                onClick={() => setShowBulkModal(false)}
                 variant="outline"
                 size="medium"
                 disabled={saving}
@@ -572,12 +603,12 @@ export default function CastBackRatesPage() {
                 キャンセル
               </Button>
               <Button
-                onClick={handleSaveWage}
+                onClick={handleBulkSave}
                 variant="primary"
                 size="medium"
                 disabled={saving}
               >
-                {saving ? '保存中...' : '保存'}
+                {saving ? '保存中...' : '一括設定'}
               </Button>
             </div>
           </div>
@@ -661,50 +692,15 @@ const styles: { [key: string]: React.CSSProperties } = {
     boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
   },
   mainHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     marginBottom: '24px',
     paddingBottom: '16px',
     borderBottom: '1px solid #ecf0f1',
-  },
-  headerLeft: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '20px',
   },
   mainTitle: {
     fontSize: '20px',
     fontWeight: '600',
     color: '#2c3e50',
     margin: 0,
-  },
-  wageDisplay: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    backgroundColor: '#f0f9ff',
-    padding: '8px 12px',
-    borderRadius: '6px',
-  },
-  wageLabel: {
-    fontSize: '13px',
-    color: '#64748b',
-  },
-  wageValue: {
-    fontSize: '16px',
-    fontWeight: '600',
-    color: '#1e40af',
-  },
-  wageEditBtn: {
-    padding: '4px 8px',
-    border: '1px solid #3b82f6',
-    borderRadius: '4px',
-    backgroundColor: 'white',
-    color: '#3b82f6',
-    cursor: 'pointer',
-    fontSize: '12px',
-    marginLeft: '4px',
   },
   emptyState: {
     textAlign: 'center' as const,
@@ -718,15 +714,35 @@ const styles: { [key: string]: React.CSSProperties } = {
   categorySection: {
     marginBottom: '24px',
   },
+  categoryHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+    marginBottom: '8px',
+  },
   categoryTitle: {
     fontSize: '14px',
     fontWeight: '600',
     color: '#3b82f6',
-    marginBottom: '8px',
+    margin: 0,
     padding: '4px 8px',
     backgroundColor: '#eff6ff',
     borderRadius: '4px',
-    display: 'inline-block',
+  },
+  bulkBtn: {
+    padding: '4px 10px',
+    border: '1px solid #3b82f6',
+    borderRadius: '4px',
+    backgroundColor: 'white',
+    color: '#3b82f6',
+    cursor: 'pointer',
+    fontSize: '12px',
+    fontWeight: '500',
+  },
+  bulkHint: {
+    fontSize: '13px',
+    color: '#64748b',
+    marginBottom: '16px',
   },
   table: {
     width: '100%',
