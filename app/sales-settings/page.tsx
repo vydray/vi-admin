@@ -163,11 +163,13 @@ export default function SalesSettingsPage() {
     if (!settings) return null
 
     // サンプル伝票（推し: Aちゃん）
+    // needsCast: true = キャスト名表示あり → 商品ごとの端数処理対象外
+    // needsCast: false = キャスト名表示なし → 商品ごとの端数処理対象
     const sampleItems = [
-      { name: 'セット料金 60分', price: 5500, taxExcluded: 5000, isSelf: true, castName: 'A' },
-      { name: 'キャストドリンク', price: 1100, taxExcluded: 1000, isSelf: true, castName: 'A' },
-      { name: 'シャンパン', price: 11000, taxExcluded: 10000, isSelf: true, castName: 'A' },
-      { name: 'ヘルプドリンク', price: 1100, taxExcluded: 1000, isSelf: false, castName: 'B' },
+      { name: 'セット料金 60分', price: 5500, taxExcluded: 5000, isSelf: true, castName: '-', needsCast: false },
+      { name: 'キャストドリンク', price: 1100, taxExcluded: 1000, isSelf: true, castName: 'A', needsCast: true },
+      { name: 'シャンパン', price: 11000, taxExcluded: 10000, isSelf: true, castName: 'A', needsCast: true },
+      { name: 'ヘルプドリンク', price: 1100, taxExcluded: 1000, isSelf: false, castName: 'B', needsCast: true },
     ]
 
     const results = sampleItems.map(item => {
@@ -181,9 +183,9 @@ export default function SalesSettingsPage() {
         salesAmount = settings.help_fixed_amount
       }
 
-      // 商品ごとの端数処理
+      // 商品ごとの端数処理（needsCast=falseの商品のみ対象）
       let rounded = salesAmount
-      if (settings.rounding_timing === 'per_item') {
+      if (settings.rounding_timing === 'per_item' && !item.needsCast) {
         rounded = applyRoundingPreview(salesAmount, roundingPosition, roundingType)
       }
 
@@ -385,24 +387,34 @@ export default function SalesSettingsPage() {
                   <span style={styles.oshiLabel}>推し: A</span>
                 </div>
 
+                {/* テーブルヘッダー */}
+                <div style={styles.tableHeader}>
+                  <span style={styles.tableHeaderItem}>商品名</span>
+                  <span style={styles.tableHeaderItem}>キャスト</span>
+                  <span style={styles.tableHeaderItem}>金額</span>
+                </div>
+
                 {preview.items.map((item, idx) => (
                   <div key={idx} style={styles.receiptItem}>
                     <div style={styles.receiptItemHeader}>
                       <span style={styles.itemName}>
                         {item.name}
-                        <span style={styles.castLabel}>({item.castName})</span>
                       </span>
-                      <span style={{
-                        ...styles.itemType,
-                        color: item.isSelf ? '#10b981' : '#f59e0b'
-                      }}>
-                        {item.isSelf ? 'SELF' : 'HELP'}
-                      </span>
+                      <span style={styles.itemCast}>{item.castName}</span>
+                      <span style={styles.itemPrice}>¥{item.price.toLocaleString()}</span>
                     </div>
                     <div style={styles.receiptItemDetails}>
                       <div style={styles.detailRow}>
-                        <span>商品価格</span>
-                        <span>¥{item.price.toLocaleString()}</span>
+                        <span style={{
+                          ...styles.typeTag,
+                          color: item.isSelf ? '#10b981' : '#f59e0b',
+                          backgroundColor: item.isSelf ? '#d1fae5' : '#fef3c7',
+                        }}>
+                          {item.isSelf ? 'SELF' : 'HELP'}
+                        </span>
+                        {settings.rounding_timing === 'per_item' && item.needsCast && (
+                          <span style={styles.skipTag}>端数処理対象外</span>
+                        )}
                       </div>
                       {settings.use_tax_excluded && (
                         <div style={styles.detailRow}>
@@ -416,7 +428,7 @@ export default function SalesSettingsPage() {
                           <span>¥{item.salesAmount.toLocaleString()}</span>
                         </div>
                       )}
-                      {settings.rounding_timing === 'per_item' && item.salesAmount !== item.rounded && (
+                      {settings.rounding_timing === 'per_item' && !item.needsCast && item.salesAmount !== item.rounded && (
                         <div style={{ ...styles.detailRow, color: '#3b82f6' }}>
                           <span>→ 端数処理</span>
                           <span>¥{item.rounded.toLocaleString()}</span>
@@ -424,7 +436,7 @@ export default function SalesSettingsPage() {
                       )}
                     </div>
                     <div style={styles.receiptItemTotal}>
-                      売上: ¥{(settings.rounding_timing === 'per_item' ? item.rounded : item.salesAmount).toLocaleString()}
+                      売上: ¥{(settings.rounding_timing === 'per_item' && !item.needsCast ? item.rounded : item.salesAmount).toLocaleString()}
                     </div>
                   </div>
                 ))}
@@ -642,6 +654,47 @@ const styles: { [key: string]: React.CSSProperties } = {
     marginLeft: '6px',
     fontWeight: '400',
   },
+  tableHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    padding: '8px 0',
+    borderBottom: '1px solid #e2e8f0',
+    marginBottom: '10px',
+    fontSize: '11px',
+    fontWeight: '600',
+    color: '#64748b',
+  },
+  tableHeaderItem: {
+    flex: 1,
+    textAlign: 'center' as const,
+  },
+  typeTag: {
+    fontSize: '10px',
+    fontWeight: '600',
+    padding: '2px 6px',
+    borderRadius: '4px',
+  },
+  skipTag: {
+    fontSize: '10px',
+    color: '#94a3b8',
+    backgroundColor: '#f1f5f9',
+    padding: '2px 6px',
+    borderRadius: '4px',
+    marginLeft: '6px',
+  },
+  itemCast: {
+    fontSize: '12px',
+    color: '#64748b',
+    minWidth: '30px',
+    textAlign: 'center' as const,
+  },
+  itemPrice: {
+    fontSize: '12px',
+    color: '#1e293b',
+    fontWeight: '500',
+    minWidth: '70px',
+    textAlign: 'right' as const,
+  },
   receiptItem: {
     marginBottom: '15px',
     paddingBottom: '15px',
@@ -652,11 +705,13 @@ const styles: { [key: string]: React.CSSProperties } = {
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: '8px',
+    gap: '8px',
   },
   itemName: {
+    flex: 1,
     fontWeight: '500',
     color: '#1e293b',
-    fontSize: '13px',
+    fontSize: '12px',
   },
   itemType: {
     fontSize: '11px',
