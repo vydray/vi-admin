@@ -61,7 +61,7 @@ export default function SalesSettingsPage() {
   const [settings, setSettings] = useState<SalesSettings | null>(null)
   const [systemSettings, setSystemSettings] = useState<SystemSettings>({
     consumption_tax_rate: 0.10,
-    service_charge_rate: 0.10,
+    service_charge_rate: 0.15,
     rounding_method: 0,
     rounding_unit: 1,
     card_fee_rate: 0,
@@ -122,7 +122,7 @@ export default function SalesSettingsPage() {
         setSystemSettings(prev => ({
           ...prev,
           consumption_tax_rate: sysMap.consumption_tax_rate ?? 0.10,
-          service_charge_rate: sysMap.service_charge_rate ?? 0.10,
+          service_charge_rate: sysMap.service_charge_rate ?? 0.15,
         }))
       }
     } catch (err) {
