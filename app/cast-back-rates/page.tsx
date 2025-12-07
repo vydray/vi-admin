@@ -63,7 +63,7 @@ export default function CastBackRatesPage() {
 
       // カテゴリ一覧
       const { data: categoriesData, error: categoriesError } = await supabase
-        .from('categories')
+        .from('product_categories')
         .select('id, name, store_id')
         .eq('store_id', storeId)
         .order('display_order')
