@@ -441,41 +441,16 @@ export default function SalesSettingsPage() {
           <h2 style={styles.cardTitle}>
             ヘルプ売上設定
             <HelpTooltip
-              text="【HELP売上の計算】商品売上 × HELP売上割合 = HELP売上
+              text="ヘルプが入った場合の売上計算設定
 
-例: 1000円の商品、HELP売上割合50%
-→ HELP売上 = 500円
-
-この500円に対してバック率が適用されます
-バック率はキャストバック率設定で設定"
+【担当売上】ヘルプ商品 × HELP売上割合 = 担当の売上
+【ヘルプ売上】「分配する」がONの場合、ヘルプキャストにも売上を計上"
               width={300}
             />
           </h2>
           <p style={styles.cardDescription}>
-            SELF（担当テーブル）以外でキャストに紐づいた売上の計算方法
+            ヘルプが入った場合に担当キャストにどれぐらい売上を入れるかの設定
           </p>
-
-          <div style={styles.checkboxGroup}>
-            <label style={styles.checkboxLabel}>
-              <input
-                type="checkbox"
-                checked={settings.distribute_to_help ?? true}
-                onChange={(e) => {
-                  setSettings(prev => prev ? {
-                    ...prev,
-                    distribute_to_help: e.target.checked,
-                    // ONにしてhelp_ratioが0なら初期値を設定
-                    help_ratio: e.target.checked && prev.help_ratio === 0 ? 50 : prev.help_ratio
-                  } : prev)
-                }}
-                style={styles.checkbox}
-              />
-              <span>ヘルプにも売上を分配する</span>
-            </label>
-            <p style={styles.hint}>
-              OFFの場合、ヘルプキャストの売上は0になりますが、バック（報酬）は計算されます
-            </p>
-          </div>
 
           <div>
             <div style={styles.formGroup}>
@@ -498,15 +473,13 @@ export default function SalesSettingsPage() {
           {settings.help_calculation_method === 'ratio' && (
             <div style={styles.formGroup}>
               <label style={styles.label}>
-                ヘルプ売上割合 (%)
+                担当売上の割合 (%)
                 <HelpTooltip
                   text="【計算例】
-HELP売上割合: 50%
-商品価格: 1000円
-HELPバック率: 10%（キャストバック率設定）
+ヘルプドリンク: 1000円
+担当売上割合: 50%
 
-→ HELP売上 = 1000円 × 50% = 500円
-→ HELPバック = 500円 × 10% = 50円"
+→ 担当キャスト売上 = 1000円 × 50% = 500円"
                   width={300}
                 />
               </label>
@@ -528,7 +501,7 @@ HELPバック率: 10%（キャストバック率設定）
 
           {settings.help_calculation_method === 'fixed' && (
             <div style={styles.formGroup}>
-              <label style={styles.label}>ヘルプ固定額 (円)</label>
+              <label style={styles.label}>担当売上の固定額 (円)</label>
               <input
                 type="number"
                 value={settings.help_fixed_amount || ''}
@@ -543,6 +516,26 @@ HELPバック率: 10%（キャストバック率設定）
               />
             </div>
           )}
+          </div>
+
+          <div style={{ ...styles.checkboxGroup, marginTop: '20px', paddingTop: '15px', borderTop: '1px solid #ecf0f1' }}>
+            <label style={styles.checkboxLabel}>
+              <input
+                type="checkbox"
+                checked={settings.distribute_to_help ?? true}
+                onChange={(e) => {
+                  setSettings(prev => prev ? {
+                    ...prev,
+                    distribute_to_help: e.target.checked
+                  } : prev)
+                }}
+                style={styles.checkbox}
+              />
+              <span>ヘルプキャストにも売上を分配する</span>
+            </label>
+            <p style={styles.hint}>
+              ONの場合、ヘルプしたキャストにも売上が計上されます（売上表用）
+            </p>
           </div>
         </div>
 
@@ -685,7 +678,7 @@ HELPバック率: 10%（キャストバック率設定）
                       )}
                       {!item.notIncluded && !item.isSelf && (
                         <div style={styles.detailRow}>
-                          <span>→ HELP {settings.help_ratio}%</span>
+                          <span>→ 担当売上 {settings.help_ratio}%</span>
                           <span>¥{item.salesAmount.toLocaleString()}</span>
                         </div>
                       )}
@@ -755,7 +748,7 @@ HELPバック率: 10%（キャストバック率設定）
                   </div>
                   {!(settings.distribute_to_help ?? true) && preview.castBBack > 0 && (
                     <div style={styles.castSalesNote}>
-                      ※ ヘルプ売上分配OFF: 売上は0だがバックは計算されます
+                      ※ 分配OFF: ヘルプキャストの売上は0、バックは計算される
                     </div>
                   )}
                 </div>
@@ -776,10 +769,10 @@ HELPバック率: 10%（キャストバック率設定）
                   集計対象: {settings.rounding_timing === 'per_item' ? 'キャスト商品のみ' : '全商品'}
                 </div>
                 <div style={styles.summaryItem}>
-                  HELP売上分配: {(settings.distribute_to_help ?? true) ? 'ON' : 'OFF'}
+                  担当売上割合: {settings.help_ratio}%
                 </div>
                 <div style={styles.summaryItem}>
-                  HELP割合: {settings.help_ratio}%（バック率: 10%）
+                  ヘルプに分配: {(settings.distribute_to_help ?? true) ? 'する' : 'しない'}
                 </div>
               </div>
             </>
