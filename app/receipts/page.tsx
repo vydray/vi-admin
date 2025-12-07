@@ -213,9 +213,9 @@ export default function ReceiptsPage() {
         const cardFee = Number(settings.find(s => s.setting_key === 'card_fee_rate')?.setting_value || 0)
         setCardFeeRate(cardFee) // そのまま使う
 
-        // service_charge_rateは小数で保存されている（例: 0.15 = 15%）
-        const serviceCharge = Number(settings.find(s => s.setting_key === 'service_charge_rate')?.setting_value || 0)
-        setServiceChargeRate(serviceCharge * 100) // パーセント表示用に100倍
+        // service_fee_rateは整数で保存されている（例: 15 = 15%）
+        const serviceCharge = Number(settings.find(s => s.setting_key === 'service_fee_rate')?.setting_value || 0)
+        setServiceChargeRate(serviceCharge) // そのまま使う
 
         // rounding_unit（端数処理の単位、例: 100）
         const roundUnit = Number(settings.find(s => s.setting_key === 'rounding_unit')?.setting_value || 0)

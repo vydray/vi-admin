@@ -60,12 +60,12 @@ export default function SalesSettingsPage() {
   const { storeId, storeName } = useStore()
   const [settings, setSettings] = useState<SalesSettings | null>(null)
   const [systemSettings, setSystemSettings] = useState<SystemSettings>({
-    consumption_tax_rate: 0.10,
-    service_charge_rate: 0.15,
+    tax_rate: 10,
+    service_fee_rate: 15,
     rounding_method: 0,
     rounding_unit: 1,
     card_fee_rate: 0,
-    business_day_cutoff_hour: 6,
+    business_day_start_hour: 6,
   })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -121,8 +121,8 @@ export default function SalesSettingsPage() {
         })
         setSystemSettings(prev => ({
           ...prev,
-          consumption_tax_rate: sysMap.consumption_tax_rate ?? 0.10,
-          service_charge_rate: sysMap.service_charge_rate ?? 0.15,
+          tax_rate: sysMap.tax_rate ?? 10,
+          service_fee_rate: sysMap.service_fee_rate ?? 15,
         }))
       }
     } catch (err) {
@@ -193,8 +193,8 @@ export default function SalesSettingsPage() {
   const preview = useMemo(() => {
     if (!settings) return null
 
-    const taxRate = systemSettings.consumption_tax_rate
-    const serviceRate = systemSettings.service_charge_rate
+    const taxRate = systemSettings.tax_rate / 100
+    const serviceRate = systemSettings.service_fee_rate / 100
     const excludeTax = settings.exclude_consumption_tax ?? true
     const isPerItem = settings.rounding_timing === 'per_item'
 
@@ -477,7 +477,7 @@ HELPバック率: 10%（キャストバック率設定）
                 }
                 style={styles.checkbox}
               />
-              <span>消費税抜きの金額で計算する（{Math.round(systemSettings.consumption_tax_rate * 100)}%）</span>
+              <span>消費税抜きの金額で計算する（{systemSettings.tax_rate}%）</span>
             </label>
           </div>
 
@@ -491,7 +491,7 @@ HELPバック率: 10%（キャストバック率設定）
                 }
                 style={styles.checkbox}
               />
-              <span>サービスTAX抜きの金額で計算する（{Math.round(systemSettings.service_charge_rate * 100)}%）</span>
+              <span>サービスTAX抜きの金額で計算する（{systemSettings.service_fee_rate}%）</span>
             </label>
           </div>
 

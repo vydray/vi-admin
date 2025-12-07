@@ -31,7 +31,7 @@ async function updateBusinessDays(storeId?: number) {
     const settingsQuery = supabase
       .from('system_settings')
       .select('store_id, setting_value')
-      .eq('setting_key', 'business_day_cutoff_hour')
+      .eq('setting_key', 'business_day_start_hour')
 
     if (storeId) {
       settingsQuery.eq('store_id', storeId)

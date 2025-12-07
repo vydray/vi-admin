@@ -221,12 +221,12 @@ export interface Store {
 }
 
 export interface SystemSettings {
-  consumption_tax_rate: number
-  service_charge_rate: number
+  tax_rate: number              // DB: 10 = 10%, 使用時は /100
+  service_fee_rate: number      // DB: 15 = 15%, 使用時は /100
   rounding_method: number
   rounding_unit: number
   card_fee_rate: number
-  business_day_cutoff_hour: number
+  business_day_start_hour: number
 }
 
 export interface StoreSettings {

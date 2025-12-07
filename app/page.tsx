@@ -261,7 +261,7 @@ export default function Home() {
         .from('system_settings')
         .select('setting_value')
         .eq('store_id', storeId)
-        .eq('setting_key', 'business_day_cutoff_hour')
+        .eq('setting_key', 'business_day_start_hour')
         .single()
 
       const cutoffHour = settingData?.setting_value ? Number(settingData.setting_value) : 6

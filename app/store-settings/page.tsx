@@ -29,12 +29,12 @@ export default function StoreSettingsPage() {
   })
 
   const [systemSettings, setSystemSettings] = useState<SystemSettings>({
-    consumption_tax_rate: 0.10,
-    service_charge_rate: 0.15,
+    tax_rate: 10,
+    service_fee_rate: 15,
     rounding_method: 0,
     rounding_unit: 100,
     card_fee_rate: 0,
-    business_day_cutoff_hour: 6
+    business_day_start_hour: 6
   })
 
   useEffect(() => {
@@ -50,8 +50,6 @@ export default function StoreSettingsPage() {
       .select('store_name, store_postal_code, store_address, store_phone, store_email, business_hours, closed_days, store_registration_number, footer_message, revenue_stamp_threshold, receipt_templates, logo_url')
       .eq('store_id', storeId)
       .maybeSingle()
-
-    console.log('store-settings loadSettings:', { storeId, data, error })
 
     if (!error && data) {
       setSettings({
@@ -94,39 +92,39 @@ export default function StoreSettingsPage() {
 
     if (systemSettingsData && systemSettingsData.length > 0) {
       const newSystemSettings: SystemSettings = {
-        consumption_tax_rate: 0.10,
-        service_charge_rate: 0.15,
+        tax_rate: 10,
+        service_fee_rate: 15,
         rounding_method: 0,
         rounding_unit: 100,
         card_fee_rate: 0,
-        business_day_cutoff_hour: 6
+        business_day_start_hour: 6
       }
 
       systemSettingsData.forEach(setting => {
-        if (setting.setting_key === 'consumption_tax_rate') {
-          newSystemSettings.consumption_tax_rate = Number(setting.setting_value)
-        } else if (setting.setting_key === 'service_charge_rate') {
-          newSystemSettings.service_charge_rate = Number(setting.setting_value)
+        if (setting.setting_key === 'tax_rate') {
+          newSystemSettings.tax_rate = Number(setting.setting_value)
+        } else if (setting.setting_key === 'service_fee_rate') {
+          newSystemSettings.service_fee_rate = Number(setting.setting_value)
         } else if (setting.setting_key === 'rounding_method') {
           newSystemSettings.rounding_method = Number(setting.setting_value)
         } else if (setting.setting_key === 'rounding_unit') {
           newSystemSettings.rounding_unit = Number(setting.setting_value)
         } else if (setting.setting_key === 'card_fee_rate') {
           newSystemSettings.card_fee_rate = Number(setting.setting_value)
-        } else if (setting.setting_key === 'business_day_cutoff_hour') {
-          newSystemSettings.business_day_cutoff_hour = Number(setting.setting_value)
+        } else if (setting.setting_key === 'business_day_start_hour') {
+          newSystemSettings.business_day_start_hour = Number(setting.setting_value)
         }
       })
       setSystemSettings(newSystemSettings)
     } else {
       // データがない場合はデフォルト値にリセット
       setSystemSettings({
-        consumption_tax_rate: 0.10,
-        service_charge_rate: 0.15,
+        tax_rate: 10,
+        service_fee_rate: 15,
         rounding_method: 0,
         rounding_unit: 100,
         card_fee_rate: 0,
-        business_day_cutoff_hour: 6
+        business_day_start_hour: 6
       })
     }
 
@@ -147,12 +145,12 @@ export default function StoreSettingsPage() {
 
       // システム設定を保存
       const systemSettingsArray = [
-        { store_id: storeId, setting_key: 'consumption_tax_rate', setting_value: systemSettings.consumption_tax_rate },
-        { store_id: storeId, setting_key: 'service_charge_rate', setting_value: systemSettings.service_charge_rate },
+        { store_id: storeId, setting_key: 'tax_rate', setting_value: systemSettings.tax_rate },
+        { store_id: storeId, setting_key: 'service_fee_rate', setting_value: systemSettings.service_fee_rate },
         { store_id: storeId, setting_key: 'rounding_method', setting_value: systemSettings.rounding_method },
         { store_id: storeId, setting_key: 'rounding_unit', setting_value: systemSettings.rounding_unit },
         { store_id: storeId, setting_key: 'card_fee_rate', setting_value: systemSettings.card_fee_rate },
-        { store_id: storeId, setting_key: 'business_day_cutoff_hour', setting_value: systemSettings.business_day_cutoff_hour }
+        { store_id: storeId, setting_key: 'business_day_start_hour', setting_value: systemSettings.business_day_start_hour }
       ]
 
       const { error: systemError } = await supabase
@@ -788,8 +786,8 @@ export default function StoreSettingsPage() {
                     消費税率
                   </label>
                   <select
-                    value={systemSettings.consumption_tax_rate}
-                    onChange={(e) => updateSystemSetting('consumption_tax_rate', Number(e.target.value))}
+                    value={systemSettings.tax_rate}
+                    onChange={(e) => updateSystemSetting('tax_rate', Number(e.target.value))}
                     style={{
                       width: '100%',
                       padding: '10px',
@@ -800,8 +798,8 @@ export default function StoreSettingsPage() {
                       cursor: 'pointer'
                     }}
                   >
-                    <option value={0.08}>8%</option>
-                    <option value={0.10}>10%</option>
+                    <option value={8}>8%</option>
+                    <option value={10}>10%</option>
                   </select>
                 </div>
 
@@ -820,8 +818,8 @@ export default function StoreSettingsPage() {
                     min="0"
                     max="100"
                     step="0.1"
-                    value={systemSettings.service_charge_rate > 0 ? systemSettings.service_charge_rate * 100 : ''}
-                    onChange={(e) => updateSystemSetting('service_charge_rate', e.target.value === '' ? 0 : Number(e.target.value) / 100)}
+                    value={systemSettings.service_fee_rate > 0 ? systemSettings.service_fee_rate : ''}
+                    onChange={(e) => updateSystemSetting('service_fee_rate', e.target.value === '' ? 0 : Number(e.target.value))}
                     placeholder="0"
                     style={{
                       width: '100%',
@@ -946,8 +944,8 @@ export default function StoreSettingsPage() {
                   営業日切替時刻
                 </label>
                 <select
-                  value={systemSettings.business_day_cutoff_hour}
-                  onChange={(e) => updateSystemSetting('business_day_cutoff_hour', Number(e.target.value))}
+                  value={systemSettings.business_day_start_hour}
+                  onChange={(e) => updateSystemSetting('business_day_start_hour', Number(e.target.value))}
                   style={{
                     width: '200px',
                     padding: '10px',
