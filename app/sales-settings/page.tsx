@@ -255,15 +255,12 @@ export default function SalesSettingsPage() {
 
       let salesAmount = calcPrice
 
-      // HELPの場合はヘルプ割合を適用
-      const distributeToHelp = settings.distribute_to_help ?? true
+      // HELPの場合はヘルプ割合を適用（常に計算）
       if (!item.isSelf) {
-        // HELP売上の計算
         if (settings.help_calculation_method === 'ratio') {
-          const helpAmount = Math.floor(calcPrice * (settings.help_ratio / 100))
-          salesAmount = distributeToHelp ? helpAmount : 0  // 売上分配がOFFなら売上0
+          salesAmount = Math.floor(calcPrice * (settings.help_ratio / 100))
         } else if (settings.help_calculation_method === 'fixed') {
-          salesAmount = distributeToHelp ? settings.help_fixed_amount : 0
+          salesAmount = settings.help_fixed_amount
         }
       }
 
@@ -309,9 +306,13 @@ export default function SalesSettingsPage() {
     const castASales = results
       .filter(r => r.castName === 'A' && !r.notIncluded)
       .reduce((sum, r) => sum + r.rounded, 0)
-    const castBSales = results
-      .filter(r => r.castName === 'B' && !r.notIncluded)
-      .reduce((sum, r) => sum + r.rounded, 0)
+    // ヘルプキャストの売上は distribute_to_help がONの場合のみ表示
+    const distributeToHelp = settings.distribute_to_help ?? true
+    const castBSales = distributeToHelp
+      ? results
+          .filter(r => r.castName === 'B' && !r.notIncluded)
+          .reduce((sum, r) => sum + r.rounded, 0)
+      : 0
     // セット料金等（キャスト名なし）は推しの売上に加算
     const noNameSales = results
       .filter(r => r.castName === '-' && !r.notIncluded)
