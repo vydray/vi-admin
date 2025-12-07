@@ -59,8 +59,8 @@ export default function SalesSettingsPage() {
   const { storeId, storeName } = useStore()
   const [settings, setSettings] = useState<SalesSettings | null>(null)
   const [systemSettings, setSystemSettings] = useState<SystemSettings>({
-    consumption_tax_rate: 10,
-    service_charge_rate: 10,
+    consumption_tax_rate: 0.10,
+    service_charge_rate: 0.10,
     rounding_method: 0,
     rounding_unit: 1,
     card_fee_rate: 0,
@@ -120,8 +120,8 @@ export default function SalesSettingsPage() {
         })
         setSystemSettings(prev => ({
           ...prev,
-          consumption_tax_rate: sysMap.consumption_tax_rate ?? 10,
-          service_charge_rate: sysMap.service_charge_rate ?? 10,
+          consumption_tax_rate: sysMap.consumption_tax_rate ?? 0.10,
+          service_charge_rate: sysMap.service_charge_rate ?? 0.10,
         }))
       }
     } catch (err) {
@@ -192,8 +192,8 @@ export default function SalesSettingsPage() {
   const preview = useMemo(() => {
     if (!settings) return null
 
-    const taxRate = systemSettings.consumption_tax_rate / 100
-    const serviceRate = systemSettings.service_charge_rate / 100
+    const taxRate = systemSettings.consumption_tax_rate
+    const serviceRate = systemSettings.service_charge_rate
 
     // サンプル伝票（推し: Aちゃん）
     // needsCast: true = キャスト名表示あり → 商品ごとの端数処理対象外
@@ -419,7 +419,7 @@ export default function SalesSettingsPage() {
                 }
                 style={styles.checkbox}
               />
-              <span>消費税抜きの金額で計算する（{systemSettings.consumption_tax_rate}%）</span>
+              <span>消費税抜きの金額で計算する（{Math.round(systemSettings.consumption_tax_rate * 100)}%）</span>
             </label>
           </div>
 
@@ -433,7 +433,7 @@ export default function SalesSettingsPage() {
                 }
                 style={styles.checkbox}
               />
-              <span>サービスTAX抜きの金額で計算する（{systemSettings.service_charge_rate}%）</span>
+              <span>サービスTAX抜きの金額で計算する（{Math.round(systemSettings.service_charge_rate * 100)}%）</span>
             </label>
           </div>
 
