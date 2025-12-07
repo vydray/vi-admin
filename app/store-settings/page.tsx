@@ -51,6 +51,8 @@ export default function StoreSettingsPage() {
       .eq('store_id', storeId)
       .maybeSingle()
 
+    console.log('store-settings loadSettings:', { storeId, data, error })
+
     if (!error && data) {
       setSettings({
         store_name: data.store_name || '',
