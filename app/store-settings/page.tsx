@@ -46,8 +46,8 @@ export default function StoreSettingsPage() {
 
     // 店舗設定を取得
     const { data, error } = await supabase
-      .from('store_settings')
-      .select('store_name, store_postal_code, store_address, store_phone, store_email, business_hours, closed_days, store_registration_number, footer_message, revenue_stamp_threshold, menu_template, logo_url')
+      .from('receipt_settings')
+      .select('store_name, store_postal_code, store_address, store_phone, store_email, business_hours, closed_days, store_registration_number, footer_message, revenue_stamp_threshold, receipt_templates, logo_url')
       .eq('store_id', storeId)
       .single()
 
@@ -63,7 +63,7 @@ export default function StoreSettingsPage() {
         store_registration_number: data.store_registration_number || '',
         footer_message: data.footer_message || 'またのご来店をお待ちしております',
         revenue_stamp_threshold: data.revenue_stamp_threshold ?? 50000,
-        menu_template: data.menu_template || '',
+        menu_template: '',
         logo_url: data.logo_url || ''
       })
     } else {
@@ -135,13 +135,12 @@ export default function StoreSettingsPage() {
     setSaving(true)
 
     try {
-      // 店舗設定を保存
+      // 店舗設定を保存（menu_templateはreceipt_settingsに含まれないので除外）
+      const { menu_template, ...settingsToSave } = settings
       const { error: storeError } = await supabase
-        .from('store_settings')
-        .upsert({
-          store_id: storeId,
-          ...settings
-        })
+        .from('receipt_settings')
+        .update(settingsToSave)
+        .eq('store_id', storeId)
 
       if (storeError) throw storeError
 

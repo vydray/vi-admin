@@ -210,7 +210,7 @@ export default function StoresPage() {
 
       // 4. 店舗設定を初期化
       await supabase
-        .from('store_settings')
+        .from('receipt_settings')
         .insert({
           store_id: newStoreId,
           store_name: newStore.store_name.trim()
