@@ -221,12 +221,13 @@ export default function SalesSettingsPage() {
     // needsCast: true = キャスト名表示あり → キャスト売上に含む
     // needsCast: false = キャスト名表示なし → キャスト売上に含まない
     // basePrice: 消費税込み金額（サービスTAXは合計時に計算される）
+    // backRate: バック率（%）- キャストバック率設定で設定される値
     const sampleItems = [
-      { name: 'セット料金 60分', basePrice: 3300, isSelf: true, castName: '-', needsCast: false },
-      { name: 'キャストドリンク', basePrice: 1100, isSelf: true, castName: 'A', needsCast: true },
-      { name: 'シャンパン', basePrice: 11000, isSelf: true, castName: 'A', needsCast: true },
-      { name: 'チェキ', basePrice: 1500, isSelf: true, castName: 'A', needsCast: true },
-      { name: 'ヘルプドリンク', basePrice: 1100, isSelf: false, castName: 'B', needsCast: true },
+      { name: 'セット料金 60分', basePrice: 3300, isSelf: true, castName: '-', needsCast: false, backRate: 0 },
+      { name: 'キャストドリンク', basePrice: 1100, isSelf: true, castName: 'A', needsCast: true, backRate: 10 },
+      { name: 'シャンパン', basePrice: 11000, isSelf: true, castName: 'A', needsCast: true, backRate: 10 },
+      { name: 'チェキ', basePrice: 1500, isSelf: true, castName: 'A', needsCast: true, backRate: 10 },
+      { name: 'ヘルプドリンク', basePrice: 1100, isSelf: false, castName: 'B', needsCast: true, backRate: 10 },
     ]
 
     const results = sampleItems.map(item => {
@@ -238,6 +239,7 @@ export default function SalesSettingsPage() {
           calcPrice: 0,
           salesAmount: 0,
           rounded: 0,
+          backAmount: 0,
           notIncluded: true,
         }
       }
@@ -254,28 +256,34 @@ export default function SalesSettingsPage() {
       }
 
       let salesAmount = calcPrice
+      let backBaseAmount = calcPrice  // バック計算のベース金額
 
       // HELPの場合はヘルプ割合を適用
-      // distribute_to_helpがfalseの場合、HELP売上は0
       const distributeToHelp = settings.distribute_to_help ?? true
       if (!item.isSelf) {
-        if (!distributeToHelp) {
-          salesAmount = 0
-        } else if (settings.help_calculation_method === 'ratio') {
-          salesAmount = Math.floor(calcPrice * (settings.help_ratio / 100))
+        // HELP売上の計算（ランキング・成績用）
+        if (settings.help_calculation_method === 'ratio') {
+          const helpAmount = Math.floor(calcPrice * (settings.help_ratio / 100))
+          backBaseAmount = helpAmount  // バック計算は常にHELP割合後の金額ベース
+          salesAmount = distributeToHelp ? helpAmount : 0  // 売上分配がOFFなら売上0
         } else if (settings.help_calculation_method === 'fixed') {
-          salesAmount = settings.help_fixed_amount
+          backBaseAmount = settings.help_fixed_amount
+          salesAmount = distributeToHelp ? settings.help_fixed_amount : 0
         }
       }
 
       // 端数処理（常に商品単位で適用）
       const rounded = applyRoundingPreview(salesAmount, roundingPosition, roundingType)
 
+      // バック金額計算（売上分配に関係なく常に計算）
+      const backAmount = Math.floor(backBaseAmount * (item.backRate / 100))
+
       return {
         ...item,
         calcPrice,
         salesAmount,
         rounded,
+        backAmount,
         notIncluded: false,
       }
     })
@@ -318,6 +326,14 @@ export default function SalesSettingsPage() {
       .filter(r => r.castName === '-' && !r.notIncluded)
       .reduce((sum, r) => sum + r.rounded, 0)
 
+    // キャストごとのバック集計
+    const castABack = results
+      .filter(r => r.castName === 'A' && !r.notIncluded)
+      .reduce((sum, r) => sum + r.backAmount, 0)
+    const castBBack = results
+      .filter(r => r.castName === 'B' && !r.notIncluded)
+      .reduce((sum, r) => sum + r.backAmount, 0)
+
     return {
       items: results,
       itemsTotal,
@@ -331,6 +347,8 @@ export default function SalesSettingsPage() {
       isPerItem,
       castASales: castASales + noNameSales,
       castBSales,
+      castABack,
+      castBBack,
     }
   }, [settings, roundingPosition, roundingType, systemSettings])
 
@@ -455,7 +473,7 @@ export default function SalesSettingsPage() {
               <span>ヘルプにも売上を分配する</span>
             </label>
             <p style={styles.hint}>
-              OFFの場合、ヘルプのドリンク等の売上は担当キャストのみに計上されます
+              OFFの場合、ヘルプキャストの売上は0になりますが、バック（報酬）は計算されます
             </p>
           </div>
 
@@ -714,15 +732,21 @@ HELPバック率: 10%（キャストバック率設定）
                   </div>
                 </div>
 
-                {/* キャストごとの売上 */}
+                {/* キャストごとの売上・バック */}
                 <div style={styles.castSalesSection}>
-                  <div style={styles.castSalesTitle}>キャストごとの売上</div>
+                  <div style={styles.castSalesTitle}>キャストごとの売上・バック</div>
+                  <div style={styles.castTableHeader}>
+                    <span style={styles.castTableHeaderName}>キャスト</span>
+                    <span style={styles.castTableHeaderValue}>売上</span>
+                    <span style={styles.castTableHeaderValue}>バック</span>
+                  </div>
                   <div style={styles.castSalesRow}>
                     <span style={styles.castSalesLabel}>
                       <span style={styles.castABadge}>A</span>
-                      推し（SELF）
+                      推し
                     </span>
                     <span style={styles.castSalesValue}>¥{preview.castASales.toLocaleString()}</span>
+                    <span style={styles.castBackValue}>¥{preview.castABack.toLocaleString()}</span>
                   </div>
                   <div style={styles.castSalesRow}>
                     <span style={styles.castSalesLabel}>
@@ -730,7 +754,13 @@ HELPバック率: 10%（キャストバック率設定）
                       ヘルプ
                     </span>
                     <span style={styles.castSalesValue}>¥{preview.castBSales.toLocaleString()}</span>
+                    <span style={styles.castBackValue}>¥{preview.castBBack.toLocaleString()}</span>
                   </div>
+                  {!(settings.distribute_to_help ?? true) && preview.castBBack > 0 && (
+                    <div style={styles.castSalesNote}>
+                      ※ ヘルプ売上分配OFF: 売上は0だがバックは計算されます
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -749,7 +779,10 @@ HELPバック率: 10%（キャストバック率設定）
                   集計対象: {settings.rounding_timing === 'per_item' ? 'キャスト商品のみ' : '全商品'}
                 </div>
                 <div style={styles.summaryItem}>
-                  HELP割合: {settings.help_ratio}%
+                  HELP売上分配: {(settings.distribute_to_help ?? true) ? 'ON' : 'OFF'}
+                </div>
+                <div style={styles.summaryItem}>
+                  HELP割合: {settings.help_ratio}%（バック率: 10%）
                 </div>
               </div>
             </>
@@ -1072,12 +1105,13 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   castSalesRow: {
     display: 'flex',
-    justifyContent: 'space-between',
     alignItems: 'center',
     padding: '6px 0',
     borderBottom: '1px solid #e0f2fe',
+    gap: '8px',
   },
   castSalesLabel: {
+    flex: 1,
     display: 'flex',
     alignItems: 'center',
     gap: '8px',
@@ -1085,7 +1119,9 @@ const styles: { [key: string]: React.CSSProperties } = {
     color: '#334155',
   },
   castSalesValue: {
-    fontSize: '14px',
+    width: '70px',
+    textAlign: 'right' as const,
+    fontSize: '13px',
     fontWeight: '600',
     color: '#0369a1',
   },
@@ -1112,5 +1148,39 @@ const styles: { [key: string]: React.CSSProperties } = {
     color: 'white',
     fontSize: '11px',
     fontWeight: '600',
+  },
+  castTableHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    padding: '4px 0',
+    borderBottom: '1px solid #bae6fd',
+    marginBottom: '8px',
+    fontSize: '11px',
+    fontWeight: '600',
+    color: '#0369a1',
+    gap: '8px',
+  },
+  castTableHeaderName: {
+    flex: 1,
+  },
+  castTableHeaderValue: {
+    width: '70px',
+    textAlign: 'right' as const,
+  },
+  castBackValue: {
+    width: '70px',
+    textAlign: 'right' as const,
+    fontSize: '13px',
+    fontWeight: '600',
+    color: '#059669',
+  },
+  castSalesNote: {
+    marginTop: '10px',
+    padding: '8px',
+    backgroundColor: '#fef3c7',
+    borderRadius: '4px',
+    fontSize: '11px',
+    color: '#92400e',
+    lineHeight: '1.4',
   },
 }
