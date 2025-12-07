@@ -196,9 +196,9 @@ export default function SalesSettingsPage() {
     const serviceRate = systemSettings.service_charge_rate
 
     // サンプル伝票（推し: Aちゃん）
-    // needsCast: true = キャスト名表示あり → 商品ごとの端数処理対象外
-    // needsCast: false = キャスト名表示なし → 商品ごとの端数処理対象
-    // basePrice: 税・サービス込み金額
+    // needsCast: true = キャスト名表示あり → キャスト売上に含む
+    // needsCast: false = キャスト名表示なし → キャスト売上に含まない
+    // basePrice: 消費税込み金額（サービスTAXは合計時に計算される）
     const sampleItems = [
       { name: 'セット料金 60分', basePrice: 3300, isSelf: true, castName: '-', needsCast: false },
       { name: 'キャストドリンク', basePrice: 1100, isSelf: true, castName: 'A', needsCast: true },
@@ -219,16 +219,11 @@ export default function SalesSettingsPage() {
         }
       }
 
-      // 税・サービス抜き金額を計算
+      // 消費税抜き金額を計算（商品ごと）
       let calcPrice = item.basePrice
       const excludeTax = settings.exclude_consumption_tax ?? true
-      const excludeService = settings.exclude_service_charge ?? true
 
-      // サービスTAX抜き
-      if (excludeService) {
-        calcPrice = Math.floor(calcPrice / (1 + serviceRate))
-      }
-      // 消費税抜き
+      // 消費税抜き（商品ごとに計算）
       if (excludeTax) {
         calcPrice = Math.floor(calcPrice / (1 + taxRate))
       }
@@ -257,16 +252,33 @@ export default function SalesSettingsPage() {
       }
     })
 
-    // 合計
-    const totalBeforeRounding = results.reduce((sum, r) => sum + r.salesAmount, 0)
+    // 合計（商品ごとの端数処理後 or 端数処理前）
+    const itemsTotal = settings.rounding_timing === 'per_item'
+      ? results.reduce((sum, r) => sum + r.rounded, 0)
+      : results.reduce((sum, r) => sum + r.salesAmount, 0)
+
+    // サービスTAX抜き（合計時に計算）
+    const excludeService = settings.exclude_service_charge ?? true
+    let totalBeforeRounding = itemsTotal
+    if (excludeService && serviceRate > 0) {
+      // サービスTAXは合計に対してかかっているので、合計から逆算
+      totalBeforeRounding = Math.floor(itemsTotal / (1 + serviceRate))
+    }
+
+    // 合計時の端数処理
     let totalAfterRounding = totalBeforeRounding
     if (settings.rounding_timing === 'total') {
       totalAfterRounding = applyRoundingPreview(totalBeforeRounding, roundingPosition, roundingType)
-    } else {
-      totalAfterRounding = results.reduce((sum, r) => sum + r.rounded, 0)
     }
 
-    return { items: results, totalBeforeRounding, totalAfterRounding }
+    return {
+      items: results,
+      itemsTotal,
+      totalBeforeRounding,
+      totalAfterRounding,
+      serviceRate,
+      excludeService,
+    }
   }, [settings, roundingPosition, roundingType, systemSettings])
 
   if (loading) {
@@ -503,9 +515,9 @@ export default function SalesSettingsPage() {
                           </span>
                         )}
                       </div>
-                      {!item.notIncluded && (settings.exclude_consumption_tax || settings.exclude_service_charge) && item.calcPrice !== item.basePrice && (
+                      {!item.notIncluded && settings.exclude_consumption_tax && item.calcPrice !== item.basePrice && (
                         <div style={styles.detailRow}>
-                          <span>→ 税抜き計算</span>
+                          <span>→ 消費税抜き</span>
                           <span>¥{item.calcPrice.toLocaleString()}</span>
                         </div>
                       )}
@@ -534,12 +546,18 @@ export default function SalesSettingsPage() {
 
                 <div style={styles.receiptTotal}>
                   <div style={styles.totalRow}>
-                    <span>売上小計</span>
-                    <span>¥{preview.totalBeforeRounding.toLocaleString()}</span>
+                    <span>商品計</span>
+                    <span>¥{preview.itemsTotal.toLocaleString()}</span>
                   </div>
+                  {preview.excludeService && preview.serviceRate > 0 && preview.itemsTotal !== preview.totalBeforeRounding && (
+                    <div style={styles.totalRow}>
+                      <span>→ サービスTAX抜き</span>
+                      <span>¥{preview.totalBeforeRounding.toLocaleString()}</span>
+                    </div>
+                  )}
                   {settings.rounding_timing === 'total' && preview.totalBeforeRounding !== preview.totalAfterRounding && (
                     <div style={{ ...styles.totalRow, color: '#3b82f6' }}>
-                      <span>端数処理後</span>
+                      <span>→ 端数処理</span>
                       <span>¥{preview.totalAfterRounding.toLocaleString()}</span>
                     </div>
                   )}
