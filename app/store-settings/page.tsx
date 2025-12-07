@@ -68,22 +68,6 @@ export default function StoreSettingsPage() {
         menu_template: '',
         logo_url: data.logo_url || ''
       })
-    } else {
-      // データがない場合は空の初期値にリセット
-      setSettings({
-        store_name: '',
-        store_postal_code: '',
-        store_address: '',
-        store_phone: '',
-        store_email: '',
-        business_hours: '',
-        closed_days: '',
-        store_registration_number: '',
-        footer_message: 'またのご来店をお待ちしております',
-        revenue_stamp_threshold: 50000,
-        menu_template: '',
-        logo_url: ''
-      })
     }
 
     // システム設定を取得
@@ -118,16 +102,6 @@ export default function StoreSettingsPage() {
         }
       })
       setSystemSettings(newSystemSettings)
-    } else {
-      // データがない場合はデフォルト値にリセット
-      setSystemSettings({
-        tax_rate: 10,
-        service_fee_rate: 15,
-        rounding_method: 0,
-        rounding_unit: 100,
-        card_fee_rate: 0,
-        business_day_start_hour: 6
-      })
     }
 
     setLoading(false)
