@@ -71,10 +71,12 @@ export default function StoreSettingsPage() {
     }
 
     // システム設定を取得
-    const { data: systemSettingsData } = await supabase
+    const { data: systemSettingsData, error: sysError } = await supabase
       .from('system_settings')
       .select('setting_key, setting_value')
       .eq('store_id', currentStoreId)
+
+    console.log('system_settings取得:', { currentStoreId, data: systemSettingsData, error: sysError })
 
     if (systemSettingsData && systemSettingsData.length > 0) {
       const newSystemSettings: SystemSettings = {
@@ -136,9 +138,11 @@ export default function StoreSettingsPage() {
       if (systemError) throw systemError
 
       toast.success('設定を保存しました')
+      // 保存後に再読み込みして最新データを反映
+      await loadSettings(storeId)
     } catch (error) {
       console.error('Error saving settings:', error)
-      toast.success('設定の保存に失敗しました')
+      toast.error('設定の保存に失敗しました')
     }
 
     setSaving(false)
