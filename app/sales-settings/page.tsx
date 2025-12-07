@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
 import {
@@ -59,6 +59,7 @@ function applyRoundingPreview(amount: number, position: RoundingPosition, type: 
 export default function SalesSettingsPage() {
   const { storeId, storeName } = useStore()
   const [settings, setSettings] = useState<SalesSettings | null>(null)
+  const latestStoreIdRef = useRef(storeId)
   const [systemSettings, setSystemSettings] = useState<SystemSettings>({
     tax_rate: 10,
     service_fee_rate: 15,
@@ -75,14 +76,20 @@ export default function SalesSettingsPage() {
   const [roundingType, setRoundingType] = useState<RoundingType>('floor')
 
   const loadSettings = useCallback(async () => {
+    const currentStoreId = storeId
     setLoading(true)
     try {
       // 売上設定を読み込み
       const { data, error } = await supabase
         .from('sales_settings')
         .select('*')
-        .eq('store_id', storeId)
+        .eq('store_id', currentStoreId)
         .single()
+
+      // storeIdが変わっていたら古いリクエストの結果を無視
+      if (latestStoreIdRef.current !== currentStoreId) {
+        return
+      }
 
       if (error && error.code !== 'PGRST116') {
         throw error
@@ -94,12 +101,17 @@ export default function SalesSettingsPage() {
         setRoundingPosition(parsed.position)
         setRoundingType(parsed.type)
       } else {
-        const defaultSettings = getDefaultSalesSettings(storeId)
+        const defaultSettings = getDefaultSalesSettings(currentStoreId)
         const { data: newData, error: insertError } = await supabase
           .from('sales_settings')
           .insert(defaultSettings)
           .select()
           .single()
+
+        // storeIdが変わっていたら古いリクエストの結果を無視
+        if (latestStoreIdRef.current !== currentStoreId) {
+          return
+        }
 
         if (insertError) throw insertError
         setSettings(newData as SalesSettings)
@@ -112,7 +124,12 @@ export default function SalesSettingsPage() {
       const { data: sysData } = await supabase
         .from('system_settings')
         .select('setting_key, setting_value')
-        .eq('store_id', storeId)
+        .eq('store_id', currentStoreId)
+
+      // storeIdが変わっていたら古いリクエストの結果を無視
+      if (latestStoreIdRef.current !== currentStoreId) {
+        return
+      }
 
       if (sysData) {
         const sysMap: Record<string, number> = {}
@@ -134,8 +151,9 @@ export default function SalesSettingsPage() {
   }, [storeId])
 
   useEffect(() => {
+    latestStoreIdRef.current = storeId
     loadSettings()
-  }, [loadSettings])
+  }, [storeId, loadSettings])
 
   // 端数処理の設定が変わったらsettingsを更新
   useEffect(() => {
@@ -195,7 +213,7 @@ export default function SalesSettingsPage() {
 
     const taxRate = systemSettings.tax_rate / 100
     const serviceRate = systemSettings.service_fee_rate / 100
-    const excludeTax = settings.exclude_consumption_tax ?? true
+    const excludeTax = settings.exclude_consumption_tax ?? false
     const isPerItem = settings.rounding_timing === 'per_item'
 
     // サンプル伝票（推し: Aちゃん）
@@ -257,44 +275,49 @@ export default function SalesSettingsPage() {
       }
     })
 
-    // 商品計（税込み or 税引き後）
+    // 商品計
     const itemsTotal = isPerItem
       ? results.reduce((sum, r) => sum + r.rounded, 0)
       : results.reduce((sum, r) => sum + r.salesAmount, 0)
 
-    // 合計時に処理の場合: ここで消費税抜き
-    const excludeService = settings.exclude_service_charge ?? true
-    let totalAfterTax = itemsTotal
-    if (!isPerItem && excludeTax) {
-      // 浮動小数点の誤差を避けるため、整数演算で計算
-      const taxPercent = Math.round(taxRate * 100) // 0.1 → 10
-      totalAfterTax = Math.floor(itemsTotal * 100 / (100 + taxPercent))
-    }
+    // 設定値（排他的：どちらか一方のみ）
+    const includeService = settings.exclude_service_charge ?? false
+    const excludeConsumptionTax = settings.exclude_consumption_tax ?? false
 
-    // サービスTAX抜き（合計時に計算）
-    let totalBeforeRounding = totalAfterTax
-    if (excludeService && serviceRate > 0) {
-      // サービスTAXは合計に対してかかっているので、合計から逆算
-      // 浮動小数点の誤差を避けるため、整数演算で計算
-      const servicePercent = Math.round(serviceRate * 100) // 0.1 → 10
-      totalBeforeRounding = Math.floor(totalAfterTax * 100 / (100 + servicePercent))
-    }
-
-    // 合計時の端数処理
-    let totalAfterRounding = totalBeforeRounding
+    // 商品計の端数処理（1回目）
+    let totalAfterFirstRounding = itemsTotal
     if (!isPerItem) {
-      totalAfterRounding = applyRoundingPreview(totalBeforeRounding, roundingPosition, roundingType)
+      totalAfterFirstRounding = applyRoundingPreview(itemsTotal, roundingPosition, roundingType)
+    }
+
+    // 税金処理（排他的：消費税抜き or サービスTAX込み）
+    let totalAfterTaxAdjustment = totalAfterFirstRounding
+    if (excludeConsumptionTax && taxRate > 0) {
+      // 消費税抜き
+      const taxPercent = Math.round(taxRate * 100) // 0.1 → 10
+      totalAfterTaxAdjustment = Math.floor(totalAfterFirstRounding * 100 / (100 + taxPercent))
+    } else if (includeService && serviceRate > 0) {
+      // サービスTAX込み
+      const servicePercent = Math.round(serviceRate * 100) // 0.15 → 15
+      totalAfterTaxAdjustment = Math.floor(totalAfterFirstRounding * (100 + servicePercent) / 100)
+    }
+
+    // 端数処理（2回目：税金処理後）
+    let finalTotal = totalAfterTaxAdjustment
+    if ((excludeConsumptionTax || includeService) && totalAfterTaxAdjustment !== totalAfterFirstRounding) {
+      finalTotal = applyRoundingPreview(totalAfterTaxAdjustment, roundingPosition, roundingType)
     }
 
     return {
       items: results,
       itemsTotal,
-      totalAfterTax,
-      totalBeforeRounding,
-      totalAfterRounding,
+      totalAfterFirstRounding,
+      totalAfterTaxAdjustment,
+      finalTotal,
       serviceRate,
-      excludeService,
-      excludeTax,
+      taxRate,
+      includeService,
+      excludeConsumptionTax,
       isPerItem,
     }
   }, [settings, roundingPosition, roundingType, systemSettings])
@@ -464,17 +487,23 @@ HELPバック率: 10%（キャストバック率設定）
         <div style={styles.card}>
           <h2 style={styles.cardTitle}>計算基準</h2>
           <p style={styles.cardDescription}>
-            売上計算時に除外する税金を選択してください
+            売上計算時の税金の扱いを設定してください
           </p>
 
           <div style={styles.checkboxGroup}>
             <label style={styles.checkboxLabel}>
               <input
                 type="checkbox"
-                checked={settings.exclude_consumption_tax ?? true}
-                onChange={(e) =>
-                  updateSetting('exclude_consumption_tax', e.target.checked)
-                }
+                checked={settings.exclude_consumption_tax ?? false}
+                onChange={(e) => {
+                  if (e.target.checked) {
+                    // 消費税抜きをONにしたらサービスTAX込みをOFFにする
+                    updateSetting('exclude_consumption_tax', true)
+                    updateSetting('exclude_service_charge', false)
+                  } else {
+                    updateSetting('exclude_consumption_tax', false)
+                  }
+                }}
                 style={styles.checkbox}
               />
               <span>消費税抜きの金額で計算する（{systemSettings.tax_rate}%）</span>
@@ -485,13 +514,19 @@ HELPバック率: 10%（キャストバック率設定）
             <label style={styles.checkboxLabel}>
               <input
                 type="checkbox"
-                checked={settings.exclude_service_charge ?? true}
-                onChange={(e) =>
-                  updateSetting('exclude_service_charge', e.target.checked)
-                }
+                checked={settings.exclude_service_charge ?? false}
+                onChange={(e) => {
+                  if (e.target.checked) {
+                    // サービスTAX込みをONにしたら消費税抜きをOFFにする
+                    updateSetting('exclude_service_charge', true)
+                    updateSetting('exclude_consumption_tax', false)
+                  } else {
+                    updateSetting('exclude_service_charge', false)
+                  }
+                }}
                 style={styles.checkbox}
               />
-              <span>サービスTAX抜きの金額で計算する（{systemSettings.service_fee_rate}%）</span>
+              <span>サービスTAX込みの金額で計算する（{systemSettings.service_fee_rate}%）</span>
             </label>
           </div>
 
@@ -588,30 +623,36 @@ HELPバック率: 10%（キャストバック率設定）
 
                 <div style={styles.receiptTotal}>
                   <div style={styles.totalRow}>
-                    <span>商品計{preview.isPerItem ? '（税引き後）' : ''}</span>
+                    <span>商品計</span>
                     <span>¥{preview.itemsTotal.toLocaleString()}</span>
                   </div>
-                  {!preview.isPerItem && preview.excludeTax && preview.itemsTotal !== preview.totalAfterTax && (
-                    <div style={styles.totalRow}>
-                      <span>→ 消費税抜き</span>
-                      <span>¥{preview.totalAfterTax.toLocaleString()}</span>
-                    </div>
-                  )}
-                  {preview.excludeService && preview.serviceRate > 0 && preview.totalAfterTax !== preview.totalBeforeRounding && (
-                    <div style={styles.totalRow}>
-                      <span>→ サービスTAX抜き</span>
-                      <span>¥{preview.totalBeforeRounding.toLocaleString()}</span>
-                    </div>
-                  )}
-                  {!preview.isPerItem && preview.totalBeforeRounding !== preview.totalAfterRounding && (
+                  {!preview.isPerItem && preview.itemsTotal !== preview.totalAfterFirstRounding && (
                     <div style={{ ...styles.totalRow, color: '#3b82f6' }}>
                       <span>→ 端数処理</span>
-                      <span>¥{preview.totalAfterRounding.toLocaleString()}</span>
+                      <span>¥{preview.totalAfterFirstRounding.toLocaleString()}</span>
+                    </div>
+                  )}
+                  {preview.excludeConsumptionTax && preview.taxRate > 0 && (
+                    <div style={styles.totalRow}>
+                      <span>→ 消費税抜き（{Math.round(preview.taxRate * 100)}%）</span>
+                      <span>¥{preview.totalAfterTaxAdjustment.toLocaleString()}</span>
+                    </div>
+                  )}
+                  {preview.includeService && preview.serviceRate > 0 && (
+                    <div style={styles.totalRow}>
+                      <span>→ サービスTAX込（{Math.round(preview.serviceRate * 100)}%）</span>
+                      <span>¥{preview.totalAfterTaxAdjustment.toLocaleString()}</span>
+                    </div>
+                  )}
+                  {(preview.excludeConsumptionTax || preview.includeService) && preview.totalAfterTaxAdjustment !== preview.finalTotal && (
+                    <div style={{ ...styles.totalRow, color: '#3b82f6' }}>
+                      <span>→ 端数処理</span>
+                      <span>¥{preview.finalTotal.toLocaleString()}</span>
                     </div>
                   )}
                   <div style={styles.grandTotal}>
                     <span>最終売上</span>
-                    <span>¥{preview.totalAfterRounding.toLocaleString()}</span>
+                    <span>¥{preview.finalTotal.toLocaleString()}</span>
                   </div>
                 </div>
               </div>
@@ -619,7 +660,7 @@ HELPバック率: 10%（キャストバック率設定）
               <div style={styles.settingSummary}>
                 <div style={styles.summaryTitle}>現在の設定</div>
                 <div style={styles.summaryItem}>
-                  計算基準: {settings.use_tax_excluded ? '税抜き' : '税込み'}
+                  計算基準: {settings.exclude_consumption_tax ? '消費税抜き' : settings.exclude_service_charge ? 'サービスTAX込み' : '税込み'}
                 </div>
                 <div style={styles.summaryItem}>
                   端数処理: {roundingType === 'none' ? 'なし' : `${roundingPosition}の位で${
