@@ -113,10 +113,10 @@ export default function SalesSettingsPage() {
     if (settings) {
       const combined = combineRoundingMethod(roundingPosition, roundingType)
       if (settings.rounding_method !== combined) {
-        setSettings({ ...settings, rounding_method: combined })
+        setSettings(prev => prev ? { ...prev, rounding_method: combined } : prev)
       }
     }
-  }, [roundingPosition, roundingType])
+  }, [roundingPosition, roundingType, settings?.rounding_method])
 
   const handleSave = async () => {
     if (!settings) return
