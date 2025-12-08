@@ -166,6 +166,10 @@ export default function CompensationSettingsPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
+  // 店舗共通設定
+  const [payDay, setPayDay] = useState<number>(25)
+  const [savingPayDay, setSavingPayDay] = useState(false)
+
   // 検索・フィルター
   const [searchText, setSearchText] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('在籍')
@@ -177,6 +181,46 @@ export default function CompensationSettingsPage() {
   // 控除項目編集
   const [showDeductionModal, setShowDeductionModal] = useState(false)
   const [editingDeductions, setEditingDeductions] = useState<DeductionItem[]>([])
+
+  // 給料日設定を読み込み
+  const loadPayDay = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('system_settings')
+        .select('setting_value')
+        .eq('store_id', storeId)
+        .eq('setting_key', 'pay_day')
+        .maybeSingle()
+
+      if (error) throw error
+      if (data) {
+        setPayDay(Number(data.setting_value) || 25)
+      }
+    } catch (error) {
+      console.error('給料日設定読み込みエラー:', error)
+    }
+  }, [storeId])
+
+  // 給料日設定を保存
+  const savePayDay = async () => {
+    setSavingPayDay(true)
+    try {
+      const { error } = await supabase
+        .from('system_settings')
+        .upsert(
+          { store_id: storeId, setting_key: 'pay_day', setting_value: payDay },
+          { onConflict: 'store_id,setting_key' }
+        )
+
+      if (error) throw error
+      toast.success('給料日を保存しました')
+    } catch (error) {
+      console.error('給料日保存エラー:', error)
+      toast.error('給料日の保存に失敗しました')
+    } finally {
+      setSavingPayDay(false)
+    }
+  }
 
   const loadCasts = useCallback(async () => {
     setLoading(true)
@@ -228,7 +272,8 @@ export default function CompensationSettingsPage() {
 
   useEffect(() => {
     loadCasts()
-  }, [loadCasts])
+    loadPayDay()
+  }, [loadCasts, loadPayDay])
 
   useEffect(() => {
     if (selectedCastId) {
@@ -350,6 +395,37 @@ export default function CompensationSettingsPage() {
       <div style={styles.layout}>
         {/* キャスト選択サイドバー */}
         <div style={styles.sidebar}>
+          {/* 店舗共通設定 */}
+          <div style={styles.storeSettingsBox}>
+            <h4 style={styles.storeSettingsTitle}>店舗共通設定</h4>
+            <div style={styles.payDayRow}>
+              <label style={styles.payDayLabel}>給料日</label>
+              <div style={styles.payDayInputGroup}>
+                <select
+                  value={payDay}
+                  onChange={(e) => setPayDay(Number(e.target.value))}
+                  style={styles.payDaySelect}
+                >
+                  {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
+                    <option key={day} value={day}>{day}日</option>
+                  ))}
+                  <option value={0}>末日</option>
+                </select>
+                <Button
+                  onClick={savePayDay}
+                  variant="primary"
+                  size="small"
+                  disabled={savingPayDay}
+                >
+                  {savingPayDay ? '...' : '保存'}
+                </Button>
+              </div>
+            </div>
+            <p style={styles.payDayHint}>
+              この日以降、前月の報酬設定がロックされます
+            </p>
+          </div>
+
           <h3 style={styles.sidebarTitle}>キャスト選択</h3>
 
           <input
@@ -903,6 +979,52 @@ const styles: { [key: string]: React.CSSProperties } = {
     backgroundColor: '#f8f9fa',
     borderRadius: '10px',
     padding: '15px',
+  },
+  storeSettingsBox: {
+    backgroundColor: '#fff',
+    borderRadius: '8px',
+    padding: '12px',
+    marginBottom: '20px',
+    border: '1px solid #e2e8f0',
+  },
+  storeSettingsTitle: {
+    fontSize: '12px',
+    fontWeight: '600',
+    color: '#64748b',
+    margin: '0 0 10px 0',
+    textTransform: 'uppercase' as const,
+  },
+  payDayRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+  },
+  payDayLabel: {
+    fontSize: '13px',
+    fontWeight: '500',
+    color: '#374151',
+    whiteSpace: 'nowrap' as const,
+  },
+  payDayInputGroup: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    flex: 1,
+  },
+  payDaySelect: {
+    flex: 1,
+    padding: '6px 8px',
+    fontSize: '13px',
+    border: '1px solid #ddd',
+    borderRadius: '4px',
+    backgroundColor: 'white',
+  },
+  payDayHint: {
+    fontSize: '11px',
+    color: '#94a3b8',
+    marginTop: '8px',
+    marginBottom: 0,
+    lineHeight: '1.4',
   },
   sidebarTitle: {
     fontSize: '14px',
