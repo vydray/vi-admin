@@ -516,7 +516,7 @@ export default function SalesSettingsPage() {
               <span>ヘルプキャストにも売上を分配する</span>
             </label>
             <p style={styles.hint}>
-              ONの場合、ヘルプしたキャストにも売上が計上されます（売上表用）
+              ONの場合、ヘルプしたキャストにも売上が計上されます
             </p>
           </div>
         </div>
