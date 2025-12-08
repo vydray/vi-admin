@@ -67,6 +67,8 @@ export default function SalesSettingsPage() {
     rounding_unit: 1,
     card_fee_rate: 0,
     business_day_start_hour: 6,
+    allow_multiple_nominations: false,
+    allow_multiple_casts_per_item: false,
   })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)

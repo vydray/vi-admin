@@ -35,7 +35,9 @@ export default function StoreSettingsPage() {
     rounding_method: 0,
     rounding_unit: 100,
     card_fee_rate: 0,
-    business_day_start_hour: 6
+    business_day_start_hour: 6,
+    allow_multiple_nominations: false,
+    allow_multiple_casts_per_item: false
   })
 
   useEffect(() => {
@@ -69,7 +71,9 @@ export default function StoreSettingsPage() {
       rounding_method: 0,
       rounding_unit: 100,
       card_fee_rate: 0,
-      business_day_start_hour: 6
+      business_day_start_hour: 6,
+      allow_multiple_nominations: false,
+      allow_multiple_casts_per_item: false
     })
 
     // 店舗設定を取得
@@ -119,7 +123,9 @@ export default function StoreSettingsPage() {
         rounding_method: 0,
         rounding_unit: 100,
         card_fee_rate: 0,
-        business_day_start_hour: 6
+        business_day_start_hour: 6,
+        allow_multiple_nominations: false,
+        allow_multiple_casts_per_item: false
       }
 
       systemSettingsData.forEach(setting => {
@@ -135,6 +141,10 @@ export default function StoreSettingsPage() {
           newSystemSettings.card_fee_rate = Number(setting.setting_value)
         } else if (setting.setting_key === 'business_day_start_hour') {
           newSystemSettings.business_day_start_hour = Number(setting.setting_value)
+        } else if (setting.setting_key === 'allow_multiple_nominations') {
+          newSystemSettings.allow_multiple_nominations = setting.setting_value === 'true'
+        } else if (setting.setting_key === 'allow_multiple_casts_per_item') {
+          newSystemSettings.allow_multiple_casts_per_item = setting.setting_value === 'true'
         }
       })
       setSystemSettings(newSystemSettings)
@@ -162,7 +172,9 @@ export default function StoreSettingsPage() {
         { store_id: storeId, setting_key: 'rounding_method', setting_value: systemSettings.rounding_method },
         { store_id: storeId, setting_key: 'rounding_unit', setting_value: systemSettings.rounding_unit },
         { store_id: storeId, setting_key: 'card_fee_rate', setting_value: systemSettings.card_fee_rate },
-        { store_id: storeId, setting_key: 'business_day_start_hour', setting_value: systemSettings.business_day_start_hour }
+        { store_id: storeId, setting_key: 'business_day_start_hour', setting_value: systemSettings.business_day_start_hour },
+        { store_id: storeId, setting_key: 'allow_multiple_nominations', setting_value: String(systemSettings.allow_multiple_nominations) },
+        { store_id: storeId, setting_key: 'allow_multiple_casts_per_item', setting_value: String(systemSettings.allow_multiple_casts_per_item) }
       ]
 
       const { error: systemError } = await supabase
@@ -186,7 +198,7 @@ export default function StoreSettingsPage() {
     setSettings(prev => ({ ...prev, [key]: value }))
   }
 
-  const updateSystemSetting = (key: keyof SystemSettings, value: number) => {
+  const updateSystemSetting = (key: keyof SystemSettings, value: number | boolean) => {
     setSystemSettings(prev => ({ ...prev, [key]: value }))
   }
 
@@ -978,6 +990,62 @@ export default function StoreSettingsPage() {
                 </select>
                 <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
                   この時刻以降の会計は翌営業日として扱われます（例：6時設定の場合、午前1時の会計は前日の営業日として記録されます）
+                </div>
+              </div>
+
+              {/* 複数推し機能 */}
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  color: '#374151'
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={systemSettings.allow_multiple_nominations}
+                    onChange={(e) => updateSystemSetting('allow_multiple_nominations', e.target.checked)}
+                    style={{
+                      width: '18px',
+                      height: '18px',
+                      cursor: 'pointer'
+                    }}
+                  />
+                  複数推し機能
+                </label>
+                <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px', marginLeft: '28px' }}>
+                  1卓に複数の推しを設定できるようにします
+                </div>
+              </div>
+
+              {/* 注文明細の複数キャスト */}
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  color: '#374151'
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={systemSettings.allow_multiple_casts_per_item}
+                    onChange={(e) => updateSystemSetting('allow_multiple_casts_per_item', e.target.checked)}
+                    style={{
+                      width: '18px',
+                      height: '18px',
+                      cursor: 'pointer'
+                    }}
+                  />
+                  注文明細の複数キャスト
+                </label>
+                <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px', marginLeft: '28px' }}>
+                  1つの注文アイテムに複数のキャストを紐付けられるようにします
                 </div>
               </div>
             </div>

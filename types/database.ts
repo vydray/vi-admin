@@ -227,6 +227,8 @@ export interface SystemSettings {
   rounding_unit: number
   card_fee_rate: number
   business_day_start_hour: number
+  allow_multiple_nominations: boolean    // 複数推し機能
+  allow_multiple_casts_per_item: boolean // 注文明細の複数キャスト
 }
 
 export interface StoreSettings {
