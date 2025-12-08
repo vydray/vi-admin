@@ -141,7 +141,7 @@ const stateToDb = (state: SettingsState, castId: number, storeId: number, existi
     compare_commission_rate: state.useComparison && state.compareUseSales ? state.compareCommissionRate : null,
     compare_sales_target: state.compareSalesTarget,
     sliding_rates: state.slidingRates,
-    deduction_enabled: state.deductionItems && state.deductionItems.length > 0,
+    deduction_enabled: (state.deductionItems && state.deductionItems.length > 0) ? true : false,
     deduction_items: state.deductionItems,
     valid_from: state.validFrom,
     valid_to: state.validTo,

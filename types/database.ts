@@ -369,7 +369,7 @@ export interface CompensationSettings {
   guarantee_period: GuaranteePeriod | null
 
   // 控除設定
-  deduction_enabled: boolean | null
+  deduction_enabled: boolean
   deduction_items: DeductionItem[] | null
 
   // 適用期間
