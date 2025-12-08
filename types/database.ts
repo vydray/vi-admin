@@ -266,14 +266,29 @@ export type RoundingTiming = 'per_item' | 'total'
 // ヘルプ計算方法
 export type HelpCalculationMethod = 'ratio' | 'fixed'
 
-// 給与形態
+// 給与形態（レガシー、後方互換用）
 export type PayType = 'hourly' | 'commission' | 'hourly_plus_commission' | 'sliding'
 
 // バック計算方法
 export type BackType = 'ratio' | 'fixed'
 
-// 保証期間
+// 保証期間（未使用）
 export type GuaranteePeriod = 'day' | 'month'
+
+// 売上対象の種類
+export type SalesTargetType = 'receipt_total' | 'cast_sales'  // 伝票小計売上 | 推し小計売上
+
+// 給与計算項目
+export interface PayComponent {
+  enabled: boolean
+  type: 'hourly' | 'fixed' | 'sales'
+  value: number                    // 時給額 / 固定額 / バック率(%)
+  salesTarget?: SalesTargetType    // 売上ベースの場合の対象
+  useSlidingRate?: boolean         // スライド率テーブルを使用するか
+}
+
+// 控除項目の種類
+export type DeductionType = 'daily_payment' | 'penalty' | 'misc'
 
 // 店舗別売上計算設定
 export interface SalesSettings {
@@ -316,35 +331,45 @@ export interface SlidingRate {
 
 // 控除項目
 export interface DeductionItem {
-  name: string    // 控除名
-  amount: number  // 金額
+  id: string           // UUID
+  type: DeductionType  // 種類
+  name: string         // 表示名（例: 日払い、遅刻罰金、送迎費）
+  amount: number       // 金額（0の場合は変動）
+  isVariable: boolean  // 変動額かどうか
 }
 
-// キャスト別報酬設定
+// キャスト別報酬設定（実際のDBカラム構造）
 export interface CompensationSettings {
   id: number
   cast_id: number
   store_id: number
 
-  // 給与形態
+  // 給与形態（レガシー、後方互換用だが現在も使用）
   pay_type: PayType
 
-  // 時給設定
-  hourly_rate: number
+  // 基本給与設定
+  hourly_rate: number | null        // 時給
+  commission_rate: number | null    // 売上バック率（%）
+  sales_target: SalesTargetType     // 売上計算対象: 'cast_sales' | 'receipt_total'
+  fixed_amount: number | null       // 固定額
 
-  // 歩合設定
-  commission_rate: number
+  // スライド制（高い方を支給）
+  use_sliding_comparison: boolean
+  compare_hourly_rate: number | null       // 比較用: 時給
+  compare_commission_rate: number | null   // 比較用: 売上バック率（%）
+  compare_sales_target: SalesTargetType    // 比較用: 売上計算対象
+  compare_fixed_amount: number | null      // 比較用: 固定額
 
-  // スライド制設定
+  // スライド率テーブル（売上に応じてバック率変動）
   sliding_rates: SlidingRate[] | null
 
-  // 保証設定
-  guarantee_enabled: boolean
-  guarantee_amount: number
-  guarantee_period: GuaranteePeriod
+  // 保証設定（レガシー）
+  guarantee_enabled: boolean | null
+  guarantee_amount: number | null
+  guarantee_period: GuaranteePeriod | null
 
   // 控除設定
-  deduction_enabled: boolean
+  deduction_enabled: boolean | null
   deduction_items: DeductionItem[] | null
 
   // 適用期間

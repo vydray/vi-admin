@@ -28,6 +28,8 @@ export type {
   PayType,
   BackType,
   GuaranteePeriod,
+  SalesTargetType,
+  DeductionType,
   SalesSettings,
   SlidingRate,
   DeductionItem,
