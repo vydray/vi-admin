@@ -372,6 +372,9 @@ export interface CompensationSettings {
   deduction_enabled: boolean
   deduction_items: DeductionItem[] | null
 
+  // 商品別バック設定
+  use_product_back: boolean  // 商品別バック率を使用するか（cast_back_ratesテーブル参照）
+
   // 適用期間
   valid_from: string
   valid_to: string | null

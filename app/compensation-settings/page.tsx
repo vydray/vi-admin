@@ -49,6 +49,9 @@ interface SettingsState {
   // 控除
   deductionItems: DeductionItem[] | null
 
+  // 商品別バック
+  useProductBack: boolean
+
   // その他
   validFrom: string
   validTo: string | null
@@ -76,6 +79,8 @@ const getDefaultSettingsState = (): SettingsState => ({
 
   slidingRates: null,
   deductionItems: null,
+
+  useProductBack: false,
 
   validFrom: new Date().toISOString().split('T')[0],
   validTo: null,
@@ -105,6 +110,8 @@ const dbToState = (data: CompensationSettings): SettingsState => {
 
     slidingRates: data.sliding_rates,
     deductionItems: data.deduction_items,
+
+    useProductBack: data.use_product_back ?? false,
 
     validFrom: data.valid_from,
     validTo: data.valid_to,
@@ -143,6 +150,7 @@ const stateToDb = (state: SettingsState, castId: number, storeId: number, existi
     sliding_rates: state.slidingRates,
     deduction_enabled: (state.deductionItems && state.deductionItems.length > 0) ? true : false,
     deduction_items: state.deductionItems,
+    use_product_back: state.useProductBack,
     valid_from: state.validFrom,
     valid_to: state.validTo,
     is_active: state.isActive,
@@ -484,6 +492,24 @@ export default function CompensationSettingsPage() {
                       disabled={!settingsState.useSales}
                     />
                     <span style={styles.payUnit}>%</span>
+                  </div>
+                </div>
+
+                {/* 商品別バック */}
+                <div style={styles.payRow}>
+                  <label style={styles.payLabel}>
+                    <input
+                      type="checkbox"
+                      checked={settingsState.useProductBack}
+                      onChange={(e) => setSettingsState(prev => prev ? { ...prev, useProductBack: e.target.checked } : null)}
+                      style={styles.checkbox}
+                    />
+                    <span>商品バック</span>
+                  </label>
+                  <div style={styles.payInputGroup}>
+                    <span style={styles.productBackHint}>
+                      バック率設定ページで設定した商品別バック率を使用
+                    </span>
                   </div>
                 </div>
               </div>
@@ -1028,6 +1054,11 @@ const styles: { [key: string]: React.CSSProperties } = {
   payTimes: {
     fontSize: '16px',
     color: '#64748b',
+  },
+  productBackHint: {
+    fontSize: '13px',
+    color: '#64748b',
+    fontStyle: 'italic',
   },
   compareSection: {
     marginTop: '12px',
