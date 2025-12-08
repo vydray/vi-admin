@@ -424,74 +424,65 @@ export default function CompensationSettingsPage() {
   return (
     <div style={styles.container}>
       <div style={styles.header}>
-        <h1 style={styles.title}>報酬計算設定</h1>
-        <p style={styles.subtitle}>店舗: {storeName}</p>
+        <div style={styles.headerLeft}>
+          <h1 style={styles.title}>報酬計算設定</h1>
+          <p style={styles.subtitle}>店舗: {storeName}</p>
+        </div>
+        <div style={styles.headerRight}>
+          {/* 店舗共通設定 */}
+          <div style={styles.headerBox}>
+            <span style={styles.headerBoxLabel}>給料日</span>
+            <select
+              value={payDay}
+              onChange={(e) => setPayDay(Number(e.target.value))}
+              style={styles.headerSelect}
+            >
+              {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
+                <option key={day} value={day}>{day}日</option>
+              ))}
+              <option value={0}>末日</option>
+            </select>
+            <Button
+              onClick={savePayDay}
+              variant="primary"
+              size="small"
+              disabled={savingPayDay}
+            >
+              {savingPayDay ? '...' : '保存'}
+            </Button>
+          </div>
+
+          {/* 対象年月 */}
+          <div style={styles.headerBox}>
+            <span style={styles.headerBoxLabel}>対象年月</span>
+            <select
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(Number(e.target.value))}
+              style={styles.headerSelect}
+            >
+              {Array.from({ length: 5 }, (_, i) => now.getFullYear() - 2 + i).map((year) => (
+                <option key={year} value={year}>{year}年</option>
+              ))}
+            </select>
+            <select
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(Number(e.target.value))}
+              style={styles.headerSelectSmall}
+            >
+              {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => (
+                <option key={month} value={month}>{month}月</option>
+              ))}
+            </select>
+            {isLocked && (
+              <span style={styles.lockedBadge}>ロック中</span>
+            )}
+          </div>
+        </div>
       </div>
 
       <div style={styles.layout}>
         {/* キャスト選択サイドバー */}
         <div style={styles.sidebar}>
-          {/* 店舗共通設定 */}
-          <div style={styles.storeSettingsBox}>
-            <h4 style={styles.storeSettingsTitle}>店舗共通設定</h4>
-            <div style={styles.payDayRow}>
-              <label style={styles.payDayLabel}>給料日</label>
-              <div style={styles.payDayInputGroup}>
-                <select
-                  value={payDay}
-                  onChange={(e) => setPayDay(Number(e.target.value))}
-                  style={styles.payDaySelect}
-                >
-                  {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
-                    <option key={day} value={day}>{day}日</option>
-                  ))}
-                  <option value={0}>末日</option>
-                </select>
-                <Button
-                  onClick={savePayDay}
-                  variant="primary"
-                  size="small"
-                  disabled={savingPayDay}
-                >
-                  {savingPayDay ? '...' : '保存'}
-                </Button>
-              </div>
-            </div>
-            <p style={styles.payDayHint}>
-              この日以降、前月の報酬設定がロックされます
-            </p>
-          </div>
-
-          {/* 年月選択 */}
-          <div style={styles.storeSettingsBox}>
-            <h4 style={styles.storeSettingsTitle}>対象年月</h4>
-            <div style={styles.yearMonthRow}>
-              <select
-                value={selectedYear}
-                onChange={(e) => setSelectedYear(Number(e.target.value))}
-                style={styles.yearSelect}
-              >
-                {Array.from({ length: 5 }, (_, i) => now.getFullYear() - 2 + i).map((year) => (
-                  <option key={year} value={year}>{year}年</option>
-                ))}
-              </select>
-              <select
-                value={selectedMonth}
-                onChange={(e) => setSelectedMonth(Number(e.target.value))}
-                style={styles.monthSelect}
-              >
-                {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => (
-                  <option key={month} value={month}>{month}月</option>
-                ))}
-              </select>
-            </div>
-            {isLocked && (
-              <p style={styles.lockedHint}>
-                この月の設定はロックされています
-              </p>
-            )}
-          </div>
-
           <h3 style={styles.sidebarTitle}>キャスト選択</h3>
 
           <input
@@ -1023,6 +1014,58 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   header: {
     marginBottom: '20px',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    flexWrap: 'wrap' as const,
+    gap: '16px',
+  },
+  headerLeft: {
+    flex: '1 1 auto',
+  },
+  headerRight: {
+    display: 'flex',
+    gap: '16px',
+    alignItems: 'center',
+    flexWrap: 'wrap' as const,
+  },
+  headerBox: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    backgroundColor: '#fff',
+    padding: '8px 12px',
+    borderRadius: '8px',
+    border: '1px solid #e2e8f0',
+  },
+  headerBoxLabel: {
+    fontSize: '13px',
+    fontWeight: '500',
+    color: '#64748b',
+    whiteSpace: 'nowrap' as const,
+  },
+  headerSelect: {
+    padding: '6px 10px',
+    fontSize: '13px',
+    border: '1px solid #ddd',
+    borderRadius: '4px',
+    backgroundColor: 'white',
+  },
+  headerSelectSmall: {
+    padding: '6px 10px',
+    fontSize: '13px',
+    border: '1px solid #ddd',
+    borderRadius: '4px',
+    backgroundColor: 'white',
+    width: '70px',
+  },
+  lockedBadge: {
+    fontSize: '11px',
+    color: '#fff',
+    backgroundColor: '#ef4444',
+    padding: '2px 8px',
+    borderRadius: '4px',
+    fontWeight: '600',
   },
   title: {
     fontSize: '24px',
