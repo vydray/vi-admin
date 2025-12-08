@@ -24,7 +24,7 @@ interface OrderWithPayment {
   store_id: number
   table_number: string
   guest_name: string | null
-  staff_name: string | null
+  staff_name: string[] | string | null  // POS側で配列化対応
   subtotal_excl_tax: number
   tax_amount: number
   service_charge: number
@@ -57,10 +57,11 @@ export default function ReceiptsPage() {
   const [editFormData, setEditFormData] = useState({
     table_number: '',
     guest_name: '',
-    staff_name: '',
+    staff_names: [] as string[],
     order_date: '',
     checkout_datetime: ''
   })
+  const [showEditStaffDropdown, setShowEditStaffDropdown] = useState(false)
   const [editPaymentData, setEditPaymentData] = useState({
     cash_amount: 0,
     credit_card_amount: 0,
@@ -330,13 +331,18 @@ export default function ReceiptsPage() {
       }
 
       setSelectedReceipt(receiptWithDetails)
+      // staff_nameを配列に変換
+      const staffNames = Array.isArray(receipt.staff_name)
+        ? receipt.staff_name
+        : (receipt.staff_name ? [receipt.staff_name] : [])
       setEditFormData({
         table_number: receipt.table_number,
         guest_name: receipt.guest_name || '',
-        staff_name: receipt.staff_name || '',
+        staff_names: staffNames,
         order_date: receipt.order_date ? receipt.order_date.split('T')[0] : '',
         checkout_datetime: receipt.checkout_datetime ? receipt.checkout_datetime.slice(0, 16) : ''
       })
+      setShowEditStaffDropdown(false)
       setEditPaymentData({
         cash_amount: paymentData?.cash_amount || 0,
         credit_card_amount: paymentData?.credit_card_amount || 0,
@@ -360,7 +366,7 @@ export default function ReceiptsPage() {
         .update({
           table_number: editFormData.table_number,
           guest_name: editFormData.guest_name || null,
-          staff_name: editFormData.staff_name || null,
+          staff_name: editFormData.staff_names.length > 0 ? editFormData.staff_names : null,
           order_date: editFormData.order_date ? new Date(editFormData.order_date).toISOString() : null,
           checkout_datetime: editFormData.checkout_datetime ? new Date(editFormData.checkout_datetime).toISOString() : null
         })
@@ -1180,8 +1186,12 @@ export default function ReceiptsPage() {
     const matchesStartDate = !startDate || receiptDate >= new Date(startDate)
     const matchesEndDate = !endDate || receiptDate <= new Date(endDate + 'T23:59:59')
 
-    // 推しフィルター
-    const matchesStaffName = filterStaffName === '' || receipt.staff_name === filterStaffName
+    // 推しフィルター（配列対応）
+    const matchesStaffName = filterStaffName === '' || (
+      Array.isArray(receipt.staff_name)
+        ? receipt.staff_name.includes(filterStaffName)
+        : receipt.staff_name === filterStaffName
+    )
 
     // 支払方法フィルター
     const matchesPaymentMethod = filterPaymentMethod === '' ||
@@ -1286,8 +1296,11 @@ export default function ReceiptsPage() {
               style={styles.filterSelect}
             >
               <option value="">全て</option>
-              {Array.from(new Set(receipts.map(r => r.staff_name).filter(Boolean))).map((staffName) => (
-                <option key={staffName} value={staffName || ''}>
+              {Array.from(new Set(receipts.flatMap(r => {
+                if (Array.isArray(r.staff_name)) return r.staff_name
+                return r.staff_name ? [r.staff_name] : []
+              }))).map((staffName) => (
+                <option key={staffName} value={staffName}>
                   {staffName}
                 </option>
               ))}
@@ -1382,7 +1395,7 @@ export default function ReceiptsPage() {
                   <td style={styles.td}>{formatDateTime(receipt.checkout_datetime)}</td>
                   <td style={styles.td}>{receipt.table_number}</td>
                   <td style={styles.td}>{receipt.guest_name || '-'}</td>
-                  <td style={styles.td}>{receipt.staff_name || '-'}</td>
+                  <td style={styles.td}>{formatCastName(receipt.staff_name)}</td>
                   <td style={styles.td}>{receipt.payment_methods || '-'}</td>
                   <td style={styles.td}>{formatCurrency(receipt.subtotal_excl_tax)}</td>
                   <td style={styles.td}>{formatCurrency(receipt.total_incl_tax)}</td>
@@ -1438,25 +1451,76 @@ export default function ReceiptsPage() {
               </div>
 
               <div style={styles.formGroup}>
-                <label style={styles.label}>推し</label>
-                <select
-                  value={editFormData.staff_name}
-                  onChange={(e) => setEditFormData({ ...editFormData, staff_name: e.target.value })}
-                  style={styles.input}
-                >
-                  <option value="">なし</option>
-                  {/* 既存データのキャストがPOS表示オフの場合も表示 */}
-                  {editFormData.staff_name && !casts.find(c => c.name === editFormData.staff_name) && (
-                    <option value={editFormData.staff_name}>
-                      {editFormData.staff_name} (POS表示オフ)
-                    </option>
+                <label style={styles.label}>推し（複数選択可）</label>
+                {/* 選択中の推し表示 */}
+                {editFormData.staff_names.length > 0 && (
+                  <div style={styles.selectedCastsContainer}>
+                    {editFormData.staff_names.map((name, idx) => (
+                      <span key={idx} style={styles.selectedCastTag}>
+                        {name}
+                        <button
+                          type="button"
+                          onClick={() => setEditFormData({
+                            ...editFormData,
+                            staff_names: editFormData.staff_names.filter((_, i) => i !== idx)
+                          })}
+                          style={styles.removeCastBtn}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {/* 推し選択ドロップダウン */}
+                <div style={{ position: 'relative' }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowEditStaffDropdown(!showEditStaffDropdown)}
+                    style={styles.castSelectBtn}
+                  >
+                    {editFormData.staff_names.length === 0 ? '推しを選択' : '推しを追加'}
+                  </button>
+                  {showEditStaffDropdown && (
+                    <div style={styles.castDropdownMenu}>
+                      {casts.map((cast) => {
+                        const isSelected = editFormData.staff_names.includes(cast.name)
+                        return (
+                          <div
+                            key={cast.id}
+                            onClick={() => {
+                              if (isSelected) {
+                                setEditFormData({
+                                  ...editFormData,
+                                  staff_names: editFormData.staff_names.filter(n => n !== cast.name)
+                                })
+                              } else {
+                                setEditFormData({
+                                  ...editFormData,
+                                  staff_names: [...editFormData.staff_names, cast.name]
+                                })
+                              }
+                            }}
+                            style={{
+                              ...styles.castDropdownItem,
+                              backgroundColor: isSelected ? '#e0f2fe' : 'transparent'
+                            }}
+                          >
+                            <span style={styles.castCheckbox}>{isSelected ? '✓' : ''}</span>
+                            {cast.name}
+                          </div>
+                        )
+                      })}
+                      <button
+                        type="button"
+                        onClick={() => setShowEditStaffDropdown(false)}
+                        style={styles.castDropdownClose}
+                      >
+                        閉じる
+                      </button>
+                    </div>
                   )}
-                  {casts.map((cast) => (
-                    <option key={cast.id} value={cast.name}>
-                      {cast.name}
-                    </option>
-                  ))}
-                </select>
+                </div>
               </div>
 
               <div style={styles.formGroup}>
@@ -1981,39 +2045,52 @@ export default function ReceiptsPage() {
                   />
                   {showCastDropdown && (
                     <div style={styles.castDropdown}>
-                      {/* 推しを一番上に表示 */}
-                      {selectedReceipt?.staff_name && casts.find(c => c.name === selectedReceipt.staff_name) && (
-                        <div
-                          style={{
-                            ...styles.castOption,
-                            backgroundColor: newItemData.cast_names.includes(selectedReceipt.staff_name) ? '#e0f2fe' : '#e3f2fd',
-                            fontWeight: 'bold'
-                          }}
-                          onClick={() => {
-                            const name = selectedReceipt.staff_name || ''
-                            if (newItemData.cast_names.includes(name)) {
-                              setNewItemData({
-                                ...newItemData,
-                                cast_names: newItemData.cast_names.filter(n => n !== name)
-                              })
-                            } else {
-                              setNewItemData({
-                                ...newItemData,
-                                cast_names: [...newItemData.cast_names, name]
-                              })
-                            }
-                          }}
-                        >
-                          <span style={styles.castCheckbox}>
-                            {newItemData.cast_names.includes(selectedReceipt.staff_name || '') ? '✓' : ''}
-                          </span>
-                          {selectedReceipt.staff_name} ⭐
-                        </div>
-                      )}
+                      {/* 推しを一番上に表示（複数推しに対応） */}
+                      {(() => {
+                        const staffNames = Array.isArray(selectedReceipt?.staff_name)
+                          ? selectedReceipt.staff_name
+                          : (selectedReceipt?.staff_name ? [selectedReceipt.staff_name] : [])
+                        return staffNames.map((staffName) => {
+                          if (!casts.find(c => c.name === staffName)) return null
+                          const isSelected = newItemData.cast_names.includes(staffName)
+                          return (
+                            <div
+                              key={staffName}
+                              style={{
+                                ...styles.castOption,
+                                backgroundColor: isSelected ? '#e0f2fe' : '#e3f2fd',
+                                fontWeight: 'bold'
+                              }}
+                              onClick={() => {
+                                if (isSelected) {
+                                  setNewItemData({
+                                    ...newItemData,
+                                    cast_names: newItemData.cast_names.filter(n => n !== staffName)
+                                  })
+                                } else {
+                                  setNewItemData({
+                                    ...newItemData,
+                                    cast_names: [...newItemData.cast_names, staffName]
+                                  })
+                                }
+                              }}
+                            >
+                              <span style={styles.castCheckbox}>
+                                {isSelected ? '✓' : ''}
+                              </span>
+                              {staffName} ⭐
+                            </div>
+                          )
+                        })
+                      })()}
                       {/* 検索結果 */}
                       {casts
                         .filter(cast => {
-                          if (cast.name === selectedReceipt?.staff_name) return false
+                          // 推しは上に表示済みなので除外
+                          const staffNames = Array.isArray(selectedReceipt?.staff_name)
+                            ? selectedReceipt.staff_name
+                            : (selectedReceipt?.staff_name ? [selectedReceipt.staff_name] : [])
+                          if (staffNames.includes(cast.name)) return false
                           if (!castSearchTerm) return true
                           return cast.name.toLowerCase().includes(castSearchTerm.toLowerCase())
                         })
