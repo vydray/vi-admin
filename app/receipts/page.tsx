@@ -10,6 +10,15 @@ import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
 import Modal from '@/components/Modal'
 
+// cast_nameが配列の場合はカンマ区切りで表示
+const formatCastName = (castName: string[] | string | null | undefined): string => {
+  if (!castName) return '-'
+  if (Array.isArray(castName)) {
+    return castName.length > 0 ? castName.join(', ') : '-'
+  }
+  return castName
+}
+
 interface OrderWithPayment {
   id: number
   store_id: number
@@ -1011,10 +1020,14 @@ export default function ReceiptsPage() {
   // 注文明細の編集開始（モーダルを開く）
   const startEditItem = (item: OrderItem) => {
     setEditingItem(item)
+    // cast_nameが配列の場合は最初の1人を編集対象とする
+    const castNameStr = Array.isArray(item.cast_name)
+      ? (item.cast_name[0] || '')
+      : (item.cast_name || '')
     setEditingItemData({
       product_name: item.product_name,
       category: item.category || '',
-      cast_name: item.cast_name || '',
+      cast_name: castNameStr,
       quantity: item.quantity,
       unit_price: item.unit_price
     })
@@ -1486,7 +1499,7 @@ export default function ReceiptsPage() {
                           style={styles.itemRow}
                         >
                           <td style={styles.itemTd}>{item.product_name}</td>
-                          <td style={styles.itemTd}>{item.cast_name || '-'}</td>
+                          <td style={styles.itemTd}>{formatCastName(item.cast_name)}</td>
                           <td style={styles.itemTd}>{item.quantity}</td>
                           <td style={styles.itemTd}>{formatCurrency(item.unit_price)}</td>
                           <td style={styles.itemTd}>{formatCurrency(item.subtotal)}</td>

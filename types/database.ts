@@ -87,7 +87,7 @@ export interface OrderItem {
   order_id: number
   product_name: string
   category: string | null
-  cast_name: string | null
+  cast_name: string[] | string | null  // POS側で配列化対応
   quantity: number
   unit_price: number
   subtotal: number
