@@ -375,7 +375,13 @@ export interface CompensationSettings {
   // 商品別バック設定
   use_product_back: boolean  // 商品別バック率を使用するか（cast_back_ratesテーブル参照）
 
-  // 適用期間
+  // 対象年月（月ごとの報酬設定用）
+  target_year: number | null   // 対象年（nullは全期間共通）
+  target_month: number | null  // 対象月（1-12、nullは全期間共通）
+  is_locked: boolean           // ロック済み（給料日を過ぎたらロック）
+  locked_at: string | null     // ロック日時
+
+  // 適用期間（レガシー、後方互換用）
   valid_from: string
   valid_to: string | null
 

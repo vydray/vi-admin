@@ -170,6 +170,12 @@ export default function CompensationSettingsPage() {
   const [payDay, setPayDay] = useState<number>(25)
   const [savingPayDay, setSavingPayDay] = useState(false)
 
+  // 年月選択
+  const now = new Date()
+  const [selectedYear, setSelectedYear] = useState<number>(now.getFullYear())
+  const [selectedMonth, setSelectedMonth] = useState<number>(now.getMonth() + 1)
+  const [isLocked, setIsLocked] = useState<boolean>(false)
+
   // 検索・フィルター
   const [searchText, setSearchText] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('在籍')
@@ -243,20 +249,40 @@ export default function CompensationSettingsPage() {
     }
   }, [storeId])
 
-  const loadSettings = useCallback(async (castId: number) => {
+  const loadSettings = useCallback(async (castId: number, year: number, month: number) => {
     try {
-      const { data, error } = await supabase
+      // まず指定年月の設定を探す
+      let { data, error } = await supabase
         .from('compensation_settings')
         .select('*')
         .eq('cast_id', castId)
         .eq('store_id', storeId)
+        .eq('target_year', year)
+        .eq('target_month', month)
         .eq('is_active', true)
         .maybeSingle()
 
       if (error) throw error
 
+      // 年月指定の設定がない場合、デフォルト設定（target_year/month = null）を探す
+      if (!data) {
+        const { data: defaultData, error: defaultError } = await supabase
+          .from('compensation_settings')
+          .select('*')
+          .eq('cast_id', castId)
+          .eq('store_id', storeId)
+          .is('target_year', null)
+          .is('target_month', null)
+          .eq('is_active', true)
+          .maybeSingle()
+
+        if (defaultError) throw defaultError
+        data = defaultData
+      }
+
       if (data) {
         setSettingsState(dbToState(data))
+        setIsLocked(data.is_locked ?? false)
         setExistingId(data.id)
       } else {
         // 新規設定
@@ -277,9 +303,9 @@ export default function CompensationSettingsPage() {
 
   useEffect(() => {
     if (selectedCastId) {
-      loadSettings(selectedCastId)
+      loadSettings(selectedCastId, selectedYear, selectedMonth)
     }
-  }, [selectedCastId, loadSettings])
+  }, [selectedCastId, selectedYear, selectedMonth, loadSettings])
 
   // フィルター済みキャスト一覧
   const filteredCasts = useMemo(() => {
@@ -298,9 +324,19 @@ export default function CompensationSettingsPage() {
   const saveSettings = async () => {
     if (!settingsState || !selectedCastId) return
 
+    // ロック中は保存不可
+    if (isLocked) {
+      toast.error('この月の設定はロックされています')
+      return
+    }
+
     setSaving(true)
     try {
-      const saveData = stateToDb(settingsState, selectedCastId, storeId, existingId)
+      const saveData = {
+        ...stateToDb(settingsState, selectedCastId, storeId, existingId),
+        target_year: selectedYear,
+        target_month: selectedMonth,
+      }
 
       if (existingId) {
         // 更新
@@ -320,7 +356,7 @@ export default function CompensationSettingsPage() {
       }
 
       toast.success('設定を保存しました')
-      await loadSettings(selectedCastId)
+      await loadSettings(selectedCastId, selectedYear, selectedMonth)
     } catch (error) {
       console.error('保存エラー:', error)
       toast.error('保存に失敗しました')
@@ -424,6 +460,36 @@ export default function CompensationSettingsPage() {
             <p style={styles.payDayHint}>
               この日以降、前月の報酬設定がロックされます
             </p>
+          </div>
+
+          {/* 年月選択 */}
+          <div style={styles.storeSettingsBox}>
+            <h4 style={styles.storeSettingsTitle}>対象年月</h4>
+            <div style={styles.yearMonthRow}>
+              <select
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(Number(e.target.value))}
+                style={styles.yearSelect}
+              >
+                {Array.from({ length: 5 }, (_, i) => now.getFullYear() - 2 + i).map((year) => (
+                  <option key={year} value={year}>{year}年</option>
+                ))}
+              </select>
+              <select
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                style={styles.monthSelect}
+              >
+                {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => (
+                  <option key={month} value={month}>{month}月</option>
+                ))}
+              </select>
+            </div>
+            {isLocked && (
+              <p style={styles.lockedHint}>
+                この月の設定はロックされています
+              </p>
+            )}
           </div>
 
           <h3 style={styles.sidebarTitle}>キャスト選択</h3>
@@ -1025,6 +1091,33 @@ const styles: { [key: string]: React.CSSProperties } = {
     marginTop: '8px',
     marginBottom: 0,
     lineHeight: '1.4',
+  },
+  yearMonthRow: {
+    display: 'flex',
+    gap: '8px',
+  },
+  yearSelect: {
+    flex: 1,
+    padding: '6px 8px',
+    fontSize: '13px',
+    border: '1px solid #ddd',
+    borderRadius: '4px',
+    backgroundColor: 'white',
+  },
+  monthSelect: {
+    width: '70px',
+    padding: '6px 8px',
+    fontSize: '13px',
+    border: '1px solid #ddd',
+    borderRadius: '4px',
+    backgroundColor: 'white',
+  },
+  lockedHint: {
+    fontSize: '11px',
+    color: '#ef4444',
+    marginTop: '8px',
+    marginBottom: 0,
+    fontWeight: '500',
   },
   sidebarTitle: {
     fontSize: '14px',
