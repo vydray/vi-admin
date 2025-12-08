@@ -348,17 +348,17 @@ export interface CompensationSettings {
   pay_type: PayType
 
   // 基本給与設定
-  hourly_rate: number | null        // 時給
-  commission_rate: number | null    // 売上バック率（%）
+  hourly_rate: number               // 時給（未使用時は0）
+  commission_rate: number           // 売上バック率（%）（未使用時は0）
   sales_target: SalesTargetType     // 売上計算対象: 'cast_sales' | 'receipt_total'
-  fixed_amount: number | null       // 固定額
+  fixed_amount: number              // 固定額（未使用時は0）
 
   // スライド制（高い方を支給）
   use_sliding_comparison: boolean
-  compare_hourly_rate: number | null       // 比較用: 時給
-  compare_commission_rate: number | null   // 比較用: 売上バック率（%）
-  compare_sales_target: SalesTargetType    // 比較用: 売上計算対象
-  compare_fixed_amount: number | null      // 比較用: 固定額
+  compare_hourly_rate: number             // 比較用: 時給（未使用時は0）
+  compare_commission_rate: number         // 比較用: 売上バック率（%）（未使用時は0）
+  compare_sales_target: SalesTargetType   // 比較用: 売上計算対象
+  compare_fixed_amount: number            // 比較用: 固定額（未使用時は0）
 
   // スライド率テーブル（売上に応じてバック率変動）
   sliding_rates: SlidingRate[] | null
