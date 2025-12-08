@@ -72,15 +72,16 @@ export default function ReceiptsPage() {
   const [editingItemData, setEditingItemData] = useState({
     product_name: '',
     category: '',
-    cast_name: '',
+    cast_names: [] as string[],
     quantity: 1,
     unit_price: 0
   })
+  const [showEditCastDropdown, setShowEditCastDropdown] = useState(false)
   const [isAddItemModalOpen, setIsAddItemModalOpen] = useState(false)
   const [newItemData, setNewItemData] = useState({
     product_name: '',
     category: '',
-    cast_name: '',
+    cast_names: [] as string[],
     quantity: 1,
     unit_price: 0
   })
@@ -1020,17 +1021,18 @@ export default function ReceiptsPage() {
   // 注文明細の編集開始（モーダルを開く）
   const startEditItem = (item: OrderItem) => {
     setEditingItem(item)
-    // cast_nameが配列の場合は最初の1人を編集対象とする
-    const castNameStr = Array.isArray(item.cast_name)
-      ? (item.cast_name[0] || '')
-      : (item.cast_name || '')
+    // cast_nameを配列に変換
+    const castNames = Array.isArray(item.cast_name)
+      ? item.cast_name
+      : (item.cast_name ? [item.cast_name] : [])
     setEditingItemData({
       product_name: item.product_name,
       category: item.category || '',
-      cast_name: castNameStr,
+      cast_names: castNames,
       quantity: item.quantity,
       unit_price: item.unit_price
     })
+    setShowEditCastDropdown(false)
     setIsEditItemModalOpen(true)
   }
 
@@ -1041,10 +1043,11 @@ export default function ReceiptsPage() {
     setEditingItemData({
       product_name: '',
       category: '',
-      cast_name: '',
+      cast_names: [],
       quantity: 1,
       unit_price: 0
     })
+    setShowEditCastDropdown(false)
   }
 
   // 注文明細の保存
@@ -1057,7 +1060,7 @@ export default function ReceiptsPage() {
         .update({
           product_name: editingItemData.product_name,
           category: editingItemData.category || null,
-          cast_name: editingItemData.cast_name || null,
+          cast_name: editingItemData.cast_names.length > 0 ? editingItemData.cast_names : null,
           quantity: editingItemData.quantity,
           unit_price: editingItemData.unit_price,
           subtotal: editingItemData.unit_price * editingItemData.quantity
@@ -1108,7 +1111,7 @@ export default function ReceiptsPage() {
     setNewItemData({
       product_name: '',
       category: '',
-      cast_name: '',
+      cast_names: [],
       quantity: 1,
       unit_price: 0
     })
@@ -1123,7 +1126,7 @@ export default function ReceiptsPage() {
     setNewItemData({
       product_name: '',
       category: '',
-      cast_name: '',
+      cast_names: [],
       quantity: 1,
       unit_price: 0
     })
@@ -1144,7 +1147,7 @@ export default function ReceiptsPage() {
           order_id: selectedReceipt.id,
           product_name: newItemData.product_name,
           category: newItemData.category || null,
-          cast_name: newItemData.cast_name || null,
+          cast_name: newItemData.cast_names.length > 0 ? newItemData.cast_names : null,
           quantity: newItemData.quantity,
           unit_price: newItemData.unit_price,
           unit_price_excl_tax: Math.round(newItemData.unit_price / 1.1), // 税抜き価格（仮で10%）
@@ -1750,25 +1753,76 @@ export default function ReceiptsPage() {
               </div>
 
               <div style={styles.formGroup}>
-                <label style={styles.label}>キャスト名</label>
-                <select
-                  value={editingItemData.cast_name}
-                  onChange={(e) => setEditingItemData({ ...editingItemData, cast_name: e.target.value })}
-                  style={styles.input}
-                >
-                  <option value="">なし</option>
-                  {/* 既存データのキャストがPOS表示オフの場合も表示 */}
-                  {editingItemData.cast_name && !casts.find(c => c.name === editingItemData.cast_name) && (
-                    <option value={editingItemData.cast_name}>
-                      {editingItemData.cast_name} (POS表示オフ)
-                    </option>
+                <label style={styles.label}>キャスト名（複数選択可）</label>
+                {/* 選択中のキャスト表示 */}
+                {editingItemData.cast_names.length > 0 && (
+                  <div style={styles.selectedCastsContainer}>
+                    {editingItemData.cast_names.map((name, idx) => (
+                      <span key={idx} style={styles.selectedCastTag}>
+                        {name}
+                        <button
+                          type="button"
+                          onClick={() => setEditingItemData({
+                            ...editingItemData,
+                            cast_names: editingItemData.cast_names.filter((_, i) => i !== idx)
+                          })}
+                          style={styles.removeCastBtn}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {/* キャスト選択ドロップダウン */}
+                <div style={{ position: 'relative' }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowEditCastDropdown(!showEditCastDropdown)}
+                    style={styles.castSelectBtn}
+                  >
+                    {editingItemData.cast_names.length === 0 ? 'キャストを選択' : 'キャストを追加'}
+                  </button>
+                  {showEditCastDropdown && (
+                    <div style={styles.castDropdownMenu}>
+                      {casts.map((cast) => {
+                        const isSelected = editingItemData.cast_names.includes(cast.name)
+                        return (
+                          <div
+                            key={cast.id}
+                            onClick={() => {
+                              if (isSelected) {
+                                setEditingItemData({
+                                  ...editingItemData,
+                                  cast_names: editingItemData.cast_names.filter(n => n !== cast.name)
+                                })
+                              } else {
+                                setEditingItemData({
+                                  ...editingItemData,
+                                  cast_names: [...editingItemData.cast_names, cast.name]
+                                })
+                              }
+                            }}
+                            style={{
+                              ...styles.castDropdownItem,
+                              backgroundColor: isSelected ? '#e0f2fe' : 'transparent'
+                            }}
+                          >
+                            <span style={styles.castCheckbox}>{isSelected ? '✓' : ''}</span>
+                            {cast.name}
+                          </div>
+                        )
+                      })}
+                      <button
+                        type="button"
+                        onClick={() => setShowEditCastDropdown(false)}
+                        style={styles.castDropdownClose}
+                      >
+                        閉じる
+                      </button>
+                    </div>
                   )}
-                  {casts.map((cast) => (
-                    <option key={cast.id} value={cast.name}>
-                      {cast.name}
-                    </option>
-                  ))}
-                </select>
+                </div>
               </div>
 
               <div style={styles.formGroup}>
@@ -1895,7 +1949,27 @@ export default function ReceiptsPage() {
               </div>
 
               <div style={styles.formGroup}>
-                <label style={styles.label}>キャスト名</label>
+                <label style={styles.label}>キャスト名（複数選択可）</label>
+                {/* 選択中のキャスト表示 */}
+                {newItemData.cast_names.length > 0 && (
+                  <div style={styles.selectedCastsContainer}>
+                    {newItemData.cast_names.map((name, idx) => (
+                      <span key={idx} style={styles.selectedCastTag}>
+                        {name}
+                        <button
+                          type="button"
+                          onClick={() => setNewItemData({
+                            ...newItemData,
+                            cast_names: newItemData.cast_names.filter((_, i) => i !== idx)
+                          })}
+                          style={styles.removeCastBtn}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
                 <div style={{ position: 'relative' }}>
                   <input
                     type="text"
@@ -1907,26 +1981,32 @@ export default function ReceiptsPage() {
                   />
                   {showCastDropdown && (
                     <div style={styles.castDropdown}>
-                      <div
-                        style={styles.castOption}
-                        onClick={() => {
-                          setNewItemData({ ...newItemData, cast_name: '' })
-                          setCastSearchTerm('')
-                          setShowCastDropdown(false)
-                        }}
-                      >
-                        なし
-                      </div>
                       {/* 推しを一番上に表示 */}
                       {selectedReceipt?.staff_name && casts.find(c => c.name === selectedReceipt.staff_name) && (
                         <div
-                          style={{ ...styles.castOption, backgroundColor: '#e3f2fd', fontWeight: 'bold' }}
+                          style={{
+                            ...styles.castOption,
+                            backgroundColor: newItemData.cast_names.includes(selectedReceipt.staff_name) ? '#e0f2fe' : '#e3f2fd',
+                            fontWeight: 'bold'
+                          }}
                           onClick={() => {
-                            setNewItemData({ ...newItemData, cast_name: selectedReceipt.staff_name || '' })
-                            setCastSearchTerm(selectedReceipt.staff_name || '')
-                            setShowCastDropdown(false)
+                            const name = selectedReceipt.staff_name || ''
+                            if (newItemData.cast_names.includes(name)) {
+                              setNewItemData({
+                                ...newItemData,
+                                cast_names: newItemData.cast_names.filter(n => n !== name)
+                              })
+                            } else {
+                              setNewItemData({
+                                ...newItemData,
+                                cast_names: [...newItemData.cast_names, name]
+                              })
+                            }
                           }}
                         >
+                          <span style={styles.castCheckbox}>
+                            {newItemData.cast_names.includes(selectedReceipt.staff_name || '') ? '✓' : ''}
+                          </span>
                           {selectedReceipt.staff_name} ⭐
                         </div>
                       )}
@@ -1937,27 +2017,44 @@ export default function ReceiptsPage() {
                           if (!castSearchTerm) return true
                           return cast.name.toLowerCase().includes(castSearchTerm.toLowerCase())
                         })
-                        .map((cast) => (
-                          <div
-                            key={cast.id}
-                            style={styles.castOption}
-                            onClick={() => {
-                              setNewItemData({ ...newItemData, cast_name: cast.name })
-                              setCastSearchTerm(cast.name)
-                              setShowCastDropdown(false)
-                            }}
-                          >
-                            {cast.name}
-                          </div>
-                        ))}
+                        .map((cast) => {
+                          const isSelected = newItemData.cast_names.includes(cast.name)
+                          return (
+                            <div
+                              key={cast.id}
+                              style={{
+                                ...styles.castOption,
+                                backgroundColor: isSelected ? '#e0f2fe' : 'transparent'
+                              }}
+                              onClick={() => {
+                                if (isSelected) {
+                                  setNewItemData({
+                                    ...newItemData,
+                                    cast_names: newItemData.cast_names.filter(n => n !== cast.name)
+                                  })
+                                } else {
+                                  setNewItemData({
+                                    ...newItemData,
+                                    cast_names: [...newItemData.cast_names, cast.name]
+                                  })
+                                }
+                              }}
+                            >
+                              <span style={styles.castCheckbox}>{isSelected ? '✓' : ''}</span>
+                              {cast.name}
+                            </div>
+                          )
+                        })}
+                      <button
+                        type="button"
+                        onClick={() => setShowCastDropdown(false)}
+                        style={styles.castDropdownClose}
+                      >
+                        閉じる
+                      </button>
                     </div>
                   )}
                 </div>
-                {newItemData.cast_name && !showCastDropdown && (
-                  <div style={{ marginTop: '5px', fontSize: '13px', color: '#28a745' }}>
-                    選択中: {newItemData.cast_name}
-                  </div>
-                )}
               </div>
 
               <div style={styles.formGroup}>
@@ -2942,6 +3039,82 @@ const styles: { [key: string]: React.CSSProperties } = {
     cursor: 'pointer',
     borderBottom: '1px solid #e9ecef',
     transition: 'background-color 0.2s',
+  },
+  selectedCastsContainer: {
+    display: 'flex',
+    flexWrap: 'wrap' as const,
+    gap: '6px',
+    marginBottom: '8px',
+  },
+  selectedCastTag: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
+    backgroundColor: '#e0f2fe',
+    color: '#0369a1',
+    padding: '4px 8px',
+    borderRadius: '4px',
+    fontSize: '13px',
+  },
+  removeCastBtn: {
+    background: 'none',
+    border: 'none',
+    color: '#0369a1',
+    cursor: 'pointer',
+    padding: '0 2px',
+    fontSize: '14px',
+    fontWeight: 'bold',
+  },
+  castSelectBtn: {
+    width: '100%',
+    padding: '10px 12px',
+    fontSize: '14px',
+    border: '1px solid #ced4da',
+    borderRadius: '6px',
+    backgroundColor: 'white',
+    cursor: 'pointer',
+    textAlign: 'left' as const,
+  },
+  castDropdownMenu: {
+    position: 'absolute' as const,
+    top: '100%',
+    left: 0,
+    right: 0,
+    maxHeight: '250px',
+    overflowY: 'auto' as const,
+    backgroundColor: 'white',
+    border: '1px solid #ced4da',
+    borderRadius: '6px',
+    marginTop: '4px',
+    boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+    zIndex: 1000,
+  },
+  castDropdownItem: {
+    padding: '10px 12px',
+    cursor: 'pointer',
+    borderBottom: '1px solid #e9ecef',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+  },
+  castCheckbox: {
+    width: '16px',
+    height: '16px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    border: '1px solid #ccc',
+    borderRadius: '3px',
+    fontSize: '12px',
+    color: '#0369a1',
+  },
+  castDropdownClose: {
+    width: '100%',
+    padding: '10px',
+    border: 'none',
+    backgroundColor: '#f8f9fa',
+    cursor: 'pointer',
+    fontWeight: '500',
   },
   calculateButton: {
     padding: '8px 16px',
