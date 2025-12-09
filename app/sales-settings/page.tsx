@@ -712,7 +712,7 @@ export default function SalesSettingsPage() {
     const results = previewItems.map(item => {
       // キャスト商品のみの場合、キャスト名がない商品は除外
       if (isItemBased && !item.needsCast) {
-        return { ...item, calcPrice: 0, salesAmount: 0, rounded: 0, isSelf: true, notIncluded: true }
+        return { ...item, calcPrice: 0, salesAmount: 0, rounded: 0, isSelf: true, notIncluded: true, castBreakdown: [] }
       }
 
       let calcPrice = item.basePrice
@@ -750,6 +750,50 @@ export default function SalesSettingsPage() {
       // 端数処理
       const rounded = applyRoundingPreview(salesAmount, roundingPosition, roundingType)
 
+      // キャスト別内訳を計算
+      const castBreakdown: { cast: string; sales: number; back: number; isSelf: boolean }[] = []
+      if (item.castNames.length > 0) {
+        const perCastShare = Math.floor(rounded / item.castNames.length)
+        const nominationCastsOnItem = item.castNames.filter(c =>
+          previewNominations.includes(c) || nonHelpNames.includes(c) || nominationIsNonHelp
+        )
+
+        item.castNames.forEach(c => {
+          const isCastSelf = previewNominations.includes(c) || nonHelpNames.includes(c) || nominationIsNonHelp
+          let castSales = perCastShare
+          let countAsSales = true
+
+          // 分配方法の設定を取得
+          const multiCastDist = isItemBased
+            ? (settings.item_multi_cast_distribution ?? 'nomination_only')
+            : (settings.receipt_multi_cast_distribution ?? 'nomination_only')
+          const nonNominationHandling = isItemBased
+            ? (settings.item_non_nomination_sales_handling ?? 'share_only')
+            : (settings.receipt_non_nomination_sales_handling ?? 'share_only')
+
+          if (multiCastDist === 'nomination_only') {
+            if (!isCastSelf) {
+              countAsSales = false
+            } else if (nonNominationHandling === 'full_to_nomination' && nominationCastsOnItem.length > 0) {
+              castSales = Math.floor(rounded / nominationCastsOnItem.length)
+            }
+          }
+
+          if (helpInclusion === 'self_only' && !isCastSelf) {
+            countAsSales = false
+          } else if (helpInclusion === 'help_only' && isCastSelf) {
+            countAsSales = false
+          }
+
+          castBreakdown.push({
+            cast: c,
+            sales: countAsSales ? castSales : 0,
+            back: perCastShare,
+            isSelf: isCastSelf,
+          })
+        })
+      }
+
       return {
         ...item,
         calcPrice,
@@ -757,6 +801,7 @@ export default function SalesSettingsPage() {
         rounded,
         isSelf,
         notIncluded: false,
+        castBreakdown,
       }
     })
 
@@ -1210,6 +1255,34 @@ export default function SalesSettingsPage() {
                     <div style={styles.receiptItemDetails}>
                       {item.notIncluded ? (
                         <span style={styles.skipTag}>売上対象外</span>
+                      ) : item.castBreakdown && item.castBreakdown.length > 1 ? (
+                        // 複数キャストの場合は内訳を表示
+                        <div style={styles.castBreakdownContainer}>
+                          {item.castBreakdown.map((cb, idx) => (
+                            <div key={idx} style={styles.castBreakdownRow}>
+                              <span style={{
+                                ...styles.castBreakdownName,
+                                color: cb.isSelf ? '#ec4899' : '#64748b',
+                              }}>
+                                {cb.cast}
+                                <span style={styles.castBreakdownType}>
+                                  ({cb.isSelf ? '推し' : 'ヘルプ'})
+                                </span>
+                              </span>
+                              <span style={styles.castBreakdownValues}>
+                                <span style={{
+                                  ...styles.castBreakdownSales,
+                                  color: cb.sales > 0 ? '#10b981' : '#94a3b8',
+                                }}>
+                                  売上: ¥{cb.sales.toLocaleString()}
+                                </span>
+                                <span style={styles.castBreakdownBack}>
+                                  バック: ¥{cb.back.toLocaleString()}
+                                </span>
+                              </span>
+                            </div>
+                          ))}
+                        </div>
                       ) : (
                         <>
                           <span style={{
@@ -1222,6 +1295,11 @@ export default function SalesSettingsPage() {
                           <span style={{ marginLeft: '8px' }}>
                             → ¥{item.rounded.toLocaleString()}
                           </span>
+                          {item.castBreakdown && item.castBreakdown.length === 1 && (
+                            <span style={{ marginLeft: '8px', color: '#64748b', fontSize: '11px' }}>
+                              (バック: ¥{item.castBreakdown[0].back.toLocaleString()})
+                            </span>
+                          )}
                         </>
                       )}
                     </div>
@@ -1875,5 +1953,51 @@ const styles: { [key: string]: React.CSSProperties } = {
   summaryItem: {
     color: '#64748b',
     padding: '2px 0',
+  },
+  // キャスト別内訳スタイル
+  castBreakdownContainer: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '4px',
+    width: '100%',
+  },
+  castBreakdownRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '3px 0',
+    borderBottom: '1px dotted #e2e8f0',
+  },
+  castBreakdownName: {
+    fontSize: '11px',
+    fontWeight: '600',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+  },
+  castBreakdownType: {
+    fontSize: '10px',
+    fontWeight: '400',
+    color: '#94a3b8',
+  },
+  castBreakdownValues: {
+    display: 'flex',
+    gap: '12px',
+    fontSize: '11px',
+  },
+  castBreakdownSales: {
+    fontWeight: '500',
+  },
+  castBreakdownBack: {
+    color: '#0369a1',
+    fontWeight: '500',
+  },
+  castSalesNote: {
+    fontSize: '11px',
+    color: '#64748b',
+    marginTop: '8px',
+    padding: '6px 8px',
+    backgroundColor: '#f8fafc',
+    borderRadius: '4px',
   },
 }
