@@ -597,12 +597,24 @@ export default function SalesSettingsPage() {
 
     const isItemBased = previewAggregation === 'item'
 
-    const excludeTax = isItemBased ? settings.item_exclude_consumption_tax : settings.receipt_exclude_consumption_tax
-    const excludeService = isItemBased ? settings.item_exclude_service_charge : settings.receipt_exclude_service_charge
-    const helpRatio = isItemBased ? settings.item_help_ratio : settings.receipt_help_ratio
-    const helpInclusion = isItemBased ? settings.item_help_sales_inclusion : settings.receipt_help_sales_inclusion
-    const roundingPosition = isItemBased ? settings.item_rounding_position : settings.receipt_rounding_position
-    const roundingMethod = isItemBased ? settings.item_rounding_method : settings.receipt_rounding_method
+    const excludeTax = isItemBased
+      ? (settings.item_exclude_consumption_tax ?? true)
+      : (settings.receipt_exclude_consumption_tax ?? true)
+    const excludeService = isItemBased
+      ? (settings.item_exclude_service_charge ?? false)
+      : (settings.receipt_exclude_service_charge ?? false)
+    const helpRatio = isItemBased
+      ? (settings.item_help_ratio ?? 50)
+      : (settings.receipt_help_ratio ?? 50)
+    const helpInclusion = isItemBased
+      ? (settings.item_help_sales_inclusion ?? 'both')
+      : (settings.receipt_help_sales_inclusion ?? 'both')
+    const roundingPosition = isItemBased
+      ? (settings.item_rounding_position ?? 100)
+      : (settings.receipt_rounding_position ?? 100)
+    const roundingMethod = isItemBased
+      ? (settings.item_rounding_method ?? 'floor_100')
+      : (settings.receipt_rounding_method ?? 'floor_100')
     const { type: roundingType } = parseRoundingMethod(roundingMethod)
 
     const taxRate = systemSettings.tax_rate / 100
