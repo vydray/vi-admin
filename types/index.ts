@@ -26,6 +26,7 @@ export type {
   RoundingTiming,
   HelpCalculationMethod,
   MultiCastDistribution,
+  NonNominationSalesHandling,
   HelpSalesInclusion,
   PublishedAggregation,
   PayType,

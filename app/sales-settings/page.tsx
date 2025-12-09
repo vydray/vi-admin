@@ -8,6 +8,7 @@ import {
   RoundingMethod,
   HelpCalculationMethod,
   MultiCastDistribution,
+  NonNominationSalesHandling,
   HelpSalesInclusion,
   SystemSettings,
 } from '@/types'
@@ -60,6 +61,7 @@ const getDefaultExtendedSettings = (): Partial<SalesSettings> => ({
   item_exclude_consumption_tax: true,
   item_exclude_service_charge: false,
   item_multi_cast_distribution: 'nomination_only',
+  item_non_nomination_sales_handling: 'share_only',
   item_help_sales_inclusion: 'both',
   item_help_calculation_method: 'ratio',
   item_help_ratio: 50,
@@ -72,6 +74,7 @@ const getDefaultExtendedSettings = (): Partial<SalesSettings> => ({
   receipt_exclude_consumption_tax: true,
   receipt_exclude_service_charge: false,
   receipt_multi_cast_distribution: 'nomination_only',
+  receipt_non_nomination_sales_handling: 'share_only',
   receipt_help_sales_inclusion: 'both',
   receipt_help_calculation_method: 'ratio',
   receipt_help_ratio: 50,
@@ -115,6 +118,7 @@ function AggregationSection({
   const excludeTaxKey = `${prefix}_exclude_consumption_tax` as keyof SalesSettings
   const excludeServiceKey = `${prefix}_exclude_service_charge` as keyof SalesSettings
   const multiCastKey = `${prefix}_multi_cast_distribution` as keyof SalesSettings
+  const nonNominationKey = `${prefix}_non_nomination_sales_handling` as keyof SalesSettings
   const helpInclusionKey = `${prefix}_help_sales_inclusion` as keyof SalesSettings
   const helpMethodKey = `${prefix}_help_calculation_method` as keyof SalesSettings
   const helpRatioKey = `${prefix}_help_ratio` as keyof SalesSettings
@@ -126,6 +130,7 @@ function AggregationSection({
   const excludeTax = settings[excludeTaxKey] as boolean ?? true
   const excludeService = settings[excludeServiceKey] as boolean ?? false
   const multiCastDist = settings[multiCastKey] as MultiCastDistribution ?? 'nomination_only'
+  const nonNominationHandling = settings[nonNominationKey] as NonNominationSalesHandling ?? 'share_only'
   const helpInclusion = settings[helpInclusionKey] as HelpSalesInclusion ?? 'both'
   const helpMethod = settings[helpMethodKey] as HelpCalculationMethod ?? 'ratio'
   const helpRatio = settings[helpRatioKey] as number ?? 50
@@ -233,6 +238,40 @@ function AggregationSection({
           推しに該当するキャストのみ: 商品キャストのうち推しに該当する人だけに売上を分配<br />
           全キャストで均等分配: 商品キャスト全員に均等に売上を分配
         </p>
+
+        {/* 推しに該当するキャストのみの場合のサブオプション */}
+        {multiCastDist === 'nomination_only' && allowMultipleCasts && (
+          <div style={{ marginTop: '15px', paddingTop: '15px', borderTop: '1px dashed #e2e8f0' }}>
+            <label style={styles.label}>推し以外のキャスト分の売上</label>
+            <div style={styles.radioGroup}>
+              <label style={styles.radioLabel}>
+                <input
+                  type="radio"
+                  name={`${prefix}_non_nomination`}
+                  checked={nonNominationHandling === 'share_only'}
+                  onChange={() => onUpdate(nonNominationKey, 'share_only')}
+                  style={styles.radio}
+                />
+                <span>推しの分だけ計上</span>
+              </label>
+              <label style={styles.radioLabel}>
+                <input
+                  type="radio"
+                  name={`${prefix}_non_nomination`}
+                  checked={nonNominationHandling === 'full_to_nomination'}
+                  onChange={() => onUpdate(nonNominationKey, 'full_to_nomination')}
+                  style={styles.radio}
+                />
+                <span>全額を推しに計上</span>
+              </label>
+            </div>
+            <p style={styles.hint}>
+              例: 10000円の商品にA,C（推しはA）の場合<br />
+              推しの分だけ: Aに5000円<br />
+              全額を推しに: Aに10000円
+            </p>
+          </div>
+        )}
       </div>
 
       {/* ヘルプ売上設定 */}
@@ -499,6 +538,7 @@ export default function SalesSettingsPage() {
           item_exclude_consumption_tax: settings.item_exclude_consumption_tax,
           item_exclude_service_charge: settings.item_exclude_service_charge,
           item_multi_cast_distribution: settings.item_multi_cast_distribution,
+          item_non_nomination_sales_handling: settings.item_non_nomination_sales_handling,
           item_help_sales_inclusion: settings.item_help_sales_inclusion,
           item_help_calculation_method: settings.item_help_calculation_method,
           item_help_ratio: settings.item_help_ratio,
@@ -511,6 +551,7 @@ export default function SalesSettingsPage() {
           receipt_exclude_consumption_tax: settings.receipt_exclude_consumption_tax,
           receipt_exclude_service_charge: settings.receipt_exclude_service_charge,
           receipt_multi_cast_distribution: settings.receipt_multi_cast_distribution,
+          receipt_non_nomination_sales_handling: settings.receipt_non_nomination_sales_handling,
           receipt_help_sales_inclusion: settings.receipt_help_sales_inclusion,
           receipt_help_calculation_method: settings.receipt_help_calculation_method,
           receipt_help_ratio: settings.receipt_help_ratio,
@@ -742,11 +783,21 @@ export default function SalesSettingsPage() {
       ? (settings.item_multi_cast_distribution ?? 'nomination_only')
       : (settings.receipt_multi_cast_distribution ?? 'nomination_only')
 
+    // 推し以外のキャスト分の売上集計方法
+    const nonNominationHandling = isItemBased
+      ? (settings.item_non_nomination_sales_handling ?? 'share_only')
+      : (settings.receipt_non_nomination_sales_handling ?? 'share_only')
+
     results.forEach(r => {
       if (r.notIncluded || r.castNames.length === 0) return
 
       // まず商品を全キャストで均等分割（バック計算用）
       const perCastShare = Math.floor(r.rounded / r.castNames.length)
+
+      // 推しに該当するキャストを特定
+      const nominationCastsOnItem = r.castNames.filter(c =>
+        previewNominations.includes(c) || nonHelpNames.includes(c) || nominationIsNonHelp
+      )
 
       // 各キャストの売上とバックを計算
       r.castNames.forEach(cast => {
@@ -759,12 +810,16 @@ export default function SalesSettingsPage() {
         castBack[cast] += perCastShare
 
         // 売上計上の判定
+        let salesAmount = perCastShare
         let countAsSales = true
 
         // nomination_only: 推しに該当するキャストのみ売上計上
         if (multiCastDist === 'nomination_only') {
           if (!isCastSelf) {
             countAsSales = false
+          } else if (nonNominationHandling === 'full_to_nomination' && nominationCastsOnItem.length > 0) {
+            // 全額を推しに計上: 推しキャストで全額を分配
+            salesAmount = Math.floor(r.rounded / nominationCastsOnItem.length)
           }
         }
 
@@ -777,7 +832,7 @@ export default function SalesSettingsPage() {
 
         // 売上計上
         if (countAsSales) {
-          castSales[cast] += perCastShare
+          castSales[cast] += salesAmount
         }
       })
     })

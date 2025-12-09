@@ -297,6 +297,11 @@ export type MultiCastDistribution = 'nomination_only' | 'all_equal'
 // nomination_only: 推しに該当するキャストのみ
 // all_equal: 全キャストで均等分配
 
+// 推し以外のキャスト分の売上集計方法
+export type NonNominationSalesHandling = 'share_only' | 'full_to_nomination'
+// share_only: 推しの分だけ計上（例: A,Cで10000円 → Aに5000円）
+// full_to_nomination: 全額を推しに計上（例: A,Cで10000円 → Aに10000円）
+
 // ヘルプ売上の計上方法
 export type HelpSalesInclusion = 'both' | 'self_only' | 'help_only'
 // both: SELF/HELP両方計上
@@ -321,6 +326,7 @@ export interface SalesSettings {
 
   // 複数キャストの分配方法
   item_multi_cast_distribution: MultiCastDistribution
+  item_non_nomination_sales_handling: NonNominationSalesHandling
 
   // ヘルプ売上設定
   item_help_sales_inclusion: HelpSalesInclusion
@@ -340,6 +346,7 @@ export interface SalesSettings {
 
   // 複数キャストの分配方法
   receipt_multi_cast_distribution: MultiCastDistribution
+  receipt_non_nomination_sales_handling: NonNominationSalesHandling
 
   // ヘルプ売上設定
   receipt_help_sales_inclusion: HelpSalesInclusion
