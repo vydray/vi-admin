@@ -292,11 +292,79 @@ export interface PayComponent {
 // 控除項目の種類
 export type DeductionType = 'daily_payment' | 'penalty' | 'misc'
 
+// 複数キャストの分配方法
+export type MultiCastDistribution = 'nomination_only' | 'all_equal'
+// nomination_only: 推しに該当するキャストのみ
+// all_equal: 全キャストで均等分配
+
+// ヘルプ売上の計上方法
+export type HelpSalesInclusion = 'both' | 'self_only' | 'help_only'
+// both: SELF/HELP両方計上
+// self_only: SELFのみ計上
+// help_only: HELPのみ計上
+
+// 公開する集計方法
+export type PublishedAggregation = 'item_based' | 'receipt_based'
+// item_based: キャスト名が入ってる商品のみ
+// receipt_based: 伝票のすべての商品を集計
+
 // 店舗別売上計算設定
 export interface SalesSettings {
   id: number
   store_id: number
 
+  // ========== キャスト名が入ってる商品のみの集計設定 ==========
+  // 計算基準
+  item_use_tax_excluded: boolean        // true: 税抜き金額で計算
+  item_exclude_consumption_tax: boolean // 消費税抜きで計算
+  item_exclude_service_charge: boolean  // サービスTAX込みで計算
+
+  // 複数キャストの分配方法
+  item_multi_cast_distribution: MultiCastDistribution
+
+  // ヘルプ売上設定
+  item_help_sales_inclusion: HelpSalesInclusion
+  item_help_calculation_method: HelpCalculationMethod
+  item_help_ratio: number               // ヘルプ割合（%）
+  item_help_fixed_amount: number        // ヘルプ固定額
+
+  // 端数処理
+  item_rounding_method: RoundingMethod
+  item_rounding_position: number        // 1, 10, 100
+
+  // ========== 伝票のすべての商品を集計設定 ==========
+  // 計算基準
+  receipt_use_tax_excluded: boolean
+  receipt_exclude_consumption_tax: boolean
+  receipt_exclude_service_charge: boolean
+
+  // 複数キャストの分配方法
+  receipt_multi_cast_distribution: MultiCastDistribution
+
+  // ヘルプ売上設定
+  receipt_help_sales_inclusion: HelpSalesInclusion
+  receipt_help_calculation_method: HelpCalculationMethod
+  receipt_help_ratio: number
+  receipt_help_fixed_amount: number
+
+  // 端数処理
+  receipt_rounding_method: RoundingMethod
+  receipt_rounding_position: number
+
+  // 商品で計上済みの売上を差し引く
+  receipt_deduct_item_sales: boolean
+
+  // ========== 公開設定 ==========
+  published_aggregation: PublishedAggregation
+
+  // ========== 共通設定 ==========
+  // ヘルプ扱いにしない推し名（配列）
+  non_help_staff_names: string[]
+
+  // 複数推しの分配率（配列、例: [50, 50] で2人均等）
+  multi_nomination_ratios: number[]
+
+  // ========== レガシー設定（後方互換用） ==========
   // 端数処理設定
   rounding_method: RoundingMethod
   rounding_timing: RoundingTiming

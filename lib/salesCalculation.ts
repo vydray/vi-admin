@@ -9,7 +9,6 @@ import {
   SalesSettings,
   CastBackRate,
   RoundingMethod,
-  RoundingTiming,
   SalesType,
   CalculatedSalesItem,
   CastSalesSummary,
@@ -263,6 +262,40 @@ export function calculateCastSales(
 export function getDefaultSalesSettings(storeId: number): Omit<SalesSettings, 'id' | 'created_at' | 'updated_at'> {
   return {
     store_id: storeId,
+
+    // キャスト商品のみの集計設定
+    item_use_tax_excluded: true,
+    item_exclude_consumption_tax: true,
+    item_exclude_service_charge: false,
+    item_multi_cast_distribution: 'nomination_only',
+    item_help_sales_inclusion: 'both',
+    item_help_calculation_method: 'ratio',
+    item_help_ratio: 50,
+    item_help_fixed_amount: 0,
+    item_rounding_method: 'floor_100',
+    item_rounding_position: 100,
+
+    // 伝票全体の集計設定
+    receipt_use_tax_excluded: true,
+    receipt_exclude_consumption_tax: true,
+    receipt_exclude_service_charge: false,
+    receipt_multi_cast_distribution: 'nomination_only',
+    receipt_help_sales_inclusion: 'both',
+    receipt_help_calculation_method: 'ratio',
+    receipt_help_ratio: 50,
+    receipt_help_fixed_amount: 0,
+    receipt_rounding_method: 'floor_100',
+    receipt_rounding_position: 100,
+    receipt_deduct_item_sales: false,
+
+    // 公開設定
+    published_aggregation: 'item_based',
+
+    // 共通設定
+    non_help_staff_names: [],
+    multi_nomination_ratios: [50, 50],
+
+    // レガシー設定（後方互換用）
     rounding_method: 'floor_100',
     rounding_timing: 'total',
     distribute_to_help: true,
