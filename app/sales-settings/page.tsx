@@ -456,8 +456,8 @@ export default function SalesSettingsPage() {
   const [systemSettings, setSystemSettings] = useState<SystemSettings>({
     tax_rate: 10,
     service_fee_rate: 15,
-    rounding_method: 0,
-    rounding_unit: 1,
+    rounding_method: 1, // 0=切り上げ, 1=切り捨て, 2=四捨五入
+    rounding_unit: 100, // 100の位で端数処理
     card_fee_rate: 0,
     business_day_start_hour: 6,
     allow_multiple_nominations: false,
@@ -542,6 +542,8 @@ export default function SalesSettingsPage() {
           ...prev,
           tax_rate: Number(sysMap.tax_rate) ?? 10,
           service_fee_rate: Number(sysMap.service_fee_rate) ?? 15,
+          rounding_method: sysMap.rounding_method !== undefined ? Number(sysMap.rounding_method) : 1,
+          rounding_unit: sysMap.rounding_unit !== undefined ? Number(sysMap.rounding_unit) : 100,
           allow_multiple_nominations: Boolean(sysMap.allow_multiple_nominations) ?? false,
           allow_multiple_casts_per_item: Boolean(sysMap.allow_multiple_casts_per_item) ?? false,
         }))
