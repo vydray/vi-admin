@@ -740,71 +740,112 @@ export default function SalesSettingsPage() {
       // - 推しにヘルプ扱いにしない名前が含まれている場合は全てSELF（フリーなど指名なしの場合）
       const hasCast = item.castNames.length > 0
       const isNonHelpName = item.castNames.some(c => nonHelpNames.includes(c))
-      const isSelf = !hasCast || item.castNames.some(c => previewNominations.includes(c)) || isNonHelpName || nominationIsNonHelp
+      const hasNominationOnItem = item.castNames.some(c => previewNominations.includes(c))
+      const isSelf = !hasCast || hasNominationOnItem || isNonHelpName || nominationIsNonHelp
 
-      let salesAmount = calcPrice
+      // 端数処理（元の金額）
+      const roundedBase = applyRoundingPreview(calcPrice, roundingPosition, roundingType)
 
-      // HELP売上計算（ヘルプ扱いにしない場合は除外）
-      // 推しがフリーなどの場合は全てSELFなのでHELP計算をスキップ
-      if (!isSelf && !isNonHelpName && !nominationIsNonHelp) {
-        salesAmount = Math.floor(calcPrice * (helpRatio / 100))
-      }
+      // HELP商品の場合、SELF分とHELP分に分割
+      // helpRatioは「HELPに帰属する割合」なので、SELFは(100 - helpRatio)%
+      const selfRatio = 100 - helpRatio
+      const selfAmountRaw = Math.floor(roundedBase * selfRatio / 100)
+      const selfAmount = applyRoundingPreview(selfAmountRaw, roundingPosition, roundingType)
+      const helpAmount = roundedBase - selfAmount // 残りをHELPに
 
-      // ヘルプ売上の計上方法による除外
-      if (helpInclusion === 'self_only' && !isSelf) {
-        salesAmount = 0
-      } else if (helpInclusion === 'help_only' && isSelf && item.castNames.length > 0) {
+      let salesAmount = roundedBase
+      // 単一キャストでHELPの場合
+      if (!isSelf) {
+        // helpInclusion設定に応じて売上を計算
+        if (helpInclusion === 'both') {
+          salesAmount = roundedBase // 全額計上
+        } else if (helpInclusion === 'self_only') {
+          salesAmount = selfAmount // SELF分のみ
+        } else if (helpInclusion === 'help_only') {
+          salesAmount = helpAmount // HELP分のみ
+        }
+      } else if (helpInclusion === 'help_only' && isSelf && hasCast) {
+        // SELFだけどHELPのみ計上の場合
         salesAmount = 0
       }
 
       // 端数処理
-      const rounded = applyRoundingPreview(salesAmount, roundingPosition, roundingType)
-      // バック計算用（元の金額から、helpInclusionの影響を受けない）
-      const roundedForBack = applyRoundingPreview(calcPrice, roundingPosition, roundingType)
+      const rounded = salesAmount
 
       // キャスト別内訳を計算
       const castBreakdown: { cast: string; sales: number; back: number; isSelf: boolean }[] = []
+
       if (item.castNames.length > 0) {
-        // バックは元の金額から均等分配
-        const perCastBack = Math.floor(roundedForBack / item.castNames.length)
+        // 分配方法の設定を取得
+        const multiCastDist = isItemBased
+          ? (settings.item_multi_cast_distribution ?? 'nomination_only')
+          : (settings.receipt_multi_cast_distribution ?? 'nomination_only')
+        const nonNominationHandling = isItemBased
+          ? (settings.item_non_nomination_sales_handling ?? 'share_only')
+          : (settings.receipt_non_nomination_sales_handling ?? 'share_only')
+
+        // 商品上の推しキャスト
         const nominationCastsOnItem = item.castNames.filter(c =>
           previewNominations.includes(c) || nonHelpNames.includes(c) || nominationIsNonHelp
         )
+        // 商品上のヘルプキャスト
+        const helpCastsOnItem = item.castNames.filter(c =>
+          !previewNominations.includes(c) && !nonHelpNames.includes(c) && !nominationIsNonHelp
+        )
 
-        item.castNames.forEach(c => {
-          const isCastSelf = previewNominations.includes(c) || nonHelpNames.includes(c) || nominationIsNonHelp
-          let castSales = perCastBack
-          let countAsSales = true
+        // 単一キャストでHELPの場合（例: Bのみ、推しはA）
+        if (item.castNames.length === 1 && helpCastsOnItem.length === 1 && previewNominations.length > 0) {
+          const helpCast = helpCastsOnItem[0]
+          const nominationCast = previewNominations[0] // 最初の推し
 
-          // 分配方法の設定を取得
-          const multiCastDist = isItemBased
-            ? (settings.item_multi_cast_distribution ?? 'nomination_only')
-            : (settings.receipt_multi_cast_distribution ?? 'nomination_only')
-          const nonNominationHandling = isItemBased
-            ? (settings.item_non_nomination_sales_handling ?? 'share_only')
-            : (settings.receipt_non_nomination_sales_handling ?? 'share_only')
-
-          if (multiCastDist === 'nomination_only') {
-            if (!isCastSelf) {
-              countAsSales = false
-            } else if (nonNominationHandling === 'full_to_nomination' && nominationCastsOnItem.length > 0) {
-              castSales = Math.floor(roundedForBack / nominationCastsOnItem.length)
-            }
-          }
-
-          if (helpInclusion === 'self_only' && !isCastSelf) {
-            countAsSales = false
-          } else if (helpInclusion === 'help_only' && isCastSelf) {
-            countAsSales = false
-          }
-
+          // SELF分（推しに帰属）
+          const selfSales = helpInclusion === 'help_only' ? 0 : selfAmount
           castBreakdown.push({
-            cast: c,
-            sales: countAsSales ? castSales : 0,
-            back: perCastBack,
-            isSelf: isCastSelf,
+            cast: nominationCast,
+            sales: selfSales,
+            back: selfAmount,
+            isSelf: true,
           })
-        })
+
+          // HELP分（ヘルプキャストに帰属）
+          const helpSales = helpInclusion === 'self_only' ? 0 : helpAmount
+          castBreakdown.push({
+            cast: helpCast,
+            sales: helpSales,
+            back: helpAmount,
+            isSelf: false,
+          })
+        } else {
+          // 複数キャスト or 推しがいる商品の場合
+          const perCastBack = Math.floor(roundedBase / item.castNames.length)
+
+          item.castNames.forEach(c => {
+            const isCastSelf = previewNominations.includes(c) || nonHelpNames.includes(c) || nominationIsNonHelp
+            let castSales = perCastBack
+            let countAsSales = true
+
+            if (multiCastDist === 'nomination_only') {
+              if (!isCastSelf) {
+                countAsSales = false
+              } else if (nonNominationHandling === 'full_to_nomination' && nominationCastsOnItem.length > 0) {
+                castSales = Math.floor(roundedBase / nominationCastsOnItem.length)
+              }
+            }
+
+            if (helpInclusion === 'self_only' && !isCastSelf) {
+              countAsSales = false
+            } else if (helpInclusion === 'help_only' && isCastSelf) {
+              countAsSales = false
+            }
+
+            castBreakdown.push({
+              cast: c,
+              sales: countAsSales ? castSales : 0,
+              back: perCastBack,
+              isSelf: isCastSelf,
+            })
+          })
+        }
       }
 
       return {
@@ -836,62 +877,14 @@ export default function SalesSettingsPage() {
       castBack[cast] = 0
     })
 
-    // 複数キャストの分配方法を取得
-    const multiCastDist = isItemBased
-      ? (settings.item_multi_cast_distribution ?? 'nomination_only')
-      : (settings.receipt_multi_cast_distribution ?? 'nomination_only')
-
-    // 推し以外のキャスト分の売上集計方法
-    const nonNominationHandling = isItemBased
-      ? (settings.item_non_nomination_sales_handling ?? 'share_only')
-      : (settings.receipt_non_nomination_sales_handling ?? 'share_only')
-
+    // castBreakdownから集計（各商品で既に計算済み）
     results.forEach(r => {
-      if (r.notIncluded || r.castNames.length === 0) return
+      if (r.notIncluded || !r.castBreakdown) return
 
-      // バック計算用（元の金額から）
-      const roundedForBack = applyRoundingPreview(r.calcPrice, roundingPosition, roundingType)
-      const perCastBack = Math.floor(roundedForBack / r.castNames.length)
-
-      // 推しに該当するキャストを特定
-      const nominationCastsOnItem = r.castNames.filter(c =>
-        previewNominations.includes(c) || nonHelpNames.includes(c) || nominationIsNonHelp
-      )
-
-      // 各キャストの売上とバックを計算
-      r.castNames.forEach(cast => {
-        if (castBack[cast] === undefined) return
-
-        // キャストがSELFかHELPかを判定
-        const isCastSelf = previewNominations.includes(cast) || nonHelpNames.includes(cast) || nominationIsNonHelp
-
-        // バックは全キャストに分配（売上計上の有無に関わらず）
-        castBack[cast] += perCastBack
-
-        // 売上計上の判定
-        let salesAmount = perCastBack
-        let countAsSales = true
-
-        // nomination_only: 推しに該当するキャストのみ売上計上
-        if (multiCastDist === 'nomination_only') {
-          if (!isCastSelf) {
-            countAsSales = false
-          } else if (nonNominationHandling === 'full_to_nomination' && nominationCastsOnItem.length > 0) {
-            // 全額を推しに計上: 推しキャストで全額を分配
-            salesAmount = Math.floor(roundedForBack / nominationCastsOnItem.length)
-          }
-        }
-
-        // helpInclusion設定でさらにフィルタリング
-        if (helpInclusion === 'self_only' && !isCastSelf) {
-          countAsSales = false
-        } else if (helpInclusion === 'help_only' && isCastSelf) {
-          countAsSales = false
-        }
-
-        // 売上計上
-        if (countAsSales) {
-          castSales[cast] += salesAmount
+      r.castBreakdown.forEach(cb => {
+        if (castSales[cb.cast] !== undefined) {
+          castSales[cb.cast] += cb.sales
+          castBack[cb.cast] += cb.back
         }
       })
     })
