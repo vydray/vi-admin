@@ -67,6 +67,7 @@ const getDefaultExtendedSettings = (): Partial<SalesSettings> => ({
   item_exclude_service_charge: false,
   item_multi_cast_distribution: 'nomination_only',
   item_non_nomination_sales_handling: 'share_only',
+  item_help_distribution_method: 'equal_all',
   item_help_sales_inclusion: 'both',
   item_help_calculation_method: 'ratio',
   item_help_ratio: 50,
@@ -81,6 +82,7 @@ const getDefaultExtendedSettings = (): Partial<SalesSettings> => ({
   receipt_exclude_service_charge: false,
   receipt_multi_cast_distribution: 'nomination_only',
   receipt_non_nomination_sales_handling: 'share_only',
+  receipt_help_distribution_method: 'equal_all',
   receipt_help_sales_inclusion: 'both',
   receipt_help_calculation_method: 'ratio',
   receipt_help_ratio: 50,
@@ -126,6 +128,7 @@ function AggregationSection({
   const excludeServiceKey = `${prefix}_exclude_service_charge` as keyof SalesSettings
   const multiCastKey = `${prefix}_multi_cast_distribution` as keyof SalesSettings
   const nonNominationKey = `${prefix}_non_nomination_sales_handling` as keyof SalesSettings
+  const helpDistMethodKey = `${prefix}_help_distribution_method` as keyof SalesSettings
   const helpInclusionKey = `${prefix}_help_sales_inclusion` as keyof SalesSettings
   const helpMethodKey = `${prefix}_help_calculation_method` as keyof SalesSettings
   const helpRatioKey = `${prefix}_help_ratio` as keyof SalesSettings
@@ -139,6 +142,7 @@ function AggregationSection({
   const excludeService = settings[excludeServiceKey] as boolean ?? false
   const multiCastDist = settings[multiCastKey] as MultiCastDistribution ?? 'nomination_only'
   const nonNominationHandling = settings[nonNominationKey] as NonNominationSalesHandling ?? 'share_only'
+  const helpDistMethod = (settings[helpDistMethodKey] as string) ?? 'equal_all'
   const helpInclusion = settings[helpInclusionKey] as HelpSalesInclusion ?? 'both'
   const helpMethod = settings[helpMethodKey] as HelpCalculationMethod ?? 'ratio'
   const helpRatio = settings[helpRatioKey] as number ?? 50
@@ -366,30 +370,61 @@ function AggregationSection({
           1つの商品に複数のキャスト名が入っている場合
         </p>
 
-        <label style={styles.label}>売上の分配先</label>
-        <div style={styles.radioGroup}>
-          <label style={styles.radioLabel}>
-            <input
-              type="radio"
-              name={`${prefix}_multi_cast`}
-              checked={multiCastDist === 'nomination_only'}
-              onChange={() => onUpdate(multiCastKey, 'nomination_only')}
-              style={styles.radio}
-              disabled={!allowMultipleCasts}
-            />
-            <span>推しのみに分配</span>
-          </label>
-          <label style={styles.radioLabel}>
-            <input
-              type="radio"
-              name={`${prefix}_multi_cast`}
-              checked={multiCastDist === 'all_equal'}
-              onChange={() => onUpdate(multiCastKey, 'all_equal')}
-              style={styles.radio}
-              disabled={!allowMultipleCasts}
-            />
-            <span>全員に均等分配</span>
-          </label>
+        <div style={{ display: 'flex', gap: '30px', flexWrap: 'wrap' as const }}>
+          <div style={{ flex: 1, minWidth: '200px' }}>
+            <label style={styles.label}>売上の分配先</label>
+            <div style={styles.radioGroup}>
+              <label style={styles.radioLabel}>
+                <input
+                  type="radio"
+                  name={`${prefix}_multi_cast`}
+                  checked={multiCastDist === 'nomination_only'}
+                  onChange={() => onUpdate(multiCastKey, 'nomination_only')}
+                  style={styles.radio}
+                  disabled={!allowMultipleCasts}
+                />
+                <span>推しのみに分配</span>
+              </label>
+              <label style={styles.radioLabel}>
+                <input
+                  type="radio"
+                  name={`${prefix}_multi_cast`}
+                  checked={multiCastDist === 'all_equal'}
+                  onChange={() => onUpdate(multiCastKey, 'all_equal')}
+                  style={styles.radio}
+                  disabled={!allowMultipleCasts}
+                />
+                <span>全員に均等分配</span>
+              </label>
+            </div>
+          </div>
+          <div style={{ flex: 1, minWidth: '200px' }}>
+            <label style={styles.label}>ヘルプ分配方法</label>
+            <div style={styles.radioGroup}>
+              <label style={styles.radioLabel}>
+                <input
+                  type="radio"
+                  name={`${prefix}_help_dist`}
+                  checked={helpDistMethod === 'equal_all'}
+                  onChange={() => onUpdate(helpDistMethodKey, 'equal_all')}
+                  style={styles.radio}
+                  disabled={!allowMultipleCasts}
+                />
+                <span>全員で等分</span>
+              </label>
+              <label style={styles.radioLabel}>
+                <input
+                  type="radio"
+                  name={`${prefix}_help_dist`}
+                  checked={helpDistMethod === 'group_ratio'}
+                  onChange={() => onUpdate(helpDistMethodKey, 'group_ratio')}
+                  style={styles.radio}
+                  disabled={!allowMultipleCasts}
+                />
+                <span>推し:ヘルプ = 1:1</span>
+              </label>
+            </div>
+          </div>
         </div>
 
         {/* 推しのみの場合のサブオプション */}
@@ -575,6 +610,7 @@ export default function SalesSettingsPage() {
           item_exclude_service_charge: settings.item_exclude_service_charge,
           item_multi_cast_distribution: settings.item_multi_cast_distribution,
           item_non_nomination_sales_handling: settings.item_non_nomination_sales_handling,
+          item_help_distribution_method: settings.item_help_distribution_method,
           item_help_sales_inclusion: settings.item_help_sales_inclusion,
           item_help_calculation_method: settings.item_help_calculation_method,
           item_help_ratio: settings.item_help_ratio,
@@ -589,6 +625,7 @@ export default function SalesSettingsPage() {
           receipt_exclude_service_charge: settings.receipt_exclude_service_charge,
           receipt_multi_cast_distribution: settings.receipt_multi_cast_distribution,
           receipt_non_nomination_sales_handling: settings.receipt_non_nomination_sales_handling,
+          receipt_help_distribution_method: settings.receipt_help_distribution_method,
           receipt_help_sales_inclusion: settings.receipt_help_sales_inclusion,
           receipt_help_calculation_method: settings.receipt_help_calculation_method,
           receipt_help_ratio: settings.receipt_help_ratio,
@@ -840,41 +877,71 @@ export default function SalesSettingsPage() {
       const nonNominationHandling = isItemBased
         ? (settings.item_non_nomination_sales_handling ?? 'share_only')
         : (settings.receipt_non_nomination_sales_handling ?? 'share_only')
+      const helpDistMethod = isItemBased
+        ? (settings.item_help_distribution_method ?? 'equal_all')
+        : (settings.receipt_help_distribution_method ?? 'equal_all')
 
       if (!isItemBased && previewNominations.length > 0) {
         // ===== 伝票全体モード =====
-        // 全商品を推し+ヘルプ全員で等分
-
         // 商品上のヘルプキャスト（推しでもヘルプ扱いにしない名前でもない）
         const helpCastsOnItem = item.castNames.filter(c =>
           !previewNominations.includes(c) && !nonHelpNames.includes(c) && !nominationIsNonHelp
         )
 
-        // 全員で等分（推し + ヘルプ）
-        const allCasts = [...previewNominations, ...helpCastsOnItem]
-        const perCastAmount = Math.floor(roundedBase / allCasts.length)
+        if (helpDistMethod === 'group_ratio' && helpCastsOnItem.length > 0) {
+          // 推し:ヘルプ = 1:1 で分配
+          const totalUnits = 1 + helpCastsOnItem.length // 推しグループ1 + ヘルプ数
+          const perUnitAmount = Math.floor(roundedBase / totalUnits)
 
-        // 推し分
-        previewNominations.forEach(nom => {
-          const selfSales = helpInclusion === 'help_only' ? 0 : perCastAmount
-          castBreakdown.push({
-            cast: nom,
-            sales: selfSales,
-            back: perCastAmount,
-            isSelf: true,
+          // 推し分（推しグループで等分）
+          const perNominationAmount = Math.floor(perUnitAmount / previewNominations.length)
+          previewNominations.forEach(nom => {
+            const selfSales = helpInclusion === 'help_only' ? 0 : perNominationAmount
+            castBreakdown.push({
+              cast: nom,
+              sales: selfSales,
+              back: perNominationAmount,
+              isSelf: true,
+            })
           })
-        })
 
-        // ヘルプ分
-        helpCastsOnItem.forEach(helpCast => {
-          const helpSales = helpInclusion === 'self_only' ? 0 : perCastAmount
-          castBreakdown.push({
-            cast: helpCast,
-            sales: helpSales,
-            back: perCastAmount,
-            isSelf: false,
+          // ヘルプ分（各ヘルプに1単位ずつ）
+          helpCastsOnItem.forEach(helpCast => {
+            const helpSales = helpInclusion === 'self_only' ? 0 : perUnitAmount
+            castBreakdown.push({
+              cast: helpCast,
+              sales: helpSales,
+              back: perUnitAmount,
+              isSelf: false,
+            })
           })
-        })
+        } else {
+          // 全員で等分（推し + ヘルプ）
+          const allCasts = [...previewNominations, ...helpCastsOnItem]
+          const perCastAmount = Math.floor(roundedBase / allCasts.length)
+
+          // 推し分
+          previewNominations.forEach(nom => {
+            const selfSales = helpInclusion === 'help_only' ? 0 : perCastAmount
+            castBreakdown.push({
+              cast: nom,
+              sales: selfSales,
+              back: perCastAmount,
+              isSelf: true,
+            })
+          })
+
+          // ヘルプ分
+          helpCastsOnItem.forEach(helpCast => {
+            const helpSales = helpInclusion === 'self_only' ? 0 : perCastAmount
+            castBreakdown.push({
+              cast: helpCast,
+              sales: helpSales,
+              back: perCastAmount,
+              isSelf: false,
+            })
+          })
+        }
       } else if (item.castNames.length > 0) {
         // ===== キャスト商品のみモード =====
         // 商品上の推しキャスト
@@ -886,28 +953,56 @@ export default function SalesSettingsPage() {
           !previewNominations.includes(c) && !nonHelpNames.includes(c) && !nominationIsNonHelp
         )
 
-        // 単一キャストでHELPの場合（例: Bのみ、推しはA）
+        // 単一キャストでHELPの場合（例: Cのみ、推しはA,B）
         if (item.castNames.length === 1 && helpCastsOnItem.length === 1 && previewNominations.length > 0) {
           const helpCast = helpCastsOnItem[0]
-          const nominationCast = previewNominations[0] // 最初の推し
 
-          // SELF分（推しに帰属）
-          const selfSales = helpInclusion === 'help_only' ? 0 : selfAmount
-          castBreakdown.push({
-            cast: nominationCast,
-            sales: selfSales,
-            back: selfAmount,
-            isSelf: true,
-          })
+          if (helpDistMethod === 'equal_all') {
+            // 全員で等分
+            const allCasts = [...previewNominations, helpCast]
+            const perCastAmount = Math.floor(roundedBase / allCasts.length)
 
-          // HELP分（ヘルプキャストに帰属）
-          const helpSales = helpInclusion === 'self_only' ? 0 : helpAmount
-          castBreakdown.push({
-            cast: helpCast,
-            sales: helpSales,
-            back: helpAmount,
-            isSelf: false,
-          })
+            previewNominations.forEach(nom => {
+              const selfSales = helpInclusion === 'help_only' ? 0 : perCastAmount
+              castBreakdown.push({
+                cast: nom,
+                sales: selfSales,
+                back: perCastAmount,
+                isSelf: true,
+              })
+            })
+
+            const helpSales = helpInclusion === 'self_only' ? 0 : perCastAmount
+            castBreakdown.push({
+              cast: helpCast,
+              sales: helpSales,
+              back: perCastAmount,
+              isSelf: false,
+            })
+          } else {
+            // 推し:ヘルプ = 1:1（HELP割合に基づく）
+            // SELF分を推し全員で等分
+            const perNominationSelf = Math.floor(selfAmount / previewNominations.length)
+            const perNominationSales = helpInclusion === 'help_only' ? 0 : perNominationSelf
+
+            previewNominations.forEach(nom => {
+              castBreakdown.push({
+                cast: nom,
+                sales: perNominationSales,
+                back: perNominationSelf,
+                isSelf: true,
+              })
+            })
+
+            // HELP分（ヘルプキャストに帰属）
+            const helpSales = helpInclusion === 'self_only' ? 0 : helpAmount
+            castBreakdown.push({
+              cast: helpCast,
+              sales: helpSales,
+              back: helpAmount,
+              isSelf: false,
+            })
+          }
         } else {
           // 複数キャスト or 推しがいる商品の場合
           const perCastBack = Math.floor(roundedBase / item.castNames.length)
