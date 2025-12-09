@@ -745,15 +745,38 @@ export default function SalesSettingsPage() {
     const results = previewItems.map(item => {
       // キャスト商品のみの場合、キャスト名が入っていない商品は除外
       if (isItemBased && item.castNames.length === 0) {
-        return { ...item, calcPrice: 0, roundedBase: 0, salesAmount: 0, rounded: 0, isSelf: true, notIncluded: true, castBreakdown: [] }
+        return { ...item, calcPrice: 0, afterTaxPrice: 0, afterTaxRounded: 0, afterServicePrice: 0, roundedBase: 0, salesAmount: 0, rounded: 0, isSelf: true, notIncluded: true, castBreakdown: [] }
       }
 
       let calcPrice = item.basePrice
+      let afterTaxPrice = item.basePrice // 税処理後の価格（サービス料加算前）
 
       // 税抜き計算
       if (excludeTax) {
         const taxPercent = Math.round(taxRate * 100)
         calcPrice = Math.floor(calcPrice * 100 / (100 + taxPercent))
+        afterTaxPrice = calcPrice
+      }
+
+      // 税込み＋サービス料の場合は、税込み価格にサービス料を加算
+      // excludeService=true は「サービス料を含む」という意味
+      let afterTaxRounded = afterTaxPrice // 税処理後→端数処理後の価格
+      let afterServicePrice = afterTaxPrice
+      if (excludeService && serviceRate > 0) {
+        // 商品ごとの端数処理の場合、税込み価格で端数処理してからサービス料加算
+        if (roundingTiming === 'per_item') {
+          afterTaxRounded = applyRoundingPreview(afterTaxPrice, roundingPosition, roundingType)
+          const servicePercent = Math.round(serviceRate * 100)
+          afterServicePrice = Math.floor(afterTaxRounded * (100 + servicePercent) / 100)
+        } else {
+          // 合計時の端数処理の場合は後で処理
+          const servicePercent = Math.round(serviceRate * 100)
+          afterServicePrice = Math.floor(afterTaxPrice * (100 + servicePercent) / 100)
+        }
+        calcPrice = afterServicePrice
+      } else if (roundingTiming === 'per_item') {
+        // サービス料なしで端数処理の場合
+        afterTaxRounded = applyRoundingPreview(afterTaxPrice, roundingPosition, roundingType)
       }
 
       // SELF/HELP判定
@@ -878,6 +901,9 @@ export default function SalesSettingsPage() {
       return {
         ...item,
         calcPrice,
+        afterTaxPrice,
+        afterTaxRounded,
+        afterServicePrice,
         roundedBase,
         salesAmount,
         rounded,
@@ -887,10 +913,14 @@ export default function SalesSettingsPage() {
       }
     })
 
-    // サービスTAX込みの場合
+    // 合計計算
     let itemsTotal = results.reduce((sum, r) => sum + r.rounded, 0)
     let totalWithService = itemsTotal
-    if (excludeService && serviceRate > 0) {
+
+    // サービス料の処理
+    // - 商品ごとの端数処理: 既に各商品で処理済みなのでスキップ
+    // - 合計時の端数処理: 合計に対してサービス料を加算
+    if (excludeService && serviceRate > 0 && roundingTiming === 'total') {
       const servicePercent = Math.round(serviceRate * 100)
       totalWithService = Math.floor(itemsTotal * (100 + servicePercent) / 100)
     }
