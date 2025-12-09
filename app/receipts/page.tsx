@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
 import { useConfirm } from '@/contexts/ConfirmContext'
@@ -88,6 +88,34 @@ export default function ReceiptsPage() {
   })
   const [castSearchTerm, setCastSearchTerm] = useState('')
   const [showCastDropdown, setShowCastDropdown] = useState(false)
+
+  // ドロップダウンのref（外側クリックで閉じる用）
+  const editStaffDropdownRef = useRef<HTMLDivElement>(null)
+  const createStaffDropdownRef = useRef<HTMLDivElement>(null)
+  const editCastDropdownRef = useRef<HTMLDivElement>(null)
+  const newCastDropdownRef = useRef<HTMLDivElement>(null)
+
+  // 外側クリックでドロップダウンを閉じる
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (editStaffDropdownRef.current && !editStaffDropdownRef.current.contains(event.target as Node)) {
+        setShowEditStaffDropdown(false)
+      }
+      if (createStaffDropdownRef.current && !createStaffDropdownRef.current.contains(event.target as Node)) {
+        setShowCreateStaffDropdown(false)
+      }
+      if (editCastDropdownRef.current && !editCastDropdownRef.current.contains(event.target as Node)) {
+        setShowEditCastDropdown(false)
+      }
+      if (newCastDropdownRef.current && !newCastDropdownRef.current.contains(event.target as Node)) {
+        setShowCastDropdown(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [casts, setCasts] = useState<CastPOS[]>([])
@@ -1465,7 +1493,7 @@ export default function ReceiptsPage() {
               <div style={styles.formGroup}>
                 <label style={styles.label}>推し{allowMultipleNominations && '（複数選択可）'}</label>
                 {allowMultipleNominations ? (
-                  <div style={{ position: 'relative' }}>
+                  <div style={{ position: 'relative' }} ref={editStaffDropdownRef}>
                     <div
                       onClick={() => setShowEditStaffDropdown(!showEditStaffDropdown)}
                       style={styles.multiSelectInputContainer}
@@ -1849,7 +1877,7 @@ export default function ReceiptsPage() {
               <div style={styles.formGroup}>
                 <label style={styles.label}>キャスト名{allowMultipleCastsPerItem && '（複数選択可）'}</label>
                 {allowMultipleCastsPerItem ? (
-                  <div style={{ position: 'relative' }}>
+                  <div style={{ position: 'relative' }} ref={editCastDropdownRef}>
                     <div
                       onClick={() => setShowEditCastDropdown(!showEditCastDropdown)}
                       style={styles.multiSelectInputContainer}
@@ -2063,7 +2091,7 @@ export default function ReceiptsPage() {
               <div style={styles.formGroup}>
                 <label style={styles.label}>キャスト名{allowMultipleCastsPerItem && '（複数選択可）'}</label>
                 {allowMultipleCastsPerItem ? (
-                  <div style={{ position: 'relative' }}>
+                  <div style={{ position: 'relative' }} ref={newCastDropdownRef}>
                     <div
                       onClick={() => setShowCastDropdown(true)}
                       style={styles.multiSelectInputContainer}
@@ -2554,7 +2582,7 @@ export default function ReceiptsPage() {
               <div style={styles.formGroup}>
                 <label style={styles.label}>推し{allowMultipleNominations && '（複数選択可）'} <span style={{ color: 'red' }}>*</span></label>
                 {allowMultipleNominations ? (
-                  <div style={{ position: 'relative' }}>
+                  <div style={{ position: 'relative' }} ref={createStaffDropdownRef}>
                     <div
                       onClick={() => setShowCreateStaffDropdown(!showCreateStaffDropdown)}
                       style={styles.multiSelectInputContainer}
@@ -3304,20 +3332,27 @@ const styles: { [key: string]: React.CSSProperties } = {
   selectedCastTag: {
     display: 'inline-flex',
     alignItems: 'center',
-    gap: '4px',
-    backgroundColor: '#e0f2fe',
-    color: '#0369a1',
-    padding: '4px 6px',
-    borderRadius: '4px',
-    fontSize: '13px',
+    gap: '6px',
+    backgroundColor: '#f2f2f7',
+    color: '#1c1c1e',
+    padding: '6px 10px',
+    borderRadius: '16px',
+    fontSize: '14px',
+    fontWeight: '500',
   },
   removeCastBtn: {
-    background: 'none',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '18px',
+    height: '18px',
+    backgroundColor: '#c7c7cc',
+    borderRadius: '50%',
     border: 'none',
-    color: '#0369a1',
+    color: 'white',
     cursor: 'pointer',
-    padding: '0 2px',
-    fontSize: '14px',
+    padding: 0,
+    fontSize: '12px',
     fontWeight: 'bold',
     lineHeight: 1,
   },
