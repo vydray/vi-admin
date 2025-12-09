@@ -1497,6 +1497,27 @@ export default function SalesSettingsPage() {
 
                 <div style={styles.castSalesSection}>
                   <div style={styles.castSalesTitle}>キャストごとの売上・バック</div>
+                  {/* 合計時の計算過程を表示 */}
+                  {preview.roundingTiming === 'total' && preview.finalTotal !== preview.itemsTotal && (
+                    <div style={styles.totalCalcProcess}>
+                      <span style={styles.totalCalcLabel}>計算過程:</span>
+                      <span style={styles.totalCalcSteps}>
+                        ¥{preview.itemsTotal.toLocaleString()}
+                        {preview.excludeTax && preview.afterTaxTotal !== preview.itemsTotal && (
+                          <> → ¥{preview.afterTaxTotal.toLocaleString()}（税抜）</>
+                        )}
+                        {preview.afterRoundingTotal !== preview.afterTaxTotal && (
+                          <> → ¥{preview.afterRoundingTotal.toLocaleString()}（端数処理）</>
+                        )}
+                        {preview.excludeService && preview.afterServiceTotal !== preview.afterRoundingTotal && (
+                          <> → ¥{preview.afterServiceTotal.toLocaleString()}（+サービス）</>
+                        )}
+                        {preview.finalTotal !== preview.afterServiceTotal && (
+                          <> → ¥{preview.finalTotal.toLocaleString()}（端数処理）</>
+                        )}
+                      </span>
+                    </div>
+                  )}
                   <div style={styles.castSalesHeader}>
                     <span style={{ flex: 1 }}>キャスト</span>
                     <span style={{ width: '80px', textAlign: 'right' as const }}>売上</span>
