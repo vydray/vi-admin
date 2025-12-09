@@ -310,7 +310,7 @@ export default function Home() {
       const todaySales = typedTodayOrders.reduce((sum, order) => sum + (Number(order.total_incl_tax) || 0), 0)
       const todayCashSales = typedTodayOrders.reduce((sum, order) => {
         const payment = Array.isArray(order.payments) ? order.payments[0] : order.payments
-        return sum + (Number(payment?.cash_amount) || 0)
+        return sum + (Number(payment?.cash_amount) || 0) - (Number(payment?.change_amount) || 0)
       }, 0)
       const todayCardSales = typedTodayOrders.reduce((sum, order) => {
         const payment = Array.isArray(order.payments) ? order.payments[0] : order.payments
@@ -327,7 +327,7 @@ export default function Home() {
       const monthlySales = typedMonthlyOrders.reduce((sum, order) => sum + (Number(order.total_incl_tax) || 0), 0)
       const monthlyCashSales = typedMonthlyOrders.reduce((sum, order) => {
         const payment = Array.isArray(order.payments) ? order.payments[0] : order.payments
-        return sum + (Number(payment?.cash_amount) || 0)
+        return sum + (Number(payment?.cash_amount) || 0) - (Number(payment?.change_amount) || 0)
       }, 0)
       const monthlyCardSales = typedMonthlyOrders.reduce((sum, order) => {
         const payment = Array.isArray(order.payments) ? order.payments[0] : order.payments
