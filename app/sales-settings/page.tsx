@@ -386,6 +386,18 @@ export default function SalesSettingsPage() {
   const [saving, setSaving] = useState(false)
   const [newNonHelpName, setNewNonHelpName] = useState('')
 
+  // プレビュー用のカスタマイズstate
+  const [previewAggregation, setPreviewAggregation] = useState<'item' | 'receipt'>('item')
+  const [previewNominations, setPreviewNominations] = useState<string[]>(['A'])
+  const [previewItems, setPreviewItems] = useState([
+    { id: 1, name: 'セット料金 60分', basePrice: 3300, castName: '-', needsCast: false },
+    { id: 2, name: 'キャストドリンク', basePrice: 1100, castName: 'A', needsCast: true },
+    { id: 3, name: 'シャンパン', basePrice: 11000, castName: 'A', needsCast: true },
+    { id: 4, name: 'チェキ', basePrice: 1500, castName: 'B', needsCast: true },
+    { id: 5, name: 'ヘルプドリンク', basePrice: 1100, castName: 'C', needsCast: true },
+  ])
+  const availableCasts = ['A', 'B', 'C', 'D', '-']
+
   const loadSettings = useCallback(async () => {
     const currentStoreId = storeId
     setLoading(true)
@@ -543,11 +555,27 @@ export default function SalesSettingsPage() {
     updateSetting('non_help_staff_names', names.filter(n => n !== name))
   }
 
+  // 商品のキャスト名を更新
+  const updateItemCast = (itemId: number, castName: string) => {
+    setPreviewItems(prev => prev.map(item =>
+      item.id === itemId ? { ...item, castName } : item
+    ))
+  }
+
+  // 推しの選択を切り替え
+  const toggleNomination = (cast: string) => {
+    setPreviewNominations(prev =>
+      prev.includes(cast)
+        ? prev.filter(c => c !== cast)
+        : [...prev, cast]
+    )
+  }
+
   // プレビュー計算
   const preview = useMemo(() => {
     if (!settings) return null
 
-    const isItemBased = settings.published_aggregation === 'item_based'
+    const isItemBased = previewAggregation === 'item'
 
     const excludeTax = isItemBased ? settings.item_exclude_consumption_tax : settings.receipt_exclude_consumption_tax
     const excludeService = isItemBased ? settings.item_exclude_service_charge : settings.receipt_exclude_service_charge
@@ -560,19 +588,9 @@ export default function SalesSettingsPage() {
     const taxRate = systemSettings.tax_rate / 100
     const serviceRate = systemSettings.service_fee_rate / 100
 
-    // サンプル伝票（推し: A, B）
-    const sampleItems = [
-      { name: 'セット料金 60分', basePrice: 3300, castName: '-', needsCast: false },
-      { name: 'キャストドリンク', basePrice: 1100, castName: 'A', needsCast: true },
-      { name: 'シャンパン', basePrice: 11000, castName: 'A', needsCast: true },
-      { name: 'チェキ', basePrice: 1500, castName: 'A', needsCast: true },
-      { name: 'ヘルプドリンク', basePrice: 1100, castName: 'B', needsCast: true },
-    ]
-
-    const nominations = ['A', 'B']
     const nonHelpNames = settings.non_help_staff_names || []
 
-    const results = sampleItems.map(item => {
+    const results = previewItems.map(item => {
       // キャスト商品のみの場合、キャスト名がない商品は除外
       if (isItemBased && !item.needsCast) {
         return { ...item, calcPrice: 0, salesAmount: 0, rounded: 0, isSelf: true, notIncluded: true }
@@ -586,8 +604,8 @@ export default function SalesSettingsPage() {
         calcPrice = Math.floor(calcPrice * 100 / (100 + taxPercent))
       }
 
-      // SELF/HELP判定
-      const isSelf = nominations.includes(item.castName) || item.castName === '-'
+      // SELF/HELP判定（推しに含まれているか、またはキャスト名なし）
+      const isSelf = previewNominations.includes(item.castName) || item.castName === '-'
       const isNonHelpName = nonHelpNames.includes(item.castName)
 
       let salesAmount = calcPrice
@@ -627,13 +645,14 @@ export default function SalesSettingsPage() {
 
     const finalTotal = applyRoundingPreview(totalWithService, roundingPosition, roundingType)
 
-    // キャストごとの売上
-    const castASales = results
-      .filter(r => r.castName === 'A' && !r.notIncluded)
-      .reduce((sum, r) => sum + r.rounded, 0)
-    const castBSales = results
-      .filter(r => r.castName === 'B' && !r.notIncluded)
-      .reduce((sum, r) => sum + r.rounded, 0)
+    // キャストごとの売上（A, B, C, D別に集計）
+    const castSales: Record<string, number> = {}
+    availableCasts.filter(c => c !== '-').forEach(cast => {
+      castSales[cast] = results
+        .filter(r => r.castName === cast && !r.notIncluded)
+        .reduce((sum, r) => sum + r.rounded, 0)
+    })
+    // キャスト名なしは推しに分配
     const noNameSales = results
       .filter(r => r.castName === '-' && !r.notIncluded)
       .reduce((sum, r) => sum + r.rounded, 0)
@@ -643,8 +662,8 @@ export default function SalesSettingsPage() {
       itemsTotal,
       totalWithService,
       finalTotal,
-      castASales: castASales + noNameSales,
-      castBSales,
+      castSales,
+      noNameSales,
       isItemBased,
       excludeTax,
       excludeService,
@@ -653,7 +672,7 @@ export default function SalesSettingsPage() {
       roundingPosition,
       roundingType,
     }
-  }, [settings, systemSettings])
+  }, [settings, systemSettings, previewAggregation, previewNominations, previewItems, availableCasts])
 
   if (loading) {
     return <LoadingSpinner />
@@ -860,17 +879,60 @@ export default function SalesSettingsPage() {
       {/* 右側: プレビュー */}
       <div style={styles.previewContainer}>
         <div style={styles.previewCard}>
-          <h3 style={styles.previewTitle}>計算プレビュー</h3>
-          <p style={styles.previewSubtitle}>
-            公開設定: {settings.published_aggregation === 'item_based' ? 'キャスト商品のみ' : '伝票全体'}
-          </p>
+          <h3 style={styles.previewTitle}>シミュレーター</h3>
+
+          {/* 集計方法の選択 */}
+          <div style={styles.previewSection}>
+            <div style={styles.previewSectionTitle}>集計方法</div>
+            <div style={styles.previewToggle}>
+              <button
+                onClick={() => setPreviewAggregation('item')}
+                style={{
+                  ...styles.toggleBtn,
+                  ...(previewAggregation === 'item' ? styles.toggleBtnActive : {}),
+                }}
+              >
+                キャスト商品のみ
+              </button>
+              <button
+                onClick={() => setPreviewAggregation('receipt')}
+                style={{
+                  ...styles.toggleBtn,
+                  ...(previewAggregation === 'receipt' ? styles.toggleBtnActive : {}),
+                }}
+              >
+                伝票全体
+              </button>
+            </div>
+          </div>
+
+          {/* 推しの選択 */}
+          <div style={styles.previewSection}>
+            <div style={styles.previewSectionTitle}>推し（複数選択可）</div>
+            <div style={styles.nominationSelect}>
+              {['A', 'B', 'C', 'D'].map(cast => (
+                <button
+                  key={cast}
+                  onClick={() => toggleNomination(cast)}
+                  style={{
+                    ...styles.nominationBtn,
+                    ...(previewNominations.includes(cast) ? styles.nominationBtnActive : {}),
+                  }}
+                >
+                  {cast}
+                </button>
+              ))}
+            </div>
+          </div>
 
           {preview && (
             <>
               <div style={styles.receiptPreview}>
                 <div style={styles.receiptHeader}>
                   <span>サンプル伝票</span>
-                  <span style={styles.oshiLabel}>推し: A, B</span>
+                  <span style={styles.oshiLabel}>
+                    推し: {previewNominations.length > 0 ? previewNominations.join(', ') : 'なし'}
+                  </span>
                 </div>
 
                 <div style={styles.tableHeader}>
@@ -879,11 +941,19 @@ export default function SalesSettingsPage() {
                   <span style={styles.tableHeaderPrice}>金額</span>
                 </div>
 
-                {preview.items.map((item, idx) => (
-                  <div key={idx} style={styles.receiptItem}>
+                {preview.items.map((item) => (
+                  <div key={item.id} style={styles.receiptItem}>
                     <div style={styles.receiptItemHeader}>
                       <span style={styles.itemName}>{item.name}</span>
-                      <span style={styles.itemCast}>{item.castName}</span>
+                      <select
+                        value={item.castName}
+                        onChange={(e) => updateItemCast(item.id, e.target.value)}
+                        style={styles.castSelect}
+                      >
+                        {availableCasts.map(cast => (
+                          <option key={cast} value={cast}>{cast === '-' ? 'なし' : cast}</option>
+                        ))}
+                      </select>
                       <span style={styles.itemPrice}>¥{item.basePrice.toLocaleString()}</span>
                     </div>
                     <div style={styles.receiptItemDetails}>
@@ -916,25 +986,39 @@ export default function SalesSettingsPage() {
 
                 <div style={styles.castSalesSection}>
                   <div style={styles.castSalesTitle}>キャストごとの売上</div>
-                  <div style={styles.castSalesRow}>
-                    <span style={styles.castSalesLabel}>
-                      <span style={styles.castABadge}>A</span>
-                      推し
-                    </span>
-                    <span style={styles.castSalesValue}>¥{preview.castASales.toLocaleString()}</span>
-                  </div>
-                  <div style={styles.castSalesRow}>
-                    <span style={styles.castSalesLabel}>
-                      <span style={styles.castBBadge}>B</span>
-                      推し
-                    </span>
-                    <span style={styles.castSalesValue}>¥{preview.castBSales.toLocaleString()}</span>
-                  </div>
+                  {['A', 'B', 'C', 'D'].map(cast => {
+                    const sales = preview.castSales[cast] || 0
+                    const isNomination = previewNominations.includes(cast)
+                    // 推しの場合はキャスト名なしの売上も加算
+                    const totalSales = isNomination && previewNominations.length === 1
+                      ? sales + preview.noNameSales
+                      : sales
+                    if (totalSales === 0 && !isNomination) return null
+                    return (
+                      <div key={cast} style={styles.castSalesRow}>
+                        <span style={styles.castSalesLabel}>
+                          <span style={{
+                            ...styles.castBadge,
+                            backgroundColor: isNomination ? '#ec4899' : '#94a3b8',
+                          }}>
+                            {cast}
+                          </span>
+                          {isNomination ? '推し' : 'ヘルプ'}
+                        </span>
+                        <span style={styles.castSalesValue}>¥{totalSales.toLocaleString()}</span>
+                      </div>
+                    )
+                  })}
+                  {previewNominations.length > 1 && preview.noNameSales > 0 && (
+                    <div style={styles.castSalesNote}>
+                      ※ キャスト名なし ¥{preview.noNameSales.toLocaleString()} は推しで分配
+                    </div>
+                  )}
                 </div>
               </div>
 
               <div style={styles.settingSummary}>
-                <div style={styles.summaryTitle}>現在の設定</div>
+                <div style={styles.summaryTitle}>適用中の設定（{previewAggregation === 'item' ? 'キャスト商品' : '伝票全体'}）</div>
                 <div style={styles.summaryItem}>
                   計算基準: {preview.excludeTax ? '消費税抜き' : preview.excludeService ? 'サービスTAX込み' : '税込み'}
                 </div>
@@ -1302,29 +1386,81 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontWeight: '600',
     color: '#0369a1',
   },
-  castABadge: {
+  castBadge: {
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
     width: '20px',
     height: '20px',
     borderRadius: '50%',
-    backgroundColor: '#ec4899',
     color: 'white',
     fontSize: '11px',
     fontWeight: '600',
   },
-  castBBadge: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: '20px',
-    height: '20px',
-    borderRadius: '50%',
-    backgroundColor: '#f59e0b',
-    color: 'white',
-    fontSize: '11px',
+  previewSection: {
+    marginBottom: '15px',
+    paddingBottom: '15px',
+    borderBottom: '1px solid #e2e8f0',
+  },
+  previewSectionTitle: {
+    fontSize: '12px',
     fontWeight: '600',
+    color: '#64748b',
+    marginBottom: '8px',
+  },
+  previewToggle: {
+    display: 'flex',
+    gap: '4px',
+    backgroundColor: '#f1f5f9',
+    borderRadius: '6px',
+    padding: '4px',
+  },
+  toggleBtn: {
+    flex: 1,
+    padding: '6px 8px',
+    fontSize: '12px',
+    border: 'none',
+    borderRadius: '4px',
+    backgroundColor: 'transparent',
+    color: '#64748b',
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+  },
+  toggleBtnActive: {
+    backgroundColor: 'white',
+    color: '#1e293b',
+    boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
+  },
+  nominationSelect: {
+    display: 'flex',
+    gap: '8px',
+  },
+  nominationBtn: {
+    width: '36px',
+    height: '36px',
+    borderRadius: '50%',
+    border: '2px solid #e2e8f0',
+    backgroundColor: 'white',
+    color: '#64748b',
+    fontSize: '14px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+  },
+  nominationBtnActive: {
+    borderColor: '#ec4899',
+    backgroundColor: '#fdf2f8',
+    color: '#ec4899',
+  },
+  castSelect: {
+    width: '50px',
+    padding: '4px',
+    fontSize: '12px',
+    border: '1px solid #e2e8f0',
+    borderRadius: '4px',
+    backgroundColor: 'white',
+    textAlign: 'center' as const,
+    cursor: 'pointer',
   },
   settingSummary: {
     backgroundColor: '#f1f5f9',
