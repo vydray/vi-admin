@@ -198,170 +198,6 @@ function AggregationSection({
         </div>
       </div>
 
-      {/* 複数キャスト商品の設定 */}
-      <div style={{
-        ...styles.section,
-        opacity: allowMultipleCasts ? 1 : 0.5,
-        pointerEvents: allowMultipleCasts ? 'auto' : 'none',
-      }}>
-        <h3 style={styles.sectionTitle}>
-          複数キャスト商品の設定
-          {!allowMultipleCasts && (
-            <span style={styles.disabledNote}>（複数キャスト機能OFF）</span>
-          )}
-        </h3>
-        <p style={styles.sectionDescription}>
-          1つの商品に複数のキャスト名が入っている場合の設定
-        </p>
-
-        <label style={styles.label}>分配方法</label>
-        <div style={styles.radioGroup}>
-          <label style={styles.radioLabel}>
-            <input
-              type="radio"
-              name={`${prefix}_multi_cast`}
-              checked={multiCastDist === 'nomination_only'}
-              onChange={() => onUpdate(multiCastKey, 'nomination_only')}
-              style={styles.radio}
-              disabled={!allowMultipleCasts}
-            />
-            <span>推しに該当するキャストのみ</span>
-          </label>
-          <label style={styles.radioLabel}>
-            <input
-              type="radio"
-              name={`${prefix}_multi_cast`}
-              checked={multiCastDist === 'all_equal'}
-              onChange={() => onUpdate(multiCastKey, 'all_equal')}
-              style={styles.radio}
-              disabled={!allowMultipleCasts}
-            />
-            <span>全キャストで均等分配</span>
-          </label>
-        </div>
-        <p style={styles.hint}>
-          推しに該当するキャストのみ: 商品キャストのうち推しに該当する人だけに売上を分配<br />
-          全キャストで均等分配: 商品キャスト全員に均等に売上を分配
-        </p>
-
-        {/* 推しに該当するキャストのみの場合のサブオプション */}
-        {multiCastDist === 'nomination_only' && allowMultipleCasts && (
-          <div style={{ marginTop: '15px', paddingTop: '15px', borderTop: '1px dashed #e2e8f0' }}>
-            <label style={styles.label}>推し以外のキャスト分の売上</label>
-            <div style={styles.radioGroup}>
-              <label style={styles.radioLabel}>
-                <input
-                  type="radio"
-                  name={`${prefix}_non_nomination`}
-                  checked={nonNominationHandling === 'share_only'}
-                  onChange={() => onUpdate(nonNominationKey, 'share_only')}
-                  style={styles.radio}
-                />
-                <span>推しの分だけ計上</span>
-              </label>
-              <label style={styles.radioLabel}>
-                <input
-                  type="radio"
-                  name={`${prefix}_non_nomination`}
-                  checked={nonNominationHandling === 'full_to_nomination'}
-                  onChange={() => onUpdate(nonNominationKey, 'full_to_nomination')}
-                  style={styles.radio}
-                />
-                <span>全額を推しに計上</span>
-              </label>
-            </div>
-            <p style={styles.hint}>
-              例: 10000円の商品にA,C（推しはA）の場合<br />
-              推しの分だけ: Aに5000円<br />
-              全額を推しに: Aに10000円
-            </p>
-          </div>
-        )}
-      </div>
-
-      {/* 単一キャスト商品のヘルプ売上設定 */}
-      <div style={styles.section}>
-        <h3 style={styles.sectionTitle}>単一キャスト商品のヘルプ設定</h3>
-        <p style={styles.sectionDescription}>
-          1つの商品に1人のキャスト名が入っていて、そのキャストが推し以外の場合の設定
-        </p>
-
-        <label style={styles.label}>ヘルプ売上の計上</label>
-        <div style={styles.radioGroup}>
-          <label style={styles.radioLabel}>
-            <input
-              type="radio"
-              name={`${prefix}_help_inclusion`}
-              checked={helpInclusion === 'both'}
-              onChange={() => onUpdate(helpInclusionKey, 'both')}
-              style={styles.radio}
-            />
-            <span>SELF/HELP両方計上</span>
-          </label>
-          <label style={styles.radioLabel}>
-            <input
-              type="radio"
-              name={`${prefix}_help_inclusion`}
-              checked={helpInclusion === 'self_only'}
-              onChange={() => onUpdate(helpInclusionKey, 'self_only')}
-              style={styles.radio}
-            />
-            <span>SELFのみ計上</span>
-          </label>
-          <label style={styles.radioLabel}>
-            <input
-              type="radio"
-              name={`${prefix}_help_inclusion`}
-              checked={helpInclusion === 'help_only'}
-              onChange={() => onUpdate(helpInclusionKey, 'help_only')}
-              style={styles.radio}
-            />
-            <span>HELPのみ計上</span>
-          </label>
-        </div>
-
-        {/* HELP計算方法 */}
-        <div style={{ marginTop: '15px' }}>
-          <label style={styles.label}>HELP売上の計算方法</label>
-          <div style={styles.formRow}>
-            <select
-              value={helpMethod}
-              onChange={(e) => onUpdate(helpMethodKey, e.target.value as HelpCalculationMethod)}
-              style={{ ...styles.select, flex: 1 }}
-            >
-              <option value="ratio">割合で計算</option>
-              <option value="fixed">固定額</option>
-            </select>
-
-            {helpMethod === 'ratio' ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <input
-                  type="number"
-                  value={helpRatio}
-                  onChange={(e) => onUpdate(helpRatioKey, Math.min(100, Math.max(0, parseInt(e.target.value) || 0)))}
-                  style={{ ...styles.input, width: '80px' }}
-                  min="0"
-                  max="100"
-                />
-                <span>%</span>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <input
-                  type="number"
-                  value={helpFixed}
-                  onChange={(e) => onUpdate(helpFixedKey, Math.max(0, parseInt(e.target.value) || 0))}
-                  style={{ ...styles.input, width: '100px' }}
-                  min="0"
-                  step="100"
-                />
-                <span>円</span>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
       {/* 端数処理 */}
       <div style={styles.section}>
         <h3 style={styles.sectionTitle}>端数処理</h3>
@@ -400,6 +236,169 @@ function AggregationSection({
             </select>
           </div>
         </div>
+      </div>
+
+      {/* 単一キャスト商品のヘルプ設定 */}
+      <div style={styles.section}>
+        <h3 style={styles.sectionTitle}>ヘルプ売上の設定</h3>
+        <p style={styles.sectionDescription}>
+          推し以外のキャスト名が入った商品の売上計算
+        </p>
+
+        <label style={styles.label}>売上の計上方法</label>
+        <div style={styles.radioGroup}>
+          <label style={styles.radioLabel}>
+            <input
+              type="radio"
+              name={`${prefix}_help_inclusion`}
+              checked={helpInclusion === 'both'}
+              onChange={() => onUpdate(helpInclusionKey, 'both')}
+              style={styles.radio}
+            />
+            <span>推し分＋ヘルプ分の両方を計上</span>
+          </label>
+          <label style={styles.radioLabel}>
+            <input
+              type="radio"
+              name={`${prefix}_help_inclusion`}
+              checked={helpInclusion === 'self_only'}
+              onChange={() => onUpdate(helpInclusionKey, 'self_only')}
+              style={styles.radio}
+            />
+            <span>推し分のみ計上</span>
+          </label>
+          <label style={styles.radioLabel}>
+            <input
+              type="radio"
+              name={`${prefix}_help_inclusion`}
+              checked={helpInclusion === 'help_only'}
+              onChange={() => onUpdate(helpInclusionKey, 'help_only')}
+              style={styles.radio}
+            />
+            <span>ヘルプ分のみ計上</span>
+          </label>
+        </div>
+
+        {/* HELP計算方法 */}
+        <div style={{ marginTop: '15px' }}>
+          <label style={styles.label}>推しとヘルプの分配</label>
+          <div style={styles.formRow}>
+            <select
+              value={helpMethod}
+              onChange={(e) => onUpdate(helpMethodKey, e.target.value as HelpCalculationMethod)}
+              style={{ ...styles.select, flex: 1 }}
+            >
+              <option value="ratio">割合で分配</option>
+              <option value="fixed">固定額をヘルプに</option>
+            </select>
+
+            {helpMethod === 'ratio' ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span>ヘルプ</span>
+                <input
+                  type="number"
+                  value={helpRatio}
+                  onChange={(e) => onUpdate(helpRatioKey, Math.min(100, Math.max(0, parseInt(e.target.value) || 0)))}
+                  style={{ ...styles.input, width: '60px' }}
+                  min="0"
+                  max="100"
+                />
+                <span>%</span>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <input
+                  type="number"
+                  value={helpFixed}
+                  onChange={(e) => onUpdate(helpFixedKey, Math.max(0, parseInt(e.target.value) || 0))}
+                  style={{ ...styles.input, width: '80px' }}
+                  min="0"
+                  step="100"
+                />
+                <span>円</span>
+              </div>
+            )}
+          </div>
+          <p style={styles.hint}>
+            例: 1000円の商品、ヘルプ50%の場合 → 推し500円、ヘルプ500円
+          </p>
+        </div>
+      </div>
+
+      {/* 複数キャスト商品の設定 */}
+      <div style={{
+        ...styles.section,
+        opacity: allowMultipleCasts ? 1 : 0.5,
+        pointerEvents: allowMultipleCasts ? 'auto' : 'none',
+      }}>
+        <h3 style={styles.sectionTitle}>
+          複数キャスト商品の設定
+          {!allowMultipleCasts && (
+            <span style={styles.disabledNote}>（複数キャスト機能OFF）</span>
+          )}
+        </h3>
+        <p style={styles.sectionDescription}>
+          1つの商品に複数のキャスト名が入っている場合
+        </p>
+
+        <label style={styles.label}>売上の分配先</label>
+        <div style={styles.radioGroup}>
+          <label style={styles.radioLabel}>
+            <input
+              type="radio"
+              name={`${prefix}_multi_cast`}
+              checked={multiCastDist === 'nomination_only'}
+              onChange={() => onUpdate(multiCastKey, 'nomination_only')}
+              style={styles.radio}
+              disabled={!allowMultipleCasts}
+            />
+            <span>推しのみに分配</span>
+          </label>
+          <label style={styles.radioLabel}>
+            <input
+              type="radio"
+              name={`${prefix}_multi_cast`}
+              checked={multiCastDist === 'all_equal'}
+              onChange={() => onUpdate(multiCastKey, 'all_equal')}
+              style={styles.radio}
+              disabled={!allowMultipleCasts}
+            />
+            <span>全員に均等分配</span>
+          </label>
+        </div>
+
+        {/* 推しのみの場合のサブオプション */}
+        {multiCastDist === 'nomination_only' && allowMultipleCasts && (
+          <div style={{ marginTop: '15px', paddingTop: '15px', borderTop: '1px dashed #e2e8f0' }}>
+            <label style={styles.label}>推し以外の分の売上</label>
+            <div style={styles.radioGroup}>
+              <label style={styles.radioLabel}>
+                <input
+                  type="radio"
+                  name={`${prefix}_non_nomination`}
+                  checked={nonNominationHandling === 'share_only'}
+                  onChange={() => onUpdate(nonNominationKey, 'share_only')}
+                  style={styles.radio}
+                />
+                <span>推しの分だけ計上</span>
+              </label>
+              <label style={styles.radioLabel}>
+                <input
+                  type="radio"
+                  name={`${prefix}_non_nomination`}
+                  checked={nonNominationHandling === 'full_to_nomination'}
+                  onChange={() => onUpdate(nonNominationKey, 'full_to_nomination')}
+                  style={styles.radio}
+                />
+                <span>全額を推しに計上</span>
+              </label>
+            </div>
+            <p style={styles.hint}>
+              例: 10000円の商品にA,C（推しA）の場合<br />
+              推しの分だけ: Aに5000円 / 全額を推しに: Aに10000円
+            </p>
+          </div>
+        )}
       </div>
 
       {/* 商品で計上済みの売上を差し引く（伝票全体のみ） */}
