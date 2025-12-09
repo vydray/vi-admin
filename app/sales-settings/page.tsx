@@ -198,18 +198,23 @@ function AggregationSection({
         </div>
       </div>
 
-      {/* 複数キャストの分配方法 */}
+      {/* 複数キャスト商品の設定 */}
       <div style={{
         ...styles.section,
         opacity: allowMultipleCasts ? 1 : 0.5,
         pointerEvents: allowMultipleCasts ? 'auto' : 'none',
       }}>
         <h3 style={styles.sectionTitle}>
-          複数キャストの分配方法
+          複数キャスト商品の設定
           {!allowMultipleCasts && (
             <span style={styles.disabledNote}>（複数キャスト機能OFF）</span>
           )}
         </h3>
+        <p style={styles.sectionDescription}>
+          1つの商品に複数のキャスト名が入っている場合の設定
+        </p>
+
+        <label style={styles.label}>分配方法</label>
         <div style={styles.radioGroup}>
           <label style={styles.radioLabel}>
             <input
@@ -274,9 +279,14 @@ function AggregationSection({
         )}
       </div>
 
-      {/* ヘルプ売上設定 */}
+      {/* 単一キャスト商品のヘルプ売上設定 */}
       <div style={styles.section}>
-        <h3 style={styles.sectionTitle}>ヘルプ売上設定</h3>
+        <h3 style={styles.sectionTitle}>単一キャスト商品のヘルプ設定</h3>
+        <p style={styles.sectionDescription}>
+          1つの商品に1人のキャスト名が入っていて、そのキャストが推し以外の場合の設定
+        </p>
+
+        <label style={styles.label}>ヘルプ売上の計上</label>
         <div style={styles.radioGroup}>
           <label style={styles.radioLabel}>
             <input
@@ -1450,10 +1460,16 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '14px',
     fontWeight: '600',
     color: '#475569',
-    marginBottom: '12px',
+    marginBottom: '8px',
     display: 'flex',
     alignItems: 'center',
     gap: '8px',
+  },
+  sectionDescription: {
+    fontSize: '12px',
+    color: '#94a3b8',
+    marginBottom: '12px',
+    marginTop: 0,
   },
   disabledNote: {
     fontSize: '12px',
