@@ -759,18 +759,21 @@ export default function SalesSettingsPage() {
 
       // 端数処理
       const rounded = applyRoundingPreview(salesAmount, roundingPosition, roundingType)
+      // バック計算用（元の金額から、helpInclusionの影響を受けない）
+      const roundedForBack = applyRoundingPreview(calcPrice, roundingPosition, roundingType)
 
       // キャスト別内訳を計算
       const castBreakdown: { cast: string; sales: number; back: number; isSelf: boolean }[] = []
       if (item.castNames.length > 0) {
-        const perCastShare = Math.floor(rounded / item.castNames.length)
+        // バックは元の金額から均等分配
+        const perCastBack = Math.floor(roundedForBack / item.castNames.length)
         const nominationCastsOnItem = item.castNames.filter(c =>
           previewNominations.includes(c) || nonHelpNames.includes(c) || nominationIsNonHelp
         )
 
         item.castNames.forEach(c => {
           const isCastSelf = previewNominations.includes(c) || nonHelpNames.includes(c) || nominationIsNonHelp
-          let castSales = perCastShare
+          let castSales = perCastBack
           let countAsSales = true
 
           // 分配方法の設定を取得
@@ -785,7 +788,7 @@ export default function SalesSettingsPage() {
             if (!isCastSelf) {
               countAsSales = false
             } else if (nonNominationHandling === 'full_to_nomination' && nominationCastsOnItem.length > 0) {
-              castSales = Math.floor(rounded / nominationCastsOnItem.length)
+              castSales = Math.floor(roundedForBack / nominationCastsOnItem.length)
             }
           }
 
@@ -798,7 +801,7 @@ export default function SalesSettingsPage() {
           castBreakdown.push({
             cast: c,
             sales: countAsSales ? castSales : 0,
-            back: perCastShare,
+            back: perCastBack,
             isSelf: isCastSelf,
           })
         })
@@ -846,8 +849,9 @@ export default function SalesSettingsPage() {
     results.forEach(r => {
       if (r.notIncluded || r.castNames.length === 0) return
 
-      // まず商品を全キャストで均等分割（バック計算用）
-      const perCastShare = Math.floor(r.rounded / r.castNames.length)
+      // バック計算用（元の金額から）
+      const roundedForBack = applyRoundingPreview(r.calcPrice, roundingPosition, roundingType)
+      const perCastBack = Math.floor(roundedForBack / r.castNames.length)
 
       // 推しに該当するキャストを特定
       const nominationCastsOnItem = r.castNames.filter(c =>
@@ -862,10 +866,10 @@ export default function SalesSettingsPage() {
         const isCastSelf = previewNominations.includes(cast) || nonHelpNames.includes(cast) || nominationIsNonHelp
 
         // バックは全キャストに分配（売上計上の有無に関わらず）
-        castBack[cast] += perCastShare
+        castBack[cast] += perCastBack
 
         // 売上計上の判定
-        let salesAmount = perCastShare
+        let salesAmount = perCastBack
         let countAsSales = true
 
         // nomination_only: 推しに該当するキャストのみ売上計上
@@ -874,7 +878,7 @@ export default function SalesSettingsPage() {
             countAsSales = false
           } else if (nonNominationHandling === 'full_to_nomination' && nominationCastsOnItem.length > 0) {
             // 全額を推しに計上: 推しキャストで全額を分配
-            salesAmount = Math.floor(r.rounded / nominationCastsOnItem.length)
+            salesAmount = Math.floor(roundedForBack / nominationCastsOnItem.length)
           }
         }
 
