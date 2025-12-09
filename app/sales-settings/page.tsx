@@ -833,7 +833,19 @@ export default function SalesSettingsPage() {
       // キャスト別内訳を計算
       const castBreakdown: { cast: string; sales: number; back: number; isSelf: boolean }[] = []
 
-      if (item.castNames.length > 0) {
+      if (item.castNames.length === 0 && !isItemBased && previewNominations.length > 0) {
+        // 伝票全体モードでキャスト名なし商品 → 推しに帰属
+        // 複数推しがいる場合は均等分配
+        const perNominationSales = Math.floor(roundedBase / previewNominations.length)
+        previewNominations.forEach(nom => {
+          castBreakdown.push({
+            cast: nom,
+            sales: perNominationSales,
+            back: perNominationSales,
+            isSelf: true,
+          })
+        })
+      } else if (item.castNames.length > 0) {
         // 分配方法の設定を取得
         const multiCastDist = isItemBased
           ? (settings.item_multi_cast_distribution ?? 'nomination_only')
