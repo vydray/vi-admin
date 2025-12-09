@@ -734,11 +734,47 @@ export default function SalesSettingsPage() {
     availableCasts.filter(c => c !== '-').forEach(cast => {
       castSales[cast] = 0
     })
+
+    // 複数キャストの分配方法を取得
+    const multiCastDist = isItemBased
+      ? (settings.item_multi_cast_distribution ?? 'nomination_only')
+      : (settings.receipt_multi_cast_distribution ?? 'nomination_only')
+
     results.forEach(r => {
       if (r.notIncluded || r.castNames.length === 0) return
-      // 複数キャストの場合は均等分配
-      const perCast = Math.floor(r.rounded / r.castNames.length)
-      r.castNames.forEach(cast => {
+
+      // 分配対象のキャストを決定
+      let targetCasts = r.castNames
+
+      if (multiCastDist === 'nomination_only') {
+        // 推しに該当するキャストのみに分配
+        const nominationCasts = r.castNames.filter(c =>
+          previewNominations.includes(c) || nonHelpNames.includes(c)
+        )
+        // 推しに該当するキャストがいない場合は全員に分配（全員HELP）
+        if (nominationCasts.length > 0) {
+          targetCasts = nominationCasts
+        }
+      }
+
+      // helpInclusion設定に基づいてさらにフィルタリング
+      if (helpInclusion === 'self_only') {
+        // SELFのみ：推しに該当するキャストのみ
+        targetCasts = targetCasts.filter(c =>
+          previewNominations.includes(c) || nonHelpNames.includes(c) || nominationIsNonHelp
+        )
+      } else if (helpInclusion === 'help_only') {
+        // HELPのみ：推しに該当しないキャストのみ
+        targetCasts = targetCasts.filter(c =>
+          !previewNominations.includes(c) && !nonHelpNames.includes(c) && !nominationIsNonHelp
+        )
+      }
+
+      if (targetCasts.length === 0) return
+
+      // 対象キャストで均等分配
+      const perCast = Math.floor(r.rounded / targetCasts.length)
+      targetCasts.forEach(cast => {
         if (castSales[cast] !== undefined) {
           castSales[cast] += perCast
         }
