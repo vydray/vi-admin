@@ -745,7 +745,7 @@ export default function SalesSettingsPage() {
     const results = previewItems.map(item => {
       // キャスト商品のみの場合、キャスト名が入っていない商品は除外
       if (isItemBased && item.castNames.length === 0) {
-        return { ...item, calcPrice: 0, salesAmount: 0, rounded: 0, isSelf: true, notIncluded: true, castBreakdown: [] }
+        return { ...item, calcPrice: 0, roundedBase: 0, salesAmount: 0, rounded: 0, isSelf: true, notIncluded: true, castBreakdown: [] }
       }
 
       let calcPrice = item.basePrice
@@ -878,6 +878,7 @@ export default function SalesSettingsPage() {
       return {
         ...item,
         calcPrice,
+        roundedBase,
         salesAmount,
         rounded,
         isSelf,
@@ -1338,8 +1339,17 @@ export default function SalesSettingsPage() {
                           }}>
                             {item.isSelf ? 'SELF' : 'HELP'}
                           </span>
-                          <span style={{ marginLeft: '8px' }}>
-                            → ¥{item.rounded.toLocaleString()}
+                          <span style={{ marginLeft: '8px', fontSize: '11px', color: '#64748b' }}>
+                            {/* 計算過程を表示 */}
+                            {item.calcPrice !== item.basePrice && (
+                              <>¥{item.calcPrice.toLocaleString()}</>
+                            )}
+                            {item.calcPrice !== item.roundedBase && (
+                              <> → ¥{item.roundedBase.toLocaleString()}</>
+                            )}
+                            {(item.calcPrice === item.basePrice && item.calcPrice === item.roundedBase) && (
+                              <>¥{item.roundedBase.toLocaleString()}</>
+                            )}
                           </span>
                           {item.castBreakdown && item.castBreakdown.length === 1 && (
                             <span style={{ marginLeft: '8px', color: '#64748b', fontSize: '11px' }}>
