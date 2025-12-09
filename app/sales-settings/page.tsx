@@ -96,6 +96,7 @@ interface AggregationSectionProps {
   settings: SalesSettings
   systemSettings: SystemSettings
   onUpdate: <K extends keyof SalesSettings>(key: K, value: SalesSettings[K]) => void
+  onUpdateMultiple: (updates: Partial<SalesSettings>) => void
   showDeductOption?: boolean
   allowMultipleCasts: boolean
 }
@@ -107,6 +108,7 @@ function AggregationSection({
   settings,
   systemSettings,
   onUpdate,
+  onUpdateMultiple,
   showDeductOption = false,
   allowMultipleCasts,
 }: AggregationSectionProps) {
@@ -149,8 +151,10 @@ function AggregationSection({
               name={`${prefix}_tax_basis`}
               checked={!excludeTax && !excludeService}
               onChange={() => {
-                onUpdate(excludeTaxKey, false)
-                onUpdate(excludeServiceKey, false)
+                onUpdateMultiple({
+                  [excludeTaxKey]: false,
+                  [excludeServiceKey]: false,
+                })
               }}
               style={styles.radio}
             />
@@ -162,8 +166,10 @@ function AggregationSection({
               name={`${prefix}_tax_basis`}
               checked={excludeTax}
               onChange={() => {
-                onUpdate(excludeTaxKey, true)
-                onUpdate(excludeServiceKey, false)
+                onUpdateMultiple({
+                  [excludeTaxKey]: true,
+                  [excludeServiceKey]: false,
+                })
               }}
               style={styles.radio}
             />
@@ -175,8 +181,10 @@ function AggregationSection({
               name={`${prefix}_tax_basis`}
               checked={excludeService}
               onChange={() => {
-                onUpdate(excludeTaxKey, false)
-                onUpdate(excludeServiceKey, true)
+                onUpdateMultiple({
+                  [excludeTaxKey]: false,
+                  [excludeServiceKey]: true,
+                })
               }}
               style={styles.radio}
             />
@@ -396,7 +404,13 @@ export default function SalesSettingsPage() {
     { id: 4, name: 'チェキ', basePrice: 1500, castName: 'B', needsCast: true },
     { id: 5, name: 'ヘルプドリンク', basePrice: 1100, castName: 'C', needsCast: true },
   ])
-  const availableCasts = ['A', 'B', 'C', 'D', '-']
+
+  // キャスト選択肢（A〜D + ヘルプ扱いにしない推し名 + なし）
+  const availableCasts = useMemo(() => {
+    const baseCasts = ['A', 'B', 'C', 'D']
+    const nonHelpNames = settings?.non_help_staff_names || []
+    return [...baseCasts, ...nonHelpNames, '-']
+  }, [settings?.non_help_staff_names])
 
   const loadSettings = useCallback(async () => {
     const currentStoreId = storeId
@@ -538,6 +552,12 @@ export default function SalesSettingsPage() {
   const updateSetting = <K extends keyof SalesSettings>(key: K, value: SalesSettings[K]) => {
     if (!settings) return
     setSettings({ ...settings, [key]: value })
+  }
+
+  // 複数の設定を一度に更新
+  const updateSettings = (updates: Partial<SalesSettings>) => {
+    if (!settings) return
+    setSettings({ ...settings, ...updates })
   }
 
   const addNonHelpName = () => {
@@ -704,6 +724,7 @@ export default function SalesSettingsPage() {
           settings={settings}
           systemSettings={systemSettings}
           onUpdate={updateSetting}
+          onUpdateMultiple={updateSettings}
           allowMultipleCasts={systemSettings.allow_multiple_casts_per_item}
         />
 
@@ -715,6 +736,7 @@ export default function SalesSettingsPage() {
           settings={settings}
           systemSettings={systemSettings}
           onUpdate={updateSetting}
+          onUpdateMultiple={updateSettings}
           showDeductOption={true}
           allowMultipleCasts={systemSettings.allow_multiple_casts_per_item}
         />
@@ -923,6 +945,29 @@ export default function SalesSettingsPage() {
                 </button>
               ))}
             </div>
+            {/* ヘルプ扱いにしない推し名 */}
+            {settings.non_help_staff_names && settings.non_help_staff_names.length > 0 && (
+              <div style={{ marginTop: '8px' }}>
+                <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '6px' }}>
+                  ヘルプ扱いにしない推し名
+                </div>
+                <div style={styles.nominationSelect}>
+                  {settings.non_help_staff_names.map(name => (
+                    <button
+                      key={name}
+                      onClick={() => toggleNomination(name)}
+                      style={{
+                        ...styles.nominationBtn,
+                        ...styles.nominationBtnNonHelp,
+                        ...(previewNominations.includes(name) ? styles.nominationBtnNonHelpActive : {}),
+                      }}
+                    >
+                      {name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {preview && (
@@ -1050,14 +1095,17 @@ const styles: { [key: string]: React.CSSProperties } = {
     padding: '20px',
     maxWidth: '1400px',
     margin: '0 auto',
+    height: 'calc(100vh - 40px)',
   },
   formContainer: {
     flex: '1',
     maxWidth: '700px',
+    overflowY: 'auto' as const,
   },
   previewContainer: {
     width: '380px',
     flexShrink: 0,
+    overflowY: 'auto' as const,
   },
   header: {
     marginBottom: '30px',
@@ -1229,8 +1277,6 @@ const styles: { [key: string]: React.CSSProperties } = {
     padding: '20px',
     borderRadius: '10px',
     boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-    position: 'sticky' as const,
-    top: '20px',
   },
   previewTitle: {
     fontSize: '16px',
@@ -1451,6 +1497,18 @@ const styles: { [key: string]: React.CSSProperties } = {
     borderColor: '#ec4899',
     backgroundColor: '#fdf2f8',
     color: '#ec4899',
+  },
+  nominationBtnNonHelp: {
+    width: 'auto',
+    minWidth: '36px',
+    padding: '0 10px',
+    borderColor: '#f97316',
+    color: '#f97316',
+  },
+  nominationBtnNonHelpActive: {
+    borderColor: '#f97316',
+    backgroundColor: '#fff7ed',
+    color: '#f97316',
   },
   castSelect: {
     width: '50px',
