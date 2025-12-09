@@ -275,6 +275,7 @@ export function getDefaultSalesSettings(storeId: number): Omit<SalesSettings, 'i
     item_help_fixed_amount: 0,
     item_rounding_method: 'floor_100',
     item_rounding_position: 100,
+    item_rounding_timing: 'per_item',
 
     // 伝票全体の集計設定
     receipt_use_tax_excluded: true,
@@ -288,6 +289,7 @@ export function getDefaultSalesSettings(storeId: number): Omit<SalesSettings, 'i
     receipt_help_fixed_amount: 0,
     receipt_rounding_method: 'floor_100',
     receipt_rounding_position: 100,
+    receipt_rounding_timing: 'per_item',
     receipt_deduct_item_sales: false,
 
     // 公開設定

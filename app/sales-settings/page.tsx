@@ -6,6 +6,7 @@ import { useStore } from '@/contexts/StoreContext'
 import {
   SalesSettings,
   RoundingMethod,
+  RoundingTiming,
   HelpCalculationMethod,
   MultiCastDistribution,
   NonNominationSalesHandling,
@@ -39,19 +40,23 @@ function applyRoundingPreview(amount: number, position: number, type: RoundingTy
 // RoundingMethodからpositionとtypeを取得
 function parseRoundingMethod(method: RoundingMethod): { position: number; type: RoundingType } {
   if (method === 'none') return { position: 100, type: 'none' }
+  // レガシー対応
   if (method === 'round') return { position: 1, type: 'round' }
-  if (method === 'floor_10') return { position: 10, type: 'floor' }
-  if (method === 'floor_100') return { position: 100, type: 'floor' }
+  // 新形式: {type}_{position}
+  const match = method.match(/^(floor|ceil|round)_(\d+)$/)
+  if (match) {
+    return {
+      type: match[1] as RoundingType,
+      position: parseInt(match[2]),
+    }
+  }
   return { position: 100, type: 'floor' }
 }
 
 // positionとtypeからRoundingMethodを生成
 function combineRoundingMethod(position: number, type: RoundingType): RoundingMethod {
   if (type === 'none') return 'none'
-  if (type === 'round') return 'round'
-  if (position === 10) return 'floor_10'
-  if (position === 100) return 'floor_100'
-  return 'none'
+  return `${type}_${position}` as RoundingMethod
 }
 
 // デフォルト値
@@ -68,6 +73,7 @@ const getDefaultExtendedSettings = (): Partial<SalesSettings> => ({
   item_help_fixed_amount: 0,
   item_rounding_method: 'floor_100',
   item_rounding_position: 100,
+  item_rounding_timing: 'per_item',
 
   // 伝票全体の集計設定
   receipt_use_tax_excluded: true,
@@ -81,6 +87,7 @@ const getDefaultExtendedSettings = (): Partial<SalesSettings> => ({
   receipt_help_fixed_amount: 0,
   receipt_rounding_method: 'floor_100',
   receipt_rounding_position: 100,
+  receipt_rounding_timing: 'per_item',
   receipt_deduct_item_sales: false,
 
   // 公開設定
@@ -125,6 +132,7 @@ function AggregationSection({
   const helpFixedKey = `${prefix}_help_fixed_amount` as keyof SalesSettings
   const roundingMethodKey = `${prefix}_rounding_method` as keyof SalesSettings
   const roundingPositionKey = `${prefix}_rounding_position` as keyof SalesSettings
+  const roundingTimingKey = `${prefix}_rounding_timing` as keyof SalesSettings
   const deductKey = 'receipt_deduct_item_sales' as keyof SalesSettings
 
   const excludeTax = settings[excludeTaxKey] as boolean ?? true
@@ -137,6 +145,7 @@ function AggregationSection({
   const helpFixed = settings[helpFixedKey] as number ?? 0
   const roundingMethod = settings[roundingMethodKey] as RoundingMethod ?? 'floor_100'
   const roundingPosition = settings[roundingPositionKey] as number ?? 100
+  const roundingTiming = settings[roundingTimingKey] as RoundingTiming ?? 'per_item'
   const deductItemSales = settings[deductKey] as boolean ?? false
 
   const { type: roundingType } = parseRoundingMethod(roundingMethod)
@@ -233,6 +242,18 @@ function AggregationSection({
               <option value="ceil">切り上げ</option>
               <option value="round">四捨五入</option>
               <option value="none">なし</option>
+            </select>
+          </div>
+
+          <div style={styles.formGroup}>
+            <label style={styles.label}>処理タイミング</label>
+            <select
+              value={roundingTiming}
+              onChange={(e) => onUpdate(roundingTimingKey, e.target.value as RoundingTiming)}
+              style={styles.select}
+            >
+              <option value="per_item">商品ごと</option>
+              <option value="total">合計時</option>
             </select>
           </div>
         </div>
@@ -708,6 +729,9 @@ export default function SalesSettingsPage() {
     const roundingMethod = isItemBased
       ? (settings.item_rounding_method ?? 'floor_100')
       : (settings.receipt_rounding_method ?? 'floor_100')
+    const roundingTiming = isItemBased
+      ? (settings.item_rounding_timing ?? 'per_item')
+      : (settings.receipt_rounding_timing ?? 'per_item')
     const { type: roundingType } = parseRoundingMethod(roundingMethod)
 
     const taxRate = systemSettings.tax_rate / 100
@@ -742,14 +766,18 @@ export default function SalesSettingsPage() {
       const hasNominationOnItem = item.castNames.some(c => previewNominations.includes(c))
       const isSelf = !hasCast || hasNominationOnItem || isNonHelpName || nominationIsNonHelp
 
-      // 端数処理（元の金額）
-      const roundedBase = applyRoundingPreview(calcPrice, roundingPosition, roundingType)
+      // 端数処理（商品ごとの場合のみ適用）
+      const roundedBase = roundingTiming === 'per_item'
+        ? applyRoundingPreview(calcPrice, roundingPosition, roundingType)
+        : calcPrice
 
       // HELP商品の場合、SELF分とHELP分に分割
       // helpRatioは「HELPに帰属する割合」なので、SELFは(100 - helpRatio)%
       const selfRatio = 100 - helpRatio
       const selfAmountRaw = Math.floor(roundedBase * selfRatio / 100)
-      const selfAmount = applyRoundingPreview(selfAmountRaw, roundingPosition, roundingType)
+      const selfAmount = roundingTiming === 'per_item'
+        ? applyRoundingPreview(selfAmountRaw, roundingPosition, roundingType)
+        : selfAmountRaw
       const helpAmount = roundedBase - selfAmount // 残りをHELPに
 
       let salesAmount = roundedBase
@@ -866,7 +894,10 @@ export default function SalesSettingsPage() {
       totalWithService = Math.floor(itemsTotal * (100 + servicePercent) / 100)
     }
 
-    const finalTotal = applyRoundingPreview(totalWithService, roundingPosition, roundingType)
+    // 合計時の端数処理（totalの場合のみ適用）
+    const finalTotal = roundingTiming === 'total'
+      ? applyRoundingPreview(totalWithService, roundingPosition, roundingType)
+      : totalWithService
 
     // キャストごとの売上とバック（A, B, C, D別に集計）
     const castSales: Record<string, number> = {}
@@ -887,6 +918,14 @@ export default function SalesSettingsPage() {
         }
       })
     })
+
+    // 合計時の端数処理をキャストごとの集計にも適用
+    if (roundingTiming === 'total') {
+      Object.keys(castSales).forEach(cast => {
+        castSales[cast] = applyRoundingPreview(castSales[cast], roundingPosition, roundingType)
+        castBack[cast] = applyRoundingPreview(castBack[cast], roundingPosition, roundingType)
+      })
+    }
     // キャスト名なしは推しに分配
     const noNameSales = results
       .filter(r => r.castNames.length === 0 && !r.notIncluded)
@@ -907,6 +946,7 @@ export default function SalesSettingsPage() {
       helpInclusion,
       roundingPosition,
       roundingType,
+      roundingTiming,
     }
   }, [settings, systemSettings, previewAggregation, previewNominations, previewItems, availableCasts])
 
@@ -1379,7 +1419,7 @@ export default function SalesSettingsPage() {
                   端数処理: {preview.roundingType === 'none' ? 'なし' : `${preview.roundingPosition}の位で${
                     preview.roundingType === 'floor' ? '切り捨て' :
                     preview.roundingType === 'ceil' ? '切り上げ' : '四捨五入'
-                  }`}
+                  }（${preview.roundingTiming === 'per_item' ? '商品ごと' : '合計時'}）`}
                 </div>
                 <div style={styles.summaryItem}>
                   HELP計上: {preview.helpInclusion === 'both' ? '両方' : preview.helpInclusion === 'self_only' ? 'SELFのみ' : 'HELPのみ'}

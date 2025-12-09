@@ -260,7 +260,12 @@ export interface CastPosition {
 // ============================================================================
 
 // 端数処理方法
-export type RoundingMethod = 'floor_100' | 'floor_10' | 'round' | 'none'
+export type RoundingMethod =
+  | 'floor_1' | 'floor_10' | 'floor_100'
+  | 'ceil_1' | 'ceil_10' | 'ceil_100'
+  | 'round_1' | 'round_10' | 'round_100'
+  | 'round' // レガシー（round_1と同等）
+  | 'none'
 
 // 端数処理タイミング
 export type RoundingTiming = 'per_item' | 'total'
@@ -337,6 +342,7 @@ export interface SalesSettings {
   // 端数処理
   item_rounding_method: RoundingMethod
   item_rounding_position: number        // 1, 10, 100
+  item_rounding_timing: RoundingTiming  // per_item: 商品ごと, total: 合計時
 
   // ========== 伝票のすべての商品を集計設定 ==========
   // 計算基準
@@ -357,6 +363,7 @@ export interface SalesSettings {
   // 端数処理
   receipt_rounding_method: RoundingMethod
   receipt_rounding_position: number
+  receipt_rounding_timing: RoundingTiming
 
   // 商品で計上済みの売上を差し引く
   receipt_deduct_item_sales: boolean
