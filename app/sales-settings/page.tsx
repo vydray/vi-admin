@@ -681,8 +681,9 @@ export default function SalesSettingsPage() {
 
       // SELF/HELP判定（キャスト名のいずれかが推しに含まれているか、またはキャスト名なし）
       const hasCast = item.castNames.length > 0
-      const isSelf = !hasCast || item.castNames.some(c => previewNominations.includes(c))
       const isNonHelpName = item.castNames.some(c => nonHelpNames.includes(c))
+      // ヘルプ扱いにしない推し名は常にSELF扱い（100%計上）
+      const isSelf = !hasCast || item.castNames.some(c => previewNominations.includes(c)) || isNonHelpName
 
       let salesAmount = calcPrice
 
