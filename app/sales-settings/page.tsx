@@ -750,34 +750,34 @@ export default function SalesSettingsPage() {
 
       let calcPrice = item.basePrice
       let afterTaxPrice = item.basePrice // 税処理後の価格（サービス料加算前）
+      let afterTaxRounded = item.basePrice // 税処理後→端数処理後の価格
+      let afterServicePrice = item.basePrice
 
-      // 税抜き計算
-      if (excludeTax) {
-        const taxPercent = Math.round(taxRate * 100)
-        calcPrice = Math.floor(calcPrice * 100 / (100 + taxPercent))
-        afterTaxPrice = calcPrice
-      }
+      // 「商品ごと」の場合のみ、商品単位で計算基準と端数処理を適用
+      // 「合計時」の場合は、商品は元の価格のまま、合計で処理
+      if (roundingTiming === 'per_item') {
+        // 税抜き計算
+        if (excludeTax) {
+          const taxPercent = Math.round(taxRate * 100)
+          calcPrice = Math.floor(calcPrice * 100 / (100 + taxPercent))
+          afterTaxPrice = calcPrice
+        }
 
-      // 税込み＋サービス料の場合は、税込み価格にサービス料を加算
-      // excludeService=true は「サービス料を含む」という意味
-      let afterTaxRounded = afterTaxPrice // 税処理後→端数処理後の価格
-      let afterServicePrice = afterTaxPrice
-      if (excludeService && serviceRate > 0) {
-        // 商品ごとの端数処理の場合、税込み価格で端数処理してからサービス料加算
-        if (roundingTiming === 'per_item') {
-          afterTaxRounded = applyRoundingPreview(afterTaxPrice, roundingPosition, roundingType)
+        // 端数処理
+        afterTaxRounded = applyRoundingPreview(afterTaxPrice, roundingPosition, roundingType)
+
+        // サービス料加算
+        if (excludeService && serviceRate > 0) {
           const servicePercent = Math.round(serviceRate * 100)
           afterServicePrice = Math.floor(afterTaxRounded * (100 + servicePercent) / 100)
+          // サービス料加算後も端数処理
+          calcPrice = applyRoundingPreview(afterServicePrice, roundingPosition, roundingType)
         } else {
-          // 合計時の端数処理の場合は後で処理
-          const servicePercent = Math.round(serviceRate * 100)
-          afterServicePrice = Math.floor(afterTaxPrice * (100 + servicePercent) / 100)
+          calcPrice = afterTaxRounded
+          afterServicePrice = afterTaxRounded
         }
-        calcPrice = afterServicePrice
-      } else if (roundingTiming === 'per_item') {
-        // サービス料なしで端数処理の場合
-        afterTaxRounded = applyRoundingPreview(afterTaxPrice, roundingPosition, roundingType)
       }
+      // 「合計時」の場合は calcPrice = basePrice のまま
 
       // SELF/HELP判定
       // - キャスト名がない場合はSELF
@@ -915,20 +915,34 @@ export default function SalesSettingsPage() {
 
     // 合計計算
     let itemsTotal = results.reduce((sum, r) => sum + r.rounded, 0)
-    let totalWithService = itemsTotal
+    let beforeProcessTotal = itemsTotal // 処理前の合計（表示用）
+    let afterTaxTotal = itemsTotal // 税処理後の合計
+    let afterRoundingTotal = itemsTotal // 端数処理後の合計
+    let afterServiceTotal = itemsTotal // サービス料加算後の合計
+    let finalTotal = itemsTotal
 
-    // サービス料の処理
-    // - 商品ごとの端数処理: 既に各商品で処理済みなのでスキップ
-    // - 合計時の端数処理: 合計に対してサービス料を加算
-    if (excludeService && serviceRate > 0 && roundingTiming === 'total') {
-      const servicePercent = Math.round(serviceRate * 100)
-      totalWithService = Math.floor(itemsTotal * (100 + servicePercent) / 100)
+    // 「合計時」の場合は、合計に対して計算基準と端数処理を適用
+    if (roundingTiming === 'total') {
+      // 1. 税抜き計算
+      if (excludeTax) {
+        const taxPercent = Math.round(taxRate * 100)
+        afterTaxTotal = Math.floor(itemsTotal * 100 / (100 + taxPercent))
+      }
+
+      // 2. 端数処理
+      afterRoundingTotal = applyRoundingPreview(afterTaxTotal, roundingPosition, roundingType)
+
+      // 3. サービス料加算
+      if (excludeService && serviceRate > 0) {
+        const servicePercent = Math.round(serviceRate * 100)
+        afterServiceTotal = Math.floor(afterRoundingTotal * (100 + servicePercent) / 100)
+        // サービス料加算後も端数処理
+        finalTotal = applyRoundingPreview(afterServiceTotal, roundingPosition, roundingType)
+      } else {
+        finalTotal = afterRoundingTotal
+        afterServiceTotal = afterRoundingTotal
+      }
     }
-
-    // 合計時の端数処理（totalの場合のみ適用）
-    const finalTotal = roundingTiming === 'total'
-      ? applyRoundingPreview(totalWithService, roundingPosition, roundingType)
-      : totalWithService
 
     // キャストごとの売上とバック（A, B, C, D別に集計）
     const castSales: Record<string, number> = {}
@@ -965,7 +979,9 @@ export default function SalesSettingsPage() {
     return {
       items: results,
       itemsTotal,
-      totalWithService,
+      afterTaxTotal,
+      afterRoundingTotal,
+      afterServiceTotal,
       finalTotal,
       castSales,
       castBack,
@@ -1398,8 +1414,31 @@ export default function SalesSettingsPage() {
                 <div style={styles.receiptTotal}>
                   <div style={styles.totalRow}>
                     <span>合計</span>
-                    <span>¥{preview.finalTotal.toLocaleString()}</span>
+                    <span>¥{preview.itemsTotal.toLocaleString()}</span>
                   </div>
+                  {/* 合計時の計算過程を表示 */}
+                  {preview.roundingTiming === 'total' && preview.finalTotal !== preview.itemsTotal && (
+                    <div style={styles.totalCalcProcess}>
+                      <span style={styles.totalCalcLabel}>処理後:</span>
+                      <span style={styles.totalCalcSteps}>
+                        {preview.excludeTax && preview.afterTaxTotal !== preview.itemsTotal && (
+                          <>¥{preview.afterTaxTotal.toLocaleString()}（税抜）</>
+                        )}
+                        {preview.afterRoundingTotal !== preview.afterTaxTotal && (
+                          <> → ¥{preview.afterRoundingTotal.toLocaleString()}（端数処理）</>
+                        )}
+                        {preview.excludeService && preview.afterServiceTotal !== preview.afterRoundingTotal && (
+                          <> → ¥{preview.afterServiceTotal.toLocaleString()}（+サービス）</>
+                        )}
+                        {preview.finalTotal !== preview.afterServiceTotal && (
+                          <> → ¥{preview.finalTotal.toLocaleString()}（端数処理）</>
+                        )}
+                        {preview.afterRoundingTotal === preview.afterTaxTotal && !preview.excludeService && (
+                          <> → ¥{preview.finalTotal.toLocaleString()}</>
+                        )}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 <div style={styles.castSalesSection}>
@@ -1818,6 +1857,24 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '15px',
     fontWeight: '700',
     color: '#1e293b',
+  },
+  totalCalcProcess: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    padding: '8px',
+    backgroundColor: '#fef3c7',
+    borderRadius: '6px',
+    marginTop: '4px',
+  },
+  totalCalcLabel: {
+    fontSize: '11px',
+    fontWeight: '600',
+    color: '#92400e',
+  },
+  totalCalcSteps: {
+    fontSize: '11px',
+    color: '#78350f',
   },
   castSalesSection: {
     marginTop: '15px',
