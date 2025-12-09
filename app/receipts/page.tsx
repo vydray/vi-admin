@@ -1465,77 +1465,74 @@ export default function ReceiptsPage() {
               <div style={styles.formGroup}>
                 <label style={styles.label}>推し{allowMultipleNominations && '（複数選択可）'}</label>
                 {allowMultipleNominations ? (
-                  <>
-                    {/* 複数選択モード：選択中の推し表示 */}
-                    {editFormData.staff_names.length > 0 && (
-                      <div style={styles.selectedCastsContainer}>
-                        {editFormData.staff_names.map((name, idx) => (
+                  <div style={{ position: 'relative' }}>
+                    <div
+                      onClick={() => setShowEditStaffDropdown(!showEditStaffDropdown)}
+                      style={styles.multiSelectInputContainer}
+                    >
+                      {editFormData.staff_names.length > 0 ? (
+                        editFormData.staff_names.map((name, idx) => (
                           <span key={idx} style={styles.selectedCastTag}>
                             {name}
                             <button
                               type="button"
-                              onClick={() => setEditFormData({
-                                ...editFormData,
-                                staff_names: editFormData.staff_names.filter((_, i) => i !== idx)
-                              })}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setEditFormData({
+                                  ...editFormData,
+                                  staff_names: editFormData.staff_names.filter((_, i) => i !== idx)
+                                })
+                              }}
                               style={styles.removeCastBtn}
                             >
                               ×
                             </button>
                           </span>
-                        ))}
-                      </div>
-                    )}
-                    {/* 推し選択ドロップダウン */}
-                    <div style={{ position: 'relative' }}>
-                      <button
-                        type="button"
-                        onClick={() => setShowEditStaffDropdown(!showEditStaffDropdown)}
-                        style={styles.castSelectBtn}
-                      >
-                        {editFormData.staff_names.length === 0 ? '推しを選択' : '推しを追加'}
-                      </button>
-                      {showEditStaffDropdown && (
-                        <div style={styles.castDropdownMenu}>
-                          {casts.map((cast) => {
-                            const isSelected = editFormData.staff_names.includes(cast.name)
-                            return (
-                              <div
-                                key={cast.id}
-                                onClick={() => {
-                                  if (isSelected) {
-                                    setEditFormData({
-                                      ...editFormData,
-                                      staff_names: editFormData.staff_names.filter(n => n !== cast.name)
-                                    })
-                                  } else {
-                                    setEditFormData({
-                                      ...editFormData,
-                                      staff_names: [...editFormData.staff_names, cast.name]
-                                    })
-                                  }
-                                }}
-                                style={{
-                                  ...styles.castDropdownItem,
-                                  backgroundColor: isSelected ? '#e0f2fe' : 'transparent'
-                                }}
-                              >
-                                <span style={styles.castCheckbox}>{isSelected ? '✓' : ''}</span>
-                                {cast.name}
-                              </div>
-                            )
-                          })}
-                          <button
-                            type="button"
-                            onClick={() => setShowEditStaffDropdown(false)}
-                            style={styles.castDropdownClose}
-                          >
-                            閉じる
-                          </button>
-                        </div>
+                        ))
+                      ) : (
+                        <span style={styles.multiSelectPlaceholder}>選択してください</span>
                       )}
                     </div>
-                  </>
+                    {showEditStaffDropdown && (
+                      <div style={styles.castDropdownMenu}>
+                        {casts.map((cast) => {
+                          const isSelected = editFormData.staff_names.includes(cast.name)
+                          return (
+                            <div
+                              key={cast.id}
+                              onClick={() => {
+                                if (isSelected) {
+                                  setEditFormData({
+                                    ...editFormData,
+                                    staff_names: editFormData.staff_names.filter(n => n !== cast.name)
+                                  })
+                                } else {
+                                  setEditFormData({
+                                    ...editFormData,
+                                    staff_names: [...editFormData.staff_names, cast.name]
+                                  })
+                                }
+                              }}
+                              style={{
+                                ...styles.castDropdownItem,
+                                backgroundColor: isSelected ? '#e0f2fe' : 'transparent'
+                              }}
+                            >
+                              <span style={styles.castCheckbox}>{isSelected ? '✓' : ''}</span>
+                              {cast.name}
+                            </div>
+                          )
+                        })}
+                        <button
+                          type="button"
+                          onClick={() => setShowEditStaffDropdown(false)}
+                          style={styles.castDropdownClose}
+                        >
+                          閉じる
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 ) : (
                   /* 単一選択モード：通常のselect */
                   <select
@@ -1852,77 +1849,74 @@ export default function ReceiptsPage() {
               <div style={styles.formGroup}>
                 <label style={styles.label}>キャスト名{allowMultipleCastsPerItem && '（複数選択可）'}</label>
                 {allowMultipleCastsPerItem ? (
-                  <>
-                    {/* 複数選択モード：選択中のキャスト表示 */}
-                    {editingItemData.cast_names.length > 0 && (
-                      <div style={styles.selectedCastsContainer}>
-                        {editingItemData.cast_names.map((name, idx) => (
+                  <div style={{ position: 'relative' }}>
+                    <div
+                      onClick={() => setShowEditCastDropdown(!showEditCastDropdown)}
+                      style={styles.multiSelectInputContainer}
+                    >
+                      {editingItemData.cast_names.length > 0 ? (
+                        editingItemData.cast_names.map((name, idx) => (
                           <span key={idx} style={styles.selectedCastTag}>
                             {name}
                             <button
                               type="button"
-                              onClick={() => setEditingItemData({
-                                ...editingItemData,
-                                cast_names: editingItemData.cast_names.filter((_, i) => i !== idx)
-                              })}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setEditingItemData({
+                                  ...editingItemData,
+                                  cast_names: editingItemData.cast_names.filter((_, i) => i !== idx)
+                                })
+                              }}
                               style={styles.removeCastBtn}
                             >
                               ×
                             </button>
                           </span>
-                        ))}
-                      </div>
-                    )}
-                    {/* キャスト選択ドロップダウン */}
-                    <div style={{ position: 'relative' }}>
-                      <button
-                        type="button"
-                        onClick={() => setShowEditCastDropdown(!showEditCastDropdown)}
-                        style={styles.castSelectBtn}
-                      >
-                        {editingItemData.cast_names.length === 0 ? 'キャストを選択' : 'キャストを追加'}
-                      </button>
-                      {showEditCastDropdown && (
-                        <div style={styles.castDropdownMenu}>
-                          {casts.map((cast) => {
-                            const isSelected = editingItemData.cast_names.includes(cast.name)
-                            return (
-                              <div
-                                key={cast.id}
-                                onClick={() => {
-                                  if (isSelected) {
-                                    setEditingItemData({
-                                      ...editingItemData,
-                                      cast_names: editingItemData.cast_names.filter(n => n !== cast.name)
-                                    })
-                                  } else {
-                                    setEditingItemData({
-                                      ...editingItemData,
-                                      cast_names: [...editingItemData.cast_names, cast.name]
-                                    })
-                                  }
-                                }}
-                                style={{
-                                  ...styles.castDropdownItem,
-                                  backgroundColor: isSelected ? '#e0f2fe' : 'transparent'
-                                }}
-                              >
-                                <span style={styles.castCheckbox}>{isSelected ? '✓' : ''}</span>
-                                {cast.name}
-                              </div>
-                            )
-                          })}
-                          <button
-                            type="button"
-                            onClick={() => setShowEditCastDropdown(false)}
-                            style={styles.castDropdownClose}
-                          >
-                            閉じる
-                          </button>
-                        </div>
+                        ))
+                      ) : (
+                        <span style={styles.multiSelectPlaceholder}>選択してください</span>
                       )}
                     </div>
-                  </>
+                    {showEditCastDropdown && (
+                      <div style={styles.castDropdownMenu}>
+                        {casts.map((cast) => {
+                          const isSelected = editingItemData.cast_names.includes(cast.name)
+                          return (
+                            <div
+                              key={cast.id}
+                              onClick={() => {
+                                if (isSelected) {
+                                  setEditingItemData({
+                                    ...editingItemData,
+                                    cast_names: editingItemData.cast_names.filter(n => n !== cast.name)
+                                  })
+                                } else {
+                                  setEditingItemData({
+                                    ...editingItemData,
+                                    cast_names: [...editingItemData.cast_names, cast.name]
+                                  })
+                                }
+                              }}
+                              style={{
+                                ...styles.castDropdownItem,
+                                backgroundColor: isSelected ? '#e0f2fe' : 'transparent'
+                              }}
+                            >
+                              <span style={styles.castCheckbox}>{isSelected ? '✓' : ''}</span>
+                              {cast.name}
+                            </div>
+                          )
+                        })}
+                        <button
+                          type="button"
+                          onClick={() => setShowEditCastDropdown(false)}
+                          style={styles.castDropdownClose}
+                        >
+                          閉じる
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 ) : (
                   /* 単一選択モード：通常のselect */
                   <select
@@ -2069,126 +2063,120 @@ export default function ReceiptsPage() {
               <div style={styles.formGroup}>
                 <label style={styles.label}>キャスト名{allowMultipleCastsPerItem && '（複数選択可）'}</label>
                 {allowMultipleCastsPerItem ? (
-                  <>
-                    {/* 複数選択モード：選択中のキャスト表示 */}
-                    {newItemData.cast_names.length > 0 && (
-                      <div style={styles.selectedCastsContainer}>
-                        {newItemData.cast_names.map((name, idx) => (
+                  <div style={{ position: 'relative' }}>
+                    <div
+                      onClick={() => setShowCastDropdown(true)}
+                      style={styles.multiSelectInputContainer}
+                    >
+                      {newItemData.cast_names.length > 0 ? (
+                        newItemData.cast_names.map((name, idx) => (
                           <span key={idx} style={styles.selectedCastTag}>
                             {name}
                             <button
                               type="button"
-                              onClick={() => setNewItemData({
-                                ...newItemData,
-                                cast_names: newItemData.cast_names.filter((_, i) => i !== idx)
-                              })}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setNewItemData({
+                                  ...newItemData,
+                                  cast_names: newItemData.cast_names.filter((_, i) => i !== idx)
+                                })
+                              }}
                               style={styles.removeCastBtn}
                             >
                               ×
                             </button>
                           </span>
-                        ))}
-                      </div>
-                    )}
-                    <div style={{ position: 'relative' }}>
-                      <input
-                        type="text"
-                        value={castSearchTerm}
-                        onChange={(e) => setCastSearchTerm(e.target.value)}
-                        onFocus={() => setShowCastDropdown(true)}
-                        placeholder="検索またはクリックして選択"
-                        style={styles.input}
-                      />
-                      {showCastDropdown && (
-                        <div style={styles.castDropdown}>
-                          {/* 推しを一番上に表示（複数推しに対応） */}
-                          {(() => {
+                        ))
+                      ) : (
+                        <span style={styles.multiSelectPlaceholder}>選択してください</span>
+                      )}
+                    </div>
+                    {showCastDropdown && (
+                      <div style={styles.castDropdown}>
+                        {/* 推しを一番上に表示（複数推しに対応） */}
+                        {(() => {
+                          const staffNames = Array.isArray(selectedReceipt?.staff_name)
+                            ? selectedReceipt.staff_name
+                            : (selectedReceipt?.staff_name ? [selectedReceipt.staff_name] : [])
+                          return staffNames.map((staffName) => {
+                            if (!casts.find(c => c.name === staffName)) return null
+                            const isSelected = newItemData.cast_names.includes(staffName)
+                            return (
+                              <div
+                                key={staffName}
+                                style={{
+                                  ...styles.castOption,
+                                  backgroundColor: isSelected ? '#e0f2fe' : '#e3f2fd',
+                                  fontWeight: 'bold'
+                                }}
+                                onClick={() => {
+                                  if (isSelected) {
+                                    setNewItemData({
+                                      ...newItemData,
+                                      cast_names: newItemData.cast_names.filter(n => n !== staffName)
+                                    })
+                                  } else {
+                                    setNewItemData({
+                                      ...newItemData,
+                                      cast_names: [...newItemData.cast_names, staffName]
+                                    })
+                                  }
+                                }}
+                              >
+                                <span style={styles.castCheckbox}>
+                                  {isSelected ? '✓' : ''}
+                                </span>
+                                {staffName} ⭐
+                              </div>
+                            )
+                          })
+                        })()}
+                        {/* その他のキャスト */}
+                        {casts
+                          .filter(cast => {
                             const staffNames = Array.isArray(selectedReceipt?.staff_name)
                               ? selectedReceipt.staff_name
                               : (selectedReceipt?.staff_name ? [selectedReceipt.staff_name] : [])
-                            return staffNames.map((staffName) => {
-                              if (!casts.find(c => c.name === staffName)) return null
-                              const isSelected = newItemData.cast_names.includes(staffName)
-                              return (
-                                <div
-                                  key={staffName}
-                                  style={{
-                                    ...styles.castOption,
-                                    backgroundColor: isSelected ? '#e0f2fe' : '#e3f2fd',
-                                    fontWeight: 'bold'
-                                  }}
-                                  onClick={() => {
-                                    if (isSelected) {
-                                      setNewItemData({
-                                        ...newItemData,
-                                        cast_names: newItemData.cast_names.filter(n => n !== staffName)
-                                      })
-                                    } else {
-                                      setNewItemData({
-                                        ...newItemData,
-                                        cast_names: [...newItemData.cast_names, staffName]
-                                      })
-                                    }
-                                  }}
-                                >
-                                  <span style={styles.castCheckbox}>
-                                    {isSelected ? '✓' : ''}
-                                  </span>
-                                  {staffName} ⭐
-                                </div>
-                              )
-                            })
-                          })()}
-                          {/* 検索結果 */}
-                          {casts
-                            .filter(cast => {
-                              // 推しは上に表示済みなので除外
-                              const staffNames = Array.isArray(selectedReceipt?.staff_name)
-                                ? selectedReceipt.staff_name
-                                : (selectedReceipt?.staff_name ? [selectedReceipt.staff_name] : [])
-                              if (staffNames.includes(cast.name)) return false
-                              if (!castSearchTerm) return true
-                              return cast.name.toLowerCase().includes(castSearchTerm.toLowerCase())
-                            })
-                            .map((cast) => {
-                              const isSelected = newItemData.cast_names.includes(cast.name)
-                              return (
-                                <div
-                                  key={cast.id}
-                                  style={{
-                                    ...styles.castOption,
-                                    backgroundColor: isSelected ? '#e0f2fe' : 'transparent'
-                                  }}
-                                  onClick={() => {
-                                    if (isSelected) {
-                                      setNewItemData({
-                                        ...newItemData,
-                                        cast_names: newItemData.cast_names.filter(n => n !== cast.name)
-                                      })
-                                    } else {
-                                      setNewItemData({
-                                        ...newItemData,
-                                        cast_names: [...newItemData.cast_names, cast.name]
-                                      })
-                                    }
-                                  }}
-                                >
-                                  <span style={styles.castCheckbox}>{isSelected ? '✓' : ''}</span>
-                                  {cast.name}
-                                </div>
-                              )
-                            })}
-                          <button
-                            type="button"
-                            onClick={() => setShowCastDropdown(false)}
-                            style={styles.castDropdownClose}
-                          >
-                            閉じる
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </>
+                            return !staffNames.includes(cast.name)
+                          })
+                          .map((cast) => {
+                            const isSelected = newItemData.cast_names.includes(cast.name)
+                            return (
+                              <div
+                                key={cast.id}
+                                style={{
+                                  ...styles.castOption,
+                                  backgroundColor: isSelected ? '#e0f2fe' : 'transparent'
+                                }}
+                                onClick={() => {
+                                  if (isSelected) {
+                                    setNewItemData({
+                                      ...newItemData,
+                                      cast_names: newItemData.cast_names.filter(n => n !== cast.name)
+                                    })
+                                  } else {
+                                    setNewItemData({
+                                      ...newItemData,
+                                      cast_names: [...newItemData.cast_names, cast.name]
+                                    })
+                                  }
+                                }}
+                              >
+                                <span style={styles.castCheckbox}>{isSelected ? '✓' : ''}</span>
+                                {cast.name}
+                              </div>
+                            )
+                          })}
+                        <button
+                          type="button"
+                          onClick={() => setShowCastDropdown(false)}
+                          style={styles.castDropdownClose}
+                        >
+                          閉じる
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 ) : (
                   /* 単一選択モード：通常のselect */
                   <select
@@ -2566,77 +2554,74 @@ export default function ReceiptsPage() {
               <div style={styles.formGroup}>
                 <label style={styles.label}>推し{allowMultipleNominations && '（複数選択可）'} <span style={{ color: 'red' }}>*</span></label>
                 {allowMultipleNominations ? (
-                  <>
-                    {/* 複数選択モード：選択中の推し表示 */}
-                    {createFormData.staff_names.length > 0 && (
-                      <div style={styles.selectedCastsContainer}>
-                        {createFormData.staff_names.map((name, idx) => (
+                  <div style={{ position: 'relative' }}>
+                    <div
+                      onClick={() => setShowCreateStaffDropdown(!showCreateStaffDropdown)}
+                      style={styles.multiSelectInputContainer}
+                    >
+                      {createFormData.staff_names.length > 0 ? (
+                        createFormData.staff_names.map((name, idx) => (
                           <span key={idx} style={styles.selectedCastTag}>
                             {name}
                             <button
                               type="button"
-                              onClick={() => setCreateFormData({
-                                ...createFormData,
-                                staff_names: createFormData.staff_names.filter((_, i) => i !== idx)
-                              })}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setCreateFormData({
+                                  ...createFormData,
+                                  staff_names: createFormData.staff_names.filter((_, i) => i !== idx)
+                                })
+                              }}
                               style={styles.removeCastBtn}
                             >
                               ×
                             </button>
                           </span>
-                        ))}
-                      </div>
-                    )}
-                    {/* 推し選択ドロップダウン */}
-                    <div style={{ position: 'relative' }}>
-                      <button
-                        type="button"
-                        onClick={() => setShowCreateStaffDropdown(!showCreateStaffDropdown)}
-                        style={styles.castSelectBtn}
-                      >
-                        {createFormData.staff_names.length === 0 ? '推しを選択' : '推しを追加'}
-                      </button>
-                      {showCreateStaffDropdown && (
-                        <div style={styles.castDropdownMenu}>
-                          {casts.map((cast) => {
-                            const isSelected = createFormData.staff_names.includes(cast.name)
-                            return (
-                              <div
-                                key={cast.id}
-                                onClick={() => {
-                                  if (isSelected) {
-                                    setCreateFormData({
-                                      ...createFormData,
-                                      staff_names: createFormData.staff_names.filter(n => n !== cast.name)
-                                    })
-                                  } else {
-                                    setCreateFormData({
-                                      ...createFormData,
-                                      staff_names: [...createFormData.staff_names, cast.name]
-                                    })
-                                  }
-                                }}
-                                style={{
-                                  ...styles.castDropdownItem,
-                                  backgroundColor: isSelected ? '#e0f2fe' : 'transparent'
-                                }}
-                              >
-                                <span style={styles.castCheckbox}>{isSelected ? '✓' : ''}</span>
-                                {cast.name}
-                              </div>
-                            )
-                          })}
-                          <button
-                            type="button"
-                            onClick={() => setShowCreateStaffDropdown(false)}
-                            style={styles.castDropdownClose}
-                          >
-                            閉じる
-                          </button>
-                        </div>
+                        ))
+                      ) : (
+                        <span style={styles.multiSelectPlaceholder}>選択してください</span>
                       )}
                     </div>
-                  </>
+                    {showCreateStaffDropdown && (
+                      <div style={styles.castDropdownMenu}>
+                        {casts.map((cast) => {
+                          const isSelected = createFormData.staff_names.includes(cast.name)
+                          return (
+                            <div
+                              key={cast.id}
+                              onClick={() => {
+                                if (isSelected) {
+                                  setCreateFormData({
+                                    ...createFormData,
+                                    staff_names: createFormData.staff_names.filter(n => n !== cast.name)
+                                  })
+                                } else {
+                                  setCreateFormData({
+                                    ...createFormData,
+                                    staff_names: [...createFormData.staff_names, cast.name]
+                                  })
+                                }
+                              }}
+                              style={{
+                                ...styles.castDropdownItem,
+                                backgroundColor: isSelected ? '#e0f2fe' : 'transparent'
+                              }}
+                            >
+                              <span style={styles.castCheckbox}>{isSelected ? '✓' : ''}</span>
+                              {cast.name}
+                            </div>
+                          )
+                        })}
+                        <button
+                          type="button"
+                          onClick={() => setShowCreateStaffDropdown(false)}
+                          style={styles.castDropdownClose}
+                        >
+                          閉じる
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 ) : (
                   /* 単一選択モード：通常のselect */
                   <select
@@ -3291,6 +3276,25 @@ const styles: { [key: string]: React.CSSProperties } = {
     borderBottom: '1px solid #e9ecef',
     transition: 'background-color 0.2s',
   },
+  multiSelectInputContainer: {
+    display: 'flex',
+    flexWrap: 'wrap' as const,
+    alignItems: 'center',
+    gap: '6px',
+    width: '100%',
+    minHeight: '42px',
+    padding: '6px 10px',
+    fontSize: '14px',
+    border: '1px solid #ced4da',
+    borderRadius: '6px',
+    backgroundColor: 'white',
+    cursor: 'pointer',
+    boxSizing: 'border-box' as const,
+  },
+  multiSelectPlaceholder: {
+    color: '#6c757d',
+    fontSize: '14px',
+  },
   selectedCastsContainer: {
     display: 'flex',
     flexWrap: 'wrap' as const,
@@ -3303,7 +3307,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     gap: '4px',
     backgroundColor: '#e0f2fe',
     color: '#0369a1',
-    padding: '4px 8px',
+    padding: '4px 6px',
     borderRadius: '4px',
     fontSize: '13px',
   },
@@ -3315,6 +3319,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     padding: '0 2px',
     fontSize: '14px',
     fontWeight: 'bold',
+    lineHeight: 1,
   },
   castSelectBtn: {
     width: '100%',
