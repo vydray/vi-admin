@@ -729,10 +729,12 @@ export default function SalesSettingsPage() {
 
     const finalTotal = applyRoundingPreview(totalWithService, roundingPosition, roundingType)
 
-    // キャストごとの売上（A, B, C, D別に集計）
+    // キャストごとの売上とバック（A, B, C, D別に集計）
     const castSales: Record<string, number> = {}
+    const castBack: Record<string, number> = {}
     availableCasts.filter(c => c !== '-').forEach(cast => {
       castSales[cast] = 0
+      castBack[cast] = 0
     })
 
     // 複数キャストの分配方法を取得
@@ -743,40 +745,39 @@ export default function SalesSettingsPage() {
     results.forEach(r => {
       if (r.notIncluded || r.castNames.length === 0) return
 
-      // 分配対象のキャストを決定
-      let targetCasts = r.castNames
+      // まず商品を全キャストで均等分割（バック計算用）
+      const perCastShare = Math.floor(r.rounded / r.castNames.length)
 
-      if (multiCastDist === 'nomination_only') {
-        // 推しに該当するキャストのみに分配
-        const nominationCasts = r.castNames.filter(c =>
-          previewNominations.includes(c) || nonHelpNames.includes(c)
-        )
-        // 推しに該当するキャストがいない場合は全員に分配（全員HELP）
-        if (nominationCasts.length > 0) {
-          targetCasts = nominationCasts
+      // 各キャストの売上とバックを計算
+      r.castNames.forEach(cast => {
+        if (castBack[cast] === undefined) return
+
+        // キャストがSELFかHELPかを判定
+        const isCastSelf = previewNominations.includes(cast) || nonHelpNames.includes(cast) || nominationIsNonHelp
+
+        // バックは全キャストに分配（売上計上の有無に関わらず）
+        castBack[cast] += perCastShare
+
+        // 売上計上の判定
+        let countAsSales = true
+
+        // nomination_only: 推しに該当するキャストのみ売上計上
+        if (multiCastDist === 'nomination_only') {
+          if (!isCastSelf) {
+            countAsSales = false
+          }
         }
-      }
 
-      // helpInclusion設定に基づいてさらにフィルタリング
-      if (helpInclusion === 'self_only') {
-        // SELFのみ：推しに該当するキャストのみ
-        targetCasts = targetCasts.filter(c =>
-          previewNominations.includes(c) || nonHelpNames.includes(c) || nominationIsNonHelp
-        )
-      } else if (helpInclusion === 'help_only') {
-        // HELPのみ：推しに該当しないキャストのみ
-        targetCasts = targetCasts.filter(c =>
-          !previewNominations.includes(c) && !nonHelpNames.includes(c) && !nominationIsNonHelp
-        )
-      }
+        // helpInclusion設定でさらにフィルタリング
+        if (helpInclusion === 'self_only' && !isCastSelf) {
+          countAsSales = false
+        } else if (helpInclusion === 'help_only' && isCastSelf) {
+          countAsSales = false
+        }
 
-      if (targetCasts.length === 0) return
-
-      // 対象キャストで均等分配
-      const perCast = Math.floor(r.rounded / targetCasts.length)
-      targetCasts.forEach(cast => {
-        if (castSales[cast] !== undefined) {
-          castSales[cast] += perCast
+        // 売上計上
+        if (countAsSales) {
+          castSales[cast] += perCastShare
         }
       })
     })
@@ -791,6 +792,7 @@ export default function SalesSettingsPage() {
       totalWithService,
       finalTotal,
       castSales,
+      castBack,
       noNameSales,
       isItemBased,
       excludeTax,
@@ -1182,15 +1184,24 @@ export default function SalesSettingsPage() {
                 </div>
 
                 <div style={styles.castSalesSection}>
-                  <div style={styles.castSalesTitle}>キャストごとの売上</div>
+                  <div style={styles.castSalesTitle}>キャストごとの売上・バック</div>
+                  <div style={styles.castSalesHeader}>
+                    <span style={{ flex: 1 }}>キャスト</span>
+                    <span style={{ width: '80px', textAlign: 'right' as const }}>売上</span>
+                    <span style={{ width: '80px', textAlign: 'right' as const }}>バック対象</span>
+                  </div>
                   {['A', 'B', 'C', 'D'].map(cast => {
                     const sales = preview.castSales[cast] || 0
+                    const back = preview.castBack[cast] || 0
                     const isNomination = previewNominations.includes(cast)
                     // 推しの場合はキャスト名なしの売上も加算
                     const totalSales = isNomination && previewNominations.length === 1
                       ? sales + preview.noNameSales
                       : sales
-                    if (totalSales === 0 && !isNomination) return null
+                    const totalBack = isNomination && previewNominations.length === 1
+                      ? back + preview.noNameSales
+                      : back
+                    if (totalBack === 0 && !isNomination) return null
                     return (
                       <div key={cast} style={styles.castSalesRow}>
                         <span style={styles.castSalesLabel}>
@@ -1203,6 +1214,12 @@ export default function SalesSettingsPage() {
                           {isNomination ? '推し' : 'ヘルプ'}
                         </span>
                         <span style={styles.castSalesValue}>¥{totalSales.toLocaleString()}</span>
+                        <span style={{
+                          ...styles.castSalesValue,
+                          color: totalBack > totalSales ? '#f59e0b' : '#0369a1',
+                        }}>
+                          ¥{totalBack.toLocaleString()}
+                        </span>
                       </div>
                     )
                   })}
@@ -1588,7 +1605,17 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '12px',
     fontWeight: '600',
     color: '#0369a1',
-    marginBottom: '10px',
+    marginBottom: '8px',
+  },
+  castSalesHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    padding: '4px 0',
+    borderBottom: '1px solid #bae6fd',
+    marginBottom: '4px',
+    fontSize: '10px',
+    fontWeight: '600',
+    color: '#64748b',
   },
   castSalesRow: {
     display: 'flex',
@@ -1606,7 +1633,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     color: '#334155',
   },
   castSalesValue: {
-    width: '70px',
+    width: '80px',
     textAlign: 'right' as const,
     fontSize: '13px',
     fontWeight: '600',
