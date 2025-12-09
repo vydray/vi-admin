@@ -978,9 +978,13 @@ export default function SalesSettingsPage() {
     const receiptRoundingDiff = receiptTotal - receiptBeforeRounding
 
     // キャストごとの売上とバック（A, B, C, D別に集計）
-    const castSales: Record<string, number> = {}
+    const castSalesRaw: Record<string, number> = {} // 元の売上（税込み）
+    const castSalesBeforeRounding: Record<string, number> = {} // 計算基準適用後、端数処理前
+    const castSales: Record<string, number> = {} // 端数処理後
     const castBack: Record<string, number> = {}
     availableCasts.filter(c => c !== '-').forEach(cast => {
+      castSalesRaw[cast] = 0
+      castSalesBeforeRounding[cast] = 0
       castSales[cast] = 0
       castBack[cast] = 0
     })
@@ -991,17 +995,36 @@ export default function SalesSettingsPage() {
 
       r.castBreakdown.forEach(cb => {
         if (castSales[cb.cast] !== undefined) {
+          castSalesRaw[cb.cast] += cb.sales
           castSales[cb.cast] += cb.sales
           castBack[cb.cast] += cb.back
         }
       })
     })
 
-    // 合計時の端数処理をキャストごとの集計にも適用
+    // 合計時の計算基準と端数処理をキャストごとの集計にも適用
     if (roundingTiming === 'total') {
       Object.keys(castSales).forEach(cast => {
-        castSales[cast] = applyRoundingPreview(castSales[cast], roundingPosition, roundingType)
+        let sales = castSalesRaw[cast]
+        // 1. 税抜き計算
+        if (excludeTax) {
+          const taxPercent = Math.round(taxRate * 100)
+          sales = Math.floor(sales * 100 / (100 + taxPercent))
+        }
+        // 2. サービス料加算
+        if (excludeService && serviceRate > 0) {
+          const servicePercent = Math.round(serviceRate * 100)
+          sales = Math.floor(sales * (100 + servicePercent) / 100)
+        }
+        castSalesBeforeRounding[cast] = sales
+        // 3. 端数処理
+        castSales[cast] = applyRoundingPreview(sales, roundingPosition, roundingType)
         castBack[cast] = applyRoundingPreview(castBack[cast], roundingPosition, roundingType)
+      })
+    } else {
+      // 商品ごとの場合は既に処理済みなのでそのままコピー
+      Object.keys(castSales).forEach(cast => {
+        castSalesBeforeRounding[cast] = castSales[cast]
       })
     }
     // キャスト名なしは推しに分配
@@ -1016,6 +1039,7 @@ export default function SalesSettingsPage() {
       afterRoundingTotal,
       afterServiceTotal,
       finalTotal,
+      castSalesBeforeRounding,
       castSales,
       castBack,
       noNameSales,
@@ -1497,37 +1521,20 @@ export default function SalesSettingsPage() {
 
                 <div style={styles.castSalesSection}>
                   <div style={styles.castSalesTitle}>キャストごとの売上・バック</div>
-                  {/* 合計時の計算過程を表示 */}
-                  {preview.roundingTiming === 'total' && preview.finalTotal !== preview.itemsTotal && (
-                    <div style={styles.totalCalcProcess}>
-                      <span style={styles.totalCalcLabel}>計算過程:</span>
-                      <span style={styles.totalCalcSteps}>
-                        ¥{preview.itemsTotal.toLocaleString()}
-                        {preview.excludeTax && preview.afterTaxTotal !== preview.itemsTotal && (
-                          <> → ¥{preview.afterTaxTotal.toLocaleString()}（税抜）</>
-                        )}
-                        {preview.afterRoundingTotal !== preview.afterTaxTotal && (
-                          <> → ¥{preview.afterRoundingTotal.toLocaleString()}（端数処理）</>
-                        )}
-                        {preview.excludeService && preview.afterServiceTotal !== preview.afterRoundingTotal && (
-                          <> → ¥{preview.afterServiceTotal.toLocaleString()}（+サービス）</>
-                        )}
-                        {preview.finalTotal !== preview.afterServiceTotal && (
-                          <> → ¥{preview.finalTotal.toLocaleString()}（端数処理）</>
-                        )}
-                      </span>
-                    </div>
-                  )}
                   <div style={styles.castSalesHeader}>
                     <span style={{ flex: 1 }}>キャスト</span>
-                    <span style={{ width: '80px', textAlign: 'right' as const }}>売上</span>
+                    <span style={{ width: '120px', textAlign: 'right' as const }}>売上</span>
                     <span style={{ width: '80px', textAlign: 'right' as const }}>バック対象</span>
                   </div>
                   {['A', 'B', 'C', 'D'].map(cast => {
+                    const salesBeforeRounding = preview.castSalesBeforeRounding[cast] || 0
                     const sales = preview.castSales[cast] || 0
                     const back = preview.castBack[cast] || 0
                     const isNomination = previewNominations.includes(cast)
                     // 推しの場合はキャスト名なしの売上も加算
+                    const totalSalesBeforeRounding = isNomination && previewNominations.length === 1
+                      ? salesBeforeRounding + preview.noNameSales
+                      : salesBeforeRounding
                     const totalSales = isNomination && previewNominations.length === 1
                       ? sales + preview.noNameSales
                       : sales
@@ -1535,6 +1542,7 @@ export default function SalesSettingsPage() {
                       ? back + preview.noNameSales
                       : back
                     if (totalBack === 0 && !isNomination) return null
+                    const hasRoundingDiff = preview.roundingTiming === 'total' && totalSalesBeforeRounding !== totalSales
                     return (
                       <div key={cast} style={styles.castSalesRow}>
                         <span style={styles.castSalesLabel}>
@@ -1546,7 +1554,17 @@ export default function SalesSettingsPage() {
                           </span>
                           {isNomination ? '推し' : 'ヘルプ'}
                         </span>
-                        <span style={styles.castSalesValue}>¥{totalSales.toLocaleString()}</span>
+                        <span style={styles.castSalesValue}>
+                          {hasRoundingDiff ? (
+                            <span style={{ fontSize: '11px' }}>
+                              <span style={{ color: '#94a3b8' }}>¥{totalSalesBeforeRounding.toLocaleString()}</span>
+                              <span style={{ color: '#64748b' }}> → </span>
+                              <span style={{ fontWeight: '600' }}>¥{totalSales.toLocaleString()}</span>
+                            </span>
+                          ) : (
+                            <>¥{totalSales.toLocaleString()}</>
+                          )}
+                        </span>
                         <span style={{
                           ...styles.castSalesValue,
                           color: totalBack > totalSales ? '#f59e0b' : '#0369a1',
