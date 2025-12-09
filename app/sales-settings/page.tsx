@@ -950,6 +950,31 @@ export default function SalesSettingsPage() {
       }
     }
 
+    // 伝票合計（お会計金額）の計算 - システム設定の端数処理を使用
+    // 商品の税込み合計（basePrice）にサービス料を加え、端数処理
+    const receiptSubtotal = results.reduce((sum, r) => sum + r.basePrice, 0) // 税込み小計
+    const receiptServiceFee = Math.floor(receiptSubtotal * serviceRate) // サービス料
+    const receiptBeforeRounding = receiptSubtotal + receiptServiceFee
+
+    // システム設定の端数処理を適用
+    const applySystemRounding = (amount: number): number => {
+      const unit = systemSettings.rounding_unit || 1
+      const method = systemSettings.rounding_method // 0=切り上げ, 1=切り捨て, 2=四捨五入
+      if (unit <= 1) return amount
+      switch (method) {
+        case 0: // 切り上げ
+          return Math.ceil(amount / unit) * unit
+        case 1: // 切り捨て
+          return Math.floor(amount / unit) * unit
+        case 2: // 四捨五入
+          return Math.round(amount / unit) * unit
+        default:
+          return amount
+      }
+    }
+    const receiptTotal = applySystemRounding(receiptBeforeRounding)
+    const receiptRoundingDiff = receiptTotal - receiptBeforeRounding
+
     // キャストごとの売上とバック（A, B, C, D別に集計）
     const castSales: Record<string, number> = {}
     const castBack: Record<string, number> = {}
@@ -1000,6 +1025,12 @@ export default function SalesSettingsPage() {
       roundingPosition,
       roundingType,
       roundingTiming,
+      // 伝票合計（お会計金額）
+      receiptSubtotal,
+      receiptServiceFee,
+      receiptBeforeRounding,
+      receiptTotal,
+      receiptRoundingDiff,
     }
   }, [settings, systemSettings, previewAggregation, previewNominations, previewItems, availableCasts])
 
@@ -1431,33 +1462,35 @@ export default function SalesSettingsPage() {
                 </button>
 
                 <div style={styles.receiptTotal}>
-                  <div style={styles.totalRow}>
-                    <span>合計</span>
-                    <span>¥{preview.itemsTotal.toLocaleString()}</span>
+                  {/* 小計 */}
+                  <div style={styles.subtotalRow}>
+                    <span>小計（税込）</span>
+                    <span>¥{preview.receiptSubtotal.toLocaleString()}</span>
                   </div>
-                  {/* 合計時の計算過程を表示 */}
-                  {preview.roundingTiming === 'total' && preview.finalTotal !== preview.itemsTotal && (
-                    <div style={styles.totalCalcProcess}>
-                      <span style={styles.totalCalcLabel}>処理後:</span>
-                      <span style={styles.totalCalcSteps}>
-                        {preview.excludeTax && preview.afterTaxTotal !== preview.itemsTotal && (
-                          <>¥{preview.afterTaxTotal.toLocaleString()}（税抜）</>
-                        )}
-                        {preview.afterRoundingTotal !== preview.afterTaxTotal && (
-                          <> → ¥{preview.afterRoundingTotal.toLocaleString()}（端数処理）</>
-                        )}
-                        {preview.excludeService && preview.afterServiceTotal !== preview.afterRoundingTotal && (
-                          <> → ¥{preview.afterServiceTotal.toLocaleString()}（+サービス）</>
-                        )}
-                        {preview.finalTotal !== preview.afterServiceTotal && (
-                          <> → ¥{preview.finalTotal.toLocaleString()}（端数処理）</>
-                        )}
-                        {preview.afterRoundingTotal === preview.afterTaxTotal && !preview.excludeService && (
-                          <> → ¥{preview.finalTotal.toLocaleString()}</>
-                        )}
+                  {/* サービス料 */}
+                  {preview.receiptServiceFee > 0 && (
+                    <div style={styles.subtotalRow}>
+                      <span>サービス料（{systemSettings.service_fee_rate}%）</span>
+                      <span>¥{preview.receiptServiceFee.toLocaleString()}</span>
+                    </div>
+                  )}
+                  {/* 端数処理 */}
+                  {preview.receiptRoundingDiff !== 0 && (
+                    <div style={styles.subtotalRow}>
+                      <span>端数処理（{systemSettings.rounding_unit}の位で{
+                        systemSettings.rounding_method === 0 ? '切り上げ' :
+                        systemSettings.rounding_method === 1 ? '切り捨て' : '四捨五入'
+                      }）</span>
+                      <span style={{ color: preview.receiptRoundingDiff > 0 ? '#10b981' : '#ef4444' }}>
+                        {preview.receiptRoundingDiff > 0 ? '+' : ''}¥{preview.receiptRoundingDiff.toLocaleString()}
                       </span>
                     </div>
                   )}
+                  {/* 伝票合計 */}
+                  <div style={styles.totalRow}>
+                    <span>伝票合計</span>
+                    <span>¥{preview.receiptTotal.toLocaleString()}</span>
+                  </div>
                 </div>
 
                 <div style={styles.castSalesSection}>
@@ -1869,6 +1902,13 @@ const styles: { [key: string]: React.CSSProperties } = {
     paddingTop: '10px',
     borderTop: '2px solid #cbd5e1',
   },
+  subtotalRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    padding: '4px 0',
+    fontSize: '13px',
+    color: '#64748b',
+  },
   totalRow: {
     display: 'flex',
     justifyContent: 'space-between',
@@ -1876,6 +1916,8 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '15px',
     fontWeight: '700',
     color: '#1e293b',
+    borderTop: '1px solid #e2e8f0',
+    marginTop: '4px',
   },
   totalCalcProcess: {
     display: 'flex',
