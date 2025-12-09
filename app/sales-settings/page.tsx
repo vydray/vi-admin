@@ -217,8 +217,10 @@ function AggregationSection({
               value={roundingPosition.toString()}
               onChange={(e) => {
                 const pos = parseInt(e.target.value)
-                onUpdate(roundingPositionKey, pos)
-                onUpdate(roundingMethodKey, combineRoundingMethod(pos, roundingType))
+                onUpdateMultiple({
+                  [roundingPositionKey]: pos,
+                  [roundingMethodKey]: combineRoundingMethod(pos, roundingType),
+                })
               }}
               style={styles.select}
             >
@@ -234,7 +236,9 @@ function AggregationSection({
               value={roundingType}
               onChange={(e) => {
                 const type = e.target.value as RoundingType
-                onUpdate(roundingMethodKey, combineRoundingMethod(roundingPosition, type))
+                onUpdateMultiple({
+                  [roundingMethodKey]: combineRoundingMethod(roundingPosition, type),
+                })
               }}
               style={styles.select}
             >
