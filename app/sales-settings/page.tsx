@@ -398,11 +398,11 @@ export default function SalesSettingsPage() {
   const [previewAggregation, setPreviewAggregation] = useState<'item' | 'receipt'>('item')
   const [previewNominations, setPreviewNominations] = useState<string[]>(['A'])
   const [previewItems, setPreviewItems] = useState([
-    { id: 1, name: 'セット料金 60分', basePrice: 3300, castName: '-', needsCast: false },
-    { id: 2, name: 'キャストドリンク', basePrice: 1100, castName: 'A', needsCast: true },
-    { id: 3, name: 'シャンパン', basePrice: 11000, castName: 'A', needsCast: true },
-    { id: 4, name: 'チェキ', basePrice: 1500, castName: 'B', needsCast: true },
-    { id: 5, name: 'ヘルプドリンク', basePrice: 1100, castName: 'C', needsCast: true },
+    { id: 1, name: 'セット料金 60分', basePrice: 3300, castNames: [] as string[], needsCast: false },
+    { id: 2, name: 'キャストドリンク', basePrice: 1100, castNames: ['A'], needsCast: true },
+    { id: 3, name: 'シャンパン', basePrice: 11000, castNames: ['A'], needsCast: true },
+    { id: 4, name: 'チェキ', basePrice: 1500, castNames: ['B'], needsCast: true },
+    { id: 5, name: 'ヘルプドリンク', basePrice: 1100, castNames: ['C'], needsCast: true },
   ])
 
   // キャスト選択肢（A〜D + ヘルプ扱いにしない推し名 + なし）
@@ -575,10 +575,53 @@ export default function SalesSettingsPage() {
     updateSetting('non_help_staff_names', names.filter(n => n !== name))
   }
 
-  // 商品のキャスト名を更新
-  const updateItemCast = (itemId: number, castName: string) => {
+  // 商品のキャスト名を更新（トグル形式）
+  const toggleItemCast = (itemId: number, castName: string) => {
+    setPreviewItems(prev => prev.map(item => {
+      if (item.id !== itemId) return item
+      const currentCasts = item.castNames
+      if (castName === '-') {
+        // 「なし」を選択した場合はキャストをクリア
+        return { ...item, castNames: [] }
+      }
+      if (currentCasts.includes(castName)) {
+        // 既に選択されていれば削除
+        return { ...item, castNames: currentCasts.filter(c => c !== castName) }
+      } else {
+        // 選択されていなければ追加
+        return { ...item, castNames: [...currentCasts, castName] }
+      }
+    }))
+  }
+
+  // 商品を追加
+  const addPreviewItem = () => {
+    const newId = Math.max(...previewItems.map(i => i.id)) + 1
+    setPreviewItems(prev => [...prev, {
+      id: newId,
+      name: '新規商品',
+      basePrice: 1000,
+      castNames: [],
+      needsCast: true,
+    }])
+  }
+
+  // 商品を削除
+  const removePreviewItem = (itemId: number) => {
+    setPreviewItems(prev => prev.filter(item => item.id !== itemId))
+  }
+
+  // 商品名を更新
+  const updateItemName = (itemId: number, name: string) => {
     setPreviewItems(prev => prev.map(item =>
-      item.id === itemId ? { ...item, castName } : item
+      item.id === itemId ? { ...item, name } : item
+    ))
+  }
+
+  // 商品金額を更新
+  const updateItemPrice = (itemId: number, price: number) => {
+    setPreviewItems(prev => prev.map(item =>
+      item.id === itemId ? { ...item, basePrice: price } : item
     ))
   }
 
@@ -636,9 +679,10 @@ export default function SalesSettingsPage() {
         calcPrice = Math.floor(calcPrice * 100 / (100 + taxPercent))
       }
 
-      // SELF/HELP判定（推しに含まれているか、またはキャスト名なし）
-      const isSelf = previewNominations.includes(item.castName) || item.castName === '-'
-      const isNonHelpName = nonHelpNames.includes(item.castName)
+      // SELF/HELP判定（キャスト名のいずれかが推しに含まれているか、またはキャスト名なし）
+      const hasCast = item.castNames.length > 0
+      const isSelf = !hasCast || item.castNames.some(c => previewNominations.includes(c))
+      const isNonHelpName = item.castNames.some(c => nonHelpNames.includes(c))
 
       let salesAmount = calcPrice
 
@@ -680,13 +724,21 @@ export default function SalesSettingsPage() {
     // キャストごとの売上（A, B, C, D別に集計）
     const castSales: Record<string, number> = {}
     availableCasts.filter(c => c !== '-').forEach(cast => {
-      castSales[cast] = results
-        .filter(r => r.castName === cast && !r.notIncluded)
-        .reduce((sum, r) => sum + r.rounded, 0)
+      castSales[cast] = 0
+    })
+    results.forEach(r => {
+      if (r.notIncluded || r.castNames.length === 0) return
+      // 複数キャストの場合は均等分配
+      const perCast = Math.floor(r.rounded / r.castNames.length)
+      r.castNames.forEach(cast => {
+        if (castSales[cast] !== undefined) {
+          castSales[cast] += perCast
+        }
+      })
     })
     // キャスト名なしは推しに分配
     const noNameSales = results
-      .filter(r => r.castName === '-' && !r.notIncluded)
+      .filter(r => r.castNames.length === 0 && !r.notIncluded)
       .reduce((sum, r) => sum + r.rounded, 0)
 
     return {
@@ -1001,17 +1053,48 @@ export default function SalesSettingsPage() {
                 {preview.items.map((item) => (
                   <div key={item.id} style={styles.receiptItem}>
                     <div style={styles.receiptItemHeader}>
-                      <span style={styles.itemName}>{item.name}</span>
-                      <select
-                        value={item.castName}
-                        onChange={(e) => updateItemCast(item.id, e.target.value)}
-                        style={styles.castSelect}
+                      <input
+                        type="text"
+                        value={item.name}
+                        onChange={(e) => updateItemName(item.id, e.target.value)}
+                        style={styles.itemNameInput}
+                      />
+                      <input
+                        type="number"
+                        value={item.basePrice}
+                        onChange={(e) => updateItemPrice(item.id, parseInt(e.target.value) || 0)}
+                        style={styles.itemPriceInput}
+                      />
+                      <button
+                        onClick={() => removePreviewItem(item.id)}
+                        style={styles.removeItemBtn}
+                        title="削除"
                       >
-                        {availableCasts.map(cast => (
-                          <option key={cast} value={cast}>{cast === '-' ? 'なし' : cast}</option>
-                        ))}
-                      </select>
-                      <span style={styles.itemPrice}>¥{item.basePrice.toLocaleString()}</span>
+                        ×
+                      </button>
+                    </div>
+                    <div style={styles.castSelectRow}>
+                      {availableCasts.filter(c => c !== '-').map(cast => (
+                        <button
+                          key={cast}
+                          onClick={() => toggleItemCast(item.id, cast)}
+                          style={{
+                            ...styles.castSelectBtn,
+                            ...(item.castNames.includes(cast) ? styles.castSelectBtnActive : {}),
+                          }}
+                        >
+                          {cast}
+                        </button>
+                      ))}
+                      {item.castNames.length > 0 && (
+                        <button
+                          onClick={() => toggleItemCast(item.id, '-')}
+                          style={styles.clearCastBtn}
+                          title="キャストをクリア"
+                        >
+                          ×
+                        </button>
+                      )}
                     </div>
                     <div style={styles.receiptItemDetails}>
                       {item.notIncluded ? (
@@ -1033,6 +1116,9 @@ export default function SalesSettingsPage() {
                     </div>
                   </div>
                 ))}
+                <button onClick={addPreviewItem} style={styles.addItemBtn}>
+                  + 商品を追加
+                </button>
 
                 <div style={styles.receiptTotal}>
                   <div style={styles.totalRow}>
@@ -1530,6 +1616,78 @@ const styles: { [key: string]: React.CSSProperties } = {
     borderRadius: '4px',
     backgroundColor: 'white',
     textAlign: 'center' as const,
+    cursor: 'pointer',
+  },
+  itemNameInput: {
+    flex: 1,
+    padding: '4px 6px',
+    fontSize: '12px',
+    border: '1px solid #e2e8f0',
+    borderRadius: '4px',
+    backgroundColor: 'white',
+    minWidth: 0,
+  },
+  itemPriceInput: {
+    width: '70px',
+    padding: '4px 6px',
+    fontSize: '12px',
+    border: '1px solid #e2e8f0',
+    borderRadius: '4px',
+    backgroundColor: 'white',
+    textAlign: 'right' as const,
+  },
+  removeItemBtn: {
+    width: '20px',
+    height: '20px',
+    padding: 0,
+    border: 'none',
+    borderRadius: '50%',
+    backgroundColor: '#fee2e2',
+    color: '#ef4444',
+    fontSize: '12px',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  castSelectRow: {
+    display: 'flex',
+    gap: '4px',
+    marginTop: '4px',
+    flexWrap: 'wrap' as const,
+  },
+  castSelectBtn: {
+    padding: '2px 8px',
+    fontSize: '11px',
+    border: '1px solid #e2e8f0',
+    borderRadius: '12px',
+    backgroundColor: 'white',
+    color: '#64748b',
+    cursor: 'pointer',
+  },
+  castSelectBtnActive: {
+    borderColor: '#3b82f6',
+    backgroundColor: '#eff6ff',
+    color: '#3b82f6',
+  },
+  clearCastBtn: {
+    padding: '2px 6px',
+    fontSize: '10px',
+    border: 'none',
+    borderRadius: '12px',
+    backgroundColor: '#f1f5f9',
+    color: '#94a3b8',
+    cursor: 'pointer',
+  },
+  addItemBtn: {
+    width: '100%',
+    padding: '8px',
+    marginTop: '8px',
+    fontSize: '12px',
+    border: '1px dashed #cbd5e1',
+    borderRadius: '6px',
+    backgroundColor: 'transparent',
+    color: '#64748b',
     cursor: 'pointer',
   },
   settingSummary: {
