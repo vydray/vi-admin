@@ -665,6 +665,9 @@ export default function SalesSettingsPage() {
 
     const nonHelpNames = settings.non_help_staff_names || []
 
+    // 推しがヘルプ扱いにしない名前（フリーなど）を含むかチェック
+    const nominationIsNonHelp = previewNominations.some(n => nonHelpNames.includes(n))
+
     const results = previewItems.map(item => {
       // キャスト商品のみの場合、キャスト名がない商品は除外
       if (isItemBased && !item.needsCast) {
@@ -679,16 +682,20 @@ export default function SalesSettingsPage() {
         calcPrice = Math.floor(calcPrice * 100 / (100 + taxPercent))
       }
 
-      // SELF/HELP判定（キャスト名のいずれかが推しに含まれているか、またはキャスト名なし）
+      // SELF/HELP判定
+      // - キャスト名がない場合はSELF
+      // - キャストが推しに含まれている場合はSELF
+      // - 商品のキャストがヘルプ扱いにしない名前の場合はSELF
+      // - 推しにヘルプ扱いにしない名前が含まれている場合は全てSELF（フリーなど指名なしの場合）
       const hasCast = item.castNames.length > 0
       const isNonHelpName = item.castNames.some(c => nonHelpNames.includes(c))
-      // ヘルプ扱いにしない推し名は常にSELF扱い（100%計上）
-      const isSelf = !hasCast || item.castNames.some(c => previewNominations.includes(c)) || isNonHelpName
+      const isSelf = !hasCast || item.castNames.some(c => previewNominations.includes(c)) || isNonHelpName || nominationIsNonHelp
 
       let salesAmount = calcPrice
 
-      // HELP売上計算（ヘルプ扱いにしない推し名は除外）
-      if (!isSelf && !isNonHelpName) {
+      // HELP売上計算（ヘルプ扱いにしない場合は除外）
+      // 推しがフリーなどの場合は全てSELFなのでHELP計算をスキップ
+      if (!isSelf && !isNonHelpName && !nominationIsNonHelp) {
         salesAmount = Math.floor(calcPrice * (helpRatio / 100))
       }
 
@@ -1053,19 +1060,28 @@ export default function SalesSettingsPage() {
 
                 {preview.items.map((item) => (
                   <div key={item.id} style={styles.receiptItem}>
-                    <div style={styles.receiptItemHeader}>
-                      <input
-                        type="text"
-                        value={item.name}
-                        onChange={(e) => updateItemName(item.id, e.target.value)}
-                        style={styles.itemNameInput}
-                      />
-                      <input
-                        type="number"
-                        value={item.basePrice}
-                        onChange={(e) => updateItemPrice(item.id, parseInt(e.target.value) || 0)}
-                        style={styles.itemPriceInput}
-                      />
+                    <div style={styles.receiptItemRow}>
+                      <div style={styles.itemNameCol}>
+                        <input
+                          type="text"
+                          value={item.name}
+                          onChange={(e) => updateItemName(item.id, e.target.value)}
+                          style={styles.itemNameInput}
+                        />
+                      </div>
+                      <div style={styles.itemCastCol}>
+                        <span style={styles.itemCastDisplay}>
+                          {item.castNames.length > 0 ? item.castNames.join(',') : '-'}
+                        </span>
+                      </div>
+                      <div style={styles.itemPriceCol}>
+                        <input
+                          type="number"
+                          value={item.basePrice}
+                          onChange={(e) => updateItemPrice(item.id, parseInt(e.target.value) || 0)}
+                          style={styles.itemPriceInput}
+                        />
+                      </div>
                       <button
                         onClick={() => removePreviewItem(item.id)}
                         style={styles.removeItemBtn}
@@ -1075,6 +1091,7 @@ export default function SalesSettingsPage() {
                       </button>
                     </div>
                     <div style={styles.castSelectRow}>
+                      <span style={styles.castSelectLabel}>キャスト:</span>
                       {availableCasts.filter(c => c !== '-').map(cast => (
                         <button
                           key={cast}
@@ -1093,7 +1110,7 @@ export default function SalesSettingsPage() {
                           style={styles.clearCastBtn}
                           title="キャストをクリア"
                         >
-                          ×
+                          クリア
                         </button>
                       )}
                     </div>
@@ -1192,7 +1209,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     display: 'flex',
     gap: '30px',
     padding: '20px',
-    maxWidth: '1400px',
+    maxWidth: '1500px',
     margin: '0 auto',
     height: 'calc(100vh - 40px)',
   },
@@ -1202,7 +1219,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     overflowY: 'auto' as const,
   },
   previewContainer: {
-    width: '380px',
+    width: '480px',
     flexShrink: 0,
     overflowY: 'auto' as const,
   },
@@ -1426,19 +1443,47 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   tableHeaderName: {
     flex: 1,
+    minWidth: 0,
   },
   tableHeaderCast: {
-    width: '50px',
+    width: '80px',
     textAlign: 'center' as const,
+    flexShrink: 0,
   },
   tableHeaderPrice: {
-    width: '70px',
+    width: '80px',
     textAlign: 'right' as const,
+    flexShrink: 0,
+    paddingRight: '28px',
   },
   receiptItem: {
     marginBottom: '12px',
     paddingBottom: '12px',
     borderBottom: '1px solid #e2e8f0',
+  },
+  receiptItemRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    marginBottom: '6px',
+  },
+  itemNameCol: {
+    flex: 1,
+    minWidth: 0,
+  },
+  itemCastCol: {
+    width: '80px',
+    flexShrink: 0,
+    textAlign: 'center' as const,
+  },
+  itemCastDisplay: {
+    fontSize: '12px',
+    color: '#64748b',
+    fontWeight: '500',
+  },
+  itemPriceCol: {
+    width: '80px',
+    flexShrink: 0,
   },
   receiptItemHeader: {
     display: 'flex',
@@ -1620,22 +1665,23 @@ const styles: { [key: string]: React.CSSProperties } = {
     cursor: 'pointer',
   },
   itemNameInput: {
-    flex: 1,
+    width: '100%',
     padding: '4px 6px',
     fontSize: '12px',
     border: '1px solid #e2e8f0',
     borderRadius: '4px',
     backgroundColor: 'white',
-    minWidth: 0,
+    boxSizing: 'border-box' as const,
   },
   itemPriceInput: {
-    width: '70px',
+    width: '100%',
     padding: '4px 6px',
     fontSize: '12px',
     border: '1px solid #e2e8f0',
     borderRadius: '4px',
     backgroundColor: 'white',
     textAlign: 'right' as const,
+    boxSizing: 'border-box' as const,
   },
   removeItemBtn: {
     width: '20px',
@@ -1656,6 +1702,12 @@ const styles: { [key: string]: React.CSSProperties } = {
     gap: '4px',
     marginTop: '4px',
     flexWrap: 'wrap' as const,
+    alignItems: 'center',
+  },
+  castSelectLabel: {
+    fontSize: '11px',
+    color: '#94a3b8',
+    marginRight: '4px',
   },
   castSelectBtn: {
     padding: '2px 8px',
