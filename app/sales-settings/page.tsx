@@ -843,55 +843,38 @@ export default function SalesSettingsPage() {
 
       if (!isItemBased && previewNominations.length > 0) {
         // ===== 伝票全体モード =====
-        // 全商品を推しで分配（キャスト名に関係なく）
+        // 全商品を推し+ヘルプ全員で等分
 
         // 商品上のヘルプキャスト（推しでもヘルプ扱いにしない名前でもない）
         const helpCastsOnItem = item.castNames.filter(c =>
           !previewNominations.includes(c) && !nonHelpNames.includes(c) && !nominationIsNonHelp
         )
 
-        if (helpCastsOnItem.length > 0) {
-          // HELPがいる場合: 推し vs ヘルプで分配
-          // 推し全体で1単位、各ヘルプで1単位として分配
-          const totalUnits = 1 + helpCastsOnItem.length // 推し1 + ヘルプ数
-          const perUnitAmount = Math.floor(roundedBase / totalUnits)
+        // 全員で等分（推し + ヘルプ）
+        const allCasts = [...previewNominations, ...helpCastsOnItem]
+        const perCastAmount = Math.floor(roundedBase / allCasts.length)
 
-          // 推し分（推しで等分）
-          const nominationShare = perUnitAmount
-          const perNominationAmount = Math.floor(nominationShare / previewNominations.length)
-          const selfSales = helpInclusion === 'help_only' ? 0 : perNominationAmount
+        // 推し分
+        previewNominations.forEach(nom => {
+          const selfSales = helpInclusion === 'help_only' ? 0 : perCastAmount
+          castBreakdown.push({
+            cast: nom,
+            sales: selfSales,
+            back: perCastAmount,
+            isSelf: true,
+          })
+        })
 
-          previewNominations.forEach(nom => {
-            castBreakdown.push({
-              cast: nom,
-              sales: selfSales,
-              back: perNominationAmount,
-              isSelf: true,
-            })
+        // ヘルプ分
+        helpCastsOnItem.forEach(helpCast => {
+          const helpSales = helpInclusion === 'self_only' ? 0 : perCastAmount
+          castBreakdown.push({
+            cast: helpCast,
+            sales: helpSales,
+            back: perCastAmount,
+            isSelf: false,
           })
-
-          // ヘルプ分（各ヘルプに分配）
-          const helpSales = helpInclusion === 'self_only' ? 0 : perUnitAmount
-          helpCastsOnItem.forEach(helpCast => {
-            castBreakdown.push({
-              cast: helpCast,
-              sales: helpSales,
-              back: perUnitAmount,
-              isSelf: false,
-            })
-          })
-        } else {
-          // HELPなし: 推しで等分
-          const perNominationSales = Math.floor(roundedBase / previewNominations.length)
-          previewNominations.forEach(nom => {
-            castBreakdown.push({
-              cast: nom,
-              sales: perNominationSales,
-              back: perNominationSales,
-              isSelf: true,
-            })
-          })
-        }
+        })
       } else if (item.castNames.length > 0) {
         // ===== キャスト商品のみモード =====
         // 商品上の推しキャスト
