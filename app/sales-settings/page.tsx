@@ -575,6 +575,7 @@ export default function SalesSettingsPage() {
           item_help_fixed_amount: settings.item_help_fixed_amount,
           item_rounding_method: settings.item_rounding_method,
           item_rounding_position: settings.item_rounding_position,
+          item_rounding_timing: settings.item_rounding_timing,
 
           // 伝票全体の集計設定
           receipt_use_tax_excluded: settings.receipt_use_tax_excluded,
@@ -588,6 +589,7 @@ export default function SalesSettingsPage() {
           receipt_help_fixed_amount: settings.receipt_help_fixed_amount,
           receipt_rounding_method: settings.receipt_rounding_method,
           receipt_rounding_position: settings.receipt_rounding_position,
+          receipt_rounding_timing: settings.receipt_rounding_timing,
           receipt_deduct_item_sales: settings.receipt_deduct_item_sales,
 
           // 公開設定
@@ -1386,14 +1388,27 @@ export default function SalesSettingsPage() {
                             {item.isSelf ? 'SELF' : 'HELP'}
                           </span>
                           <span style={{ marginLeft: '8px', fontSize: '11px', color: '#64748b' }}>
-                            {/* 計算過程を表示 */}
-                            {item.calcPrice !== item.basePrice && (
-                              <>¥{item.calcPrice.toLocaleString()}</>
-                            )}
-                            {item.calcPrice !== item.roundedBase && (
-                              <> → ¥{item.roundedBase.toLocaleString()}</>
-                            )}
-                            {(item.calcPrice === item.basePrice && item.calcPrice === item.roundedBase) && (
+                            {/* 計算過程を表示（商品ごとの場合） */}
+                            {preview.roundingTiming === 'per_item' && item.calcPrice !== item.basePrice ? (
+                              <>
+                                {/* 税抜き計算があった場合 */}
+                                {item.afterTaxPrice !== item.basePrice && (
+                                  <>¥{item.afterTaxPrice.toLocaleString()}</>
+                                )}
+                                {/* 端数処理があった場合 */}
+                                {item.afterTaxRounded !== item.afterTaxPrice && (
+                                  <> → ¥{item.afterTaxRounded.toLocaleString()}</>
+                                )}
+                                {/* サービス料があった場合 */}
+                                {preview.excludeService && item.afterServicePrice !== item.afterTaxRounded && (
+                                  <> → ¥{item.afterServicePrice.toLocaleString()}</>
+                                )}
+                                {/* 最終端数処理があった場合 */}
+                                {item.calcPrice !== item.afterServicePrice && (
+                                  <> → ¥{item.calcPrice.toLocaleString()}</>
+                                )}
+                              </>
+                            ) : (
                               <>¥{item.roundedBase.toLocaleString()}</>
                             )}
                           </span>
