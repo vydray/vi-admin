@@ -163,6 +163,21 @@ function AggregationSection({
             <input
               type="radio"
               name={`${prefix}_tax_basis`}
+              checked={excludeTax && !excludeService}
+              onChange={() => {
+                onUpdateMultiple({
+                  [excludeTaxKey]: true,
+                  [excludeServiceKey]: false,
+                })
+              }}
+              style={styles.radio}
+            />
+            <span>税抜き</span>
+          </label>
+          <label style={styles.radioLabel}>
+            <input
+              type="radio"
+              name={`${prefix}_tax_basis`}
               checked={!excludeTax && !excludeService}
               onChange={() => {
                 onUpdateMultiple({
@@ -172,22 +187,7 @@ function AggregationSection({
               }}
               style={styles.radio}
             />
-            <span>税込金額</span>
-          </label>
-          <label style={styles.radioLabel}>
-            <input
-              type="radio"
-              name={`${prefix}_tax_basis`}
-              checked={excludeTax}
-              onChange={() => {
-                onUpdateMultiple({
-                  [excludeTaxKey]: true,
-                  [excludeServiceKey]: false,
-                })
-              }}
-              style={styles.radio}
-            />
-            <span>消費税抜き（{systemSettings.tax_rate}%）</span>
+            <span>税込み（消費税{systemSettings.tax_rate}%）</span>
           </label>
           <label style={styles.radioLabel}>
             <input
@@ -202,7 +202,7 @@ function AggregationSection({
               }}
               style={styles.radio}
             />
-            <span>サービスTAX込み（{systemSettings.service_fee_rate}%）</span>
+            <span>税込み＋サービス料（消費税{systemSettings.tax_rate}% + サービス{systemSettings.service_fee_rate}%）</span>
           </label>
         </div>
       </div>
@@ -1423,7 +1423,7 @@ export default function SalesSettingsPage() {
               <div style={styles.settingSummary}>
                 <div style={styles.summaryTitle}>適用中の設定（{previewAggregation === 'item' ? 'キャスト商品' : '伝票全体'}）</div>
                 <div style={styles.summaryItem}>
-                  計算基準: {preview.excludeTax ? '消費税抜き' : preview.excludeService ? 'サービスTAX込み' : '税込み'}
+                  計算基準: {preview.excludeTax ? '税抜き' : preview.excludeService ? '税込み＋サービス料' : '税込み'}
                 </div>
                 <div style={styles.summaryItem}>
                   端数処理: {preview.roundingType === 'none' ? 'なし' : `${preview.roundingPosition}の位で${
