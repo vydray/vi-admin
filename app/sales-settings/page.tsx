@@ -710,8 +710,8 @@ export default function SalesSettingsPage() {
     const nominationIsNonHelp = previewNominations.some(n => nonHelpNames.includes(n))
 
     const results = previewItems.map(item => {
-      // キャスト商品のみの場合、キャスト名がない商品は除外
-      if (isItemBased && !item.needsCast) {
+      // キャスト商品のみの場合、キャスト名が入っていない商品は除外
+      if (isItemBased && item.castNames.length === 0) {
         return { ...item, calcPrice: 0, salesAmount: 0, rounded: 0, isSelf: true, notIncluded: true, castBreakdown: [] }
       }
 
@@ -743,7 +743,7 @@ export default function SalesSettingsPage() {
       // ヘルプ売上の計上方法による除外
       if (helpInclusion === 'self_only' && !isSelf) {
         salesAmount = 0
-      } else if (helpInclusion === 'help_only' && isSelf && item.needsCast) {
+      } else if (helpInclusion === 'help_only' && isSelf && item.castNames.length > 0) {
         salesAmount = 0
       }
 
