@@ -280,7 +280,7 @@ export default function Home() {
       // 今日の営業日のデータを取得（order_dateで絞り込み）
       const { data: todayOrders, error: todayError } = await supabase
         .from('orders')
-        .select('id, total_incl_tax, table_number, order_date, checkout_datetime, payments(cash_amount, credit_card_amount, other_payment_amount)')
+        .select('id, total_incl_tax, table_number, order_date, checkout_datetime, payments(cash_amount, credit_card_amount, other_payment_amount, change_amount)')
         .eq('store_id', storeId)
         .gte('order_date', todayBusinessDay)
         .lt('order_date', todayBusinessDay + 'T23:59:59')
@@ -289,7 +289,7 @@ export default function Home() {
       // 選択された月のデータを取得（order_dateで絞り込み）
       const { data: monthlyOrders, error: monthlyError } = await supabase
         .from('orders')
-        .select('id, total_incl_tax, table_number, order_date, checkout_datetime, payments(cash_amount, credit_card_amount, other_payment_amount)')
+        .select('id, total_incl_tax, table_number, order_date, checkout_datetime, payments(cash_amount, credit_card_amount, other_payment_amount, change_amount)')
         .eq('store_id', storeId)
         .gte('order_date', monthStart)
         .lte('order_date', monthEnd + 'T23:59:59')
