@@ -250,11 +250,11 @@ function AggregationSection({
         </div>
       </div>
 
-      {/* 売上の帰属先 */}
+      {/* 売上の範囲 */}
       <div style={styles.section}>
-        <h3 style={styles.sectionTitle}>売上の帰属先</h3>
+        <h3 style={styles.sectionTitle}>売上の範囲</h3>
         <p style={styles.sectionDescription}>
-          商品に複数のキャスト名が入っている場合の売上計上先
+          どの商品を売上として計上するか
         </p>
 
         <div style={styles.radioGroup}>
@@ -280,8 +280,8 @@ function AggregationSection({
           </label>
         </div>
         <p style={styles.hint}>
-          推しのみ: 推しの分だけ計上（等分した推しの分）<br />
-          全員: 商品のキャスト全員に等分して計上
+          推しのみ: 推しの名前が入った商品のみ計上<br />
+          全員: ヘルプの商品も含めて計上
         </p>
       </div>
 
@@ -654,16 +654,47 @@ export default function SalesSettingsPage() {
         const helpCastsOnItem = item.castNames.filter(c => !previewNominations.includes(c))
 
         if (salesAttribution === 'all_equal') {
-          // 全員: 商品のキャスト全員に等分
-          const perCastAmount = Math.floor(roundedBase / item.castNames.length)
-          item.castNames.forEach(c => {
-            const isSelf = previewNominations.includes(c)
-            castBreakdown.push({
-              cast: c,
-              sales: perCastAmount,
-              isSelf,
+          // 全員: ヘルプの商品も推しの売上に含める
+          if (nominationCastsOnItem.length > 0) {
+            // 推しがいる場合、推しに全額（複数推しなら等分）
+            const perNominationAmount = Math.floor(roundedBase / nominationCastsOnItem.length)
+            nominationCastsOnItem.forEach(c => {
+              castBreakdown.push({
+                cast: c,
+                sales: perNominationAmount,
+                isSelf: true,
+              })
             })
-          })
+            // ヘルプは売上0（推しに含まれる）
+            helpCastsOnItem.forEach(c => {
+              castBreakdown.push({
+                cast: c,
+                sales: 0,
+                isSelf: false,
+              })
+            })
+          } else {
+            // 推しがいない商品（ヘルプのみ）→ 推しに全額を加算
+            // この商品のキャスト（ヘルプ）は売上0として表示
+            helpCastsOnItem.forEach(c => {
+              castBreakdown.push({
+                cast: c,
+                sales: 0,
+                isSelf: false,
+              })
+            })
+            // 推しに全額を追加（後で集計時に処理）
+            if (previewNominations.length > 0) {
+              const perNominationAmount = Math.floor(roundedBase / previewNominations.length)
+              previewNominations.forEach(nom => {
+                castBreakdown.push({
+                  cast: nom,
+                  sales: perNominationAmount,
+                  isSelf: true,
+                })
+              })
+            }
+          }
         } else {
           // 推しのみ: 推しの分だけ計上
           if (nominationCastsOnItem.length > 0) {
