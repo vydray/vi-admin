@@ -127,15 +127,31 @@ export default function CastSalesPage() {
   const loadSystemSettings = useCallback(async () => {
     const { data, error } = await supabase
       .from('system_settings')
-      .select('*')
+      .select('setting_key, setting_value')
       .eq('store_id', storeId)
-      .single()
 
-    if (error && error.code !== 'PGRST116') {
+    if (error) {
       console.warn('システム設定の取得に失敗:', error)
+      return { tax_rate: 10, service_fee_rate: 0 }
     }
 
-    return data || { tax_rate: 10, service_fee_rate: 0 }
+    // key-value形式からオブジェクトに変換
+    const settings: { tax_rate: number; service_fee_rate: number } = {
+      tax_rate: 10,
+      service_fee_rate: 0
+    }
+
+    if (data) {
+      for (const row of data) {
+        if (row.setting_key === 'tax_rate') {
+          settings.tax_rate = parseFloat(row.setting_value) || 10
+        } else if (row.setting_key === 'service_fee_rate') {
+          settings.service_fee_rate = parseFloat(row.setting_value) || 0
+        }
+      }
+    }
+
+    return settings
   }, [storeId])
 
   const loadSalesData = useCallback(async (
