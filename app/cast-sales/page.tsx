@@ -5,8 +5,8 @@ import { supabase } from '@/lib/supabase'
 import { format, eachDayOfInterval, addMonths, subMonths, startOfMonth, endOfMonth } from 'date-fns'
 import { ja } from 'date-fns/locale'
 import { useStore } from '@/contexts/StoreContext'
-import { CastBasic, SalesSettings, CastBackRate } from '@/types'
-import { calculateCastSales, getDefaultSalesSettings, applyRounding } from '@/lib/salesCalculation'
+import { CastBasic, SalesSettings, CastBackRate, SystemSettings } from '@/types'
+import { calculateCastSalesByPublishedMethod, getDefaultSalesSettings, applyRounding } from '@/lib/salesCalculation'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
 import Link from 'next/link'
@@ -127,10 +127,25 @@ export default function CastSalesPage() {
     return (data || []) as CastBackRate[]
   }, [storeId])
 
+  const loadSystemSettings = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('system_settings')
+      .select('*')
+      .eq('store_id', storeId)
+      .single()
+
+    if (error && error.code !== 'PGRST116') {
+      console.warn('システム設定の取得に失敗:', error)
+    }
+
+    return data || { tax_rate: 10, service_fee_rate: 0 }
+  }, [storeId])
+
   const loadSalesData = useCallback(async (
     loadedCasts: CastBasic[],
     settings: SalesSettings,
-    backRates: CastBackRate[]
+    backRates: CastBackRate[],
+    systemSettings: { tax_rate: number; service_fee_rate: number }
   ) => {
     const start = startOfMonth(selectedMonth)
     const end = endOfMonth(selectedMonth)
@@ -194,12 +209,21 @@ export default function CastSalesPage() {
     })
 
     // 各日のオーダーを処理
+    const taxRate = systemSettings.tax_rate / 100
+    const serviceRate = systemSettings.service_fee_rate / 100
+
     ordersByDate.forEach((dayOrders, dateStr) => {
-      // この日の売上を計算
-      const daySummaries = calculateCastSales(dayOrders, loadedCasts, settings, backRates)
+      // この日の売上を計算（公開設定に基づく計算方法を使用）
+      const daySummaries = calculateCastSalesByPublishedMethod(
+        dayOrders,
+        loadedCasts,
+        settings,
+        taxRate,
+        serviceRate
+      )
 
       // 各キャストの日別データを更新
-      daySummaries.forEach(summary => {
+      daySummaries.forEach((summary: { cast_id: number; self_sales: number; help_sales: number; total_sales: number; total_back: number }) => {
         const castData = salesMap.get(summary.cast_id)
         if (castData) {
           castData.dailySales[dateStr] = {
@@ -238,20 +262,21 @@ export default function CastSalesPage() {
     setLoading(true)
     setError(null)
     try {
-      const [loadedCasts, settings, backRates] = await Promise.all([
+      const [loadedCasts, settings, backRates, systemSettings] = await Promise.all([
         loadCasts(),
         loadSalesSettings(),
         loadBackRates(),
+        loadSystemSettings(),
       ])
       setSalesSettings(settings)
-      await loadSalesData(loadedCasts, settings, backRates)
+      await loadSalesData(loadedCasts, settings, backRates, systemSettings)
     } catch (err) {
       console.error('データ読み込みエラー:', err)
       setError('データの読み込みに失敗しました。再度お試しください。')
     } finally {
       setLoading(false)
     }
-  }, [loadCasts, loadSalesSettings, loadBackRates, loadSalesData])
+  }, [loadCasts, loadSalesSettings, loadBackRates, loadSystemSettings, loadSalesData])
 
   useEffect(() => {
     loadData()
@@ -297,18 +322,22 @@ export default function CastSalesPage() {
   const settingsDescription = useMemo(() => {
     if (!salesSettings) return ''
     const parts: string[] = []
-    if (salesSettings.use_tax_excluded) parts.push('税抜')
-    if (salesSettings.rounding_method !== 'none') {
-      const methodLabel = {
-        floor_100: '100円切捨て',
-        floor_10: '10円切捨て',
-        round: '四捨五入',
-        none: '',
-      }[salesSettings.rounding_method]
-      const timingLabel = salesSettings.rounding_timing === 'per_item' ? '(商品毎)' : '(合計時)'
-      parts.push(methodLabel + timingLabel)
-    }
-    parts.push(`ヘルプ${salesSettings.help_ratio}%`)
+
+    // 集計方法を表示
+    const method = salesSettings.published_aggregation ?? 'item_based'
+    parts.push(method === 'receipt_based' ? '伝票小計' : '推し小計')
+
+    // 使用する設定に応じて表示
+    const excludeTax = method === 'receipt_based'
+      ? salesSettings.receipt_exclude_consumption_tax
+      : salesSettings.item_exclude_consumption_tax
+    if (excludeTax) parts.push('税抜')
+
+    const helpInclusion = method === 'receipt_based'
+      ? salesSettings.receipt_help_sales_inclusion
+      : salesSettings.item_help_sales_inclusion
+    parts.push(helpInclusion === 'both' ? '全員' : '推しのみ')
+
     return parts.join(' / ')
   }, [salesSettings])
 

@@ -43,7 +43,7 @@ interface CastInfo {
 }
 
 /**
- * 端数処理を適用
+ * 端数処理を適用（レガシー）
  */
 export function applyRounding(amount: number, method: RoundingMethod): number {
   switch (method) {
@@ -56,6 +56,52 @@ export function applyRounding(amount: number, method: RoundingMethod): number {
     case 'none':
     default:
       return amount
+  }
+}
+
+/**
+ * 端数処理を適用（新形式: position + type）
+ */
+export function applyRoundingNew(
+  amount: number,
+  position: number,
+  type: 'floor' | 'ceil' | 'round' | 'none'
+): number {
+  if (type === 'none' || position <= 0) return amount
+  switch (type) {
+    case 'floor':
+      return Math.floor(amount / position) * position
+    case 'ceil':
+      return Math.ceil(amount / position) * position
+    case 'round':
+      return Math.round(amount / position) * position
+    default:
+      return amount
+  }
+}
+
+/**
+ * RoundingMethodをposition+typeに変換
+ */
+function parseRoundingMethod(method: RoundingMethod): { position: number; type: 'floor' | 'ceil' | 'round' | 'none' } {
+  switch (method) {
+    case 'floor_100':
+      return { position: 100, type: 'floor' }
+    case 'floor_10':
+      return { position: 10, type: 'floor' }
+    case 'floor_1':
+      return { position: 1, type: 'floor' }
+    case 'ceil_100':
+      return { position: 100, type: 'ceil' }
+    case 'ceil_10':
+      return { position: 10, type: 'ceil' }
+    case 'ceil_1':
+      return { position: 1, type: 'ceil' }
+    case 'round':
+      return { position: 1, type: 'round' }
+    case 'none':
+    default:
+      return { position: 1, type: 'none' }
   }
 }
 
@@ -254,6 +300,399 @@ export function calculateCastSales(
   return Array.from(summaryMap.values())
     .filter(s => s.total_sales > 0 || s.items.length > 0)
     .sort((a, b) => b.total_sales - a.total_sales)
+}
+
+/**
+ * 推し小計（item_based）の計算
+ * - 各商品ごとにキャストへ売上を分配
+ * - 商品についているキャストに売上が入る
+ */
+export function calculateItemBased(
+  orders: OrderWithStaff[],
+  casts: CastInfo[],
+  settings: SalesSettings,
+  nominations: string[], // その日の推し（通常はorder.staff_name）
+  taxRate: number = 0.1,
+  serviceRate: number = 0
+): CastSalesSummary[] {
+  const castNameMap = new Map(casts.map(c => [c.name, c]))
+  const summaryMap = new Map<number, CastSalesSummary>()
+  const nonHelpNames = settings.non_help_staff_names || []
+
+  // 初期化
+  casts.forEach(cast => {
+    summaryMap.set(cast.id, {
+      cast_id: cast.id,
+      cast_name: cast.name,
+      self_sales: 0,
+      help_sales: 0,
+      total_sales: 0,
+      total_back: 0,
+      items: [],
+    })
+  })
+
+  // 設定を取得
+  const excludeTax = settings.item_exclude_consumption_tax ?? settings.use_tax_excluded ?? false
+  const { position: roundingPosition, type: roundingType } = parseRoundingMethod(settings.item_rounding_method)
+  const roundingTiming = settings.item_rounding_timing ?? 'per_item'
+  const helpDistMethod = settings.item_help_distribution_method ?? 'all_to_nomination'
+  const includeHelpItems = settings.item_help_sales_inclusion === 'both'
+  const giveHelpSales = includeHelpItems
+
+  // 税計算・端数処理を適用する関数
+  const applyTaxAndRounding = (amount: number) => {
+    let result = amount
+    if (excludeTax) {
+      const taxPercent = Math.round(taxRate * 100)
+      result = Math.floor(result * 100 / (100 + taxPercent))
+    }
+    return applyRoundingNew(result, roundingPosition, roundingType)
+  }
+
+  // 各オーダーの商品を処理
+  orders.forEach(order => {
+    const orderNominations = order.staff_name ? [order.staff_name] : []
+    const currentNominations = [...new Set([...orderNominations, ...nominations])]
+
+    order.order_items.forEach(item => {
+      if (!item.cast_name) return // キャスト紐付けなしはスキップ
+
+      const castsOnItem = item.cast_name ? [item.cast_name] : []
+      if (castsOnItem.length === 0) return
+
+      // SELF/HELP判定
+      const selfCasts = castsOnItem.filter(c =>
+        currentNominations.includes(c) || nonHelpNames.includes(c)
+      )
+      const helpCasts = castsOnItem.filter(c =>
+        !currentNominations.includes(c) && !nonHelpNames.includes(c)
+      )
+
+      const isSelfOnly = selfCasts.length > 0 && helpCasts.length === 0
+      const isHelpOnly = helpCasts.length > 0 && selfCasts.length === 0
+      const isMixed = selfCasts.length > 0 && helpCasts.length > 0
+
+      // 商品金額
+      let itemAmount = item.unit_price * item.quantity
+
+      // 商品ごとのタイミングの場合、税計算と端数処理を適用
+      if (roundingTiming === 'per_item') {
+        itemAmount = applyTaxAndRounding(itemAmount)
+      }
+
+      // 売上分配
+      if (isSelfOnly) {
+        // SELF商品 → 商品のキャストに全額
+        selfCasts.forEach(castName => {
+          const cast = castNameMap.get(castName)
+          if (cast) {
+            const summary = summaryMap.get(cast.id)
+            if (summary) {
+              const amount = Math.floor(itemAmount / selfCasts.length)
+              summary.self_sales += amount
+            }
+          }
+        })
+      } else if (isHelpOnly) {
+        // HELP商品
+        if (includeHelpItems) {
+          // ヘルプも含める → 分配方法による
+          if (helpDistMethod === 'all_to_nomination') {
+            // 全額推しに → 何もしない（推しが商品にいないので）
+          } else {
+            // ヘルプにも分配
+            if (giveHelpSales) {
+              helpCasts.forEach(castName => {
+                const cast = castNameMap.get(castName)
+                if (cast) {
+                  const summary = summaryMap.get(cast.id)
+                  if (summary) {
+                    const amount = Math.floor(itemAmount / helpCasts.length)
+                    summary.help_sales += amount
+                  }
+                }
+              })
+            }
+          }
+        }
+        // 含めない場合は何もしない
+      } else if (isMixed) {
+        // 混在
+        if (helpDistMethod === 'all_to_nomination') {
+          // 全額推しに
+          selfCasts.forEach(castName => {
+            const cast = castNameMap.get(castName)
+            if (cast) {
+              const summary = summaryMap.get(cast.id)
+              if (summary) {
+                const amount = Math.floor(itemAmount / selfCasts.length)
+                summary.self_sales += amount
+              }
+            }
+          })
+        } else if (helpDistMethod === 'equal') {
+          // 推しとヘルプで50:50
+          const selfShare = Math.floor(itemAmount / 2)
+          const helpShare = itemAmount - selfShare
+
+          selfCasts.forEach(castName => {
+            const cast = castNameMap.get(castName)
+            if (cast) {
+              const summary = summaryMap.get(cast.id)
+              if (summary) {
+                summary.self_sales += Math.floor(selfShare / selfCasts.length)
+              }
+            }
+          })
+
+          if (giveHelpSales) {
+            helpCasts.forEach(castName => {
+              const cast = castNameMap.get(castName)
+              if (cast) {
+                const summary = summaryMap.get(cast.id)
+                if (summary) {
+                  summary.help_sales += Math.floor(helpShare / helpCasts.length)
+                }
+              }
+            })
+          }
+        } else if (helpDistMethod === 'equal_per_person') {
+          // 全員で均等割
+          const allCasts = [...selfCasts, ...helpCasts]
+          const perPerson = Math.floor(itemAmount / allCasts.length)
+
+          selfCasts.forEach(castName => {
+            const cast = castNameMap.get(castName)
+            if (cast) {
+              const summary = summaryMap.get(cast.id)
+              if (summary) {
+                summary.self_sales += perPerson
+              }
+            }
+          })
+
+          if (giveHelpSales) {
+            helpCasts.forEach(castName => {
+              const cast = castNameMap.get(castName)
+              if (cast) {
+                const summary = summaryMap.get(cast.id)
+                if (summary) {
+                  summary.help_sales += perPerson
+                }
+              }
+            })
+          }
+        }
+      }
+    })
+  })
+
+  // 合計時の端数処理
+  if (roundingTiming === 'total') {
+    summaryMap.forEach(summary => {
+      summary.self_sales = applyTaxAndRounding(summary.self_sales)
+      summary.help_sales = applyTaxAndRounding(summary.help_sales)
+    })
+  }
+
+  // total_salesを計算
+  summaryMap.forEach(summary => {
+    summary.total_sales = summary.self_sales + summary.help_sales
+  })
+
+  return Array.from(summaryMap.values())
+    .filter(s => s.total_sales > 0)
+    .sort((a, b) => b.total_sales - a.total_sales)
+}
+
+/**
+ * 伝票小計（receipt_based）の計算
+ * - 伝票全体の売上を推しに分配
+ * - 選択された推し全員に売上が入る
+ */
+export function calculateReceiptBased(
+  orders: OrderWithStaff[],
+  casts: CastInfo[],
+  settings: SalesSettings,
+  taxRate: number = 0.1,
+  serviceRate: number = 0
+): CastSalesSummary[] {
+  const castNameMap = new Map(casts.map(c => [c.name, c]))
+  const summaryMap = new Map<number, CastSalesSummary>()
+  const nonHelpNames = settings.non_help_staff_names || []
+
+  // 初期化
+  casts.forEach(cast => {
+    summaryMap.set(cast.id, {
+      cast_id: cast.id,
+      cast_name: cast.name,
+      self_sales: 0,
+      help_sales: 0,
+      total_sales: 0,
+      total_back: 0,
+      items: [],
+    })
+  })
+
+  // 設定を取得
+  const excludeTax = settings.receipt_exclude_consumption_tax ?? settings.use_tax_excluded ?? false
+  const { position: roundingPosition, type: roundingType } = parseRoundingMethod(settings.receipt_rounding_method)
+  const roundingTiming = settings.receipt_rounding_timing ?? 'per_item'
+  const helpDistMethod = settings.receipt_help_distribution_method ?? 'all_to_nomination'
+  const includeHelpItems = settings.receipt_help_sales_inclusion === 'both'
+  const giveHelpSales = includeHelpItems
+  const helpRatio = settings.receipt_help_ratio ?? 50
+
+  // 税計算・端数処理を適用する関数
+  const applyTaxAndRounding = (amount: number) => {
+    let result = amount
+    if (excludeTax) {
+      const taxPercent = Math.round(taxRate * 100)
+      result = Math.floor(result * 100 / (100 + taxPercent))
+    }
+    return applyRoundingNew(result, roundingPosition, roundingType)
+  }
+
+  // 各オーダー（伝票）を処理
+  orders.forEach(order => {
+    // 推し（担当）
+    const nominations = order.staff_name ? [order.staff_name] : []
+    if (nominations.length === 0) return // 推しがいない伝票はスキップ
+
+    // 伝票内の全商品を集計
+    let receiptTotalRaw = 0
+    let selfTotalRaw = 0
+    let helpTotalRaw = 0
+    const helpCastsInReceipt: string[] = []
+
+    order.order_items.forEach(item => {
+      const itemAmount = item.unit_price * item.quantity
+      receiptTotalRaw += itemAmount
+
+      const castsOnItem = item.cast_name ? [item.cast_name] : []
+      const selfCasts = castsOnItem.filter(c =>
+        nominations.includes(c) || nonHelpNames.includes(c)
+      )
+      const helpCasts = castsOnItem.filter(c =>
+        !nominations.includes(c) && !nonHelpNames.includes(c)
+      )
+
+      if (selfCasts.length > 0 && helpCasts.length === 0) {
+        selfTotalRaw += itemAmount
+      } else if (helpCasts.length > 0 && selfCasts.length === 0) {
+        helpTotalRaw += itemAmount
+        helpCasts.forEach(c => {
+          if (!helpCastsInReceipt.includes(c)) helpCastsInReceipt.push(c)
+        })
+      } else if (selfCasts.length > 0 && helpCasts.length > 0) {
+        // 混在 → 両方に分類
+        selfTotalRaw += itemAmount
+        helpCasts.forEach(c => {
+          if (!helpCastsInReceipt.includes(c)) helpCastsInReceipt.push(c)
+        })
+      } else {
+        // キャストなし → SELF
+        selfTotalRaw += itemAmount
+      }
+    })
+
+    // 税計算・端数処理
+    let receiptTotal: number
+    if (roundingTiming === 'per_item') {
+      // 商品ごとに既に処理済みと仮定して合計
+      receiptTotal = applyTaxAndRounding(receiptTotalRaw)
+    } else {
+      receiptTotal = applyTaxAndRounding(receiptTotalRaw)
+    }
+
+    // ヘルプ分配計算
+    let nominationShare = receiptTotal
+    let helpShare = 0
+
+    if (helpTotalRaw > 0 && includeHelpItems) {
+      switch (helpDistMethod) {
+        case 'all_to_nomination':
+          nominationShare = receiptTotal
+          helpShare = 0
+          break
+        case 'equal':
+          nominationShare = Math.floor(receiptTotal / 2)
+          helpShare = receiptTotal - nominationShare
+          break
+        case 'ratio':
+          helpShare = Math.floor(receiptTotal * helpRatio / 100)
+          nominationShare = receiptTotal - helpShare
+          break
+        case 'equal_per_person':
+          const allCasts = [...nominations, ...helpCastsInReceipt]
+          if (allCasts.length > 0) {
+            const perPerson = Math.floor(receiptTotal / allCasts.length)
+            nominationShare = perPerson * nominations.length
+            helpShare = receiptTotal - nominationShare
+          }
+          break
+      }
+    }
+
+    // 推しへの分配
+    if (nominations.length > 0) {
+      const perNomination = Math.floor(nominationShare / nominations.length)
+      nominations.forEach(nomName => {
+        const cast = castNameMap.get(nomName)
+        if (cast) {
+          const summary = summaryMap.get(cast.id)
+          if (summary) {
+            summary.self_sales += perNomination
+          }
+        }
+      })
+    }
+
+    // ヘルプへの分配
+    if (giveHelpSales && helpShare > 0 && helpCastsInReceipt.length > 0) {
+      const perHelp = Math.floor(helpShare / helpCastsInReceipt.length)
+      helpCastsInReceipt.forEach(helpName => {
+        const cast = castNameMap.get(helpName)
+        if (cast) {
+          const summary = summaryMap.get(cast.id)
+          if (summary) {
+            summary.help_sales += perHelp
+          }
+        }
+      })
+    }
+  })
+
+  // total_salesを計算
+  summaryMap.forEach(summary => {
+    summary.total_sales = summary.self_sales + summary.help_sales
+  })
+
+  return Array.from(summaryMap.values())
+    .filter(s => s.total_sales > 0)
+    .sort((a, b) => b.total_sales - a.total_sales)
+}
+
+/**
+ * 公開設定に基づいて売上を計算
+ */
+export function calculateCastSalesByPublishedMethod(
+  orders: OrderWithStaff[],
+  casts: CastInfo[],
+  settings: SalesSettings,
+  taxRate: number = 0.1,
+  serviceRate: number = 0
+): CastSalesSummary[] {
+  const method = settings.published_aggregation ?? 'item_based'
+
+  if (method === 'receipt_based') {
+    return calculateReceiptBased(orders, casts, settings, taxRate, serviceRate)
+  } else {
+    // 推し小計の場合、各オーダーの推しを集める
+    const nominations = [...new Set(orders.map(o => o.staff_name).filter(Boolean) as string[])]
+    return calculateItemBased(orders, casts, settings, nominations, taxRate, serviceRate)
+  }
 }
 
 /**
