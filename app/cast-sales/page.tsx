@@ -294,6 +294,7 @@ export default function CastSalesPage() {
 
     // 集計方法を表示
     const method = salesSettings.published_aggregation ?? 'item_based'
+    if (method === 'none') return '公表しない'
     parts.push(method === 'receipt_based' ? '伝票小計' : '推し小計')
 
     // 使用する設定に応じて表示
@@ -321,6 +322,34 @@ export default function CastSalesPage() {
         <Button onClick={loadData} variant="primary" size="medium">
           再読み込み
         </Button>
+      </div>
+    )
+  }
+
+  // 公表しない設定の場合
+  if (salesSettings?.published_aggregation === 'none') {
+    return (
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        alignItems: 'center',
+        minHeight: '100vh',
+        gap: '16px',
+        backgroundColor: '#f7f9fc'
+      }}>
+        <div style={{ fontSize: '48px' }}>🔒</div>
+        <div style={{ fontSize: '18px', fontWeight: '600', color: '#475569' }}>
+          キャスト売上は公表されていません
+        </div>
+        <div style={{ fontSize: '14px', color: '#94a3b8' }}>
+          売上設定で公表方法を変更できます
+        </div>
+        <Link href="/sales-settings">
+          <Button variant="outline" size="medium">
+            売上設定へ
+          </Button>
+        </Link>
       </div>
     )
   }

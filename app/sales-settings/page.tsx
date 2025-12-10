@@ -1580,6 +1580,27 @@ export default function SalesSettingsPage() {
                 <label style={{
                   ...styles.radioLabel,
                   padding: '15px',
+                  border: settings.published_aggregation === 'none' ? '2px solid #ef4444' : '1px solid #e2e8f0',
+                  borderRadius: '8px',
+                  backgroundColor: settings.published_aggregation === 'none' ? '#fef2f2' : 'transparent',
+                }}>
+                  <input
+                    type="radio"
+                    name="published_aggregation"
+                    checked={settings.published_aggregation === 'none'}
+                    onChange={() => updateSetting('published_aggregation', 'none')}
+                    style={styles.radio}
+                  />
+                  <div>
+                    <div style={{ fontWeight: '600', color: settings.published_aggregation === 'none' ? '#dc2626' : undefined }}>公表しない</div>
+                    <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                      キャスト売上ページを非表示にする
+                    </div>
+                  </div>
+                </label>
+                <label style={{
+                  ...styles.radioLabel,
+                  padding: '15px',
                   border: settings.published_aggregation === 'item_based' ? '2px solid #3b82f6' : '1px solid #e2e8f0',
                   borderRadius: '8px',
                   backgroundColor: settings.published_aggregation === 'item_based' ? '#eff6ff' : 'transparent',

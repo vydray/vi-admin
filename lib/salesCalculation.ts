@@ -686,6 +686,11 @@ export function calculateCastSalesByPublishedMethod(
 ): CastSalesSummary[] {
   const method = settings.published_aggregation ?? 'item_based'
 
+  // 公表しない場合は空配列を返す
+  if (method === 'none') {
+    return []
+  }
+
   if (method === 'receipt_based') {
     return calculateReceiptBased(orders, casts, settings, taxRate, serviceRate)
   } else {

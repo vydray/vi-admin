@@ -323,7 +323,7 @@ export type HelpSalesInclusion = 'both' | 'self_only' | 'help_only'
 // help_only: HELPのみ計上
 
 // 公開する集計方法
-export type PublishedAggregation = 'item_based' | 'receipt_based'
+export type PublishedAggregation = 'none' | 'item_based' | 'receipt_based'
 // item_based: キャスト名が入ってる商品のみ
 // receipt_based: 伝票のすべての商品を集計
 
