@@ -1541,8 +1541,8 @@ export default function SalesSettingsPage() {
                     <div style={styles.receiptItemDetails}>
                       {item.notIncluded ? (
                         <span style={styles.skipTag}>売上対象外</span>
-                      ) : item.castBreakdown && item.castBreakdown.length > 1 ? (
-                        // 複数キャストの場合は内訳を表示
+                      ) : item.castBreakdown && item.castBreakdown.length > 0 ? (
+                        // キャスト内訳を表示（単一でも複数でも同じ形式）
                         <div style={styles.castBreakdownContainer}>
                           {item.castBreakdown.map((cb, idx) => (
                             <div key={idx} style={styles.castBreakdownRow}>
@@ -1555,60 +1555,19 @@ export default function SalesSettingsPage() {
                                   ({cb.isSelf ? '推し' : 'ヘルプ'})
                                 </span>
                               </span>
-                              <span style={styles.castBreakdownValues}>
-                                <span style={{
-                                  ...styles.castBreakdownSales,
-                                  color: cb.sales > 0 ? '#10b981' : '#94a3b8',
-                                }}>
-                                  売上: ¥{cb.sales.toLocaleString()}
-                                </span>
-                                <span style={styles.castBreakdownBack}>
-                                  バック: ¥{cb.back.toLocaleString()}
-                                </span>
+                              <span style={{
+                                ...styles.castBreakdownSales,
+                                color: cb.sales > 0 ? '#10b981' : '#94a3b8',
+                              }}>
+                                売上: ¥{cb.sales.toLocaleString()}
                               </span>
                             </div>
                           ))}
                         </div>
                       ) : (
-                        <>
-                          <span style={{
-                            ...styles.typeTag,
-                            color: item.isSelf ? '#10b981' : '#f59e0b',
-                            backgroundColor: item.isSelf ? '#d1fae5' : '#fef3c7',
-                          }}>
-                            {item.isSelf ? 'SELF' : 'HELP'}
-                          </span>
-                          <span style={{ marginLeft: '8px', fontSize: '11px', color: '#64748b' }}>
-                            {/* 計算過程を表示（商品ごとの場合） */}
-                            {preview.roundingTiming === 'per_item' && item.calcPrice !== item.basePrice ? (
-                              <>
-                                {/* 税抜き計算があった場合 */}
-                                {item.afterTaxPrice !== item.basePrice && (
-                                  <>¥{item.afterTaxPrice.toLocaleString()}</>
-                                )}
-                                {/* 端数処理があった場合 */}
-                                {item.afterTaxRounded !== item.afterTaxPrice && (
-                                  <> → ¥{item.afterTaxRounded.toLocaleString()}</>
-                                )}
-                                {/* サービス料があった場合 */}
-                                {preview.excludeService && item.afterServicePrice !== item.afterTaxRounded && (
-                                  <> → ¥{item.afterServicePrice.toLocaleString()}</>
-                                )}
-                                {/* 最終端数処理があった場合 */}
-                                {item.calcPrice !== item.afterServicePrice && (
-                                  <> → ¥{item.calcPrice.toLocaleString()}</>
-                                )}
-                              </>
-                            ) : (
-                              <>¥{item.roundedBase.toLocaleString()}</>
-                            )}
-                          </span>
-                          {item.castBreakdown && item.castBreakdown.length === 1 && (
-                            <span style={{ marginLeft: '8px', color: '#64748b', fontSize: '11px' }}>
-                              (バック: ¥{item.castBreakdown[0].back.toLocaleString()})
-                            </span>
-                          )}
-                        </>
+                        <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+                          キャストなし
+                        </span>
                       )}
                     </div>
                   </div>
@@ -1650,29 +1609,15 @@ export default function SalesSettingsPage() {
                 </div>
 
                 <div style={styles.castSalesSection}>
-                  <div style={styles.castSalesTitle}>キャストごとの売上・バック</div>
+                  <div style={styles.castSalesTitle}>キャストごとの売上</div>
                   <div style={styles.castSalesHeader}>
                     <span style={{ flex: 1 }}>キャスト</span>
                     <span style={{ width: '120px', textAlign: 'right' as const }}>売上</span>
-                    <span style={{ width: '80px', textAlign: 'right' as const }}>バック対象</span>
                   </div>
                   {['A', 'B', 'C', 'D'].map(cast => {
-                    const salesBeforeRounding = preview.castSalesBeforeRounding[cast] || 0
                     const sales = preview.castSales[cast] || 0
-                    const back = preview.castBack[cast] || 0
                     const isNomination = previewNominations.includes(cast)
-                    // 推しの場合はキャスト名なしの売上も加算
-                    const totalSalesBeforeRounding = isNomination && previewNominations.length === 1
-                      ? salesBeforeRounding + preview.noNameSales
-                      : salesBeforeRounding
-                    const totalSales = isNomination && previewNominations.length === 1
-                      ? sales + preview.noNameSales
-                      : sales
-                    const totalBack = isNomination && previewNominations.length === 1
-                      ? back + preview.noNameSales
-                      : back
-                    if (totalBack === 0 && !isNomination) return null
-                    const hasRoundingDiff = preview.roundingTiming === 'total' && totalSalesBeforeRounding !== totalSales
+                    if (sales === 0 && !isNomination) return null
                     return (
                       <div key={cast} style={styles.castSalesRow}>
                         <span style={styles.castSalesLabel}>
@@ -1685,30 +1630,11 @@ export default function SalesSettingsPage() {
                           {isNomination ? '推し' : 'ヘルプ'}
                         </span>
                         <span style={styles.castSalesValue}>
-                          {hasRoundingDiff ? (
-                            <span style={{ fontSize: '11px' }}>
-                              <span style={{ color: '#94a3b8' }}>¥{totalSalesBeforeRounding.toLocaleString()}</span>
-                              <span style={{ color: '#64748b' }}> → </span>
-                              <span style={{ fontWeight: '600' }}>¥{totalSales.toLocaleString()}</span>
-                            </span>
-                          ) : (
-                            <>¥{totalSales.toLocaleString()}</>
-                          )}
-                        </span>
-                        <span style={{
-                          ...styles.castSalesValue,
-                          color: totalBack > totalSales ? '#f59e0b' : '#0369a1',
-                        }}>
-                          ¥{totalBack.toLocaleString()}
+                          ¥{sales.toLocaleString()}
                         </span>
                       </div>
                     )
                   })}
-                  {previewNominations.length > 1 && preview.noNameSales > 0 && (
-                    <div style={styles.castSalesNote}>
-                      ※ キャスト名なし ¥{preview.noNameSales.toLocaleString()} は推しで分配
-                    </div>
-                  )}
                 </div>
               </div>
 
