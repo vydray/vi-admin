@@ -5,22 +5,36 @@ import { usePathname } from 'next/navigation'
 import { useStore } from '@/contexts/StoreContext'
 import { useAuth } from '@/contexts/AuthContext'
 
-const menuItems = [
+interface MenuItem {
+  name: string
+  path: string
+  icon: string
+  superAdminOnly?: boolean
+  isAction?: boolean
+  isSectionHeader?: boolean
+}
+
+const menuItems: MenuItem[] = [
+  // メイン機能
   { name: 'ホーム', path: '/', icon: '🏠' },
-  { name: 'キャスト管理', path: '/casts', icon: '👥' },
   { name: 'キャスト売上', path: '/cast-sales', icon: '💰' },
-  { name: 'シフト管理', path: '/shifts/manage', icon: '📅' },
   { name: '勤怠管理', path: '/attendance', icon: '⏰' },
-  { name: '商品管理', path: '/products', icon: '🛍️' },
-  { name: 'カテゴリー管理', path: '/categories', icon: '📁' },
+  { name: 'シフト管理', path: '/shifts/manage', icon: '📅' },
   { name: '伝票管理', path: '/receipts', icon: '🧾' },
-  { name: '店舗設定', path: '/store-settings', icon: '🏪' },
+  { name: 'カテゴリー管理', path: '/categories', icon: '📁' },
+  { name: '商品管理', path: '/products', icon: '🛍️' },
+  // 管理・設定
+  { name: 'キャスト管理', path: '/casts', icon: '👥' },
   { name: '売上設定', path: '/sales-settings', icon: '📊' },
   { name: 'バック率設定', path: '/cast-back-rates', icon: '💵' },
   { name: '報酬計算設定', path: '/compensation-settings', icon: '💳' },
+  { name: '店舗設定', path: '/store-settings', icon: '🏪' },
   { name: '設定', path: '/settings', icon: '⚙️' },
+  // スーパーアドミン専用
+  { name: '管理者専用', path: '', icon: '🔐', isSectionHeader: true, superAdminOnly: true },
   { name: '店舗管理', path: '/stores', icon: '🏢', superAdminOnly: true },
   { name: 'LINE設定', path: '/line-settings', icon: '💬', superAdminOnly: true },
+  // ログアウト
   { name: 'ログアウト', path: '/logout', icon: '🚪', isAction: true },
 ]
 
@@ -69,6 +83,16 @@ export default function Sidebar() {
           .filter((item) => !item.superAdminOnly || isSuperAdmin)
           .map((item) => {
           const isActive = pathname === item.path
+
+          // セクションヘッダーの場合
+          if (item.isSectionHeader) {
+            return (
+              <div key={item.name} style={styles.sectionHeader}>
+                <span style={styles.sectionIcon}>{item.icon}</span>
+                <span>{item.name}</span>
+              </div>
+            )
+          }
 
           // ログアウトの場合はボタンとして表示
           if (item.isAction && item.path === '/logout') {
@@ -195,5 +219,21 @@ const styles: { [key: string]: React.CSSProperties } = {
   icon: {
     marginRight: '12px',
     fontSize: '20px',
+  },
+  sectionHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    padding: '12px 25px',
+    marginTop: '15px',
+    borderTop: '1px solid rgba(255,255,255,0.1)',
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: '12px',
+    fontWeight: '600',
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.5px',
+  },
+  sectionIcon: {
+    marginRight: '10px',
+    fontSize: '14px',
   },
 }

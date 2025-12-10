@@ -6,7 +6,7 @@ import { format, eachDayOfInterval, addMonths, subMonths, startOfMonth, endOfMon
 import { ja } from 'date-fns/locale'
 import { useStore } from '@/contexts/StoreContext'
 import { CastBasic, SalesSettings, CastBackRate, SystemSettings } from '@/types'
-import { calculateCastSalesByPublishedMethod, getDefaultSalesSettings, applyRounding } from '@/lib/salesCalculation'
+import { calculateCastSalesByPublishedMethod, getDefaultSalesSettings } from '@/lib/salesCalculation'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
 import Link from 'next/link'
@@ -52,12 +52,9 @@ interface Order {
   order_items: OrderItemWithTax[]
 }
 
-type ViewMode = 'total' | 'self_help' | 'back'
-
 export default function CastSalesPage() {
   const { storeId, storeName } = useStore()
   const [selectedMonth, setSelectedMonth] = useState(new Date())
-  const [viewMode, setViewMode] = useState<ViewMode>('total')
   const [salesData, setSalesData] = useState<CastSalesData[]>([])
   const [salesSettings, setSalesSettings] = useState<SalesSettings | null>(null)
   const [loading, setLoading] = useState(true)
@@ -240,16 +237,6 @@ export default function CastSalesPage() {
       })
     })
 
-    // 合計時の端数処理（totalの場合）
-    if (settings.rounding_timing === 'total') {
-      salesMap.forEach(castData => {
-        castData.totalSelf = applyRounding(castData.totalSelf, settings.rounding_method)
-        castData.totalHelp = applyRounding(castData.totalHelp, settings.rounding_method)
-        castData.totalSales = castData.totalSelf + castData.totalHelp
-        castData.totalBack = applyRounding(castData.totalBack, settings.rounding_method)
-      })
-    }
-
     // 売上順にソート
     const sortedData = Array.from(salesMap.values())
       .filter(d => d.totalSales > 0)
@@ -294,29 +281,11 @@ export default function CastSalesPage() {
 
   const getDisplayValue = (data: DailySalesData | undefined): string => {
     if (!data) return '¥0'
-    switch (viewMode) {
-      case 'total':
-        return formatCurrency(data.totalSales)
-      case 'self_help':
-        return `S:${formatCurrency(data.selfSales)} / H:${formatCurrency(data.helpSales)}`
-      case 'back':
-        return formatCurrency(data.backAmount)
-      default:
-        return formatCurrency(data.totalSales)
-    }
+    return formatCurrency(data.totalSales)
   }
 
   const getTotalDisplay = (cast: CastSalesData): string => {
-    switch (viewMode) {
-      case 'total':
-        return formatCurrency(cast.totalSales)
-      case 'self_help':
-        return `S:${formatCurrency(cast.totalSelf)} / H:${formatCurrency(cast.totalHelp)}`
-      case 'back':
-        return formatCurrency(cast.totalBack)
-      default:
-        return formatCurrency(cast.totalSales)
-    }
+    return formatCurrency(cast.totalSales)
   }
 
   const settingsDescription = useMemo(() => {
@@ -418,27 +387,6 @@ export default function CastSalesPage() {
               →
             </Button>
           </div>
-
-          {/* 表示モード選択 */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <label style={{ fontSize: '14px', fontWeight: '500', color: '#475569' }}>表示:</label>
-            <select
-              value={viewMode}
-              onChange={(e) => setViewMode(e.target.value as ViewMode)}
-              style={{
-                padding: '6px 12px',
-                fontSize: '14px',
-                border: '1px solid #e2e8f0',
-                borderRadius: '6px',
-                backgroundColor: '#fff',
-                cursor: 'pointer'
-              }}
-            >
-              <option value="total">合計売上</option>
-              <option value="self_help">SELF/HELP別</option>
-              <option value="back">バック金額</option>
-            </select>
-          </div>
         </div>
       </div>
 
@@ -489,7 +437,7 @@ export default function CastSalesPage() {
                     backgroundColor: '#f8fafc',
                     color: day.getDay() === 0 ? '#dc2626' : day.getDay() === 6 ? '#2563eb' : '#475569',
                     fontWeight: '600',
-                    minWidth: viewMode === 'self_help' ? '140px' : '80px',
+                    minWidth: '80px',
                     zIndex: 10,
                     boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
                     fontSize: '12px'
@@ -506,11 +454,11 @@ export default function CastSalesPage() {
                   borderBottom: '2px solid #e2e8f0',
                   fontWeight: '600',
                   color: '#475569',
-                  minWidth: viewMode === 'self_help' ? '180px' : '120px',
+                  minWidth: '120px',
                   zIndex: 20,
                   boxShadow: '-2px 2px 4px rgba(0,0,0,0.05)'
                 }}>
-                  {viewMode === 'back' ? 'バック合計' : '売上合計'}
+                  売上合計
                 </th>
               </tr>
             </thead>
@@ -554,7 +502,7 @@ export default function CastSalesPage() {
                           textAlign: 'right',
                           backgroundColor: hasData ? '#f0fdf4' : '#fff',
                           color: hasData ? '#166534' : '#94a3b8',
-                          fontSize: viewMode === 'self_help' ? '11px' : '13px',
+                          fontSize: '13px',
                           whiteSpace: 'nowrap'
                         }}>
                           {getDisplayValue(dayData)}
@@ -564,15 +512,15 @@ export default function CastSalesPage() {
                     <td style={{
                       position: 'sticky',
                       right: 0,
-                      backgroundColor: viewMode === 'back' ? '#dbeafe' : '#fef3c7',
+                      backgroundColor: '#fef3c7',
                       padding: '12px',
                       borderBottom: '1px solid #e2e8f0',
                       textAlign: 'right',
                       fontWeight: '600',
-                      color: viewMode === 'back' ? '#1e40af' : '#92400e',
+                      color: '#92400e',
                       zIndex: 5,
                       boxShadow: '-2px 0 4px rgba(0,0,0,0.05)',
-                      fontSize: viewMode === 'self_help' ? '12px' : '14px',
+                      fontSize: '14px',
                       whiteSpace: 'nowrap'
                     }}>
                       {getTotalDisplay(castSales)}
@@ -585,32 +533,6 @@ export default function CastSalesPage() {
         </div>
       </div>
 
-      {/* 凡例 */}
-      <div style={{
-        marginTop: '20px',
-        padding: '16px',
-        backgroundColor: '#fff',
-        borderRadius: '8px',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-        fontSize: '13px',
-        color: '#64748b'
-      }}>
-        <div style={{ marginBottom: '12px', fontWeight: '600' }}>表示モード説明</div>
-        <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
-          <div>
-            <strong>合計売上</strong>: SELF + HELP の合計
-          </div>
-          <div>
-            <strong>SELF/HELP別</strong>: S=担当テーブル / H=ヘルプ売上
-          </div>
-          <div>
-            <strong>バック金額</strong>: 売上に対するバック額
-          </div>
-        </div>
-        <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #e2e8f0' }}>
-          <strong>SELF判定</strong>: オーダーの担当キャスト(staff_name) = 商品に紐づくキャスト(cast_name) の場合
-        </div>
-      </div>
     </div>
   )
 }
