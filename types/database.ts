@@ -375,15 +375,11 @@ export interface SalesSettings {
   receipt_help_fixed_amount: number
 
   // 推し分配設定
-  receipt_nomination_distribute_all: boolean // 商品についていない推しにも売上を分配するか
 
   // 端数処理
   receipt_rounding_method: RoundingMethod
   receipt_rounding_position: number
   receipt_rounding_timing: RoundingTiming
-
-  // 商品で計上済みの売上を差し引く
-  receipt_deduct_item_sales: boolean
 
   // ========== 公開設定 ==========
   published_aggregation: PublishedAggregation

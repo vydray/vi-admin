@@ -293,9 +293,6 @@ export function getDefaultSalesSettings(storeId: number): Omit<SalesSettings, 'i
     receipt_rounding_method: 'floor_100',
     receipt_rounding_position: 100,
     receipt_rounding_timing: 'per_item',
-    receipt_nomination_distribute_all: false,
-    receipt_deduct_item_sales: false,
-
     // 公開設定
     published_aggregation: 'item_based',
 
