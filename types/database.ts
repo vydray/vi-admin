@@ -307,10 +307,14 @@ export type NonNominationSalesHandling = 'share_only' | 'full_to_nomination'
 // share_only: 推しの分だけ計上（例: A,Cで10000円 → Aに5000円）
 // full_to_nomination: 全額を推しに計上（例: A,Cで10000円 → Aに10000円）
 
-// 複数推し時のヘルプ分配方法
-export type HelpDistributionMethod = 'group_ratio' | 'equal_all'
-// group_ratio: 推しグループ:ヘルプ = 1:1 で分配
-// equal_all: 全員で等分
+// ヘルプ商品の分配方法
+export type HelpDistributionMethod = 'all_to_nomination' | 'equal' | 'ratio' | 'equal_per_person' | 'group_ratio' | 'equal_all'
+// all_to_nomination: 全額推しに
+// equal: 等分（推しとヘルプで分ける）
+// ratio: 比率で分ける
+// equal_per_person: 均等割（全員で等分）
+// group_ratio: 推しグループ:ヘルプ = 1:1 で分配（レガシー）
+// equal_all: 全員で等分（レガシー）
 
 // ヘルプ売上の計上方法
 export type HelpSalesInclusion = 'both' | 'self_only' | 'help_only'
@@ -345,6 +349,9 @@ export interface SalesSettings {
   item_help_ratio: number               // ヘルプ割合（%）
   item_help_fixed_amount: number        // ヘルプ固定額
 
+  // 推し分配設定
+  item_nomination_distribute_all: boolean // 商品についていない推しにも売上を分配するか
+
   // 端数処理
   item_rounding_method: RoundingMethod
   item_rounding_position: number        // 1, 10, 100
@@ -366,6 +373,9 @@ export interface SalesSettings {
   receipt_help_calculation_method: HelpCalculationMethod
   receipt_help_ratio: number
   receipt_help_fixed_amount: number
+
+  // 推し分配設定
+  receipt_nomination_distribute_all: boolean // 商品についていない推しにも売上を分配するか
 
   // 端数処理
   receipt_rounding_method: RoundingMethod
@@ -400,12 +410,6 @@ export interface SalesSettings {
   use_tax_excluded: boolean   // true: 税抜き金額で計算（後方互換用）
   exclude_consumption_tax: boolean  // 消費税抜きで計算
   exclude_service_charge: boolean   // サービスTAX抜きで計算
-
-  // バック計算対象設定
-  include_shimei_in_sales: boolean    // 指名料を売上に含める
-  include_drink_in_sales: boolean     // ドリンクを売上に含める
-  include_food_in_sales: boolean      // フードを売上に含める
-  include_extension_in_sales: boolean // 延長料金を売上に含める
 
   description?: string | null
 

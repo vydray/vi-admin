@@ -277,6 +277,7 @@ export function getDefaultSalesSettings(storeId: number): Omit<SalesSettings, 'i
     item_rounding_method: 'floor_100',
     item_rounding_position: 100,
     item_rounding_timing: 'per_item',
+    item_nomination_distribute_all: false,
 
     // 伝票全体の集計設定
     receipt_use_tax_excluded: true,
@@ -292,6 +293,7 @@ export function getDefaultSalesSettings(storeId: number): Omit<SalesSettings, 'i
     receipt_rounding_method: 'floor_100',
     receipt_rounding_position: 100,
     receipt_rounding_timing: 'per_item',
+    receipt_nomination_distribute_all: false,
     receipt_deduct_item_sales: false,
 
     // 公開設定
@@ -311,10 +313,6 @@ export function getDefaultSalesSettings(storeId: number): Omit<SalesSettings, 'i
     use_tax_excluded: true,
     exclude_consumption_tax: true,
     exclude_service_charge: true,
-    include_shimei_in_sales: true,
-    include_drink_in_sales: true,
-    include_food_in_sales: false,
-    include_extension_in_sales: true,
     description: null,
   }
 }

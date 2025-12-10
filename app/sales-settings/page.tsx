@@ -69,6 +69,7 @@ const getDefaultExtendedSettings = (): Partial<SalesSettings> => ({
   item_help_calculation_method: 'ratio',
   item_help_ratio: 50,
   item_help_fixed_amount: 0,
+  item_nomination_distribute_all: false,
   item_rounding_method: 'floor_100',
   item_rounding_position: 100,
   item_rounding_timing: 'per_item',
@@ -84,6 +85,7 @@ const getDefaultExtendedSettings = (): Partial<SalesSettings> => ({
   receipt_help_calculation_method: 'ratio',
   receipt_help_ratio: 50,
   receipt_help_fixed_amount: 0,
+  receipt_nomination_distribute_all: false,
   receipt_rounding_method: 'floor_100',
   receipt_rounding_position: 100,
   receipt_rounding_timing: 'per_item',
@@ -125,6 +127,10 @@ function AggregationSection({
   const roundingMethodKey = `${prefix}_rounding_method` as keyof SalesSettings
   const roundingPositionKey = `${prefix}_rounding_position` as keyof SalesSettings
   const roundingTimingKey = `${prefix}_rounding_timing` as keyof SalesSettings
+  const helpDistMethodKey = `${prefix}_help_distribution_method` as keyof SalesSettings
+  const helpRatioKey = `${prefix}_help_ratio` as keyof SalesSettings
+  const helpSalesInclusionKey = `${prefix}_help_sales_inclusion` as keyof SalesSettings
+  const nominationDistributeAllKey = `${prefix}_nomination_distribute_all` as keyof SalesSettings
   const deductKey = 'receipt_deduct_item_sales' as keyof SalesSettings
 
   const excludeTax = settings[excludeTaxKey] as boolean ?? true
@@ -133,6 +139,10 @@ function AggregationSection({
   const roundingMethod = settings[roundingMethodKey] as RoundingMethod ?? 'floor_100'
   const roundingPosition = settings[roundingPositionKey] as number ?? 100
   const roundingTiming = settings[roundingTimingKey] as RoundingTiming ?? 'per_item'
+  const helpDistMethod = settings[helpDistMethodKey] as string ?? 'all_to_nomination'
+  const helpRatio = settings[helpRatioKey] as number ?? 100
+  const giveHelpSales = settings[helpSalesInclusionKey] === 'both' // 'both'ならヘルプにも売上をつける
+  const nominationDistributeAll = settings[nominationDistributeAllKey] as boolean ?? false
   const deductItemSales = settings[deductKey] as boolean ?? false
 
   const { type: roundingType } = parseRoundingMethod(roundingMethod)
@@ -250,39 +260,150 @@ function AggregationSection({
         </div>
       </div>
 
-      {/* 売上の範囲 */}
+      {/* ヘルプ売上を含めるか */}
       <div style={styles.section}>
-        <h3 style={styles.sectionTitle}>売上の範囲</h3>
-        <p style={styles.sectionDescription}>
-          どの商品を売上として計上するか
-        </p>
-
-        <div style={styles.radioGroup}>
-          <label style={styles.radioLabel}>
+        <div style={styles.checkboxGroup}>
+          <label style={styles.checkboxLabel}>
             <input
-              type="radio"
-              name={`${prefix}_multi_cast`}
-              checked={multiCastDist === 'nomination_only'}
-              onChange={() => onUpdate(multiCastKey, 'nomination_only')}
-              style={styles.radio}
-            />
-            <span>推しのみ</span>
-          </label>
-          <label style={styles.radioLabel}>
-            <input
-              type="radio"
-              name={`${prefix}_multi_cast`}
+              type="checkbox"
               checked={multiCastDist === 'all_equal'}
-              onChange={() => onUpdate(multiCastKey, 'all_equal')}
-              style={styles.radio}
+              onChange={(e) => {
+                onUpdate(multiCastKey, e.target.checked ? 'all_equal' : 'nomination_only')
+                // ONにしたとき、分配方法が未設定なら「全額推しに」をセット
+                if (e.target.checked && !['all_to_nomination', 'equal', 'ratio'].includes(helpDistMethod)) {
+                  onUpdate(helpDistMethodKey, 'all_to_nomination')
+                }
+              }}
+              style={styles.checkbox}
             />
-            <span>全員</span>
+            <span>ヘルプ商品も売上に含める</span>
           </label>
+          <p style={styles.hint}>
+            ONにすると、他キャストの商品も推しの売上として計上されます
+          </p>
         </div>
-        <p style={styles.hint}>
-          推しのみ: 推しの名前が入った商品のみ計上<br />
-          全員: ヘルプの商品も含めて計上
-        </p>
+
+        {/* 分配方法（ヘルプ含める時のみ表示） */}
+        {multiCastDist === 'all_equal' && (
+          <div style={styles.subSection}>
+            <div style={styles.subSectionTitle}>分配方法</div>
+            <div style={styles.radioGroup}>
+              <label style={styles.radioLabel}>
+                <input
+                  type="radio"
+                  name={`${prefix}_help_dist`}
+                  checked={helpDistMethod === 'all_to_nomination' || !['equal', 'ratio', 'equal_per_person'].includes(helpDistMethod)}
+                  onChange={() => onUpdate(helpDistMethodKey, 'all_to_nomination')}
+                  style={styles.radio}
+                />
+                <div>
+                  <span>全額推しに</span>
+                  <p style={styles.radioHint}>例: 推しA、商品(A,B,C) 1000円 → A:1000円</p>
+                </div>
+              </label>
+              <label style={styles.radioLabel}>
+                <input
+                  type="radio"
+                  name={`${prefix}_help_dist`}
+                  checked={helpDistMethod === 'equal'}
+                  onChange={() => onUpdate(helpDistMethodKey, 'equal')}
+                  style={styles.radio}
+                />
+                <div>
+                  <span>等分（推しとヘルプで1:1で分ける）</span>
+                  <p style={styles.radioHint}>例: 推しA、商品(A,B,C) 1000円 → A:500円、B:250円、C:250円</p>
+                </div>
+              </label>
+              <label style={styles.radioLabel}>
+                <input
+                  type="radio"
+                  name={`${prefix}_help_dist`}
+                  checked={helpDistMethod === 'equal_per_person'}
+                  onChange={() => onUpdate(helpDistMethodKey, 'equal_per_person')}
+                  style={styles.radio}
+                />
+                <div>
+                  <span>均等割（全員で頭数割り）</span>
+                  <p style={styles.radioHint}>例: 推しA、商品(A,B,C) 1000円 → A:333円、B:333円、C:333円</p>
+                </div>
+              </label>
+              <label style={styles.radioLabel}>
+                <input
+                  type="radio"
+                  name={`${prefix}_help_dist`}
+                  checked={helpDistMethod === 'ratio'}
+                  onChange={() => onUpdate(helpDistMethodKey, 'ratio')}
+                  style={styles.radio}
+                />
+                <div>
+                  <span>比率で分ける</span>
+                  <p style={styles.radioHint}>推しとヘルプの比率をカスタマイズ</p>
+                </div>
+              </label>
+            </div>
+
+            {/* 比率入力（比率選択時のみ） */}
+            {helpDistMethod === 'ratio' && (
+              <div style={styles.ratioInputRow}>
+                <span>推し</span>
+                <input
+                  type="number"
+                  value={helpRatio}
+                  onChange={(e) => onUpdate(helpRatioKey, Math.min(100, Math.max(0, parseInt(e.target.value) || 0)))}
+                  style={styles.ratioInput}
+                  min="0"
+                  max="100"
+                />
+                <span>% / ヘルプ</span>
+                <input
+                  type="number"
+                  value={100 - helpRatio}
+                  onChange={(e) => onUpdate(helpRatioKey, 100 - Math.min(100, Math.max(0, parseInt(e.target.value) || 0)))}
+                  style={styles.ratioInput}
+                  min="0"
+                  max="100"
+                />
+                <span>%</span>
+              </div>
+            )}
+
+            {/* ヘルプに売上をつけるか（等分・均等割・比率の時のみ表示） */}
+            {(helpDistMethod === 'equal' || helpDistMethod === 'equal_per_person' || helpDistMethod === 'ratio') && (
+              <div style={{ marginTop: '12px' }}>
+                <label style={styles.checkboxLabel}>
+                  <input
+                    type="checkbox"
+                    checked={giveHelpSales}
+                    onChange={(e) => onUpdate(helpSalesInclusionKey, e.target.checked ? 'both' : 'self_only')}
+                    style={styles.checkbox}
+                  />
+                  <span>ヘルプにも売上を計上する</span>
+                </label>
+                <p style={styles.hint}>
+                  OFFの場合、ヘルプ分は計算されますが売上として記録されません
+                </p>
+              </div>
+            )}
+
+            {/* 商品についていない推しにも分配するか */}
+            <div style={{ marginTop: '12px' }}>
+              <label style={styles.checkboxLabel}>
+                <input
+                  type="checkbox"
+                  checked={nominationDistributeAll}
+                  onChange={(e) => onUpdate(nominationDistributeAllKey, e.target.checked)}
+                  style={styles.checkbox}
+                />
+                <span>商品についていない推しにも売上を分配する</span>
+              </label>
+              <p style={styles.hint}>
+                推しが複数選択されていて、商品に一部の推し名のみが入っている場合に有効。
+                <br />
+                例: 推しがA,Bの2人で商品にAのみ → OFF: Aだけに売上 / ON: A,Bに分配
+              </p>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 商品で計上済みの売上を差し引く（伝票全体のみ） */}
@@ -309,7 +430,7 @@ function AggregationSection({
 }
 
 export default function SalesSettingsPage() {
-  const { storeId, storeName } = useStore()
+  const { storeId } = useStore()
   const [settings, setSettings] = useState<SalesSettings | null>(null)
   const latestStoreIdRef = useRef(storeId)
   const [systemSettings, setSystemSettings] = useState<SystemSettings>({
@@ -439,6 +560,7 @@ export default function SalesSettingsPage() {
           item_help_calculation_method: settings.item_help_calculation_method,
           item_help_ratio: settings.item_help_ratio,
           item_help_fixed_amount: settings.item_help_fixed_amount,
+          item_nomination_distribute_all: settings.item_nomination_distribute_all,
           item_rounding_method: settings.item_rounding_method,
           item_rounding_position: settings.item_rounding_position,
           item_rounding_timing: settings.item_rounding_timing,
@@ -454,6 +576,7 @@ export default function SalesSettingsPage() {
           receipt_help_calculation_method: settings.receipt_help_calculation_method,
           receipt_help_ratio: settings.receipt_help_ratio,
           receipt_help_fixed_amount: settings.receipt_help_fixed_amount,
+          receipt_nomination_distribute_all: settings.receipt_nomination_distribute_all,
           receipt_rounding_method: settings.receipt_rounding_method,
           receipt_rounding_position: settings.receipt_rounding_position,
           receipt_rounding_timing: settings.receipt_rounding_timing,
@@ -602,6 +725,20 @@ export default function SalesSettingsPage() {
       ? (settings.item_multi_cast_distribution ?? 'nomination_only')
       : (settings.receipt_multi_cast_distribution ?? 'nomination_only')
 
+    // ヘルプ分配設定
+    const helpDistMethod = isItemBased
+      ? (settings.item_help_distribution_method ?? 'all_to_nomination')
+      : (settings.receipt_help_distribution_method ?? 'all_to_nomination')
+    const helpRatio = isItemBased
+      ? (settings.item_help_ratio ?? 100)
+      : (settings.receipt_help_ratio ?? 100)
+    const giveHelpSales = isItemBased
+      ? (settings.item_help_sales_inclusion === 'both')
+      : (settings.receipt_help_sales_inclusion === 'both')
+    const nominationDistributeAll = isItemBased
+      ? (settings.item_nomination_distribute_all ?? false)
+      : (settings.receipt_nomination_distribute_all ?? false)
+
     const taxRate = systemSettings.tax_rate / 100
     const serviceRate = systemSettings.service_fee_rate / 100
 
@@ -647,45 +784,155 @@ export default function SalesSettingsPage() {
       // キャスト別内訳を計算
       const castBreakdown: { cast: string; sales: number; isSelf: boolean }[] = []
 
+      // ヘルプ扱いにしない推し名
+      const nonHelpNames = settings?.non_help_staff_names || []
+
+      // 推しがヘルプ扱いにしない推し名のみの場合（例：フリー）、全キャストをSELF扱い
+      const nominationIsNonHelpOnly = previewNominations.length > 0 &&
+        previewNominations.every(n => nonHelpNames.includes(n))
+
       if (item.castNames.length > 0) {
-        // 商品上の推しキャスト
-        const nominationCastsOnItem = item.castNames.filter(c => previewNominations.includes(c))
-        // 商品上のヘルプキャスト（推し以外）
-        const helpCastsOnItem = item.castNames.filter(c => !previewNominations.includes(c))
+        // 商品上の推しキャスト（推し選択 or ヘルプ扱いにしない推し名）
+        // ただし、推しがフリーなどの場合は全キャストが推し扱い
+        const nominationCastsOnItem = nominationIsNonHelpOnly
+          ? item.castNames // フリーなどの場合は全キャストが推し
+          : item.castNames.filter(c => previewNominations.includes(c) || nonHelpNames.includes(c))
+        // 商品上のヘルプキャスト（推し以外かつヘルプ扱いにしない推し名でもない）
+        // ただし、推しがフリーなどの場合はヘルプなし
+        const helpCastsOnItem = nominationIsNonHelpOnly
+          ? [] // フリーなどの場合はヘルプなし
+          : item.castNames.filter(c => !previewNominations.includes(c) && !nonHelpNames.includes(c))
 
         if (salesAttribution === 'all_equal') {
-          // 全員: ヘルプの商品も推しの売上に含める
-          if (nominationCastsOnItem.length > 0) {
-            // 推しがいる場合、推しに全額（複数推しなら等分）
-            const perNominationAmount = Math.floor(roundedBase / nominationCastsOnItem.length)
-            nominationCastsOnItem.forEach(c => {
+          // ヘルプ商品も売上に含める
+          // 分配方法に応じて計算
+          let nominationShare = roundedBase
+          let helpShare = 0
+
+          if (helpDistMethod === 'equal') {
+            // 等分: 推し側とヘルプ側で50:50
+            // 商品に推しがいなくても、推し側として半分を受け取る
+            const hasNomination = nominationCastsOnItem.length > 0 || previewNominations.length > 0
+            const hasHelp = helpCastsOnItem.length > 0
+            if (hasNomination && hasHelp) {
+              nominationShare = Math.floor(roundedBase / 2)
+              helpShare = roundedBase - nominationShare
+            } else if (hasNomination) {
+              nominationShare = roundedBase
+              helpShare = 0
+            } else {
+              nominationShare = 0
+              helpShare = roundedBase
+            }
+          } else if (helpDistMethod === 'ratio') {
+            // 比率: helpRatio%が推し、残りがヘルプ（ヘルプがいる場合のみ）
+            const hasNomination = nominationCastsOnItem.length > 0 || previewNominations.length > 0
+            const hasHelp = helpCastsOnItem.length > 0
+            if (hasNomination && hasHelp) {
+              nominationShare = Math.floor(roundedBase * helpRatio / 100)
+              helpShare = roundedBase - nominationShare
+            } else if (hasNomination) {
+              nominationShare = roundedBase
+              helpShare = 0
+            } else {
+              nominationShare = 0
+              helpShare = roundedBase
+            }
+          } else if (helpDistMethod === 'equal_per_person') {
+            // 均等割: 全員で等分（推し・ヘルプ関係なく人数割り）
+            const totalCasts = item.castNames.length
+            const perPersonAmount = Math.floor(roundedBase / totalCasts)
+            item.castNames.forEach(c => {
+              // フリーなどの場合は全員推し扱い
+              const isNomination = nominationIsNonHelpOnly || previewNominations.includes(c) || nonHelpNames.includes(c)
               castBreakdown.push({
                 cast: c,
-                sales: perNominationAmount,
-                isSelf: true,
+                sales: isNomination || giveHelpSales ? perPersonAmount : 0,
+                isSelf: isNomination,
               })
             })
-            // ヘルプは売上0（推しに含まれる）
-            helpCastsOnItem.forEach(c => {
-              castBreakdown.push({
-                cast: c,
-                sales: 0,
-                isSelf: false,
+            // 商品についていない推しの処理（均等割では常に推しにも分配）
+            const nominationsNotOnItem = previewNominations.filter(n => !item.castNames.includes(n))
+            if (nominationsNotOnItem.length > 0) {
+              // 全員（商品上 + 商品外の推し）で再計算
+              const totalPeople = totalCasts + nominationsNotOnItem.length
+              const perPersonAmountAll = Math.floor(roundedBase / totalPeople)
+              // castBreakdownをクリアして再計算
+              castBreakdown.length = 0
+              item.castNames.forEach(c => {
+                // フリーなどの場合は全員推し扱い
+                const isNomination = nominationIsNonHelpOnly || previewNominations.includes(c) || nonHelpNames.includes(c)
+                castBreakdown.push({
+                  cast: c,
+                  sales: isNomination || giveHelpSales ? perPersonAmountAll : 0,
+                  isSelf: isNomination,
+                })
               })
-            })
-          } else {
-            // 推しがいない商品（ヘルプのみ）→ 推しに全額を加算
-            // この商品のキャスト（ヘルプ）は売上0として表示
-            helpCastsOnItem.forEach(c => {
-              castBreakdown.push({
-                cast: c,
-                sales: 0,
-                isSelf: false,
+              nominationsNotOnItem.forEach(nom => {
+                castBreakdown.push({
+                  cast: nom,
+                  sales: perPersonAmountAll,
+                  isSelf: true,
+                })
               })
-            })
-            // 推しに全額を追加（後で集計時に処理）
+            }
+            // equal_per_personの場合はここで処理完了、以下の分配ロジックをスキップ
+          }
+          // all_to_nomination: デフォルト（nominationShare = roundedBase, helpShare = 0）
+
+          // equal_per_person以外の場合の分配ロジック
+          if (helpDistMethod !== 'equal_per_person' && nominationCastsOnItem.length > 0) {
+            // 推しがいる場合
+            if (nominationDistributeAll && previewNominations.length > 0) {
+              // 全推しに分配（商品についていない推しにも）
+              const perNominationAmount = Math.floor(nominationShare / previewNominations.length)
+              previewNominations.forEach(nom => {
+                castBreakdown.push({
+                  cast: nom,
+                  sales: perNominationAmount,
+                  isSelf: true,
+                })
+              })
+            } else {
+              // 商品についている推しのみに分配
+              const perNominationAmount = Math.floor(nominationShare / nominationCastsOnItem.length)
+              nominationCastsOnItem.forEach(c => {
+                castBreakdown.push({
+                  cast: c,
+                  sales: perNominationAmount,
+                  isSelf: true,
+                })
+              })
+            }
+            // ヘルプへの分配
+            if (helpCastsOnItem.length > 0) {
+              // giveHelpSalesがfalseなら売上0
+              const perHelpAmount = giveHelpSales ? Math.floor(helpShare / helpCastsOnItem.length) : 0
+              helpCastsOnItem.forEach(c => {
+                castBreakdown.push({
+                  cast: c,
+                  sales: perHelpAmount,
+                  isSelf: false,
+                })
+              })
+            }
+          } else if (helpDistMethod !== 'equal_per_person') {
+            // 推しがいない商品（ヘルプのみ）- equal_per_person以外
+            // ヘルプへの分配
+            if (helpCastsOnItem.length > 0) {
+              // giveHelpSalesがfalseなら売上0
+              const perHelpAmount = giveHelpSales ? Math.floor(helpShare / helpCastsOnItem.length) : 0
+              helpCastsOnItem.forEach(c => {
+                castBreakdown.push({
+                  cast: c,
+                  sales: perHelpAmount,
+                  isSelf: false,
+                })
+              })
+            }
+            // 推しに分配（推しがいない商品でも推しに加算）
             if (previewNominations.length > 0) {
-              const perNominationAmount = Math.floor(roundedBase / previewNominations.length)
+              const perNominationAmount = Math.floor(nominationShare / previewNominations.length)
               previewNominations.forEach(nom => {
                 castBreakdown.push({
                   cast: nom,
@@ -695,6 +942,7 @@ export default function SalesSettingsPage() {
               })
             }
           }
+          // equal_per_personで推しがいない商品の場合は上で既に処理済み
         } else {
           // 推しのみ: 推しの分だけ計上
           if (nominationCastsOnItem.length > 0) {
@@ -731,8 +979,10 @@ export default function SalesSettingsPage() {
       // 売上合計（castBreakdownから算出）
       const salesAmount = castBreakdown.reduce((sum, cb) => sum + cb.sales, 0)
 
-      // 推しの商品かどうか
-      const isSelf = item.castNames.length === 0 || item.castNames.some(c => previewNominations.includes(c))
+      // 推しの商品かどうか（推し選択 or ヘルプ扱いにしない推し名、フリーなどの場合は全商品が推し扱い）
+      const isSelf = item.castNames.length === 0 ||
+        nominationIsNonHelpOnly ||
+        item.castNames.some(c => previewNominations.includes(c) || nonHelpNames.includes(c))
 
       return {
         ...item,
@@ -863,6 +1113,7 @@ export default function SalesSettingsPage() {
       afterRoundingTotal,
       afterServiceTotal,
       finalTotal,
+      castSalesRaw,
       castSalesBeforeRounding,
       castSales,
       noNameSales,
@@ -878,6 +1129,11 @@ export default function SalesSettingsPage() {
       receiptBeforeRounding,
       receiptTotal,
       receiptRoundingDiff,
+      // 適用中の設定表示用
+      helpDistMethod,
+      helpRatio,
+      giveHelpSales,
+      nominationDistributeAll,
     }
   }, [settings, systemSettings, previewAggregation, previewNominations, previewItems, availableCasts])
 
@@ -898,11 +1154,7 @@ export default function SalesSettingsPage() {
     <div style={styles.pageContainer}>
       {/* 左側: 設定フォーム */}
       <div style={styles.formContainer}>
-        <div style={styles.header}>
-          <h1 style={styles.title}>売上計算設定</h1>
-          <p style={styles.subtitle}>店舗: {storeName}</p>
-        </div>
-
+        <div style={styles.formScrollArea}>
         {/* キャスト名が入ってる商品のみの集計 */}
         <AggregationSection
           title="1. キャスト名が入ってる商品のみの集計"
@@ -1020,54 +1272,7 @@ export default function SalesSettingsPage() {
             </div>
           </div>
 
-          {/* 複数推しの分配率 */}
-          <div style={{
-            ...styles.section,
-            opacity: systemSettings.allow_multiple_nominations ? 1 : 0.5,
-            pointerEvents: systemSettings.allow_multiple_nominations ? 'auto' : 'none',
-          }}>
-            <h3 style={styles.sectionTitle}>
-              複数推しの分配率
-              {!systemSettings.allow_multiple_nominations && (
-                <span style={styles.disabledNote}>（複数推し機能OFF）</span>
-              )}
-              <HelpTooltip
-                text="複数推しがいる場合の売上分配率を設定します。例: 2人で均等なら50:50"
-                width={250}
-              />
-            </h3>
-            <div style={styles.formRow}>
-              <input
-                type="number"
-                value={(settings.multi_nomination_ratios || [50, 50])[0] || 50}
-                onChange={(e) => {
-                  const val = Math.min(100, Math.max(0, parseInt(e.target.value) || 0))
-                  updateSetting('multi_nomination_ratios', [val, 100 - val])
-                }}
-                style={{ ...styles.input, width: '80px' }}
-                min="0"
-                max="100"
-                disabled={!systemSettings.allow_multiple_nominations}
-              />
-              <span>:</span>
-              <input
-                type="number"
-                value={(settings.multi_nomination_ratios || [50, 50])[1] || 50}
-                onChange={(e) => {
-                  const val = Math.min(100, Math.max(0, parseInt(e.target.value) || 0))
-                  updateSetting('multi_nomination_ratios', [100 - val, val])
-                }}
-                style={{ ...styles.input, width: '80px' }}
-                min="0"
-                max="100"
-                disabled={!systemSettings.allow_multiple_nominations}
-              />
-              <span>%</span>
-            </div>
-            <p style={styles.hint}>
-              1人目と2人目の分配率（合計100%）
-            </p>
-          </div>
+        </div>
         </div>
 
         {/* 保存ボタン */}
@@ -1083,7 +1288,7 @@ export default function SalesSettingsPage() {
         </div>
       </div>
 
-      {/* 右側: プレビュー */}
+      {/* 中央: プレビュー */}
       <div style={styles.previewContainer}>
         <div style={styles.previewCard}>
           <h3 style={styles.previewTitle}>シミュレーター</h3>
@@ -1111,48 +1316,6 @@ export default function SalesSettingsPage() {
                 伝票全体
               </button>
             </div>
-          </div>
-
-          {/* 推しの選択 */}
-          <div style={styles.previewSection}>
-            <div style={styles.previewSectionTitle}>推し（複数選択可）</div>
-            <div style={styles.nominationSelect}>
-              {['A', 'B', 'C', 'D'].map(cast => (
-                <button
-                  key={cast}
-                  onClick={() => toggleNomination(cast)}
-                  style={{
-                    ...styles.nominationBtn,
-                    ...(previewNominations.includes(cast) ? styles.nominationBtnActive : {}),
-                  }}
-                >
-                  {cast}
-                </button>
-              ))}
-            </div>
-            {/* ヘルプ扱いにしない推し名 */}
-            {settings.non_help_staff_names && settings.non_help_staff_names.length > 0 && (
-              <div style={{ marginTop: '8px' }}>
-                <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '6px' }}>
-                  ヘルプ扱いにしない推し名
-                </div>
-                <div style={styles.nominationSelect}>
-                  {settings.non_help_staff_names.map(name => (
-                    <button
-                      key={name}
-                      onClick={() => toggleNomination(name)}
-                      style={{
-                        ...styles.nominationBtn,
-                        ...styles.nominationBtnNonHelp,
-                        ...(previewNominations.includes(name) ? styles.nominationBtnNonHelpActive : {}),
-                      }}
-                    >
-                      {name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
 
           {preview && (
@@ -1205,7 +1368,7 @@ export default function SalesSettingsPage() {
                     </div>
                     <div style={styles.castSelectRow}>
                       <span style={styles.castSelectLabel}>キャスト:</span>
-                      {availableCasts.filter(c => c !== '-').map(cast => (
+                      {['A', 'B', 'C', 'D'].map(cast => (
                         <button
                           key={cast}
                           onClick={() => toggleItemCast(item.id, cast)}
@@ -1231,7 +1394,7 @@ export default function SalesSettingsPage() {
                       {item.notIncluded ? (
                         <span style={styles.skipTag}>売上対象外</span>
                       ) : item.castBreakdown && item.castBreakdown.length > 0 ? (
-                        // キャスト内訳を表示（単一でも複数でも同じ形式）
+                        // キャスト内訳を表示
                         <div style={styles.castBreakdownContainer}>
                           {item.castBreakdown.map((cb, idx) => (
                             <div key={idx} style={styles.castBreakdownRow}>
@@ -1297,51 +1460,160 @@ export default function SalesSettingsPage() {
                   </div>
                 </div>
 
-                <div style={styles.castSalesSection}>
-                  <div style={styles.castSalesTitle}>キャストごとの売上</div>
-                  <div style={styles.castSalesHeader}>
-                    <span style={{ flex: 1 }}>キャスト</span>
-                    <span style={{ width: '120px', textAlign: 'right' as const }}>売上</span>
-                  </div>
-                  {['A', 'B', 'C', 'D'].map(cast => {
-                    const sales = preview.castSales[cast] || 0
-                    const isNomination = previewNominations.includes(cast)
-                    if (sales === 0 && !isNomination) return null
-                    return (
-                      <div key={cast} style={styles.castSalesRow}>
-                        <span style={styles.castSalesLabel}>
-                          <span style={{
-                            ...styles.castBadge,
-                            backgroundColor: isNomination ? '#ec4899' : '#94a3b8',
-                          }}>
-                            {cast}
-                          </span>
-                          {isNomination ? '推し' : 'ヘルプ'}
-                        </span>
-                        <span style={styles.castSalesValue}>
-                          ¥{sales.toLocaleString()}
-                        </span>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-
-              <div style={styles.settingSummary}>
-                <div style={styles.summaryTitle}>適用中の設定（{previewAggregation === 'item' ? 'キャスト商品' : '伝票全体'}）</div>
-                <div style={styles.summaryItem}>
-                  計算基準: {preview.excludeTax ? '税抜き' : preview.excludeService ? '税込み＋サービス料' : '税込み'}
-                </div>
-                <div style={styles.summaryItem}>
-                  端数処理: {preview.roundingType === 'none' ? 'なし' : `${preview.roundingPosition}の位で${
-                    preview.roundingType === 'floor' ? '切り捨て' :
-                    preview.roundingType === 'ceil' ? '切り上げ' : '四捨五入'
-                  }（${preview.roundingTiming === 'per_item' ? '商品ごと' : '合計時'}）`}
-                </div>
               </div>
             </>
           )}
         </div>
+      </div>
+
+      {/* 右側: 固定パネル */}
+      <div style={styles.stickyPanelWrapper}>
+      <div style={styles.stickyPanel}>
+        {/* 推しの選択 */}
+        <div style={styles.stickySection}>
+          <div style={styles.stickySectionTitle}>推し（複数選択可）</div>
+          <div style={styles.nominationSelect}>
+            {['A', 'B', 'C', 'D'].map(cast => (
+              <button
+                key={cast}
+                onClick={() => toggleNomination(cast)}
+                style={{
+                  ...styles.nominationBtn,
+                  ...(previewNominations.includes(cast) ? styles.nominationBtnActive : {}),
+                }}
+              >
+                {cast}
+              </button>
+            ))}
+          </div>
+          {/* ヘルプ扱いにしない推し名 */}
+          {settings.non_help_staff_names && settings.non_help_staff_names.length > 0 && (
+            <div style={{ marginTop: '8px' }}>
+              <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '6px' }}>
+                ヘルプ扱いにしない推し名
+              </div>
+              <div style={styles.nominationSelect}>
+                {settings.non_help_staff_names.map(name => (
+                  <button
+                    key={name}
+                    onClick={() => toggleNomination(name)}
+                    style={{
+                      ...styles.nominationBtn,
+                      ...styles.nominationBtnNonHelp,
+                      ...(previewNominations.includes(name) ? styles.nominationBtnNonHelpActive : {}),
+                    }}
+                  >
+                    {name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* キャストごとの売上 */}
+        {preview && (
+          <div style={styles.stickySection}>
+            <div style={styles.stickySectionTitle}>キャストごとの売上</div>
+            {preview.roundingTiming === 'total' && (
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '4px 0',
+                borderBottom: '2px solid #e2e8f0',
+                marginBottom: '4px',
+                fontSize: '10px',
+                color: '#94a3b8',
+              }}>
+                <span style={{ minWidth: '60px' }}>キャスト</span>
+                <span>端数処理前</span>
+                <span>端数</span>
+                <span>売上</span>
+              </div>
+            )}
+            {availableCasts.filter(c => c !== '-').map(cast => {
+              const sales = preview.castSales[cast] || 0
+              const rawSales = preview.castSalesRaw[cast] || 0
+              const roundingDiff = sales - rawSales
+              const nonHelpNames = settings?.non_help_staff_names || []
+              const nominationIsNonHelpOnly = previewNominations.length > 0 &&
+                previewNominations.every(n => nonHelpNames.includes(n))
+              const isNomination = nominationIsNonHelpOnly || previewNominations.includes(cast) || nonHelpNames.includes(cast)
+              if (sales === 0 && !previewNominations.includes(cast)) return null
+              return (
+                <div key={cast} style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '6px 0',
+                  borderBottom: '1px solid #f1f5f9',
+                }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px', minWidth: '60px' }}>
+                    <span style={{
+                      ...styles.castBadge,
+                      backgroundColor: isNomination ? '#ec4899' : '#94a3b8',
+                    }}>
+                      {cast.length > 2 ? cast.slice(0, 2) : cast}
+                    </span>
+                    <span style={{ fontSize: '12px' }}>{isNomination ? '推し' : 'ヘルプ'}</span>
+                  </span>
+                  {preview.roundingTiming === 'total' ? (
+                    <>
+                      <span style={{ fontSize: '12px', color: '#64748b' }}>
+                        ¥{rawSales.toLocaleString()}
+                      </span>
+                      <span style={{ fontSize: '12px', color: roundingDiff >= 0 ? '#10b981' : '#ef4444' }}>
+                        {roundingDiff >= 0 ? '+' : ''}{roundingDiff.toLocaleString()}
+                      </span>
+                      <span style={{ fontSize: '13px', fontWeight: 600 }}>
+                        ¥{sales.toLocaleString()}
+                      </span>
+                    </>
+                  ) : (
+                    <span style={{ fontSize: '13px', fontWeight: 600 }}>
+                      ¥{sales.toLocaleString()}
+                    </span>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {/* 適用中の設定 */}
+        {preview && (
+          <div style={styles.stickySection}>
+            <div style={styles.stickySectionTitle}>適用中の設定（{previewAggregation === 'item' ? 'キャスト商品' : '伝票全体'}）</div>
+            <div style={styles.summaryItem}>
+              計算基準: {preview.excludeTax ? '税抜き' : preview.excludeService ? '税込み＋サービス料' : '税込み'}
+            </div>
+            <div style={styles.summaryItem}>
+              端数処理: {preview.roundingType === 'none' ? 'なし' : `${preview.roundingPosition}の位で${
+                preview.roundingType === 'floor' ? '切り捨て' :
+                preview.roundingType === 'ceil' ? '切り上げ' : '四捨五入'
+              }（${preview.roundingTiming === 'per_item' ? '商品ごと' : '合計時'}）`}
+            </div>
+            <div style={styles.summaryItem}>
+              ヘルプ分配: {
+                preview.helpDistMethod === 'all_to_nomination' ? '全額推しに' :
+                preview.helpDistMethod === 'equal' ? '推しとヘルプで等分' :
+                preview.helpDistMethod === 'ratio' ? `推し${100 - preview.helpRatio}%:ヘルプ${preview.helpRatio}%` :
+                preview.helpDistMethod === 'equal_per_person' ? '全員で均等割' :
+                '等分'
+              }
+            </div>
+            <div style={styles.summaryItem}>
+              ヘルプ売上: {preview.giveHelpSales ? 'ヘルプにも計上' : '推しのみに計上'}
+            </div>
+            {settings.non_help_staff_names && settings.non_help_staff_names.length > 0 && (
+              <div style={styles.summaryItem}>
+                ヘルプ扱いしない: {settings.non_help_staff_names.join(', ')}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
       </div>
     </div>
   )
@@ -1350,21 +1622,56 @@ export default function SalesSettingsPage() {
 const styles: { [key: string]: React.CSSProperties } = {
   pageContainer: {
     display: 'flex',
-    gap: '30px',
-    padding: '20px',
-    maxWidth: '1500px',
-    margin: '0 auto',
-    height: 'calc(100vh - 40px)',
+    gap: '16px',
+    width: 'calc(100vw - 250px - 80px)',
+    height: 'calc(100vh - 60px)',
+    overflow: 'hidden' as const,
   },
   formContainer: {
-    flex: '1',
-    maxWidth: '700px',
+    flex: 1.3,
+    minWidth: 0,
+    display: 'flex',
+    flexDirection: 'column' as const,
+    height: '100%',
+    overflow: 'hidden' as const,
+  },
+  formScrollArea: {
+    flex: 1,
     overflowY: 'auto' as const,
+    overflowX: 'hidden' as const,
   },
   previewContainer: {
-    width: '480px',
-    flexShrink: 0,
+    flex: 1.3,
+    minWidth: 0,
+    height: '100%',
     overflowY: 'auto' as const,
+    overflowX: 'hidden' as const,
+  },
+  stickyPanelWrapper: {
+    flex: 0.8,
+    minWidth: 0,
+    height: '100%',
+    overflowY: 'auto' as const,
+    overflowX: 'hidden' as const,
+  },
+  stickyPanel: {
+    width: '100%',
+    boxSizing: 'border-box' as const,
+    backgroundColor: 'white',
+    borderRadius: '12px',
+    boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
+    padding: '16px',
+  },
+  stickySection: {
+    marginBottom: '16px',
+    paddingBottom: '16px',
+    borderBottom: '1px solid #e2e8f0',
+  },
+  stickySectionTitle: {
+    fontSize: '13px',
+    fontWeight: 600,
+    color: '#1e293b',
+    marginBottom: '10px',
   },
   header: {
     marginBottom: '30px',
@@ -1402,6 +1709,34 @@ const styles: { [key: string]: React.CSSProperties } = {
     marginBottom: '20px',
     paddingBottom: '20px',
     borderBottom: '1px solid #f1f5f9',
+  },
+  subSection: {
+    marginTop: '15px',
+    marginLeft: '28px',
+    paddingLeft: '15px',
+    borderLeft: '2px solid #e2e8f0',
+  },
+  subSectionTitle: {
+    fontSize: '13px',
+    fontWeight: '600',
+    color: '#64748b',
+    marginBottom: '10px',
+  },
+  ratioInputRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    marginTop: '12px',
+    fontSize: '14px',
+    color: '#475569',
+  },
+  ratioInput: {
+    width: '60px',
+    padding: '6px 8px',
+    fontSize: '14px',
+    border: '1px solid #e2e8f0',
+    borderRadius: '4px',
+    textAlign: 'center' as const,
   },
   sectionTitle: {
     fontSize: '14px',
@@ -1469,6 +1804,12 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   radio: {
     marginTop: '2px',
+  },
+  radioHint: {
+    fontSize: '11px',
+    color: '#94a3b8',
+    marginTop: '2px',
+    marginBottom: 0,
   },
   checkboxGroup: {
     marginBottom: '15px',
@@ -1815,7 +2156,9 @@ const styles: { [key: string]: React.CSSProperties } = {
     width: '36px',
     height: '36px',
     borderRadius: '50%',
-    border: '2px solid #e2e8f0',
+    borderWidth: '2px',
+    borderStyle: 'solid',
+    borderColor: '#e2e8f0',
     backgroundColor: 'white',
     color: '#64748b',
     fontSize: '14px',
@@ -1898,7 +2241,9 @@ const styles: { [key: string]: React.CSSProperties } = {
   castSelectBtn: {
     padding: '2px 8px',
     fontSize: '11px',
-    border: '1px solid #e2e8f0',
+    borderWidth: '1px',
+    borderStyle: 'solid',
+    borderColor: '#e2e8f0',
     borderRadius: '12px',
     backgroundColor: 'white',
     color: '#64748b',
