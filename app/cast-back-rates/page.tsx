@@ -47,11 +47,23 @@ export default function CastBackRatesPage() {
   const [showRateModal, setShowRateModal] = useState(false)
   const [editingRate, setEditingRate] = useState<BackRateForm | null>(null)
 
-  // 一括設定モーダル
+  // カテゴリ一括設定モーダル
   const [showBulkModal, setShowBulkModal] = useState(false)
   const [bulkCategory, setBulkCategory] = useState<string>('')
   const [bulkSelfRate, setBulkSelfRate] = useState<number>(0)
   const [bulkHelpRate, setBulkHelpRate] = useState<number | null>(null)
+  const [bulkApplyToAll, setBulkApplyToAll] = useState(false)
+
+  // 商品モーダルで全キャスト適用
+  const [rateApplyToAll, setRateApplyToAll] = useState(false)
+
+  // 確認モーダル
+  const [showConfirmModal, setShowConfirmModal] = useState(false)
+  const [confirmModalConfig, setConfirmModalConfig] = useState<{
+    title: string
+    message: string
+    onConfirm: () => void
+  } | null>(null)
 
   // 検索・フィルター
   const [searchText, setSearchText] = useState('')
@@ -190,50 +202,96 @@ export default function CastBackRatesPage() {
         help_back_ratio: null,
       })
     }
+    setRateApplyToAll(false)
     setShowRateModal(true)
   }
 
   const handleSaveRate = async () => {
-    if (!editingRate || !editingRate.cast_id) {
+    if (!editingRate) {
+      toast.error('設定がありません')
+      return
+    }
+    if (!rateApplyToAll && !editingRate.cast_id) {
       toast.error('キャストを選択してください')
       return
     }
 
     setSaving(true)
     try {
-      const payload = {
-        cast_id: editingRate.cast_id,
-        store_id: storeId,
-        category: editingRate.category,
-        product_name: editingRate.product_name,
-        back_type: editingRate.back_type,
-        back_ratio: editingRate.back_ratio,
-        back_fixed_amount: editingRate.back_fixed_amount,
-        self_back_ratio: editingRate.self_back_ratio,
-        help_back_ratio: editingRate.help_back_ratio,
-        hourly_wage: null,
-        is_active: true,
-      }
+      if (rateApplyToAll) {
+        // 全キャストに適用
+        let totalUpdated = 0
+        for (const targetCast of filteredCasts) {
+          const targetCastRates = backRates.filter(r => r.cast_id === targetCast.id)
+          const existingRate = targetCastRates.find(r =>
+            r.category === editingRate.category &&
+            r.product_name === editingRate.product_name
+          )
 
-      if (editingRate.id) {
-        const { error } = await supabase
-          .from('cast_back_rates')
-          .update(payload)
-          .eq('id', editingRate.id)
+          const payload = {
+            cast_id: targetCast.id,
+            store_id: storeId,
+            category: editingRate.category,
+            product_name: editingRate.product_name,
+            back_type: editingRate.back_type,
+            back_ratio: editingRate.back_ratio,
+            back_fixed_amount: editingRate.back_fixed_amount,
+            self_back_ratio: editingRate.self_back_ratio,
+            help_back_ratio: editingRate.help_back_ratio,
+            hourly_wage: null,
+            is_active: true,
+          }
 
-        if (error) throw error
-        toast.success('バック率を更新しました')
+          if (existingRate) {
+            await supabase
+              .from('cast_back_rates')
+              .update(payload)
+              .eq('id', existingRate.id)
+          } else {
+            await supabase
+              .from('cast_back_rates')
+              .insert(payload)
+          }
+          totalUpdated++
+        }
+        toast.success(`${totalUpdated}人のキャストに設定しました`)
       } else {
-        const { error } = await supabase
-          .from('cast_back_rates')
-          .insert(payload)
+        // 選択中のキャストのみ
+        const payload = {
+          cast_id: editingRate.cast_id,
+          store_id: storeId,
+          category: editingRate.category,
+          product_name: editingRate.product_name,
+          back_type: editingRate.back_type,
+          back_ratio: editingRate.back_ratio,
+          back_fixed_amount: editingRate.back_fixed_amount,
+          self_back_ratio: editingRate.self_back_ratio,
+          help_back_ratio: editingRate.help_back_ratio,
+          hourly_wage: null,
+          is_active: true,
+        }
 
-        if (error) throw error
-        toast.success('バック率を追加しました')
+        if (editingRate.id) {
+          const { error } = await supabase
+            .from('cast_back_rates')
+            .update(payload)
+            .eq('id', editingRate.id)
+
+          if (error) throw error
+          toast.success('バック率を更新しました')
+        } else {
+          const { error } = await supabase
+            .from('cast_back_rates')
+            .insert(payload)
+
+          if (error) throw error
+          toast.success('バック率を追加しました')
+        }
       }
 
       setShowRateModal(false)
       setEditingRate(null)
+      setRateApplyToAll(false)
       loadData()
     } catch (err) {
       console.error('保存エラー:', err)
@@ -247,11 +305,13 @@ export default function CastBackRatesPage() {
     setBulkCategory(categoryName)
     setBulkSelfRate(0)
     setBulkHelpRate(null)
+    setBulkApplyToAll(false)
     setShowBulkModal(true)
   }
 
   const handleBulkSave = async () => {
-    if (!selectedCastId || !bulkCategory) return
+    if (!bulkCategory) return
+    if (!bulkApplyToAll && !selectedCastId) return
 
     setSaving(true)
     try {
@@ -267,40 +327,53 @@ export default function CastBackRatesPage() {
         return
       }
 
-      // 各商品に対してバック率を設定/更新
-      for (const product of categoryProducts) {
-        const existingRate = castRates.find(r =>
-          r.category === bulkCategory &&
-          r.product_name === product.name
-        )
+      // 適用対象のキャストを決定
+      const targetCasts = bulkApplyToAll ? filteredCasts : [{ id: selectedCastId! }]
+      let totalUpdated = 0
 
-        const payload = {
-          cast_id: selectedCastId,
-          store_id: storeId,
-          category: bulkCategory,
-          product_name: product.name,
-          back_type: 'ratio' as BackType,
-          back_ratio: bulkSelfRate,
-          back_fixed_amount: 0,
-          self_back_ratio: bulkSelfRate,
-          help_back_ratio: bulkHelpRate,
-          hourly_wage: null,
-          is_active: true,
-        }
+      for (const targetCast of targetCasts) {
+        // このキャストの既存バック率を取得
+        const targetCastRates = backRates.filter(r => r.cast_id === targetCast.id)
 
-        if (existingRate) {
-          await supabase
-            .from('cast_back_rates')
-            .update(payload)
-            .eq('id', existingRate.id)
-        } else {
-          await supabase
-            .from('cast_back_rates')
-            .insert(payload)
+        // 各商品に対してバック率を設定/更新
+        for (const product of categoryProducts) {
+          const existingRate = targetCastRates.find(r =>
+            r.category === bulkCategory &&
+            r.product_name === product.name
+          )
+
+          const payload = {
+            cast_id: targetCast.id,
+            store_id: storeId,
+            category: bulkCategory,
+            product_name: product.name,
+            back_type: 'ratio' as BackType,
+            back_ratio: bulkSelfRate,
+            back_fixed_amount: 0,
+            self_back_ratio: bulkSelfRate,
+            help_back_ratio: bulkHelpRate,
+            hourly_wage: null,
+            is_active: true,
+          }
+
+          if (existingRate) {
+            await supabase
+              .from('cast_back_rates')
+              .update(payload)
+              .eq('id', existingRate.id)
+          } else {
+            await supabase
+              .from('cast_back_rates')
+              .insert(payload)
+          }
+          totalUpdated++
         }
       }
 
-      toast.success(`${categoryProducts.length}件の商品に一括設定しました`)
+      const message = bulkApplyToAll
+        ? `${targetCasts.length}人のキャスト × ${categoryProducts.length}商品 = ${totalUpdated}件を一括設定しました`
+        : `${categoryProducts.length}件の商品に一括設定しました`
+      toast.success(message)
       setShowBulkModal(false)
       loadData()
     } catch (err) {
@@ -311,22 +384,65 @@ export default function CastBackRatesPage() {
     }
   }
 
-  const handleDeleteRate = async (id: number) => {
-    if (!confirm('このバック率設定を削除しますか？')) return
+  const handleDeleteRate = (id: number) => {
+    setConfirmModalConfig({
+      title: '削除確認',
+      message: 'このバック率設定を削除しますか？',
+      onConfirm: async () => {
+        setShowConfirmModal(false)
+        try {
+          const { error } = await supabase
+            .from('cast_back_rates')
+            .update({ is_active: false })
+            .eq('id', id)
 
-    try {
-      const { error } = await supabase
-        .from('cast_back_rates')
-        .update({ is_active: false })
-        .eq('id', id)
+          if (error) throw error
+          toast.success('削除しました')
+          loadData()
+        } catch (err) {
+          console.error('削除エラー:', err)
+          toast.error('削除に失敗しました')
+        }
+      }
+    })
+    setShowConfirmModal(true)
+  }
 
-      if (error) throw error
-      toast.success('削除しました')
-      loadData()
-    } catch (err) {
-      console.error('削除エラー:', err)
-      toast.error('削除に失敗しました')
+  const handleDeleteAllRates = () => {
+    if (!selectedCastId) return
+    if (castRates.length === 0) {
+      toast.error('削除する設定がありません')
+      return
     }
+
+    const castName = casts.find(c => c.id === selectedCastId)?.name || ''
+    const rateCount = castRates.length
+
+    setConfirmModalConfig({
+      title: '全削除確認',
+      message: `${castName} の全てのバック率設定（${rateCount}件）を削除しますか？`,
+      onConfirm: async () => {
+        setShowConfirmModal(false)
+        setSaving(true)
+        try {
+          const ids = castRates.map(r => r.id)
+          const { error } = await supabase
+            .from('cast_back_rates')
+            .update({ is_active: false })
+            .in('id', ids)
+
+          if (error) throw error
+          toast.success(`${rateCount}件の設定を削除しました`)
+          loadData()
+        } catch (err) {
+          console.error('一括削除エラー:', err)
+          toast.error('削除に失敗しました')
+        } finally {
+          setSaving(false)
+        }
+      }
+    })
+    setShowConfirmModal(true)
   }
 
   const selectedCast = casts.find((c) => c.id === selectedCastId)
@@ -404,7 +520,18 @@ export default function CastBackRatesPage() {
             <>
               {/* ヘッダー：キャスト名 */}
               <div style={styles.mainHeader}>
-                <h2 style={styles.mainTitle}>{selectedCast.name} のバック率設定</h2>
+                <div style={styles.mainHeaderContent}>
+                  <h2 style={styles.mainTitle}>{selectedCast.name} のバック率設定</h2>
+                  {castRates.length > 0 && (
+                    <button
+                      onClick={handleDeleteAllRates}
+                      style={styles.deleteAllBtn}
+                      disabled={saving}
+                    >
+                      {saving ? '削除中...' : `全削除（${castRates.length}件）`}
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* 商品別バック率一覧 */}
@@ -604,6 +731,24 @@ export default function CastBackRatesPage() {
               </div>
             )}
 
+            {/* 全キャスト適用オプション */}
+            <div style={styles.checkboxGroup}>
+              <label style={styles.checkboxLabel}>
+                <input
+                  type="checkbox"
+                  checked={rateApplyToAll}
+                  onChange={(e) => setRateApplyToAll(e.target.checked)}
+                  style={styles.checkbox}
+                />
+                <span>全キャストに適用（{filteredCasts.length}人）</span>
+              </label>
+              {rateApplyToAll && (
+                <p style={styles.warningText}>
+                  ※ フィルター条件（{statusFilter || '全て'}）に該当する全キャストに適用されます
+                </p>
+              )}
+            </div>
+
             <div style={styles.modalActions}>
               <Button
                 onClick={() => setShowRateModal(false)}
@@ -619,7 +764,7 @@ export default function CastBackRatesPage() {
                 size="medium"
                 disabled={saving}
               >
-                {saving ? '保存中...' : '保存'}
+                {saving ? '保存中...' : rateApplyToAll ? `${filteredCasts.length}人に適用` : '保存'}
               </Button>
             </div>
           </div>
@@ -635,6 +780,24 @@ export default function CastBackRatesPage() {
             <p style={styles.bulkHint}>
               このカテゴリの全商品に同じバック率を設定します
             </p>
+
+            {/* 全キャスト適用オプション */}
+            <div style={styles.checkboxGroup}>
+              <label style={styles.checkboxLabel}>
+                <input
+                  type="checkbox"
+                  checked={bulkApplyToAll}
+                  onChange={(e) => setBulkApplyToAll(e.target.checked)}
+                  style={styles.checkbox}
+                />
+                <span>全キャストに適用（{filteredCasts.length}人）</span>
+              </label>
+              {bulkApplyToAll && (
+                <p style={styles.warningText}>
+                  ※ 現在のフィルター条件（{statusFilter || '全て'}）に該当する全キャストに適用されます
+                </p>
+              )}
+            </div>
 
             <div style={styles.formRow}>
               <div style={styles.formGroup}>
@@ -689,6 +852,34 @@ export default function CastBackRatesPage() {
           </div>
         </div>
       )}
+
+      {/* 確認モーダル */}
+      {showConfirmModal && confirmModalConfig && (
+        <div style={styles.modalOverlay} onClick={() => setShowConfirmModal(false)}>
+          <div style={styles.confirmModal} onClick={(e) => e.stopPropagation()}>
+            <h3 style={styles.confirmTitle}>{confirmModalConfig.title}</h3>
+            <p style={styles.confirmMessage}>{confirmModalConfig.message}</p>
+            <div style={styles.confirmActions}>
+              <Button
+                onClick={() => setShowConfirmModal(false)}
+                variant="outline"
+                size="medium"
+              >
+                キャンセル
+              </Button>
+              <Button
+                onClick={confirmModalConfig.onConfirm}
+                variant="primary"
+                size="medium"
+                style={{ backgroundColor: '#e74c3c', borderColor: '#e74c3c' }}
+              >
+                削除する
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }
@@ -813,11 +1004,28 @@ const styles: { [key: string]: React.CSSProperties } = {
     paddingBottom: '16px',
     borderBottom: '1px solid #ecf0f1',
   },
+  mainHeaderContent: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: '16px',
+  },
   mainTitle: {
     fontSize: '20px',
     fontWeight: '600',
     color: '#2c3e50',
     margin: 0,
+  },
+  deleteAllBtn: {
+    padding: '6px 12px',
+    border: '1px solid #e74c3c',
+    borderRadius: '6px',
+    backgroundColor: 'white',
+    color: '#e74c3c',
+    cursor: 'pointer',
+    fontSize: '13px',
+    fontWeight: '500',
+    transition: 'all 0.2s',
   },
   emptyState: {
     textAlign: 'center' as const,
@@ -860,6 +1068,33 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '13px',
     color: '#64748b',
     marginBottom: '16px',
+  },
+  checkboxGroup: {
+    marginBottom: '20px',
+    padding: '12px',
+    backgroundColor: '#f8fafc',
+    borderRadius: '8px',
+    border: '1px solid #e2e8f0',
+  },
+  checkboxLabel: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    cursor: 'pointer',
+    fontSize: '14px',
+    fontWeight: '500',
+    color: '#334155',
+  },
+  checkbox: {
+    width: '18px',
+    height: '18px',
+    cursor: 'pointer',
+  },
+  warningText: {
+    fontSize: '12px',
+    color: '#f59e0b',
+    marginTop: '8px',
+    marginBottom: 0,
   },
   table: {
     width: '100%',
@@ -960,5 +1195,30 @@ const styles: { [key: string]: React.CSSProperties } = {
     justifyContent: 'flex-end',
     gap: '10px',
     marginTop: '25px',
+  },
+  confirmModal: {
+    backgroundColor: 'white',
+    borderRadius: '12px',
+    padding: '24px',
+    width: '360px',
+    maxWidth: '90vw',
+    textAlign: 'center' as const,
+  },
+  confirmTitle: {
+    fontSize: '18px',
+    fontWeight: '600',
+    color: '#2c3e50',
+    marginBottom: '12px',
+  },
+  confirmMessage: {
+    fontSize: '14px',
+    color: '#64748b',
+    marginBottom: '24px',
+    lineHeight: '1.5',
+  },
+  confirmActions: {
+    display: 'flex',
+    justifyContent: 'center',
+    gap: '12px',
   },
 }
