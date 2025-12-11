@@ -10,12 +10,24 @@ import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
 import Modal from '@/components/Modal'
 
-// cast_nameが配列の場合はカンマ区切りで表示
+// cast_nameが配列の場合はカンマ区切りで表示（JSON文字列・カンマ区切り文字列も対応）
 const formatCastName = (castName: string[] | string | null | undefined): string => {
   if (!castName) return '-'
   if (Array.isArray(castName)) {
     return castName.length > 0 ? castName.join(', ') : '-'
   }
+  // JSON文字列の場合（例: '["フリー"]'）をパース
+  if (typeof castName === 'string' && castName.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(castName)
+      if (Array.isArray(parsed)) {
+        return parsed.length > 0 ? parsed.join(', ') : '-'
+      }
+    } catch {
+      // パース失敗時はそのまま返す
+    }
+  }
+  // カンマ区切り文字列はそのまま表示（既にカンマ区切りなのでOK）
   return castName
 }
 
@@ -370,10 +382,26 @@ export default function ReceiptsPage() {
       }
 
       setSelectedReceipt(receiptWithDetails)
-      // staff_nameを配列に変換
-      const staffNames = Array.isArray(receipt.staff_name)
-        ? receipt.staff_name
-        : (receipt.staff_name ? [receipt.staff_name] : [])
+      // staff_nameを配列に変換（JSON文字列・カンマ区切りも対応）
+      let staffNames: string[] = []
+      if (Array.isArray(receipt.staff_name)) {
+        staffNames = receipt.staff_name
+      } else if (receipt.staff_name && typeof receipt.staff_name === 'string') {
+        if (receipt.staff_name.startsWith('[')) {
+          // JSON配列形式の場合
+          try {
+            const parsed = JSON.parse(receipt.staff_name)
+            staffNames = Array.isArray(parsed) ? parsed : [receipt.staff_name]
+          } catch {
+            staffNames = [receipt.staff_name]
+          }
+        } else if (receipt.staff_name.includes(',')) {
+          // カンマ区切りの場合
+          staffNames = receipt.staff_name.split(',').map(s => s.trim())
+        } else {
+          staffNames = [receipt.staff_name]
+        }
+      }
       setEditFormData({
         table_number: receipt.table_number,
         guest_name: receipt.guest_name || '',
@@ -400,12 +428,16 @@ export default function ReceiptsPage() {
 
     try {
       // 注文情報を更新（基本情報のみ）
+      // staff_nameは単一の文字列またはカンマ区切りで保存（配列だとJSON文字列化されるため）
+      const staffNameValue = editFormData.staff_names.length > 0
+        ? (editFormData.staff_names.length === 1 ? editFormData.staff_names[0] : editFormData.staff_names.join(','))
+        : null
       const { error: orderError } = await supabase
         .from('orders')
         .update({
           table_number: editFormData.table_number,
           guest_name: editFormData.guest_name || null,
-          staff_name: editFormData.staff_names.length > 0 ? editFormData.staff_names : null,
+          staff_name: staffNameValue,
           order_date: editFormData.order_date ? new Date(editFormData.order_date).toISOString() : null,
           checkout_datetime: editFormData.checkout_datetime ? new Date(editFormData.checkout_datetime).toISOString() : null
         })
@@ -738,7 +770,9 @@ export default function ReceiptsPage() {
             order_date: new Date(createFormData.order_date).toISOString(),
             table_number: createFormData.table_number,
             guest_name: createFormData.guest_name || null,
-            staff_name: createFormData.staff_names.length > 0 ? createFormData.staff_names : null,
+            staff_name: createFormData.staff_names.length > 0
+              ? (createFormData.staff_names.length === 1 ? createFormData.staff_names[0] : createFormData.staff_names.join(','))
+              : null,
             visit_type: null,
             subtotal_excl_tax: subtotalExclTax,
             tax_amount: taxAmount,
@@ -971,7 +1005,9 @@ export default function ReceiptsPage() {
           order_date: new Date(createFormData.order_date).toISOString(),
           table_number: createFormData.table_number,
           guest_name: createFormData.guest_name || null,
-          staff_name: createFormData.staff_names.length > 0 ? createFormData.staff_names : null,
+          staff_name: createFormData.staff_names.length > 0
+            ? (createFormData.staff_names.length === 1 ? createFormData.staff_names[0] : createFormData.staff_names.join(','))
+            : null,
           visit_type: null,
           subtotal_excl_tax: subtotalExclTax,
           tax_amount: taxAmount,
