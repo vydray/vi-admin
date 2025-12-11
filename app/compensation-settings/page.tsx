@@ -137,6 +137,7 @@ interface SettingsState {
 
   // 商品別バック
   useProductBack: boolean
+  useHelpProductBack: boolean  // ヘルプの商品バックを有効にするか
   helpBackCalculationMethod: 'sales_based' | 'full_amount'
 
   // その他
@@ -169,6 +170,7 @@ const getDefaultSettingsState = (): SettingsState => ({
   deductionItems: null,
 
   useProductBack: false,
+  useHelpProductBack: false,
   helpBackCalculationMethod: 'sales_based',
 
   validFrom: new Date().toISOString().split('T')[0],
@@ -202,6 +204,7 @@ const dbToState = (data: CompensationSettings): SettingsState => {
     deductionItems: data.deduction_items,
 
     useProductBack: data.use_product_back ?? false,
+    useHelpProductBack: data.use_help_product_back ?? false,
     helpBackCalculationMethod: data.help_back_calculation_method || 'sales_based',
 
     validFrom: data.valid_from,
@@ -243,6 +246,7 @@ const stateToDb = (state: SettingsState, castId: number, storeId: number, existi
     deduction_enabled: (state.deductionItems && state.deductionItems.length > 0) ? true : false,
     deduction_items: state.deductionItems,
     use_product_back: state.useProductBack,
+    use_help_product_back: state.useHelpProductBack,
     help_back_calculation_method: state.helpBackCalculationMethod,
     valid_from: state.validFrom,
     valid_to: state.validTo,
@@ -786,7 +790,7 @@ export default function CompensationSettingsPage() {
       const items = sampleItems.map(item => {
         // キャスト商品のみの場合、キャスト名が入っていない商品は除外
         if (item.castNames.length === 0) {
-          return { ...item, castBreakdown: [] as { cast: string; sales: number; isSelf: boolean }[], notIncluded: true }
+          return { ...item, castBreakdown: [] as { cast: string; sales: number; calculatedShare: number; isSelf: boolean }[], notIncluded: true }
         }
 
         // 実推し（ヘルプ除外名を除く）
@@ -832,7 +836,7 @@ export default function CompensationSettingsPage() {
           ? applyRounding(calcPrice, roundingPosition, roundingType)
           : calcPrice
 
-        const castBreakdown: { cast: string; sales: number; isSelf: boolean; backAmount?: number }[] = []
+        const castBreakdown: { cast: string; sales: number; calculatedShare: number; isSelf: boolean; backAmount?: number }[] = []
 
         if (salesAttribution === 'all_equal') {
           // ヘルプ商品も売上に含める
@@ -878,23 +882,23 @@ export default function CompensationSettingsPage() {
               const perPersonAmountAll = Math.floor(roundedBase / totalPeople)
               // 推し→ヘルプの順番で追加
               nominationCastsOnItem.forEach(c => {
-                castBreakdown.push({ cast: c, sales: perPersonAmountAll, isSelf: true })
+                castBreakdown.push({ cast: c, sales: perPersonAmountAll, calculatedShare: perPersonAmountAll, isSelf: true })
               })
               nominationsNotOnItem.forEach(nom => {
-                castBreakdown.push({ cast: nom, sales: perPersonAmountAll, isSelf: true })
+                castBreakdown.push({ cast: nom, sales: perPersonAmountAll, calculatedShare: perPersonAmountAll, isSelf: true })
               })
               helpCastsOnItem.forEach(c => {
-                castBreakdown.push({ cast: c, sales: giveHelpSales ? perPersonAmountAll : 0, isSelf: false })
+                castBreakdown.push({ cast: c, sales: giveHelpSales ? perPersonAmountAll : 0, calculatedShare: perPersonAmountAll, isSelf: false })
               })
             } else if (realCastsOnItem.length > 0) {
               // 商品上のキャストのみで計算
               const perPersonAmount = Math.floor(roundedBase / realCastsOnItem.length)
               // 推し→ヘルプの順番で追加
               nominationCastsOnItem.forEach(c => {
-                castBreakdown.push({ cast: c, sales: perPersonAmount, isSelf: true })
+                castBreakdown.push({ cast: c, sales: perPersonAmount, calculatedShare: perPersonAmount, isSelf: true })
               })
               helpCastsOnItem.forEach(c => {
-                castBreakdown.push({ cast: c, sales: giveHelpSales ? perPersonAmount : 0, isSelf: false })
+                castBreakdown.push({ cast: c, sales: giveHelpSales ? perPersonAmount : 0, calculatedShare: perPersonAmount, isSelf: false })
               })
             }
           }
@@ -908,53 +912,58 @@ export default function CompensationSettingsPage() {
               // 全推しに分配
               const perNominationAmount = Math.floor(nominationShare / realNominations.length)
               realNominations.forEach(nom => {
-                castBreakdown.push({ cast: nom, sales: perNominationAmount, isSelf: true })
+                castBreakdown.push({ cast: nom, sales: perNominationAmount, calculatedShare: perNominationAmount, isSelf: true })
               })
             } else if (nominationCastsOnItem.length > 0) {
               // 商品についている推しのみに分配
               const perNominationAmount = Math.floor(nominationShare / nominationCastsOnItem.length)
               nominationCastsOnItem.forEach(c => {
-                castBreakdown.push({ cast: c, sales: perNominationAmount, isSelf: true })
+                castBreakdown.push({ cast: c, sales: perNominationAmount, calculatedShare: perNominationAmount, isSelf: true })
               })
             }
             // ヘルプへの分配
             if (helpCastsOnItem.length > 0) {
-              const perHelpAmount = giveHelpSales ? Math.floor(helpShare / helpCastsOnItem.length) : 0
+              const actualPerHelpAmount = Math.floor(helpShare / helpCastsOnItem.length)
               helpCastsOnItem.forEach(c => {
-                castBreakdown.push({ cast: c, sales: perHelpAmount, isSelf: false })
+                castBreakdown.push({ cast: c, sales: giveHelpSales ? actualPerHelpAmount : 0, calculatedShare: actualPerHelpAmount, isSelf: false })
               })
             }
           }
         } else {
-          // 推しのみ: 推しの分だけ計上（ヘルプは売上0）
+          // 推しのみ: 推しの分だけ計上（ヘルプは売上0、分配計算もなし）
           const shouldIncludeAllNominations = nominationDistributeAll || nominationCastsOnItem.length === 0
 
           if (shouldIncludeAllNominations && !nominationIsNonHelpOnly && realNominations.length > 0) {
             // 全推しに分配（設定ON または 商品に推しがいない場合）
             const perNominationAmount = Math.floor(roundedBase / realNominations.length)
             realNominations.forEach(nom => {
-              castBreakdown.push({ cast: nom, sales: perNominationAmount, isSelf: true })
+              castBreakdown.push({ cast: nom, sales: perNominationAmount, calculatedShare: perNominationAmount, isSelf: true })
             })
           } else if (nominationCastsOnItem.length > 0) {
             // 商品についている推しのみに分配
             const perNominationAmount = Math.floor(roundedBase / nominationCastsOnItem.length)
             nominationCastsOnItem.forEach(c => {
-              castBreakdown.push({ cast: c, sales: perNominationAmount, isSelf: true })
+              castBreakdown.push({ cast: c, sales: perNominationAmount, calculatedShare: perNominationAmount, isSelf: true })
             })
           }
-          // ヘルプは売上0
+          // ヘルプは売上0（推しのみモードなので分配計算もなし）
           helpCastsOnItem.forEach(c => {
-            castBreakdown.push({ cast: c, sales: 0, isSelf: false })
+            castBreakdown.push({ cast: c, sales: 0, calculatedShare: 0, isSelf: false })
           })
         }
 
         // 商品バックの計算（商品バックが有効な場合）
         const showProductBack = settingsState?.useProductBack || settingsState?.compareUseProductBack
+        const showHelpProductBack = settingsState?.useHelpProductBack
         const helpBackMethod = settingsState?.helpBackCalculationMethod || 'sales_based'
         const castBreakdownWithBack = castBreakdown.map(cb => {
-          // ヘルプでfull_amountの場合は、売上0でも商品価格でバック計算
+          // ヘルプの場合、ヘルプバックが無効ならバックなし
+          if (!cb.isSelf && !showHelpProductBack) {
+            return cb  // backAmountを追加しない
+          }
+          // ヘルプでfull_amountの場合は、分配計算額0でも商品価格でバック計算
           const isHelpFullAmount = !cb.isSelf && helpBackMethod === 'full_amount'
-          if (!showProductBack || (cb.sales === 0 && !isHelpFullAmount)) {
+          if (!showProductBack || (cb.calculatedShare === 0 && !isHelpFullAmount)) {
             return cb  // backAmountを追加しない
           }
           // キャスト名からキャストIDを取得
@@ -967,8 +976,8 @@ export default function CompensationSettingsPage() {
           if (!backRateInfo) {
             return cb  // backAmountを追加しない
           }
-          // バック金額を計算（ヘルプでfull_amountの場合は商品価格を使用）
-          const baseForBack = isHelpFullAmount ? roundedBase : cb.sales
+          // バック金額を計算（full_amountは商品価格、sales_basedは分配計算額を使用）
+          const baseForBack = isHelpFullAmount ? roundedBase : cb.calculatedShare
           const backAmount = backRateInfo.type === 'fixed'
             ? backRateInfo.fixedAmount
             : Math.floor(baseForBack * backRateInfo.rate / 100)
@@ -984,7 +993,7 @@ export default function CompensationSettingsPage() {
       let totalProductBack = 0
       items.forEach(item => {
         if (item.notIncluded) return
-        item.castBreakdown.forEach((cb: { cast: string; sales: number; isSelf: boolean; backAmount?: number }) => {
+        item.castBreakdown.forEach((cb: { cast: string; sales: number; calculatedShare: number; isSelf: boolean; backAmount?: number }) => {
           if (cb.isSelf) selfSales += cb.sales
           else helpSales += cb.sales
           if (cb.backAmount) totalProductBack += cb.backAmount
@@ -1059,7 +1068,7 @@ export default function CompensationSettingsPage() {
       const isHelpOnly = helpCasts.length > 0 && selfCasts.length === 0
       const isMixed = selfCasts.length > 0 && helpCasts.length > 0
 
-      const castBreakdown: { cast: string; sales: number; isSelf: boolean; backAmount?: number }[] = []
+      const castBreakdown: { cast: string; sales: number; calculatedShare: number; isSelf: boolean; backAmount?: number }[] = []
 
       // 商品ごとに税計算・端数処理を適用
       let itemAmount = item.basePrice
@@ -1078,10 +1087,10 @@ export default function CompensationSettingsPage() {
       if (realCastsOnItem.length > 0) {
         // 商品上のキャストごとの内訳（推し→ヘルプ順）
         selfCasts.forEach(c => {
-          castBreakdown.push({ cast: c, isSelf: true, sales: 0 })
+          castBreakdown.push({ cast: c, isSelf: true, sales: 0, calculatedShare: 0 })
         })
         helpCasts.forEach(c => {
-          castBreakdown.push({ cast: c, isSelf: false, sales: 0 })
+          castBreakdown.push({ cast: c, isSelf: false, sales: 0, calculatedShare: 0 })
         })
 
         // 伝票小計では常に選択された推し全員に分配する
@@ -1091,7 +1100,7 @@ export default function CompensationSettingsPage() {
             nom => !castBreakdown.some(cb => cb.cast === nom)
           )
           nominationsNotInBreakdown.forEach(nom => {
-            castBreakdown.push({ cast: nom, isSelf: true, sales: 0 })
+            castBreakdown.push({ cast: nom, isSelf: true, sales: 0, calculatedShare: 0 })
           })
         }
 
@@ -1104,9 +1113,11 @@ export default function CompensationSettingsPage() {
             let nomIdx = 0
             castBreakdown.forEach(cb => {
               if (cb.isSelf) {
-                cb.sales = nomIdx === distributeTargets.length - 1
+                const amount = nomIdx === distributeTargets.length - 1
                   ? itemAmount - perNomAmount * (distributeTargets.length - 1)
                   : perNomAmount
+                cb.sales = amount
+                cb.calculatedShare = amount
                 nomIdx++
               }
             })
@@ -1121,9 +1132,11 @@ export default function CompensationSettingsPage() {
               let nomIdx = 0
               castBreakdown.forEach(cb => {
                 if (cb.isSelf) {
-                  cb.sales = nomIdx === distributeTargets.length - 1
+                  const amount = nomIdx === distributeTargets.length - 1
                     ? itemAmount - perNomAmount * (distributeTargets.length - 1)
                     : perNomAmount
+                  cb.sales = amount
+                  cb.calculatedShare = amount
                   nomIdx++
                 }
               })
@@ -1137,30 +1150,47 @@ export default function CompensationSettingsPage() {
               let nomIdx = 0
               castBreakdown.forEach(cb => {
                 if (cb.isSelf) {
-                  cb.sales = nomIdx === distributeTargets.length - 1
+                  const amount = nomIdx === distributeTargets.length - 1
                     ? selfShare - perNomAmount * (distributeTargets.length - 1)
                     : perNomAmount
+                  cb.sales = amount
+                  cb.calculatedShare = amount
                   nomIdx++
                 }
               })
             }
-            if (helpCount > 0 && giveHelpSales) {
+            // ヘルプのcalculatedShareは常に設定（売上計上はgiveHelpSalesによる）
+            if (helpCount > 0) {
               const perHelpAmount = Math.floor(helpShare / helpCount)
               castBreakdown.forEach(cb => {
-                if (!cb.isSelf) cb.sales = perHelpAmount
+                if (!cb.isSelf) {
+                  cb.calculatedShare = perHelpAmount
+                  if (giveHelpSales) cb.sales = perHelpAmount
+                }
               })
             }
           } else if (helpDistMethod === 'equal_per_person') {
             const totalPeople = distributeTargets.length + helpCount
             const perPerson = Math.floor(itemAmount / totalPeople)
 
-            let idx = 0
+            let selfIdx = 0
+            let helpIdx = 0
             castBreakdown.forEach(cb => {
-              if (cb.isSelf || giveHelpSales) {
-                cb.sales = idx === totalPeople - 1
-                  ? itemAmount - perPerson * (totalPeople - 1)
+              if (cb.isSelf) {
+                const amount = selfIdx === distributeTargets.length - 1
+                  ? itemAmount - perPerson * (totalPeople - 1) - perPerson * helpCount
                   : perPerson
-                idx++
+                cb.sales = amount
+                cb.calculatedShare = amount
+                selfIdx++
+              } else {
+                // ヘルプのcalculatedShareは常に設定
+                const amount = helpIdx === helpCount - 1
+                  ? perPerson + (itemAmount - perPerson * totalPeople)
+                  : perPerson
+                cb.calculatedShare = amount
+                if (giveHelpSales) cb.sales = amount
+                helpIdx++
               }
             })
           } else if (helpDistMethod === 'ratio') {
@@ -1172,17 +1202,23 @@ export default function CompensationSettingsPage() {
               let nomIdx = 0
               castBreakdown.forEach(cb => {
                 if (cb.isSelf) {
-                  cb.sales = nomIdx === distributeTargets.length - 1
+                  const amount = nomIdx === distributeTargets.length - 1
                     ? selfShare - perNomAmount * (distributeTargets.length - 1)
                     : perNomAmount
+                  cb.sales = amount
+                  cb.calculatedShare = amount
                   nomIdx++
                 }
               })
             }
-            if (helpCount > 0 && giveHelpSales) {
+            // ヘルプのcalculatedShareは常に設定（売上計上はgiveHelpSalesによる）
+            if (helpCount > 0) {
               const perHelpAmount = Math.floor(helpShare / helpCount)
               castBreakdown.forEach(cb => {
-                if (!cb.isSelf) cb.sales = perHelpAmount
+                if (!cb.isSelf) {
+                  cb.calculatedShare = perHelpAmount
+                  if (giveHelpSales) cb.sales = perHelpAmount
+                }
               })
             }
           }
@@ -1197,7 +1233,7 @@ export default function CompensationSettingsPage() {
             const sales = idx === realNominations.length - 1
               ? itemAmount - perNomAmount * (realNominations.length - 1)
               : perNomAmount
-            castBreakdown.push({ cast: nom, isSelf: true, sales })
+            castBreakdown.push({ cast: nom, isSelf: true, sales, calculatedShare: sales })
           })
         }
         // フリー推しでキャスト名なしの場合はcastBreakdownは空（誰にも計上しない）
@@ -1205,11 +1241,16 @@ export default function CompensationSettingsPage() {
 
       // 商品バックの計算（商品バックが有効な場合）
       const showProductBack = settingsState?.useProductBack || settingsState?.compareUseProductBack
+      const showHelpProductBack = settingsState?.useHelpProductBack
       const helpBackMethod = settingsState?.helpBackCalculationMethod || 'sales_based'
       const castBreakdownWithBack = castBreakdown.map(cb => {
-        // ヘルプでfull_amountの場合は、売上0でも商品価格でバック計算
+        // ヘルプの場合、ヘルプバックが無効ならバックなし
+        if (!cb.isSelf && !showHelpProductBack) {
+          return { ...cb, backAmount: 0 }
+        }
+        // ヘルプでfull_amountの場合は、分配計算額0でも商品価格でバック計算
         const isHelpFullAmount = !cb.isSelf && helpBackMethod === 'full_amount'
-        if (!showProductBack || (cb.sales === 0 && !isHelpFullAmount)) {
+        if (!showProductBack || (cb.calculatedShare === 0 && !isHelpFullAmount)) {
           return { ...cb, backAmount: 0 }
         }
         // キャスト名からキャストIDを取得
@@ -1222,8 +1263,8 @@ export default function CompensationSettingsPage() {
         if (!backRateInfo) {
           return { ...cb, backAmount: 0 }
         }
-        // バック金額を計算（ヘルプでfull_amountの場合は商品価格を使用）
-        const baseForBack = isHelpFullAmount ? itemAmount : cb.sales
+        // バック金額を計算（full_amountは商品価格、sales_basedは分配計算額を使用）
+        const baseForBack = isHelpFullAmount ? itemAmount : cb.calculatedShare
         const backAmount = backRateInfo.type === 'fixed'
           ? backRateInfo.fixedAmount
           : Math.floor(baseForBack * backRateInfo.rate / 100)
@@ -1238,7 +1279,7 @@ export default function CompensationSettingsPage() {
     let helpSales = 0
     let totalProductBack = 0
     items.forEach(item => {
-      item.castBreakdown.forEach((cb: { cast: string; sales: number; isSelf: boolean; backAmount?: number }) => {
+      item.castBreakdown.forEach((cb: { cast: string; sales: number; calculatedShare: number; isSelf: boolean; backAmount?: number }) => {
         if (cb.isSelf) selfSales += cb.sales
         else helpSales += cb.sales
         totalProductBack += cb.backAmount || 0
@@ -1290,7 +1331,7 @@ export default function CompensationSettingsPage() {
 
     // カテゴリ別売上を計算
     const salesByCategory: { [key: string]: { self: number; help: number; back: number } } = {}
-    data.items.forEach((item: { category: string; notIncluded?: boolean; castBreakdown: { isSelf: boolean; sales: number; backAmount?: number }[] }) => {
+    data.items.forEach((item: { category: string; notIncluded?: boolean; castBreakdown: { isSelf: boolean; sales: number; calculatedShare: number; backAmount?: number }[] }) => {
       if (item.notIncluded) return
       const cat = item.category || 'その他'
       if (!salesByCategory[cat]) {
@@ -1840,59 +1881,76 @@ export default function CompensationSettingsPage() {
                     </span>
                   </div>
                 </div>
-                {/* ヘルプバック計算方法 */}
+                {/* ヘルプバック設定 */}
                 {settingsState.useProductBack && (
                   <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #e2e8f0' }}>
-                    <div style={{ fontSize: '13px', fontWeight: '500', marginBottom: '8px', color: '#475569' }}>
-                      ヘルプバック計算方法
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={settingsState.useHelpProductBack}
+                        onChange={(e) => setSettingsState(prev => prev ? { ...prev, useHelpProductBack: e.target.checked } : null)}
+                        style={styles.checkbox}
+                      />
+                      <span style={{ fontSize: '13px', fontWeight: '500', color: '#334155' }}>ヘルプバックを有効にする</span>
                       <HelpTooltip
-                        text="ヘルプでついた商品のバック計算方法を選択します。"
+                        text="ONにすると、ヘルプでついた卓の商品にもバックが付きます。OFFの場合は推しの商品にのみバックが付きます。"
                         width={280}
                       />
-                    </div>
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <button
-                        onClick={() => setSettingsState(prev => prev ? { ...prev, helpBackCalculationMethod: 'sales_based' } : null)}
-                        style={{
-                          flex: 1,
-                          padding: '8px 12px',
-                          fontSize: '12px',
-                          fontWeight: '500',
-                          borderWidth: '1px',
-                          borderStyle: 'solid',
-                          borderColor: settingsState.helpBackCalculationMethod === 'sales_based' ? '#10b981' : '#cbd5e1',
-                          borderRadius: '6px',
-                          backgroundColor: settingsState.helpBackCalculationMethod === 'sales_based' ? '#ecfdf5' : 'white',
-                          color: settingsState.helpBackCalculationMethod === 'sales_based' ? '#059669' : '#64748b',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        売上設定に従う
-                      </button>
-                      <button
-                        onClick={() => setSettingsState(prev => prev ? { ...prev, helpBackCalculationMethod: 'full_amount' } : null)}
-                        style={{
-                          flex: 1,
-                          padding: '8px 12px',
-                          fontSize: '12px',
-                          fontWeight: '500',
-                          borderWidth: '1px',
-                          borderStyle: 'solid',
-                          borderColor: settingsState.helpBackCalculationMethod === 'full_amount' ? '#10b981' : '#cbd5e1',
-                          borderRadius: '6px',
-                          backgroundColor: settingsState.helpBackCalculationMethod === 'full_amount' ? '#ecfdf5' : 'white',
-                          color: settingsState.helpBackCalculationMethod === 'full_amount' ? '#059669' : '#64748b',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        商品全額
-                      </button>
-                    </div>
-                    <p style={{ fontSize: '11px', color: '#94a3b8', margin: '6px 0 0 0' }}>
-                      {settingsState.helpBackCalculationMethod === 'sales_based'
-                        ? '分配後の金額 × ヘルプバック率'
-                        : '商品の全額 × ヘルプバック率'}
-                    </p>
+                    </label>
+                    {settingsState.useHelpProductBack && (
+                      <>
+                        <div style={{ fontSize: '13px', fontWeight: '500', marginBottom: '8px', color: '#475569' }}>
+                          ヘルプバック計算方法
+                          <HelpTooltip
+                            text="ヘルプでついた商品のバック計算方法を選択します。"
+                            width={280}
+                          />
+                        </div>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button
+                            onClick={() => setSettingsState(prev => prev ? { ...prev, helpBackCalculationMethod: 'sales_based' } : null)}
+                            style={{
+                              flex: 1,
+                              padding: '8px 12px',
+                              fontSize: '12px',
+                              fontWeight: '500',
+                              borderWidth: '1px',
+                              borderStyle: 'solid',
+                              borderColor: settingsState.helpBackCalculationMethod === 'sales_based' ? '#10b981' : '#cbd5e1',
+                              borderRadius: '6px',
+                              backgroundColor: settingsState.helpBackCalculationMethod === 'sales_based' ? '#ecfdf5' : 'white',
+                              color: settingsState.helpBackCalculationMethod === 'sales_based' ? '#059669' : '#64748b',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            売上設定に従う
+                          </button>
+                          <button
+                            onClick={() => setSettingsState(prev => prev ? { ...prev, helpBackCalculationMethod: 'full_amount' } : null)}
+                            style={{
+                              flex: 1,
+                              padding: '8px 12px',
+                              fontSize: '12px',
+                              fontWeight: '500',
+                              borderWidth: '1px',
+                              borderStyle: 'solid',
+                              borderColor: settingsState.helpBackCalculationMethod === 'full_amount' ? '#10b981' : '#cbd5e1',
+                              borderRadius: '6px',
+                              backgroundColor: settingsState.helpBackCalculationMethod === 'full_amount' ? '#ecfdf5' : 'white',
+                              color: settingsState.helpBackCalculationMethod === 'full_amount' ? '#059669' : '#64748b',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            商品全額
+                          </button>
+                        </div>
+                        <p style={{ fontSize: '11px', color: '#94a3b8', margin: '6px 0 0 0' }}>
+                          {settingsState.helpBackCalculationMethod === 'sales_based'
+                            ? '分配後の金額 × ヘルプバック率'
+                            : '商品の全額 × ヘルプバック率'}
+                        </p>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
@@ -2264,7 +2322,7 @@ export default function CompensationSettingsPage() {
                       <span style={styles.skipTag}>売上対象外</span>
                     ) : item.castBreakdown && item.castBreakdown.length > 0 ? (
                       <div style={styles.castBreakdownContainer}>
-                        {item.castBreakdown.map((cb: { cast: string; sales: number; isSelf: boolean; backAmount?: number }, idx) => (
+                        {item.castBreakdown.map((cb: { cast: string; sales: number; calculatedShare: number; isSelf: boolean; backAmount?: number }, idx) => (
                           <div key={idx} style={styles.castBreakdownRow}>
                             <span style={{
                               ...styles.castBreakdownName,
@@ -3014,6 +3072,8 @@ const styles: { [key: string]: React.CSSProperties } = {
   layout: {
     display: 'flex',
     gap: '20px',
+    height: 'calc(100vh - 180px)',
+    alignItems: 'stretch',
   },
   sidebar: {
     width: '250px',
@@ -3021,6 +3081,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     backgroundColor: '#f8f9fa',
     borderRadius: '10px',
     padding: '15px',
+    overflowY: 'auto' as const,
   },
   storeSettingsBox: {
     backgroundColor: '#fff',
@@ -3169,6 +3230,8 @@ const styles: { [key: string]: React.CSSProperties } = {
     borderRadius: '10px',
     padding: '20px',
     boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+    overflowY: 'auto' as const,
+    minHeight: 0,
   },
   mainHeader: {
     marginBottom: '24px',
@@ -3776,9 +3839,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     flex: '1 1 520px',
     display: 'flex',
     flexDirection: 'column' as const,
-    alignSelf: 'flex-start',
-    position: 'sticky' as const,
-    top: '20px',
+    minHeight: 0,
   },
   // 伝票詳細パネル
   receiptPanel: {
@@ -3787,8 +3848,8 @@ const styles: { [key: string]: React.CSSProperties } = {
     borderRadius: '0 8px 8px 8px',
     padding: '16px',
     border: '1px solid #e2e8f0',
-    maxHeight: 'calc(100vh - 200px)',
     overflowY: 'auto' as const,
+    minHeight: 0,
   },
   receiptPanelTitle: {
     fontSize: '16px',

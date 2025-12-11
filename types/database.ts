@@ -471,6 +471,7 @@ export interface CompensationSettings {
 
   // 商品別バック設定
   use_product_back: boolean  // 商品別バック率を使用するか（cast_back_ratesテーブル参照）
+  use_help_product_back: boolean  // ヘルプの商品バックを有効にするか
   help_back_calculation_method: HelpBackCalculationMethod  // ヘルプバック計算方法
 
   // 対象年月（月ごとの報酬設定用）
