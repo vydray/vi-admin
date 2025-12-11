@@ -10,6 +10,9 @@ import {
   SalesTargetType,
   DeductionType,
   PayType,
+  Product,
+  Category,
+  CastBackRate,
 } from '@/types'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
@@ -231,15 +234,28 @@ export default function CompensationSettingsPage() {
   const [showDeductionModal, setShowDeductionModal] = useState(false)
   const [editingDeductions, setEditingDeductions] = useState<DeductionItem[]>([])
 
+  // 商品マスタ・カテゴリ・バック率
+  const [products, setProducts] = useState<Product[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
+  const [backRates, setBackRates] = useState<CastBackRate[]>([])
+
   // サンプル伝票（売上設定のプレビューと同じ形式）
   const [sampleNominations, setSampleNominations] = useState<string[]>(['A']) // 推しキャスト（複数選択可能）
-  const [sampleItems, setSampleItems] = useState([
-    { id: 1, name: 'セット料金 60分', basePrice: 3300, castNames: [] as string[] },
-    { id: 2, name: 'キャストドリンク', basePrice: 1100, castNames: ['A'] },
-    { id: 3, name: 'シャンパン', basePrice: 11000, castNames: ['A'] },
-    { id: 4, name: 'チェキ', basePrice: 1500, castNames: ['B'] },
-    { id: 5, name: 'ヘルプドリンク', basePrice: 1100, castNames: ['C'] },
+  const [sampleItems, setSampleItems] = useState<{
+    id: number
+    productId: number | null
+    name: string
+    category: string
+    basePrice: number
+    castNames: string[]
+  }[]>([
+    { id: 1, productId: null, name: 'セット料金 60分', category: '', basePrice: 3300, castNames: [] },
+    { id: 2, productId: null, name: 'キャストドリンク', category: '', basePrice: 1100, castNames: ['A'] },
+    { id: 3, productId: null, name: 'シャンパン', category: '', basePrice: 11000, castNames: ['A'] },
+    { id: 4, productId: null, name: 'チェキ', category: '', basePrice: 1500, castNames: ['B'] },
+    { id: 5, productId: null, name: 'ヘルプドリンク', category: '', basePrice: 1100, castNames: ['C'] },
   ])
+  const [savingSampleReceipt, setSavingSampleReceipt] = useState(false)
   const [nonHelpStaffNames, setNonHelpStaffNames] = useState<string[]>([])
   // 推し小計 / 伝票小計 切り替えタブ
   const [salesViewMode, setSalesViewMode] = useState<'item_based' | 'receipt_based'>('item_based')
@@ -468,6 +484,141 @@ export default function CompensationSettingsPage() {
     }
   }, [storeId])
 
+  // 商品マスタを読み込み
+  const loadProducts = useCallback(async () => {
+    try {
+      const { data: productsData, error: productsError } = await supabase
+        .from('products')
+        .select('id, name, price, category_id, store_id')
+        .eq('store_id', storeId)
+        .eq('is_active', true)
+        .order('display_order')
+
+      if (productsError) throw productsError
+      setProducts(productsData || [])
+
+      // カテゴリ一覧
+      const { data: categoriesData, error: categoriesError } = await supabase
+        .from('product_categories')
+        .select('id, name, store_id')
+        .eq('store_id', storeId)
+        .order('display_order')
+
+      if (categoriesError) throw categoriesError
+      setCategories(categoriesData || [])
+    } catch (error) {
+      console.error('商品マスタ読み込みエラー:', error)
+    }
+  }, [storeId])
+
+  // バック率設定を読み込み
+  const loadBackRates = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('cast_back_rates')
+        .select('*')
+        .eq('store_id', storeId)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+      setBackRates((data || []) as CastBackRate[])
+    } catch (error) {
+      console.error('バック率設定読み込みエラー:', error)
+    }
+  }, [storeId])
+
+  // サンプル伝票を読み込み
+  const loadSampleReceipt = useCallback(async () => {
+    try {
+      // まず既存のサンプル伝票を取得
+      const { data: receiptData, error: receiptError } = await supabase
+        .from('compensation_sample_receipts')
+        .select('*')
+        .eq('store_id', storeId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (receiptError) throw receiptError
+
+      if (receiptData) {
+        // サンプル伝票が存在する場合、推しと商品アイテムを読み込む
+        setSampleNominations(receiptData.nominations || ['A'])
+
+        const { data: itemsData, error: itemsError } = await supabase
+          .from('compensation_sample_items')
+          .select('*')
+          .eq('receipt_id', receiptData.id)
+          .order('sort_order')
+
+        if (itemsError) throw itemsError
+
+        if (itemsData && itemsData.length > 0) {
+          setSampleItems(itemsData.map((item, index) => ({
+            id: item.id || index + 1,
+            productId: item.product_id,
+            name: item.product_name,
+            category: item.category || '',
+            basePrice: item.base_price,
+            castNames: item.cast_names || [],
+          })))
+        }
+      }
+    } catch (error) {
+      console.error('サンプル伝票読み込みエラー:', error)
+    }
+  }, [storeId])
+
+  // サンプル伝票を保存
+  const saveSampleReceipt = async () => {
+    setSavingSampleReceipt(true)
+    try {
+      // 既存のサンプル伝票を削除
+      await supabase
+        .from('compensation_sample_receipts')
+        .delete()
+        .eq('store_id', storeId)
+
+      // 新しいサンプル伝票を作成
+      const { data: newReceipt, error: receiptError } = await supabase
+        .from('compensation_sample_receipts')
+        .insert({
+          store_id: storeId,
+          name: 'デフォルト',
+          nominations: sampleNominations,
+        })
+        .select()
+        .single()
+
+      if (receiptError) throw receiptError
+
+      // サンプルアイテムを保存
+      const itemsToInsert = sampleItems.map((item, index) => ({
+        receipt_id: newReceipt.id,
+        product_id: item.productId,
+        product_name: item.name,
+        category: item.category,
+        base_price: item.basePrice,
+        cast_names: item.castNames,
+        sort_order: index,
+      }))
+
+      const { error: itemsError } = await supabase
+        .from('compensation_sample_items')
+        .insert(itemsToInsert)
+
+      if (itemsError) throw itemsError
+
+      toast.success('サンプル伝票を保存しました')
+    } catch (error) {
+      console.error('サンプル伝票保存エラー:', error)
+      toast.error('サンプル伝票の保存に失敗しました')
+    } finally {
+      setSavingSampleReceipt(false)
+    }
+  }
+
   const loadCasts = useCallback(async () => {
     setLoading(true)
     try {
@@ -595,7 +746,10 @@ export default function CompensationSettingsPage() {
     loadPayDay()
     loadSalesSettings()
     loadSystemSettings()
-  }, [loadCasts, loadPayDay, loadSalesSettings, loadSystemSettings])
+    loadProducts()
+    loadBackRates()
+    loadSampleReceipt()
+  }, [loadCasts, loadPayDay, loadSalesSettings, loadSystemSettings, loadProducts, loadBackRates, loadSampleReceipt])
 
   useEffect(() => {
     if (selectedCastId) {
@@ -1067,10 +1221,50 @@ export default function CompensationSettingsPage() {
     }
   }, [sampleItems, sampleNominations, nonHelpStaffNames, salesViewMode, salesSettings, systemSettings])
 
+  // カテゴリ別の商品リスト
+  const productsByCategory = useMemo(() => {
+    const grouped: { [categoryId: number]: { category: Category; products: Product[] } } = {}
+    products.forEach(product => {
+      if (!grouped[product.category_id]) {
+        const category = categories.find(c => c.id === product.category_id)
+        if (category) {
+          grouped[product.category_id] = { category, products: [] }
+        }
+      }
+      if (grouped[product.category_id]) {
+        grouped[product.category_id].products.push(product)
+      }
+    })
+    return Object.values(grouped)
+  }, [products, categories])
+
   // ヘルパー関数
+  const selectProduct = (itemId: number, productId: number | null) => {
+    if (productId === null) {
+      // カスタム商品（手入力）
+      setSampleItems(items => items.map(item =>
+        item.id === itemId ? { ...item, productId: null, name: '新商品', category: '', basePrice: 1000 } : item
+      ))
+    } else {
+      const product = products.find(p => p.id === productId)
+      if (product) {
+        const category = categories.find(c => c.id === product.category_id)
+        setSampleItems(items => items.map(item =>
+          item.id === itemId ? {
+            ...item,
+            productId: product.id,
+            name: product.name,
+            category: category?.name || '',
+            basePrice: product.price,
+          } : item
+        ))
+      }
+    }
+  }
+
   const updateItemName = (id: number, name: string) => {
     setSampleItems(items => items.map(item =>
-      item.id === id ? { ...item, name } : item
+      item.id === id ? { ...item, name, productId: null } : item
     ))
   }
 
@@ -1103,7 +1297,7 @@ export default function CompensationSettingsPage() {
 
   const addPreviewItem = () => {
     const newId = Math.max(...sampleItems.map(i => i.id), 0) + 1
-    setSampleItems([...sampleItems, { id: newId, name: '新商品', basePrice: 1000, castNames: [] }])
+    setSampleItems([...sampleItems, { id: newId, productId: null, name: '新商品', category: '', basePrice: 1000, castNames: [] }])
   }
 
   // 設定を保存
@@ -1705,7 +1899,17 @@ export default function CompensationSettingsPage() {
           {/* サンプル伝票プレビュー */}
           <div style={styles.receiptPreview}>
             <div style={styles.receiptHeader}>
-              <span>サンプル伝票</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span>サンプル伝票</span>
+                <Button
+                  onClick={saveSampleReceipt}
+                  variant="secondary"
+                  size="small"
+                  disabled={savingSampleReceipt}
+                >
+                  {savingSampleReceipt ? '保存中...' : '保存'}
+                </Button>
+              </div>
               <span style={styles.oshiLabel}>
                 推し: {sampleNominations.length > 0 ? sampleNominations.join(', ') : 'なし'}
               </span>
@@ -1722,12 +1926,47 @@ export default function CompensationSettingsPage() {
                 <div key={item.id} style={styles.receiptItem}>
                   <div style={styles.receiptItemRow}>
                     <div style={styles.itemNameCol}>
-                      <input
-                        type="text"
-                        value={item.name}
-                        onChange={(e) => updateItemName(item.id, e.target.value)}
-                        style={styles.itemNameInput}
-                      />
+                      {products.length > 0 ? (
+                        <select
+                          value={item.productId || 'custom'}
+                          onChange={(e) => {
+                            const value = e.target.value
+                            if (value === 'custom') {
+                              selectProduct(item.id, null)
+                            } else {
+                              selectProduct(item.id, parseInt(value))
+                            }
+                          }}
+                          style={styles.productSelect}
+                        >
+                          <option value="custom">カスタム商品</option>
+                          {productsByCategory.map(group => (
+                            <optgroup key={group.category.id} label={group.category.name}>
+                              {group.products.map(product => (
+                                <option key={product.id} value={product.id}>
+                                  {product.name} (¥{product.price.toLocaleString()})
+                                </option>
+                              ))}
+                            </optgroup>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          type="text"
+                          value={item.name}
+                          onChange={(e) => updateItemName(item.id, e.target.value)}
+                          style={styles.itemNameInput}
+                        />
+                      )}
+                      {item.productId === null && products.length > 0 && (
+                        <input
+                          type="text"
+                          value={item.name}
+                          onChange={(e) => updateItemName(item.id, e.target.value)}
+                          style={{ ...styles.itemNameInput, marginTop: '4px' }}
+                          placeholder="商品名を入力"
+                        />
+                      )}
                     </div>
                     <div style={styles.itemCastCol}>
                       <span style={styles.itemCastDisplay}>
@@ -3272,6 +3511,16 @@ const styles: { [key: string]: React.CSSProperties } = {
     borderRadius: '4px',
     backgroundColor: 'white',
     boxSizing: 'border-box' as const,
+  },
+  productSelect: {
+    width: '100%',
+    padding: '4px 6px',
+    fontSize: '12px',
+    border: '1px solid #e2e8f0',
+    borderRadius: '4px',
+    backgroundColor: 'white',
+    boxSizing: 'border-box' as const,
+    cursor: 'pointer',
   },
   itemPriceInput: {
     width: '100%',
