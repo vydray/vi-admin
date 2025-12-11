@@ -833,12 +833,12 @@ export default function SalesSettingsPage() {
               // 全員（商品上 + 商品外の実推し）で計算
               const totalPeople = realCastsOnItem.length + nominationsNotOnItem.length
               const perPersonAmountAll = Math.floor(roundedBase / totalPeople)
-              realCastsOnItem.forEach(c => {
-                const isNomination = realNominations.includes(c)
+              // 推し→ヘルプの順番で追加
+              nominationCastsOnItem.forEach(c => {
                 castBreakdown.push({
                   cast: c,
-                  sales: isNomination || giveHelpSales ? perPersonAmountAll : 0,
-                  isSelf: isNomination,
+                  sales: perPersonAmountAll,
+                  isSelf: true,
                 })
               })
               nominationsNotOnItem.forEach(nom => {
@@ -848,15 +848,29 @@ export default function SalesSettingsPage() {
                   isSelf: true,
                 })
               })
+              helpCastsOnItem.forEach(c => {
+                castBreakdown.push({
+                  cast: c,
+                  sales: giveHelpSales ? perPersonAmountAll : 0,
+                  isSelf: false,
+                })
+              })
             } else if (realCastsOnItem.length > 0) {
               // 商品上のキャストのみで計算
               const perPersonAmount = Math.floor(roundedBase / realCastsOnItem.length)
-              realCastsOnItem.forEach(c => {
-                const isNomination = nominationIsNonHelpOnly || realNominations.includes(c)
+              // 推し→ヘルプの順番で追加
+              nominationCastsOnItem.forEach(c => {
                 castBreakdown.push({
                   cast: c,
-                  sales: isNomination || giveHelpSales ? perPersonAmount : 0,
-                  isSelf: isNomination,
+                  sales: perPersonAmount,
+                  isSelf: true,
+                })
+              })
+              helpCastsOnItem.forEach(c => {
+                castBreakdown.push({
+                  cast: c,
+                  sales: giveHelpSales ? perPersonAmount : 0,
+                  isSelf: false,
                 })
               })
             }
