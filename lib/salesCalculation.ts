@@ -353,7 +353,12 @@ export function calculateItemBased(
   // 各オーダーの商品を処理
   orders.forEach(order => {
     const orderNominations = order.staff_name ? [order.staff_name] : []
-    const currentNominations = [...new Set([...orderNominations, ...nominations])]
+    const allNominations = [...new Set([...orderNominations, ...nominations])]
+
+    // ヘルプ除外名を推しから除外（実在キャストの推しのみ残す）
+    const realNominations = allNominations.filter(n => !nonHelpNames.includes(n))
+    // 推しがヘルプ除外名のみの場合（フリーなど）
+    const nominationIsNonHelpOnly = allNominations.length > 0 && realNominations.length === 0
 
     order.order_items.forEach(item => {
       if (!item.cast_name) return // キャスト紐付けなしはスキップ
@@ -362,12 +367,16 @@ export function calculateItemBased(
       if (castsOnItem.length === 0) return
 
       // SELF/HELP判定
-      const selfCasts = castsOnItem.filter(c =>
-        currentNominations.includes(c) || nonHelpNames.includes(c)
-      )
-      const helpCasts = castsOnItem.filter(c =>
-        !currentNominations.includes(c) && !nonHelpNames.includes(c)
-      )
+      // nominationIsNonHelpOnlyの場合は、商品についてる実キャスト全員がSELF
+      // ※nonHelpNames自体は売上対象外（SELFにもHELPにも含めない）
+      const realCastsOnItem = castsOnItem.filter(c => !nonHelpNames.includes(c))
+
+      const selfCasts = nominationIsNonHelpOnly
+        ? realCastsOnItem // フリー推しの場合は商品の実キャスト全員がSELF
+        : realCastsOnItem.filter(c => realNominations.includes(c))
+      const helpCasts = nominationIsNonHelpOnly
+        ? [] // フリー推しの場合はヘルプなし
+        : realCastsOnItem.filter(c => !realNominations.includes(c))
 
       const isSelfOnly = selfCasts.length > 0 && helpCasts.length === 0
       const isHelpOnly = helpCasts.length > 0 && selfCasts.length === 0
@@ -557,29 +566,43 @@ export function calculateReceiptBased(
   // 各オーダー（伝票）を処理
   orders.forEach(order => {
     // 推し（担当）
-    const nominations = order.staff_name ? [order.staff_name] : []
-    if (nominations.length === 0) return // 推しがいない伝票はスキップ
+    const allNominations = order.staff_name ? [order.staff_name] : []
+    if (allNominations.length === 0) return // 推しがいない伝票はスキップ
+
+    // ヘルプ除外名を推しから除外（実在キャストの推しのみ残す）
+    const realNominations = allNominations.filter(n => !nonHelpNames.includes(n))
+    // 推しがヘルプ除外名のみの場合（フリーなど）
+    const nominationIsNonHelpOnly = allNominations.length > 0 && realNominations.length === 0
 
     // 伝票内の全商品を集計
     let receiptTotalRaw = 0
     let selfTotalRaw = 0
     let helpTotalRaw = 0
     const helpCastsInReceipt: string[] = []
+    const selfCastsInReceipt: string[] = []
 
     order.order_items.forEach(item => {
       const itemAmount = item.unit_price * item.quantity
       receiptTotalRaw += itemAmount
 
       const castsOnItem = item.cast_name ? [item.cast_name] : []
-      const selfCasts = castsOnItem.filter(c =>
-        nominations.includes(c) || nonHelpNames.includes(c)
-      )
-      const helpCasts = castsOnItem.filter(c =>
-        !nominations.includes(c) && !nonHelpNames.includes(c)
-      )
+
+      // nonHelpNamesは売上対象外なので除外
+      const realCastsOnItem = castsOnItem.filter(c => !nonHelpNames.includes(c))
+
+      // nominationIsNonHelpOnlyの場合は、商品についてる実キャスト全員がSELF扱い
+      const selfCasts = nominationIsNonHelpOnly
+        ? realCastsOnItem // フリー推しの場合は商品の実キャスト全員がSELF
+        : realCastsOnItem.filter(c => realNominations.includes(c))
+      const helpCasts = nominationIsNonHelpOnly
+        ? [] // フリー推しの場合はヘルプなし
+        : realCastsOnItem.filter(c => !realNominations.includes(c))
 
       if (selfCasts.length > 0 && helpCasts.length === 0) {
         selfTotalRaw += itemAmount
+        selfCasts.forEach(c => {
+          if (!selfCastsInReceipt.includes(c)) selfCastsInReceipt.push(c)
+        })
       } else if (helpCasts.length > 0 && selfCasts.length === 0) {
         helpTotalRaw += itemAmount
         helpCasts.forEach(c => {
@@ -588,12 +611,14 @@ export function calculateReceiptBased(
       } else if (selfCasts.length > 0 && helpCasts.length > 0) {
         // 混在 → 両方に分類
         selfTotalRaw += itemAmount
+        selfCasts.forEach(c => {
+          if (!selfCastsInReceipt.includes(c)) selfCastsInReceipt.push(c)
+        })
         helpCasts.forEach(c => {
           if (!helpCastsInReceipt.includes(c)) helpCastsInReceipt.push(c)
         })
       } else {
-        // キャストなし → SELF
-        selfTotalRaw += itemAmount
+        // キャストなし → 誰にも計上しない（フリー推しでもフリーに売上をつけない）
       }
     })
 
@@ -610,6 +635,9 @@ export function calculateReceiptBased(
     let nominationShare = receiptTotal
     let helpShare = 0
 
+    // 分配先を決定（nominationIsNonHelpOnlyの場合は商品上のキャスト、それ以外は実推し）
+    const distributeTargets = nominationIsNonHelpOnly ? selfCastsInReceipt : realNominations
+
     if (helpTotalRaw > 0 && includeHelpItems) {
       switch (helpDistMethod) {
         case 'all_to_nomination':
@@ -625,20 +653,20 @@ export function calculateReceiptBased(
           nominationShare = receiptTotal - helpShare
           break
         case 'equal_per_person':
-          const allCasts = [...nominations, ...helpCastsInReceipt]
+          const allCasts = [...distributeTargets, ...helpCastsInReceipt]
           if (allCasts.length > 0) {
             const perPerson = Math.floor(receiptTotal / allCasts.length)
-            nominationShare = perPerson * nominations.length
+            nominationShare = perPerson * distributeTargets.length
             helpShare = receiptTotal - nominationShare
           }
           break
       }
     }
 
-    // 推しへの分配
-    if (nominations.length > 0) {
-      const perNomination = Math.floor(nominationShare / nominations.length)
-      nominations.forEach(nomName => {
+    // 推しへの分配（nominationIsNonHelpOnlyの場合は商品上のキャストに分配）
+    if (distributeTargets.length > 0) {
+      const perNomination = Math.floor(nominationShare / distributeTargets.length)
+      distributeTargets.forEach((nomName: string) => {
         const cast = castNameMap.get(nomName)
         if (cast) {
           const summary = summaryMap.get(cast.id)
