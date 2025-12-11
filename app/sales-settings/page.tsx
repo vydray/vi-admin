@@ -1169,21 +1169,32 @@ export default function SalesSettingsPage() {
       // キャスト名の分類
       const castsOnItem = item.castNames.filter(c => c !== '-')
 
-      // 推しに該当するキャスト（ヘルプ扱いにしない名前も含む）
-      const selfCasts = castsOnItem.filter(c =>
-        previewNominations.includes(c) || nonHelpNames.includes(c)
-      )
+      // ヘルプ扱いにしない推し名
+      const nonHelpNames = settings?.non_help_staff_names || []
+      // 実推し（ヘルプ除外名を除く）
+      const realNominations = previewNominations.filter(n => !nonHelpNames.includes(n))
+      // 推しがヘルプ扱いにしない推し名のみの場合（例：フリー）
+      const nominationIsNonHelpOnly = previewNominations.length > 0 && realNominations.length === 0
+
+      // 商品上の実キャスト（nonHelpNamesを除外）
+      const realCastsOnItem = castsOnItem.filter(c => !nonHelpNames.includes(c))
+
+      // 推しに該当するキャスト
+      // nominationIsNonHelpOnlyの場合は商品上の実キャスト全員がSELF
+      const selfCasts = nominationIsNonHelpOnly
+        ? realCastsOnItem
+        : realCastsOnItem.filter(c => realNominations.includes(c))
       // ヘルプに該当するキャスト
-      const helpCasts = castsOnItem.filter(c =>
-        !previewNominations.includes(c) && !nonHelpNames.includes(c)
-      )
+      const helpCasts = nominationIsNonHelpOnly
+        ? []
+        : realCastsOnItem.filter(c => !realNominations.includes(c))
 
       // SELF/HELP判定
       // - キャスト名なし → SELF（推しの売上）
       // - 推しの名前のみ → SELF
       // - 推し以外の名前のみ → HELP
       // - 混在 → 両方に分配
-      const isSelfOnly = castsOnItem.length === 0 || (selfCasts.length > 0 && helpCasts.length === 0)
+      const isSelfOnly = realCastsOnItem.length === 0 || (selfCasts.length > 0 && helpCasts.length === 0)
       const isHelpOnly = helpCasts.length > 0 && selfCasts.length === 0
       const isMixed = selfCasts.length > 0 && helpCasts.length > 0
 
@@ -1204,43 +1215,54 @@ export default function SalesSettingsPage() {
         itemAmount = applyRoundingPreview(itemAmount, roundingPosition, roundingType)
       }
 
-      if (castsOnItem.length > 0) {
-        // 商品上のキャストごとの内訳と売上を計算
-        castsOnItem.forEach(c => {
-          const isSelf = previewNominations.includes(c) || nonHelpNames.includes(c)
+      // 分配先を決定（nominationIsNonHelpOnlyの場合は商品上のキャスト、それ以外は実推し）
+      const distributeTargets = nominationIsNonHelpOnly ? selfCasts : realNominations
+
+      if (realCastsOnItem.length > 0) {
+        // 商品上のキャストごとの内訳と売上を計算（推し→ヘルプ順）
+        selfCasts.forEach(c => {
           castBreakdown.push({
             cast: c,
-            isSelf,
+            isSelf: true,
             sales: 0, // 後で計算
+          })
+        })
+        helpCasts.forEach(c => {
+          castBreakdown.push({
+            cast: c,
+            isSelf: false,
+            sales: 0,
           })
         })
 
         // 伝票小計では常に選択された推し全員に分配する
-        // 商品についていない推しも追加
-        const nominationsNotInBreakdown = previewNominations.filter(
-          nom => !castBreakdown.some(cb => cb.cast === nom)
-        )
-        nominationsNotInBreakdown.forEach(nom => {
-          castBreakdown.push({
-            cast: nom,
-            isSelf: true,
-            sales: 0,
+        // 商品についていない実推しも追加（nominationIsNonHelpOnlyの場合は追加しない）
+        if (!nominationIsNonHelpOnly) {
+          const nominationsNotInBreakdown = realNominations.filter(
+            nom => !castBreakdown.some(cb => cb.cast === nom)
+          )
+          nominationsNotInBreakdown.forEach(nom => {
+            castBreakdown.push({
+              cast: nom,
+              isSelf: true,
+              sales: 0,
+            })
           })
-        })
+        }
 
         // ヘルプ商品も売上に含めるかどうかで分岐
         if (isHelpOnly && !includeHelpItems) {
           // ヘルプのみの商品で、含めない設定 → 売上0
           // castBreakdownはそのまま（sales: 0）
         } else if (isSelfOnly) {
-          // 推しのみの商品 → 選択された推し全員に等分
-          if (previewNominations.length > 0) {
-            const perNomAmount = Math.floor(itemAmount / previewNominations.length)
+          // 推しのみの商品 → 分配先全員に等分
+          if (distributeTargets.length > 0) {
+            const perNomAmount = Math.floor(itemAmount / distributeTargets.length)
             let nomIdx = 0
             castBreakdown.forEach(cb => {
               if (cb.isSelf) {
-                cb.sales = nomIdx === previewNominations.length - 1
-                  ? itemAmount - perNomAmount * (previewNominations.length - 1)
+                cb.sales = nomIdx === distributeTargets.length - 1
+                  ? itemAmount - perNomAmount * (distributeTargets.length - 1)
                   : perNomAmount
                 nomIdx++
               }
@@ -1251,14 +1273,14 @@ export default function SalesSettingsPage() {
           const helpCount = helpCasts.length
 
           if (helpDistMethod === 'all_to_nomination') {
-            // 全額推しに → 選択された推し全員に分配
-            if (previewNominations.length > 0) {
-              const perNomAmount = Math.floor(itemAmount / previewNominations.length)
+            // 全額推しに → 分配先全員に分配
+            if (distributeTargets.length > 0) {
+              const perNomAmount = Math.floor(itemAmount / distributeTargets.length)
               let nomIdx = 0
               castBreakdown.forEach(cb => {
                 if (cb.isSelf) {
-                  cb.sales = nomIdx === previewNominations.length - 1
-                    ? itemAmount - perNomAmount * (previewNominations.length - 1)
+                  cb.sales = nomIdx === distributeTargets.length - 1
+                    ? itemAmount - perNomAmount * (distributeTargets.length - 1)
                     : perNomAmount
                   nomIdx++
                 }
@@ -1269,14 +1291,14 @@ export default function SalesSettingsPage() {
             const selfShare = Math.floor(itemAmount / 2)
             const helpShare = itemAmount - selfShare
 
-            // 推しへの分配（選択された推し全員）
-            if (previewNominations.length > 0) {
-              const perNomAmount = Math.floor(selfShare / previewNominations.length)
+            // 推しへの分配（分配先全員）
+            if (distributeTargets.length > 0) {
+              const perNomAmount = Math.floor(selfShare / distributeTargets.length)
               let nomIdx = 0
               castBreakdown.forEach(cb => {
                 if (cb.isSelf) {
-                  cb.sales = nomIdx === previewNominations.length - 1
-                    ? selfShare - perNomAmount * (previewNominations.length - 1)
+                  cb.sales = nomIdx === distributeTargets.length - 1
+                    ? selfShare - perNomAmount * (distributeTargets.length - 1)
                     : perNomAmount
                   nomIdx++
                 }
@@ -1292,8 +1314,8 @@ export default function SalesSettingsPage() {
               })
             }
           } else if (helpDistMethod === 'equal_per_person') {
-            // 全員で均等割（選択された推し全員 + ヘルプ）
-            const totalPeople = previewNominations.length + helpCount
+            // 全員で均等割（分配先全員 + ヘルプ）
+            const totalPeople = distributeTargets.length + helpCount
             const perPerson = Math.floor(itemAmount / totalPeople)
 
             let idx = 0
@@ -1310,14 +1332,14 @@ export default function SalesSettingsPage() {
             const selfShare = Math.floor(itemAmount * helpRatio / 100)
             const helpShare = itemAmount - selfShare
 
-            // 推しへの分配（選択された推し全員）
-            if (previewNominations.length > 0) {
-              const perNomAmount = Math.floor(selfShare / previewNominations.length)
+            // 推しへの分配（分配先全員）
+            if (distributeTargets.length > 0) {
+              const perNomAmount = Math.floor(selfShare / distributeTargets.length)
               let nomIdx = 0
               castBreakdown.forEach(cb => {
                 if (cb.isSelf) {
-                  cb.sales = nomIdx === previewNominations.length - 1
-                    ? selfShare - perNomAmount * (previewNominations.length - 1)
+                  cb.sales = nomIdx === distributeTargets.length - 1
+                    ? selfShare - perNomAmount * (distributeTargets.length - 1)
                     : perNomAmount
                   nomIdx++
                 }
@@ -1335,12 +1357,14 @@ export default function SalesSettingsPage() {
           }
         }
       } else {
-        // キャスト名なしの場合は推しに計上（複数推しの場合は等分）
-        if (previewNominations.length > 0) {
-          const perNomAmount = Math.floor(itemAmount / previewNominations.length)
-          previewNominations.forEach((nom, idx) => {
-            const sales = idx === previewNominations.length - 1
-              ? itemAmount - perNomAmount * (previewNominations.length - 1)
+        // キャスト名なしの場合
+        // nominationIsNonHelpOnly（フリー推し）の場合は誰にも計上しない
+        // それ以外は実推しに分配
+        if (!nominationIsNonHelpOnly && realNominations.length > 0) {
+          const perNomAmount = Math.floor(itemAmount / realNominations.length)
+          realNominations.forEach((nom, idx) => {
+            const sales = idx === realNominations.length - 1
+              ? itemAmount - perNomAmount * (realNominations.length - 1)
               : perNomAmount
             castBreakdown.push({
               cast: nom,
@@ -1349,6 +1373,7 @@ export default function SalesSettingsPage() {
             })
           })
         }
+        // フリー推しでキャスト名なしの場合はcastBreakdownは空（誰にも計上しない）
       }
 
       return {
