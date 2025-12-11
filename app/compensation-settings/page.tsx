@@ -1291,13 +1291,60 @@ export default function CompensationSettingsPage() {
       })
     })
 
+    // 商品ごとの推しバック金額を集計（推し小計用、SELF分のみ）
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const itemsWithSelfBack = data.items
+      .filter((item: any) => !item.notIncluded)
+      .map((item: any) => {
+        const selfBack = item.castBreakdown
+          .filter((cb: any) => cb.isSelf)
+          .reduce((sum: number, cb: any) => sum + (cb.backAmount || 0), 0)
+        return { name: item.name as string, back: selfBack as number }
+      })
+      .filter((item: { name: string; back: number }) => item.back > 0)
+
+    // 推しバック合計（SELF分のみ）
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const selfProductBack = data.items.reduce((sum: number, item: any) => {
+      if (item.notIncluded) return sum
+      return sum + item.castBreakdown
+        .filter((cb: any) => cb.isSelf)
+        .reduce((s: number, cb: any) => s + (cb.backAmount || 0), 0)
+    }, 0)
+
+    // 商品ごとのヘルプバック金額を集計（HELP分のみ）
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const itemsWithHelpBack = data.items
+      .filter((item: any) => !item.notIncluded)
+      .map((item: any) => {
+        const helpBack = item.castBreakdown
+          .filter((cb: any) => !cb.isSelf)
+          .reduce((sum: number, cb: any) => sum + (cb.backAmount || 0), 0)
+        return { name: item.name as string, back: helpBack as number }
+      })
+      .filter((item: { name: string; back: number }) => item.back > 0)
+
+    // ヘルプバック合計（HELP分のみ）
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const helpProductBack = data.items.reduce((sum: number, item: any) => {
+      if (item.notIncluded) return sum
+      return sum + item.castBreakdown
+        .filter((cb: any) => !cb.isSelf)
+        .reduce((s: number, cb: any) => s + (cb.backAmount || 0), 0)
+    }, 0)
+
     return {
       selfSales: data.selfSales,
       helpSales: data.helpSales,
       totalSales: data.totalSales,
       totalProductBack: data.totalProductBack,
+      selfProductBack,
+      helpProductBack,
       salesByCategory,
+      itemsWithSelfBack,
+      itemsWithHelpBack,
       mode: mode === 'item_based' ? '推し小計' : '伝票小計',
+      isItemBased: mode === 'item_based',
     }
   }, [computePreviewData, settingsState])
 
@@ -2275,24 +2322,9 @@ export default function CompensationSettingsPage() {
 
               {/* 売上集計 */}
               <div style={styles.slipSection}>
-                <div style={styles.slipSectionHeader}>
-                  <span>売上集計</span>
-                  <span style={styles.slipSectionMode}>（{salaryData.mode}）</span>
-                </div>
-                <div style={styles.slipDivider} />
-
-                {Object.entries(salaryData.salesByCategory).map(([category, data]) => (
-                  (data.self > 0 || data.help > 0) && (
-                    <div key={category} style={styles.slipRow}>
-                      <span style={styles.slipRowLabel}>{category}</span>
-                      <span style={styles.slipRowValue}>¥{(data.self + data.help).toLocaleString()}</span>
-                    </div>
-                  )
-                ))}
-
-                <div style={styles.slipSubtotalRow}>
-                  <span>売上合計</span>
-                  <span style={styles.slipSubtotalValue}>¥{salaryData.totalSales.toLocaleString()}</span>
+                <div style={styles.slipRow}>
+                  <span style={styles.slipRowLabel}>売上集計（{salaryData.mode}）</span>
+                  <span style={styles.slipRowValue}>¥{salaryData.totalSales.toLocaleString()}</span>
                 </div>
               </div>
 
@@ -2301,37 +2333,82 @@ export default function CompensationSettingsPage() {
                 <div style={styles.slipSectionHeader}>報酬形態1</div>
                 <div style={styles.slipDivider} />
 
-                {settingsState.useHourly && (
-                  <div style={styles.slipRow}>
-                    <span style={styles.slipRowLabel}>時給（{simWorkHours}h × ¥{settingsState.hourlyRate.toLocaleString()}）</span>
-                    <span style={styles.slipRowValue}>¥{(settingsState.hourlyRate * simWorkHours).toLocaleString()}</span>
+                {/* 時給セクション */}
+                {(settingsState.useHourly || settingsState.useFixed) && (
+                  <div style={{ backgroundColor: '#f8fafc', borderLeft: '3px solid #3b82f6', padding: '8px 10px', marginBottom: '8px', borderRadius: '0 4px 4px 0' }}>
+                    <div style={{ fontSize: '12px', color: '#3b82f6', marginBottom: '6px', fontWeight: 'bold' }}>時給・固定</div>
+                    {settingsState.useHourly && (
+                      <div style={styles.slipRow}>
+                        <span style={styles.slipRowLabel}>時給（{simWorkHours}h × ¥{settingsState.hourlyRate.toLocaleString()}）</span>
+                        <span style={styles.slipRowValue}>¥{(settingsState.hourlyRate * simWorkHours).toLocaleString()}</span>
+                      </div>
+                    )}
+                    {settingsState.useFixed && (
+                      <div style={styles.slipRow}>
+                        <span style={styles.slipRowLabel}>固定額</span>
+                        <span style={styles.slipRowValue}>¥{settingsState.fixedAmount.toLocaleString()}</span>
+                      </div>
+                    )}
                   </div>
                 )}
-                {settingsState.useFixed && (
-                  <div style={styles.slipRow}>
-                    <span style={styles.slipRowLabel}>固定額</span>
-                    <span style={styles.slipRowValue}>¥{settingsState.fixedAmount.toLocaleString()}</span>
+
+                {/* 推しバックセクション */}
+                {(settingsState.useSales || (settingsState.useProductBack && salaryData.selfProductBack > 0)) && (
+                  <div style={{ backgroundColor: '#fef3c7', borderLeft: '3px solid #f59e0b', padding: '8px 10px', marginBottom: '8px', borderRadius: '0 4px 4px 0' }}>
+                    <div style={{ fontSize: '12px', color: '#d97706', marginBottom: '6px', fontWeight: 'bold' }}>推しバック</div>
+                    {settingsState.useSales && (
+                      <div style={styles.slipRow}>
+                        <span style={styles.slipRowLabel}>売上バック（{salaryData.selfSales.toLocaleString()} × {settingsState.commissionRate}%）</span>
+                        <span style={styles.slipRowValue}>¥{Math.floor(salaryData.selfSales * settingsState.commissionRate / 100).toLocaleString()}</span>
+                      </div>
+                    )}
+                    {settingsState.useProductBack && salaryData.isItemBased && salaryData.itemsWithSelfBack.length > 0 && (
+                      <>
+                        {salaryData.itemsWithSelfBack.map((item: { name: string; back: number }, idx: number) => (
+                          <div key={idx} style={styles.slipRow}>
+                            <span style={{ ...styles.slipRowLabel, fontSize: '12px', color: '#92400e' }}>{item.name}</span>
+                            <span style={{ ...styles.slipRowValue, fontSize: '12px', color: '#92400e' }}>¥{item.back.toLocaleString()}</span>
+                          </div>
+                        ))}
+                      </>
+                    )}
+                    {settingsState.useProductBack && salaryData.selfProductBack > 0 && (
+                      <div style={styles.slipRow}>
+                        <span style={styles.slipRowLabel}>推し商品バック計</span>
+                        <span style={styles.slipRowValue}>¥{salaryData.selfProductBack.toLocaleString()}</span>
+                      </div>
+                    )}
                   </div>
                 )}
-                {settingsState.useSales && (
-                  <div style={styles.slipRow}>
-                    <span style={styles.slipRowLabel}>売上バック（{salaryData.totalSales.toLocaleString()} × {settingsState.commissionRate}%）</span>
-                    <span style={styles.slipRowValue}>¥{Math.floor(salaryData.totalSales * settingsState.commissionRate / 100).toLocaleString()}</span>
-                  </div>
-                )}
-                {settingsState.useProductBack && salaryData.totalProductBack > 0 && (
-                  <div style={styles.slipRow}>
-                    <span style={styles.slipRowLabel}>商品バック</span>
-                    <span style={styles.slipRowValue}>¥{salaryData.totalProductBack.toLocaleString()}</span>
+
+                {/* ヘルプバックセクション */}
+                {settingsState.useProductBack && salaryData.helpProductBack > 0 && (
+                  <div style={{ backgroundColor: '#ecfdf5', borderLeft: '3px solid #10b981', padding: '8px 10px', marginBottom: '8px', borderRadius: '0 4px 4px 0' }}>
+                    <div style={{ fontSize: '12px', color: '#059669', marginBottom: '6px', fontWeight: 'bold' }}>ヘルプバック</div>
+                    {salaryData.isItemBased && salaryData.itemsWithHelpBack.length > 0 && (
+                      <>
+                        {salaryData.itemsWithHelpBack.map((item: { name: string; back: number }, idx: number) => (
+                          <div key={idx} style={styles.slipRow}>
+                            <span style={{ ...styles.slipRowLabel, fontSize: '12px', color: '#065f46' }}>{item.name}</span>
+                            <span style={{ ...styles.slipRowValue, fontSize: '12px', color: '#065f46' }}>¥{item.back.toLocaleString()}</span>
+                          </div>
+                        ))}
+                      </>
+                    )}
+                    <div style={styles.slipRow}>
+                      <span style={styles.slipRowLabel}>ヘルプ商品バック計</span>
+                      <span style={styles.slipRowValue}>¥{salaryData.helpProductBack.toLocaleString()}</span>
+                    </div>
                   </div>
                 )}
 
                 {(() => {
                   const hourly = settingsState.useHourly ? settingsState.hourlyRate * simWorkHours : 0
                   const fixed = settingsState.useFixed ? settingsState.fixedAmount : 0
-                  const sales = settingsState.useSales ? Math.floor(salaryData.totalSales * settingsState.commissionRate / 100) : 0
-                  const productBack = settingsState.useProductBack ? salaryData.totalProductBack : 0
-                  const total1 = hourly + fixed + sales + productBack
+                  const sales = settingsState.useSales ? Math.floor(salaryData.selfSales * settingsState.commissionRate / 100) : 0
+                  const selfBack = settingsState.useProductBack ? salaryData.selfProductBack : 0
+                  const helpBack = settingsState.useProductBack ? salaryData.helpProductBack : 0
+                  const total1 = hourly + fixed + sales + selfBack + helpBack
                   return (
                     <div style={styles.slipSubtotalRow}>
                       <span>報酬形態1 計</span>
@@ -2365,10 +2442,10 @@ export default function CompensationSettingsPage() {
                       <span style={styles.slipRowValue}>¥{Math.floor(salaryData.totalSales * settingsState.compareCommissionRate / 100).toLocaleString()}</span>
                     </div>
                   )}
-                  {settingsState.compareUseProductBack && salaryData.totalProductBack > 0 && (
+                  {settingsState.compareUseProductBack && salaryData.selfProductBack > 0 && (
                     <div style={styles.slipRow}>
-                      <span style={styles.slipRowLabel}>商品バック</span>
-                      <span style={styles.slipRowValue}>¥{salaryData.totalProductBack.toLocaleString()}</span>
+                      <span style={styles.slipRowLabel}>推し商品バック</span>
+                      <span style={styles.slipRowValue}>¥{salaryData.selfProductBack.toLocaleString()}</span>
                     </div>
                   )}
 
@@ -2376,7 +2453,7 @@ export default function CompensationSettingsPage() {
                     const hourly = settingsState.compareUseHourly ? settingsState.compareHourlyRate * simWorkHours : 0
                     const fixed = settingsState.compareUseFixed ? settingsState.compareFixedAmount : 0
                     const sales = settingsState.compareUseSales ? Math.floor(salaryData.totalSales * settingsState.compareCommissionRate / 100) : 0
-                    const productBack = settingsState.compareUseProductBack ? salaryData.totalProductBack : 0
+                    const productBack = settingsState.compareUseProductBack ? salaryData.selfProductBack : 0
                     const total2 = hourly + fixed + sales + productBack
                     return (
                       <div style={styles.slipSubtotalRow}>
@@ -2392,15 +2469,17 @@ export default function CompensationSettingsPage() {
               {settingsState.useComparison && (() => {
                 const hourly1 = settingsState.useHourly ? settingsState.hourlyRate * simWorkHours : 0
                 const fixed1 = settingsState.useFixed ? settingsState.fixedAmount : 0
-                const sales1 = settingsState.useSales ? Math.floor(salaryData.totalSales * settingsState.commissionRate / 100) : 0
-                const productBack1 = settingsState.useProductBack ? salaryData.totalProductBack : 0
-                const total1 = hourly1 + fixed1 + sales1 + productBack1
+                const sales1 = settingsState.useSales ? Math.floor(salaryData.selfSales * settingsState.commissionRate / 100) : 0
+                const selfBack1 = settingsState.useProductBack ? salaryData.selfProductBack : 0
+                const helpBack1 = settingsState.useProductBack ? salaryData.helpProductBack : 0
+                const total1 = hourly1 + fixed1 + sales1 + selfBack1 + helpBack1
 
                 const hourly2 = settingsState.compareUseHourly ? settingsState.compareHourlyRate * simWorkHours : 0
                 const fixed2 = settingsState.compareUseFixed ? settingsState.compareFixedAmount : 0
-                const sales2 = settingsState.compareUseSales ? Math.floor(salaryData.totalSales * settingsState.compareCommissionRate / 100) : 0
-                const productBack2 = settingsState.compareUseProductBack ? salaryData.totalProductBack : 0
-                const total2 = hourly2 + fixed2 + sales2 + productBack2
+                const sales2 = settingsState.compareUseSales ? Math.floor(salaryData.selfSales * settingsState.compareCommissionRate / 100) : 0
+                const selfBack2 = settingsState.compareUseProductBack ? salaryData.selfProductBack : 0
+                const helpBack2 = settingsState.compareUseProductBack ? salaryData.helpProductBack : 0
+                const total2 = hourly2 + fixed2 + sales2 + selfBack2 + helpBack2
 
                 const winner = total1 >= total2 ? '報酬形態1' : '報酬形態2'
                 const winnerAmount = Math.max(total1, total2)
@@ -2459,17 +2538,19 @@ export default function CompensationSettingsPage() {
               {(() => {
                 const hourly1 = settingsState.useHourly ? settingsState.hourlyRate * simWorkHours : 0
                 const fixed1 = settingsState.useFixed ? settingsState.fixedAmount : 0
-                const sales1 = settingsState.useSales ? Math.floor(salaryData.totalSales * settingsState.commissionRate / 100) : 0
-                const productBack1 = settingsState.useProductBack ? salaryData.totalProductBack : 0
-                const total1 = hourly1 + fixed1 + sales1 + productBack1
+                const sales1 = settingsState.useSales ? Math.floor(salaryData.selfSales * settingsState.commissionRate / 100) : 0
+                const selfBack1 = settingsState.useProductBack ? salaryData.selfProductBack : 0
+                const helpBack1 = settingsState.useProductBack ? salaryData.helpProductBack : 0
+                const total1 = hourly1 + fixed1 + sales1 + selfBack1 + helpBack1
 
                 let selectedPay = total1
                 if (settingsState.useComparison) {
                   const hourly2 = settingsState.compareUseHourly ? settingsState.compareHourlyRate * simWorkHours : 0
                   const fixed2 = settingsState.compareUseFixed ? settingsState.compareFixedAmount : 0
-                  const sales2 = settingsState.compareUseSales ? Math.floor(salaryData.totalSales * settingsState.compareCommissionRate / 100) : 0
-                  const productBack2 = settingsState.compareUseProductBack ? salaryData.totalProductBack : 0
-                  const total2 = hourly2 + fixed2 + sales2 + productBack2
+                  const sales2 = settingsState.compareUseSales ? Math.floor(salaryData.selfSales * settingsState.compareCommissionRate / 100) : 0
+                  const selfBack2 = settingsState.compareUseProductBack ? salaryData.selfProductBack : 0
+                  const helpBack2 = settingsState.compareUseProductBack ? salaryData.helpProductBack : 0
+                  const total2 = hourly2 + fixed2 + sales2 + selfBack2 + helpBack2
                   selectedPay = Math.max(total1, total2)
                 }
 
