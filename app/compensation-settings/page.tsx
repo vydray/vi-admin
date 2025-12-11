@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
 import {
@@ -15,6 +15,32 @@ import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
 import HelpTooltip from '@/components/HelpTooltip'
 import toast from 'react-hot-toast'
+
+// 端数処理メソッドをパース
+function parseRoundingMethod(method: string): { position: number; type: 'floor' | 'ceil' | 'round' | 'none' } {
+  if (method === 'none') return { position: 1, type: 'none' }
+  if (method === 'round') return { position: 1, type: 'round' }
+  const match = method.match(/^(floor|ceil|round)_(\d+)$/)
+  if (match) {
+    return { type: match[1] as 'floor' | 'ceil' | 'round', position: parseInt(match[2]) }
+  }
+  return { position: 100, type: 'floor' }
+}
+
+// 端数処理を適用
+function applyRounding(amount: number, position: number, type: 'floor' | 'ceil' | 'round' | 'none'): number {
+  if (type === 'none' || position <= 0) return amount
+  switch (type) {
+    case 'floor':
+      return Math.floor(amount / position) * position
+    case 'ceil':
+      return Math.ceil(amount / position) * position
+    case 'round':
+      return Math.round(amount / position) * position
+    default:
+      return amount
+  }
+}
 
 interface CastWithStatus {
   id: number
@@ -176,9 +202,26 @@ export default function CompensationSettingsPage() {
   const [selectedMonth, setSelectedMonth] = useState<number>(now.getMonth() + 1)
   const [isLocked, setIsLocked] = useState<boolean>(false)
 
-  // 検索・フィルター
+  // キャスト選択ドロップダウン
+  const [showCastDropdown, setShowCastDropdown] = useState(false)
   const [searchText, setSearchText] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('在籍')
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  // ドロップダウン外クリックで閉じる
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowCastDropdown(false)
+      }
+    }
+    if (showCastDropdown) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showCastDropdown])
 
   // スライド率テーブル編集
   const [showSlidingModal, setShowSlidingModal] = useState(false)
@@ -187,6 +230,176 @@ export default function CompensationSettingsPage() {
   // 控除項目編集
   const [showDeductionModal, setShowDeductionModal] = useState(false)
   const [editingDeductions, setEditingDeductions] = useState<DeductionItem[]>([])
+
+  // サンプル伝票（売上設定のプレビューと同じ形式）
+  const [sampleNominations, setSampleNominations] = useState<string[]>(['A']) // 推しキャスト（複数選択可能）
+  const [sampleItems, setSampleItems] = useState([
+    { id: 1, name: 'セット料金 60分', basePrice: 3300, castNames: [] as string[] },
+    { id: 2, name: 'キャストドリンク', basePrice: 1100, castNames: ['A'] },
+    { id: 3, name: 'シャンパン', basePrice: 11000, castNames: ['A'] },
+    { id: 4, name: 'チェキ', basePrice: 1500, castNames: ['B'] },
+    { id: 5, name: 'ヘルプドリンク', basePrice: 1100, castNames: ['C'] },
+  ])
+  const [nonHelpStaffNames, setNonHelpStaffNames] = useState<string[]>([])
+  // 推し小計 / 伝票小計 切り替えタブ
+  const [salesViewMode, setSalesViewMode] = useState<'item_based' | 'receipt_based'>('item_based')
+
+  // システム設定（税率・サービス料率）
+  const [systemSettings, setSystemSettings] = useState<{
+    tax_rate: number
+    service_fee_rate: number
+    rounding_unit: number
+    rounding_method: number
+  }>({
+    tax_rate: 10,
+    service_fee_rate: 0,
+    rounding_unit: 1,
+    rounding_method: 1, // 0=切り上げ, 1=切り捨て, 2=四捨五入
+  })
+
+  // 売上設定（計算ロジック用）
+  const [salesSettings, setSalesSettings] = useState<{
+    // 推し小計用
+    item_exclude_consumption_tax: boolean
+    item_exclude_service_charge: boolean
+    item_rounding_method: string
+    item_rounding_position: number
+    item_rounding_timing: string
+    item_help_distribution_method: string
+    item_multi_cast_distribution: string
+    item_help_sales_inclusion: string
+    item_help_ratio: number
+    item_nomination_distribute_all: boolean
+    // 伝票小計用
+    receipt_exclude_consumption_tax: boolean
+    receipt_exclude_service_charge: boolean
+    receipt_rounding_method: string
+    receipt_rounding_position: number
+    receipt_rounding_timing: string
+    receipt_help_distribution_method: string
+    receipt_multi_cast_distribution: string
+    receipt_help_sales_inclusion: string
+    receipt_help_ratio: number
+  }>({
+    item_exclude_consumption_tax: true,
+    item_exclude_service_charge: false,
+    item_rounding_method: 'floor_100',
+    item_rounding_position: 100,
+    item_rounding_timing: 'per_item',
+    item_help_distribution_method: 'all_to_nomination',
+    item_multi_cast_distribution: 'nomination_only',
+    item_help_sales_inclusion: 'both',
+    item_help_ratio: 100,
+    item_nomination_distribute_all: false,
+    receipt_exclude_consumption_tax: true,
+    receipt_exclude_service_charge: false,
+    receipt_rounding_method: 'floor_100',
+    receipt_rounding_position: 100,
+    receipt_rounding_timing: 'per_item',
+    receipt_help_distribution_method: 'all_to_nomination',
+    receipt_multi_cast_distribution: 'nomination_only',
+    receipt_help_sales_inclusion: 'both',
+    receipt_help_ratio: 100,
+  })
+
+  // シミュレーション
+  const [simWorkHours, setSimWorkHours] = useState<number>(8)
+  const [simSales, setSimSales] = useState<number>(100000)
+  const [simProductBack, setSimProductBack] = useState<number>(0)
+  const [simDeductions, setSimDeductions] = useState<number>(0)
+
+  // シミュレーション計算結果
+  const simulationResult = useMemo(() => {
+    if (!settingsState) return null
+
+    // 基本給の計算
+    let hourlyPay = 0
+    let fixedPay = 0
+    let salesCommission = 0
+
+    if (settingsState.useHourly) {
+      hourlyPay = settingsState.hourlyRate * simWorkHours
+    }
+
+    if (settingsState.useFixed) {
+      fixedPay = settingsState.fixedAmount
+    }
+
+    if (settingsState.useSales) {
+      // スライド率テーブルがある場合
+      if (settingsState.slidingRates && settingsState.slidingRates.length > 0) {
+        const matchingRate = settingsState.slidingRates.find(rate => {
+          if (rate.max === 0 || rate.max === null) {
+            return simSales >= rate.min
+          }
+          return simSales >= rate.min && simSales < rate.max
+        })
+        // 最後のレートを適用（見つからない場合）
+        const appliedRate = matchingRate || settingsState.slidingRates[settingsState.slidingRates.length - 1]
+        salesCommission = Math.floor(simSales * (appliedRate.rate / 100))
+      } else {
+        salesCommission = Math.floor(simSales * (settingsState.commissionRate / 100))
+      }
+    }
+
+    const basePay = hourlyPay + fixedPay + salesCommission
+
+    // 比較対象の計算（スライド制の場合）
+    let comparePay = 0
+    if (settingsState.useComparison) {
+      if (settingsState.compareUseHourly) {
+        comparePay += settingsState.compareHourlyRate * simWorkHours
+      }
+      if (settingsState.compareUseFixed) {
+        comparePay += settingsState.compareFixedAmount
+      }
+      if (settingsState.compareUseSales) {
+        comparePay += Math.floor(simSales * (settingsState.compareCommissionRate / 100))
+      }
+    }
+
+    // スライド制の場合、高い方を採用
+    const selectedPay = settingsState.useComparison ? Math.max(basePay, comparePay) : basePay
+    const isBaseHigher = basePay >= comparePay
+
+    // 商品バック
+    const productBackAmount = settingsState.useProductBack ? simProductBack : 0
+
+    // 総支給額（控除前）
+    const totalBeforeDeduction = selectedPay + productBackAmount
+
+    // 固定控除額（設定された控除）
+    let fixedDeductions = 0
+    if (settingsState.deductionItems) {
+      for (const item of settingsState.deductionItems) {
+        if (!item.isVariable) {
+          fixedDeductions += item.amount
+        }
+      }
+    }
+
+    // 総控除額
+    const totalDeductions = fixedDeductions + simDeductions
+
+    // 最終支給額
+    const finalPay = totalBeforeDeduction - totalDeductions
+
+    return {
+      hourlyPay,
+      fixedPay,
+      salesCommission,
+      basePay,
+      comparePay,
+      selectedPay,
+      isBaseHigher,
+      productBackAmount,
+      totalBeforeDeduction,
+      fixedDeductions,
+      variableDeductions: simDeductions,
+      totalDeductions,
+      finalPay,
+    }
+  }, [settingsState, simWorkHours, simSales, simProductBack, simDeductions])
 
   // 給料日設定を読み込み
   const loadPayDay = useCallback(async () => {
@@ -228,6 +441,33 @@ export default function CompensationSettingsPage() {
     }
   }
 
+  // システム設定を読み込み（税率・サービス料率）
+  const loadSystemSettings = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('system_settings')
+        .select('setting_key, setting_value')
+        .eq('store_id', storeId)
+        .in('setting_key', ['tax_rate', 'service_fee_rate', 'rounding_unit', 'rounding_method'])
+
+      if (error) throw error
+      if (data) {
+        const settings: Record<string, string | number> = {}
+        data.forEach(item => {
+          settings[item.setting_key] = item.setting_value
+        })
+        setSystemSettings({
+          tax_rate: Number(settings.tax_rate) || 10,
+          service_fee_rate: Number(settings.service_fee_rate) || 0,
+          rounding_unit: Number(settings.rounding_unit) || 1,
+          rounding_method: Number(settings.rounding_method) || 1,
+        })
+      }
+    } catch (error) {
+      console.error('システム設定読み込みエラー:', error)
+    }
+  }, [storeId])
+
   const loadCasts = useCallback(async () => {
     setLoading(true)
     try {
@@ -246,6 +486,60 @@ export default function CompensationSettingsPage() {
       toast.error('キャストの読み込みに失敗しました')
     } finally {
       setLoading(false)
+    }
+  }, [storeId])
+
+  // 売上設定を取得（ヘルプ除外名、集計方法など）
+  const loadSalesSettings = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('sales_settings')
+        .select('*')
+        .eq('store_id', storeId)
+        .maybeSingle()
+
+      if (error) throw error
+      if (data) {
+        console.log('=== 売上設定 (from DB) ===', {
+          item_help_distribution_method: data.item_help_distribution_method,
+          item_rounding_method: data.item_rounding_method,
+          item_rounding_position: data.item_rounding_position,
+          published_aggregation: data.published_aggregation,
+        })
+        if (data.non_help_staff_names) {
+          setNonHelpStaffNames(data.non_help_staff_names)
+        }
+        // 売上設定の集計方法をタブの初期値に反映（'none'の場合はitem_basedをデフォルトに）
+        if (data.published_aggregation && data.published_aggregation !== 'none') {
+          setSalesViewMode(data.published_aggregation as 'item_based' | 'receipt_based')
+        }
+        // 計算ロジック用の設定を保存
+        const newSettings = {
+          item_exclude_consumption_tax: data.item_exclude_consumption_tax ?? true,
+          item_exclude_service_charge: data.item_exclude_service_charge ?? false,
+          item_rounding_method: data.item_rounding_method ?? 'floor_100',
+          item_rounding_position: data.item_rounding_position ?? 100,
+          item_rounding_timing: data.item_rounding_timing ?? 'per_item',
+          item_help_distribution_method: data.item_help_distribution_method ?? 'all_to_nomination',
+          item_multi_cast_distribution: data.item_multi_cast_distribution ?? 'nomination_only',
+          item_help_sales_inclusion: data.item_help_sales_inclusion ?? 'both',
+          item_help_ratio: data.item_help_ratio ?? 100,
+          item_nomination_distribute_all: data.item_nomination_distribute_all ?? false,
+          receipt_exclude_consumption_tax: data.receipt_exclude_consumption_tax ?? true,
+          receipt_exclude_service_charge: data.receipt_exclude_service_charge ?? false,
+          receipt_rounding_method: data.receipt_rounding_method ?? 'floor_100',
+          receipt_rounding_position: data.receipt_rounding_position ?? 100,
+          receipt_rounding_timing: data.receipt_rounding_timing ?? 'per_item',
+          receipt_help_distribution_method: data.receipt_help_distribution_method ?? 'all_to_nomination',
+          receipt_multi_cast_distribution: data.receipt_multi_cast_distribution ?? 'nomination_only',
+          receipt_help_sales_inclusion: data.receipt_help_sales_inclusion ?? 'both',
+          receipt_help_ratio: data.receipt_help_ratio ?? 100,
+        }
+        console.log('=== 適用する設定 ===', newSettings)
+        setSalesSettings(newSettings)
+      }
+    } catch (error) {
+      console.error('売上設定読み込みエラー:', error)
     }
   }, [storeId])
 
@@ -299,7 +593,9 @@ export default function CompensationSettingsPage() {
   useEffect(() => {
     loadCasts()
     loadPayDay()
-  }, [loadCasts, loadPayDay])
+    loadSalesSettings()
+    loadSystemSettings()
+  }, [loadCasts, loadPayDay, loadSalesSettings, loadSystemSettings])
 
   useEffect(() => {
     if (selectedCastId) {
@@ -319,6 +615,496 @@ export default function CompensationSettingsPage() {
   const selectedCast = useMemo(() => {
     return casts.find(c => c.id === selectedCastId)
   }, [casts, selectedCastId])
+
+  // キャスト選択肢（選択中キャスト名 + A〜D + ヘルプ除外名）
+  const availableCastOptions = useMemo(() => {
+    const baseCasts = ['A', 'B', 'C', 'D']
+    const options = new Set<string>()
+
+    // 選択中キャスト名を追加
+    if (selectedCast) {
+      options.add(selectedCast.name)
+    }
+
+    // A〜Dを追加
+    baseCasts.forEach(c => options.add(c))
+
+    // ヘルプ除外名を追加
+    nonHelpStaffNames.forEach(name => options.add(name))
+
+    return Array.from(options)
+  }, [selectedCast, nonHelpStaffNames])
+
+
+  // サンプル伝票のプレビューデータ（sales-settingsと完全に同じロジック）
+  const previewData = useMemo(() => {
+    const isItemBased = salesViewMode === 'item_based'
+    const taxRate = systemSettings.tax_rate / 100
+    const serviceRate = systemSettings.service_fee_rate / 100
+    const receiptSubtotal = sampleItems.reduce((sum, item) => sum + item.basePrice, 0)
+
+    // =========================================
+    // 推し小計（item_based）ロジック
+    // =========================================
+    if (isItemBased) {
+      const excludeTax = salesSettings.item_exclude_consumption_tax
+      const excludeService = salesSettings.item_exclude_service_charge
+      const roundingPosition = salesSettings.item_rounding_position ?? 100
+      const roundingMethod = salesSettings.item_rounding_method ?? 'floor_100'
+      const roundingTiming = salesSettings.item_rounding_timing ?? 'per_item'
+      const { type: roundingType } = parseRoundingMethod(roundingMethod)
+
+      const salesAttribution = salesSettings.item_multi_cast_distribution ?? 'nomination_only'
+      const helpDistMethod = salesSettings.item_help_distribution_method ?? 'all_to_nomination'
+      const helpRatio = salesSettings.item_help_ratio ?? 100
+      const giveHelpSales = salesSettings.item_help_sales_inclusion === 'both'
+      const nominationDistributeAll = salesSettings.item_nomination_distribute_all ?? false
+
+      // 推しがヘルプ扱いにしない推し名のみの場合（例：フリー）
+      const nominationIsNonHelpOnly = sampleNominations.length > 0 &&
+        sampleNominations.every(n => nonHelpStaffNames.includes(n))
+
+      const items = sampleItems.map(item => {
+        // キャスト商品のみの場合、キャスト名が入っていない商品は除外
+        if (item.castNames.length === 0) {
+          return { ...item, castBreakdown: [] as { cast: string; sales: number; isSelf: boolean }[], notIncluded: true }
+        }
+
+        let calcPrice = item.basePrice
+        let afterTaxPrice = item.basePrice
+        let afterTaxRounded = item.basePrice
+
+        // 「商品ごと」の場合のみ、商品単位で計算基準と端数処理を適用
+        if (roundingTiming === 'per_item') {
+          if (excludeTax) {
+            const taxPercent = Math.round(taxRate * 100)
+            calcPrice = Math.floor(calcPrice * 100 / (100 + taxPercent))
+            afterTaxPrice = calcPrice
+          }
+          afterTaxRounded = applyRounding(afterTaxPrice, roundingPosition, roundingType)
+          if (excludeService && serviceRate > 0) {
+            const servicePercent = Math.round(serviceRate * 100)
+            const afterServicePrice = Math.floor(afterTaxRounded * (100 + servicePercent) / 100)
+            calcPrice = applyRounding(afterServicePrice, roundingPosition, roundingType)
+          } else {
+            calcPrice = afterTaxRounded
+          }
+        }
+
+        const roundedBase = roundingTiming === 'per_item'
+          ? applyRounding(calcPrice, roundingPosition, roundingType)
+          : calcPrice
+
+        const castBreakdown: { cast: string; sales: number; isSelf: boolean }[] = []
+
+        // 商品上の推しキャスト（フリーなどの場合は全キャストが推し扱い）
+        const nominationCastsOnItem = nominationIsNonHelpOnly
+          ? item.castNames
+          : item.castNames.filter(c => sampleNominations.includes(c) || nonHelpStaffNames.includes(c))
+        const helpCastsOnItem = nominationIsNonHelpOnly
+          ? []
+          : item.castNames.filter(c => !sampleNominations.includes(c) && !nonHelpStaffNames.includes(c))
+
+        if (salesAttribution === 'all_equal') {
+          // ヘルプ商品も売上に含める
+          let nominationShare = roundedBase
+          let helpShare = 0
+
+          if (helpDistMethod === 'equal') {
+            const hasNomination = nominationCastsOnItem.length > 0 || sampleNominations.length > 0
+            const hasHelp = helpCastsOnItem.length > 0
+            if (hasNomination && hasHelp) {
+              nominationShare = Math.floor(roundedBase / 2)
+              helpShare = roundedBase - nominationShare
+            } else if (hasNomination) {
+              nominationShare = roundedBase
+            } else {
+              nominationShare = 0
+              helpShare = roundedBase
+            }
+          } else if (helpDistMethod === 'ratio') {
+            const hasNomination = nominationCastsOnItem.length > 0 || sampleNominations.length > 0
+            const hasHelp = helpCastsOnItem.length > 0
+            if (hasNomination && hasHelp) {
+              nominationShare = Math.floor(roundedBase * helpRatio / 100)
+              helpShare = roundedBase - nominationShare
+            } else if (hasNomination) {
+              nominationShare = roundedBase
+            } else {
+              nominationShare = 0
+              helpShare = roundedBase
+            }
+          } else if (helpDistMethod === 'equal_per_person') {
+            // 均等割: 全員で等分
+            const totalCasts = item.castNames.length
+            const perPersonAmount = Math.floor(roundedBase / totalCasts)
+            item.castNames.forEach(c => {
+              const isNomination = nominationIsNonHelpOnly || sampleNominations.includes(c) || nonHelpStaffNames.includes(c)
+              castBreakdown.push({
+                cast: c,
+                sales: isNomination || giveHelpSales ? perPersonAmount : 0,
+                isSelf: isNomination,
+              })
+            })
+            // 商品についていない推しの処理（均等割では常に推しにも分配）
+            const nominationsNotOnItem = sampleNominations.filter(n => !item.castNames.includes(n))
+            if (nominationsNotOnItem.length > 0) {
+              const totalPeople = totalCasts + nominationsNotOnItem.length
+              const perPersonAmountAll = Math.floor(roundedBase / totalPeople)
+              castBreakdown.length = 0
+              item.castNames.forEach(c => {
+                const isNomination = nominationIsNonHelpOnly || sampleNominations.includes(c) || nonHelpStaffNames.includes(c)
+                castBreakdown.push({
+                  cast: c,
+                  sales: isNomination || giveHelpSales ? perPersonAmountAll : 0,
+                  isSelf: isNomination,
+                })
+              })
+              nominationsNotOnItem.forEach(nom => {
+                castBreakdown.push({ cast: nom, sales: perPersonAmountAll, isSelf: true })
+              })
+            }
+          }
+
+          // equal_per_person以外の場合の分配ロジック
+          if (helpDistMethod !== 'equal_per_person' && nominationCastsOnItem.length > 0) {
+            if (nominationDistributeAll && sampleNominations.length > 0) {
+              // 全推しに分配（商品についていない推しにも）
+              const perNominationAmount = Math.floor(nominationShare / sampleNominations.length)
+              sampleNominations.forEach(nom => {
+                castBreakdown.push({ cast: nom, sales: perNominationAmount, isSelf: true })
+              })
+            } else {
+              // 商品についている推しのみに分配
+              const perNominationAmount = Math.floor(nominationShare / nominationCastsOnItem.length)
+              nominationCastsOnItem.forEach(c => {
+                castBreakdown.push({ cast: c, sales: perNominationAmount, isSelf: true })
+              })
+            }
+            // ヘルプへの分配
+            if (helpCastsOnItem.length > 0) {
+              const perHelpAmount = giveHelpSales ? Math.floor(helpShare / helpCastsOnItem.length) : 0
+              helpCastsOnItem.forEach(c => {
+                castBreakdown.push({ cast: c, sales: perHelpAmount, isSelf: false })
+              })
+            }
+          } else if (helpDistMethod !== 'equal_per_person') {
+            // 推しがいない商品（ヘルプのみ）
+            if (helpCastsOnItem.length > 0) {
+              const perHelpAmount = giveHelpSales ? Math.floor(helpShare / helpCastsOnItem.length) : 0
+              helpCastsOnItem.forEach(c => {
+                castBreakdown.push({ cast: c, sales: perHelpAmount, isSelf: false })
+              })
+            }
+            // 推しに分配（推しがいない商品でも推しに加算）
+            if (sampleNominations.length > 0) {
+              const perNominationAmount = Math.floor(nominationShare / sampleNominations.length)
+              sampleNominations.forEach(nom => {
+                castBreakdown.push({ cast: nom, sales: perNominationAmount, isSelf: true })
+              })
+            }
+          }
+        } else {
+          // 推しのみ: 推しの分だけ計上
+          if (nominationCastsOnItem.length > 0) {
+            const perNominationAmount = Math.floor(roundedBase / item.castNames.length)
+            nominationCastsOnItem.forEach(c => {
+              castBreakdown.push({ cast: c, sales: perNominationAmount, isSelf: true })
+            })
+            helpCastsOnItem.forEach(c => {
+              castBreakdown.push({ cast: c, sales: 0, isSelf: false })
+            })
+          } else {
+            helpCastsOnItem.forEach(c => {
+              castBreakdown.push({ cast: c, sales: 0, isSelf: false })
+            })
+          }
+        }
+
+        return { ...item, castBreakdown, notIncluded: false }
+      })
+
+      // 売上集計
+      let selfSales = 0
+      let helpSales = 0
+      items.forEach(item => {
+        if (item.notIncluded) return
+        item.castBreakdown.forEach(cb => {
+          if (cb.isSelf) selfSales += cb.sales
+          else helpSales += cb.sales
+        })
+      })
+
+      // 伝票合計の計算（サービス料・端数処理込み）
+      const receiptServiceFee = Math.floor(receiptSubtotal * serviceRate)
+      const receiptBeforeRounding = receiptSubtotal + receiptServiceFee
+      const applySystemRounding = (amount: number) => {
+        const unit = systemSettings.rounding_unit || 1
+        switch (systemSettings.rounding_method) {
+          case 0: return Math.ceil(amount / unit) * unit
+          case 1: return Math.floor(amount / unit) * unit
+          case 2: return Math.round(amount / unit) * unit
+          default: return amount
+        }
+      }
+      const receiptTotal = applySystemRounding(receiptBeforeRounding)
+      const receiptRoundingDiff = receiptTotal - receiptBeforeRounding
+
+      return {
+        items,
+        receiptSubtotal,
+        receiptServiceFee,
+        receiptBeforeRounding,
+        receiptTotal,
+        receiptRoundingDiff,
+        selfSales,
+        helpSales,
+        totalSales: selfSales + helpSales,
+        receiptTotalExcludingTax: sampleItems.reduce((sum, item) => sum + Math.floor(item.basePrice * 100 / 110), 0),
+      }
+    }
+
+    // =========================================
+    // 伝票小計（receipt_based）ロジック
+    // =========================================
+    const excludeTax = salesSettings.receipt_exclude_consumption_tax
+    const roundingPosition = salesSettings.receipt_rounding_position ?? 100
+    const roundingMethod = salesSettings.receipt_rounding_method ?? 'floor_100'
+    const roundingTiming = salesSettings.receipt_rounding_timing ?? 'per_item'
+    const { type: roundingType } = parseRoundingMethod(roundingMethod)
+    const includeHelpItems = salesSettings.receipt_multi_cast_distribution === 'all_equal'
+    const helpDistMethod = salesSettings.receipt_help_distribution_method ?? 'all_to_nomination'
+    const helpRatio = salesSettings.receipt_help_ratio ?? 50
+    const giveHelpSales = salesSettings.receipt_help_sales_inclusion === 'both'
+
+    const items = sampleItems.map(item => {
+      const castsOnItem = item.castNames.filter(c => c !== '-')
+
+      // 推しに該当するキャスト（ヘルプ扱いにしない名前も含む）
+      const selfCasts = castsOnItem.filter(c =>
+        sampleNominations.includes(c) || nonHelpStaffNames.includes(c)
+      )
+      const helpCasts = castsOnItem.filter(c =>
+        !sampleNominations.includes(c) && !nonHelpStaffNames.includes(c)
+      )
+
+      const isSelfOnly = castsOnItem.length === 0 || (selfCasts.length > 0 && helpCasts.length === 0)
+      const isHelpOnly = helpCasts.length > 0 && selfCasts.length === 0
+      const isMixed = selfCasts.length > 0 && helpCasts.length > 0
+
+      const castBreakdown: { cast: string; sales: number; isSelf: boolean }[] = []
+
+      // 商品ごとに税計算・端数処理を適用
+      let itemAmount = item.basePrice
+
+      if (roundingTiming === 'per_item') {
+        if (excludeTax) {
+          const taxPercent = Math.round(taxRate * 100)
+          itemAmount = Math.floor(itemAmount * 100 / (100 + taxPercent))
+        }
+        itemAmount = applyRounding(itemAmount, roundingPosition, roundingType)
+      }
+
+      if (castsOnItem.length > 0) {
+        // 商品上のキャストごとの内訳
+        castsOnItem.forEach(c => {
+          const isSelf = sampleNominations.includes(c) || nonHelpStaffNames.includes(c)
+          castBreakdown.push({ cast: c, isSelf, sales: 0 })
+        })
+
+        // 伝票小計では常に選択された推し全員に分配する
+        const nominationsNotInBreakdown = sampleNominations.filter(
+          nom => !castBreakdown.some(cb => cb.cast === nom)
+        )
+        nominationsNotInBreakdown.forEach(nom => {
+          castBreakdown.push({ cast: nom, isSelf: true, sales: 0 })
+        })
+
+        if (isHelpOnly && !includeHelpItems) {
+          // ヘルプのみの商品で、含めない設定 → 売上0
+        } else if (isSelfOnly) {
+          // 推しのみの商品 → 選択された推し全員に等分
+          if (sampleNominations.length > 0) {
+            const perNomAmount = Math.floor(itemAmount / sampleNominations.length)
+            let nomIdx = 0
+            castBreakdown.forEach(cb => {
+              if (cb.isSelf) {
+                cb.sales = nomIdx === sampleNominations.length - 1
+                  ? itemAmount - perNomAmount * (sampleNominations.length - 1)
+                  : perNomAmount
+                nomIdx++
+              }
+            })
+          }
+        } else if (isMixed || (isHelpOnly && includeHelpItems)) {
+          // 混在 or ヘルプのみで含める設定 → 分配方法による
+          const helpCount = helpCasts.length
+
+          if (helpDistMethod === 'all_to_nomination') {
+            if (sampleNominations.length > 0) {
+              const perNomAmount = Math.floor(itemAmount / sampleNominations.length)
+              let nomIdx = 0
+              castBreakdown.forEach(cb => {
+                if (cb.isSelf) {
+                  cb.sales = nomIdx === sampleNominations.length - 1
+                    ? itemAmount - perNomAmount * (sampleNominations.length - 1)
+                    : perNomAmount
+                  nomIdx++
+                }
+              })
+            }
+          } else if (helpDistMethod === 'equal') {
+            const selfShare = Math.floor(itemAmount / 2)
+            const helpShare = itemAmount - selfShare
+
+            if (sampleNominations.length > 0) {
+              const perNomAmount = Math.floor(selfShare / sampleNominations.length)
+              let nomIdx = 0
+              castBreakdown.forEach(cb => {
+                if (cb.isSelf) {
+                  cb.sales = nomIdx === sampleNominations.length - 1
+                    ? selfShare - perNomAmount * (sampleNominations.length - 1)
+                    : perNomAmount
+                  nomIdx++
+                }
+              })
+            }
+            if (helpCount > 0 && giveHelpSales) {
+              const perHelpAmount = Math.floor(helpShare / helpCount)
+              castBreakdown.forEach(cb => {
+                if (!cb.isSelf) cb.sales = perHelpAmount
+              })
+            }
+          } else if (helpDistMethod === 'equal_per_person') {
+            const totalPeople = sampleNominations.length + helpCount
+            const perPerson = Math.floor(itemAmount / totalPeople)
+
+            let idx = 0
+            castBreakdown.forEach(cb => {
+              if (cb.isSelf || giveHelpSales) {
+                cb.sales = idx === totalPeople - 1
+                  ? itemAmount - perPerson * (totalPeople - 1)
+                  : perPerson
+                idx++
+              }
+            })
+          } else if (helpDistMethod === 'ratio') {
+            const selfShare = Math.floor(itemAmount * helpRatio / 100)
+            const helpShare = itemAmount - selfShare
+
+            if (sampleNominations.length > 0) {
+              const perNomAmount = Math.floor(selfShare / sampleNominations.length)
+              let nomIdx = 0
+              castBreakdown.forEach(cb => {
+                if (cb.isSelf) {
+                  cb.sales = nomIdx === sampleNominations.length - 1
+                    ? selfShare - perNomAmount * (sampleNominations.length - 1)
+                    : perNomAmount
+                  nomIdx++
+                }
+              })
+            }
+            if (helpCount > 0 && giveHelpSales) {
+              const perHelpAmount = Math.floor(helpShare / helpCount)
+              castBreakdown.forEach(cb => {
+                if (!cb.isSelf) cb.sales = perHelpAmount
+              })
+            }
+          }
+        }
+      } else {
+        // キャスト名なしの場合は推しに計上（複数推しの場合は等分）
+        if (sampleNominations.length > 0) {
+          const perNomAmount = Math.floor(itemAmount / sampleNominations.length)
+          sampleNominations.forEach((nom, idx) => {
+            const sales = idx === sampleNominations.length - 1
+              ? itemAmount - perNomAmount * (sampleNominations.length - 1)
+              : perNomAmount
+            castBreakdown.push({ cast: nom, isSelf: true, sales })
+          })
+        }
+      }
+
+      return { ...item, castBreakdown, notIncluded: false }
+    })
+
+    // 売上集計
+    let selfSales = 0
+    let helpSales = 0
+    items.forEach(item => {
+      item.castBreakdown.forEach(cb => {
+        if (cb.isSelf) selfSales += cb.sales
+        else helpSales += cb.sales
+      })
+    })
+
+    // 伝票合計の計算（サービス料・端数処理込み）
+    const receiptServiceFee = Math.floor(receiptSubtotal * serviceRate)
+    const receiptBeforeRounding = receiptSubtotal + receiptServiceFee
+    const applySystemRounding = (amount: number) => {
+      const unit = systemSettings.rounding_unit || 1
+      switch (systemSettings.rounding_method) {
+        case 0: return Math.ceil(amount / unit) * unit
+        case 1: return Math.floor(amount / unit) * unit
+        case 2: return Math.round(amount / unit) * unit
+        default: return amount
+      }
+    }
+    const receiptTotal = applySystemRounding(receiptBeforeRounding)
+    const receiptRoundingDiff = receiptTotal - receiptBeforeRounding
+
+    return {
+      items,
+      receiptSubtotal,
+      receiptServiceFee,
+      receiptBeforeRounding,
+      receiptTotal,
+      receiptRoundingDiff,
+      selfSales,
+      helpSales,
+      totalSales: selfSales + helpSales,
+      receiptTotalExcludingTax: sampleItems.reduce((sum, item) => sum + Math.floor(item.basePrice * 100 / 110), 0),
+    }
+  }, [sampleItems, sampleNominations, nonHelpStaffNames, salesViewMode, salesSettings, systemSettings])
+
+  // ヘルパー関数
+  const updateItemName = (id: number, name: string) => {
+    setSampleItems(items => items.map(item =>
+      item.id === id ? { ...item, name } : item
+    ))
+  }
+
+  const updateItemPrice = (id: number, basePrice: number) => {
+    setSampleItems(items => items.map(item =>
+      item.id === id ? { ...item, basePrice } : item
+    ))
+  }
+
+  const toggleItemCast = (id: number, cast: string) => {
+    if (cast === '-') {
+      // クリア
+      setSampleItems(items => items.map(item =>
+        item.id === id ? { ...item, castNames: [] } : item
+      ))
+    } else {
+      setSampleItems(items => items.map(item => {
+        if (item.id !== id) return item
+        const newCastNames = item.castNames.includes(cast)
+          ? item.castNames.filter(c => c !== cast)
+          : [...item.castNames, cast]
+        return { ...item, castNames: newCastNames }
+      }))
+    }
+  }
+
+  const removePreviewItem = (id: number) => {
+    setSampleItems(items => items.filter(item => item.id !== id))
+  }
+
+  const addPreviewItem = () => {
+    const newId = Math.max(...sampleItems.map(i => i.id), 0) + 1
+    setSampleItems([...sampleItems, { id: newId, name: '新商品', basePrice: 1000, castNames: [] }])
+  }
 
   // 設定を保存
   const saveSettings = async () => {
@@ -429,6 +1215,96 @@ export default function CompensationSettingsPage() {
           <p style={styles.subtitle}>店舗: {storeName}</p>
         </div>
         <div style={styles.headerRight}>
+          {/* キャスト選択ドロップダウン */}
+          <div style={styles.castSelectorWrapper} ref={dropdownRef}>
+            <button
+              onClick={() => setShowCastDropdown(!showCastDropdown)}
+              style={styles.castSelectorBtn}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#2980b9'}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#3498db'}
+            >
+              <span style={styles.castSelectorIcon}>👤</span>
+              <span style={styles.castSelectorText}>
+                {selectedCast ? selectedCast.name : 'キャストを選択'}
+              </span>
+              <span style={styles.castSelectorArrow}>{showCastDropdown ? '▲' : '▼'}</span>
+            </button>
+
+            {showCastDropdown && (
+              <div style={styles.castDropdown}>
+                <input
+                  type="text"
+                  placeholder="名前で検索..."
+                  value={searchText}
+                  onChange={(e) => setSearchText(e.target.value)}
+                  style={styles.dropdownSearch}
+                  autoFocus
+                />
+                <div style={styles.dropdownFilters}>
+                  {['在籍', '体験', '退店', ''].map((status) => (
+                    <button
+                      key={status || 'all'}
+                      onClick={() => setStatusFilter(status)}
+                      style={{
+                        ...styles.filterBtn,
+                        ...(statusFilter === status ? styles.filterBtnActive : {}),
+                      }}
+                      onMouseEnter={(e) => {
+                        if (statusFilter !== status) {
+                          e.currentTarget.style.backgroundColor = '#e2e8f0'
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (statusFilter !== status) {
+                          e.currentTarget.style.backgroundColor = 'transparent'
+                        }
+                      }}
+                    >
+                      {status || '全員'}
+                    </button>
+                  ))}
+                </div>
+                <div style={styles.dropdownList}>
+                  {filteredCasts.map((cast) => (
+                    <button
+                      key={cast.id}
+                      onClick={() => {
+                        setSelectedCastId(cast.id)
+                        setShowCastDropdown(false)
+                        setSearchText('')
+                      }}
+                      style={{
+                        ...styles.dropdownItem,
+                        ...(selectedCastId === cast.id ? styles.dropdownItemActive : {}),
+                      }}
+                      onMouseEnter={(e) => {
+                        if (selectedCastId !== cast.id) {
+                          e.currentTarget.style.backgroundColor = '#f1f5f9'
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (selectedCastId !== cast.id) {
+                          e.currentTarget.style.backgroundColor = 'white'
+                        }
+                      }}
+                    >
+                      <span style={styles.dropdownItemName}>{cast.name}</span>
+                      <span style={{
+                        ...styles.dropdownItemStatus,
+                        color: cast.status === '在籍' ? '#10b981' : cast.status === '体験' ? '#f59e0b' : '#94a3b8',
+                      }}>
+                        {cast.status}
+                      </span>
+                    </button>
+                  ))}
+                  {filteredCasts.length === 0 && (
+                    <p style={styles.dropdownEmpty}>該当するキャストがいません</p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* 店舗共通設定 */}
           <div style={styles.headerBox}>
             <span style={styles.headerBoxLabel}>給料日</span>
@@ -481,56 +1357,6 @@ export default function CompensationSettingsPage() {
       </div>
 
       <div style={styles.layout}>
-        {/* キャスト選択サイドバー */}
-        <div style={styles.sidebar}>
-          <h3 style={styles.sidebarTitle}>キャスト選択</h3>
-
-          <input
-            type="text"
-            placeholder="名前で検索..."
-            value={searchText}
-            onChange={(e) => setSearchText(e.target.value)}
-            style={styles.searchInput}
-          />
-
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            style={styles.filterSelect}
-          >
-            <option value="">全て</option>
-            <option value="在籍">在籍</option>
-            <option value="体験">体験</option>
-            <option value="退店">退店</option>
-          </select>
-
-          <div style={styles.castList}>
-            {filteredCasts.map((cast) => (
-              <button
-                key={cast.id}
-                onClick={() => setSelectedCastId(cast.id)}
-                style={{
-                  ...styles.castItem,
-                  ...(selectedCastId === cast.id ? styles.castItemActive : {}),
-                }}
-              >
-                <div style={styles.castInfo}>
-                  <span style={styles.castName}>{cast.name}</span>
-                  <span style={{
-                    ...styles.castStatus,
-                    color: cast.status === '在籍' ? '#10b981' : cast.status === '体験' ? '#f59e0b' : '#94a3b8',
-                  }}>
-                    {cast.status}
-                  </span>
-                </div>
-              </button>
-            ))}
-            {filteredCasts.length === 0 && (
-              <p style={styles.noResults}>該当するキャストがいません</p>
-            )}
-          </div>
-        </div>
-
         {/* メインコンテンツ */}
         <div style={styles.main}>
           {selectedCast && settingsState ? (
@@ -818,7 +1644,386 @@ export default function CompensationSettingsPage() {
             </>
           ) : (
             <div style={styles.emptyState}>
-              <p>左のリストからキャストを選択してください</p>
+              <p style={styles.emptyIcon}>👤</p>
+              <p style={styles.emptyText}>上部のボタンからキャストを選択してください</p>
+            </div>
+          )}
+        </div>
+
+        {/* サンプル伝票パネル */}
+        <div style={styles.receiptPanelWrapper}>
+          {/* タブ切り替え（パネル外） */}
+          <div style={styles.salesTabs}>
+            <button
+              onClick={() => setSalesViewMode('item_based')}
+              style={{
+                ...styles.salesTab,
+                ...(salesViewMode === 'item_based' ? styles.salesTabActive : {}),
+              }}
+            >
+              推し小計
+            </button>
+            <button
+              onClick={() => setSalesViewMode('receipt_based')}
+              style={{
+                ...styles.salesTab,
+                ...(salesViewMode === 'receipt_based' ? styles.salesTabActive : {}),
+              }}
+            >
+              伝票小計
+            </button>
+          </div>
+
+          <div style={styles.receiptPanel}>
+          {/* 推しキャスト選択（複数選択可能） */}
+          <div style={styles.nominationSelectWrapper}>
+            <span style={styles.nominationLabel}>推し（複数選択可）:</span>
+            <div style={styles.nominationSelect}>
+              {availableCastOptions.map(cast => (
+                <button
+                  key={cast}
+                  onClick={() => {
+                    if (sampleNominations.includes(cast)) {
+                      setSampleNominations(sampleNominations.filter(n => n !== cast))
+                    } else {
+                      setSampleNominations([...sampleNominations, cast])
+                    }
+                  }}
+                  style={{
+                    ...styles.nominationBtn,
+                    ...(sampleNominations.includes(cast) ? styles.nominationBtnActive : {}),
+                    ...(nonHelpStaffNames.includes(cast) ? styles.nominationBtnNonHelp : {}),
+                    ...(sampleNominations.includes(cast) && nonHelpStaffNames.includes(cast) ? styles.nominationBtnNonHelpActive : {}),
+                  }}
+                >
+                  {cast}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* サンプル伝票プレビュー */}
+          <div style={styles.receiptPreview}>
+            <div style={styles.receiptHeader}>
+              <span>サンプル伝票</span>
+              <span style={styles.oshiLabel}>
+                推し: {sampleNominations.length > 0 ? sampleNominations.join(', ') : 'なし'}
+              </span>
+            </div>
+
+            <div style={styles.tableHeader}>
+              <span style={styles.tableHeaderName}>商品名</span>
+              <span style={styles.tableHeaderCast}>キャスト</span>
+              <span style={styles.tableHeaderPrice}>金額</span>
+            </div>
+
+            <div style={styles.receiptItemsScroll}>
+              {previewData.items.map((item) => (
+                <div key={item.id} style={styles.receiptItem}>
+                  <div style={styles.receiptItemRow}>
+                    <div style={styles.itemNameCol}>
+                      <input
+                        type="text"
+                        value={item.name}
+                        onChange={(e) => updateItemName(item.id, e.target.value)}
+                        style={styles.itemNameInput}
+                      />
+                    </div>
+                    <div style={styles.itemCastCol}>
+                      <span style={styles.itemCastDisplay}>
+                        {item.castNames.length > 0 ? item.castNames.join(',') : '-'}
+                      </span>
+                    </div>
+                    <div style={styles.itemPriceCol}>
+                      <input
+                        type="number"
+                        value={item.basePrice}
+                        onChange={(e) => updateItemPrice(item.id, parseInt(e.target.value) || 0)}
+                        style={styles.itemPriceInput}
+                      />
+                    </div>
+                    <button
+                      onClick={() => removePreviewItem(item.id)}
+                      style={styles.removeItemBtn}
+                      title="削除"
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <div style={styles.castSelectRow}>
+                    <span style={styles.castSelectLabel}>キャスト:</span>
+                    {availableCastOptions.map(cast => (
+                      <button
+                        key={cast}
+                        onClick={() => toggleItemCast(item.id, cast)}
+                        style={{
+                          ...styles.castSelectBtn,
+                          ...(item.castNames.includes(cast) ? styles.castSelectBtnActive : {}),
+                        }}
+                      >
+                        {cast}
+                      </button>
+                    ))}
+                    {item.castNames.length > 0 && (
+                      <button
+                        onClick={() => toggleItemCast(item.id, '-')}
+                        style={styles.clearCastBtn}
+                        title="キャストをクリア"
+                      >
+                        クリア
+                      </button>
+                    )}
+                  </div>
+                  <div style={styles.receiptItemDetails}>
+                    {item.notIncluded ? (
+                      <span style={styles.skipTag}>売上対象外</span>
+                    ) : item.castBreakdown && item.castBreakdown.length > 0 ? (
+                      <div style={styles.castBreakdownContainer}>
+                        {item.castBreakdown.map((cb, idx) => (
+                          <div key={idx} style={styles.castBreakdownRow}>
+                            <span style={{
+                              ...styles.castBreakdownName,
+                              color: cb.isSelf ? '#ec4899' : '#64748b',
+                            }}>
+                              {cb.cast}
+                              <span style={styles.castBreakdownType}>
+                                ({cb.isSelf ? '推し' : 'ヘルプ'})
+                              </span>
+                            </span>
+                            <span style={{
+                              ...styles.castBreakdownSales,
+                              color: cb.sales > 0 ? '#10b981' : '#94a3b8',
+                            }}>
+                              売上: ¥{cb.sales.toLocaleString()}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+                        キャストなし
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+              <button onClick={addPreviewItem} style={styles.addItemBtn}>
+                + 商品を追加
+              </button>
+            </div>
+
+            {/* 伝票合計 */}
+            <div style={styles.receiptTotal}>
+              <div style={styles.subtotalRow}>
+                <span>小計（税込）</span>
+                <span>¥{previewData.receiptSubtotal.toLocaleString()}</span>
+              </div>
+              {/* サービス料 */}
+              {previewData.receiptServiceFee > 0 && (
+                <div style={styles.subtotalRow}>
+                  <span>サービス料（{systemSettings.service_fee_rate}%）</span>
+                  <span>¥{previewData.receiptServiceFee.toLocaleString()}</span>
+                </div>
+              )}
+              {/* 端数処理 */}
+              {previewData.receiptRoundingDiff !== 0 && (
+                <div style={styles.subtotalRow}>
+                  <span>端数処理（{systemSettings.rounding_unit}の位で{
+                    systemSettings.rounding_method === 0 ? '切り上げ' :
+                    systemSettings.rounding_method === 1 ? '切り捨て' : '四捨五入'
+                  }）</span>
+                  <span style={{ color: previewData.receiptRoundingDiff > 0 ? '#10b981' : '#ef4444' }}>
+                    {previewData.receiptRoundingDiff > 0 ? '+' : ''}¥{previewData.receiptRoundingDiff.toLocaleString()}
+                  </span>
+                </div>
+              )}
+              <div style={styles.totalRow}>
+                <span>伝票合計</span>
+                <span>¥{previewData.receiptTotal.toLocaleString()}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* 売上サマリー */}
+          <div style={styles.salesSummary}>
+            <div style={styles.salesSummaryHeader}>
+              {salesViewMode === 'item_based' ? '推し小計' : '伝票小計'}の売上
+            </div>
+            <div style={styles.salesSummaryRow}>
+              <span>推し売上（税抜）</span>
+              <span style={styles.salesAmount}>{previewData.selfSales.toLocaleString()}円</span>
+            </div>
+            {salesViewMode === 'item_based' && (
+              <div style={styles.salesSummaryRow}>
+                <span>ヘルプ売上（税抜）</span>
+                <span style={styles.salesAmount}>{previewData.helpSales.toLocaleString()}円</span>
+              </div>
+            )}
+            <div style={styles.salesSummaryTotal}>
+              <span>合計</span>
+              <span style={styles.salesTotalAmount}>{previewData.totalSales.toLocaleString()}円</span>
+            </div>
+          </div>
+        </div>
+        </div>
+
+        {/* シミュレーションパネル */}
+        <div style={styles.simulationPanel}>
+          <h3 style={styles.simulationTitle}>シミュレーション</h3>
+
+          {selectedCast && settingsState ? (
+            <>
+            <div style={styles.simInputSection}>
+              <div style={styles.simInputRow}>
+                <label style={styles.simLabel}>勤務時間</label>
+                <div style={styles.simInputGroup}>
+                  <input
+                    type="number"
+                    value={simWorkHours}
+                    onChange={(e) => setSimWorkHours(Number(e.target.value))}
+                    style={styles.simInput}
+                    min={0}
+                    step={0.5}
+                  />
+                  <span style={styles.simUnit}>時間</span>
+                </div>
+              </div>
+
+              <div style={styles.simInputRow}>
+                <label style={styles.simLabel}>売上金額</label>
+                <div style={styles.simInputGroup}>
+                  <input
+                    type="number"
+                    value={simSales}
+                    onChange={(e) => setSimSales(Number(e.target.value))}
+                    style={styles.simInput}
+                    min={0}
+                    step={1000}
+                  />
+                  <span style={styles.simUnit}>円</span>
+                </div>
+              </div>
+
+              {settingsState.useProductBack && (
+                <div style={styles.simInputRow}>
+                  <label style={styles.simLabel}>商品バック</label>
+                  <div style={styles.simInputGroup}>
+                    <input
+                      type="number"
+                      value={simProductBack}
+                      onChange={(e) => setSimProductBack(Number(e.target.value))}
+                      style={styles.simInput}
+                      min={0}
+                      step={100}
+                    />
+                    <span style={styles.simUnit}>円</span>
+                  </div>
+                </div>
+              )}
+
+              <div style={styles.simInputRow}>
+                <label style={styles.simLabel}>変動控除</label>
+                <div style={styles.simInputGroup}>
+                  <input
+                    type="number"
+                    value={simDeductions}
+                    onChange={(e) => setSimDeductions(Number(e.target.value))}
+                    style={styles.simInput}
+                    min={0}
+                    step={100}
+                  />
+                  <span style={styles.simUnit}>円</span>
+                </div>
+              </div>
+            </div>
+
+            {simulationResult && (
+              <div style={styles.simResultSection}>
+                <h4 style={styles.simResultTitle}>計算結果</h4>
+
+                {/* 基本給内訳 */}
+                <div style={styles.simBreakdown}>
+                  {settingsState.useHourly && (
+                    <div style={styles.simBreakdownRow}>
+                      <span>時給分</span>
+                      <span>{simulationResult.hourlyPay.toLocaleString()}円</span>
+                    </div>
+                  )}
+                  {settingsState.useFixed && (
+                    <div style={styles.simBreakdownRow}>
+                      <span>固定額</span>
+                      <span>{simulationResult.fixedPay.toLocaleString()}円</span>
+                    </div>
+                  )}
+                  {settingsState.useSales && (
+                    <div style={styles.simBreakdownRow}>
+                      <span>売上バック</span>
+                      <span>{simulationResult.salesCommission.toLocaleString()}円</span>
+                    </div>
+                  )}
+                  <div style={styles.simBreakdownSubtotal}>
+                    <span>基本給計</span>
+                    <span>{simulationResult.basePay.toLocaleString()}円</span>
+                  </div>
+                </div>
+
+                {/* スライド制の比較 */}
+                {settingsState.useComparison && (
+                  <div style={styles.simComparison}>
+                    <div style={styles.simCompareRow}>
+                      <span style={simulationResult.isBaseHigher ? styles.simCompareWinner : undefined}>
+                        基本: {simulationResult.basePay.toLocaleString()}円
+                      </span>
+                      <span style={styles.simCompareVs}>vs</span>
+                      <span style={!simulationResult.isBaseHigher ? styles.simCompareWinner : undefined}>
+                        比較: {simulationResult.comparePay.toLocaleString()}円
+                      </span>
+                    </div>
+                    <div style={styles.simCompareResult}>
+                      → {simulationResult.isBaseHigher ? '基本給' : '比較対象'}を採用
+                    </div>
+                  </div>
+                )}
+
+                {/* 商品バック */}
+                {settingsState.useProductBack && simulationResult.productBackAmount > 0 && (
+                  <div style={styles.simBreakdownRow}>
+                    <span>商品バック</span>
+                    <span>+{simulationResult.productBackAmount.toLocaleString()}円</span>
+                  </div>
+                )}
+
+                {/* 控除 */}
+                {simulationResult.totalDeductions > 0 && (
+                  <div style={styles.simDeductionSection}>
+                    {simulationResult.fixedDeductions > 0 && (
+                      <div style={styles.simBreakdownRow}>
+                        <span style={styles.simDeductionText}>固定控除</span>
+                        <span style={styles.simDeductionText}>-{simulationResult.fixedDeductions.toLocaleString()}円</span>
+                      </div>
+                    )}
+                    {simulationResult.variableDeductions > 0 && (
+                      <div style={styles.simBreakdownRow}>
+                        <span style={styles.simDeductionText}>変動控除</span>
+                        <span style={styles.simDeductionText}>-{simulationResult.variableDeductions.toLocaleString()}円</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 最終支給額 */}
+                <div style={styles.simFinalPay}>
+                  <span>最終支給額</span>
+                  <span style={styles.simFinalPayAmount}>
+                    {simulationResult.finalPay.toLocaleString()}円
+                  </span>
+                </div>
+              </div>
+            )}
+            </>
+          ) : (
+            <div style={styles.simEmptyState}>
+              <p style={styles.simEmptyText}>キャストを選択してください</p>
             </div>
           )}
         </div>
@@ -1009,7 +2214,7 @@ export default function CompensationSettingsPage() {
 const styles: { [key: string]: React.CSSProperties } = {
   container: {
     padding: '20px',
-    maxWidth: '1400px',
+    maxWidth: '1600px',
     margin: '0 auto',
   },
   header: {
@@ -1037,6 +2242,112 @@ const styles: { [key: string]: React.CSSProperties } = {
     padding: '8px 12px',
     borderRadius: '8px',
     border: '1px solid #e2e8f0',
+  },
+  // キャスト選択ドロップダウン
+  castSelectorWrapper: {
+    position: 'relative' as const,
+  },
+  castSelectorBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    padding: '10px 16px',
+    backgroundColor: '#3498db',
+    color: 'white',
+    border: 'none',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    fontSize: '14px',
+    fontWeight: '600',
+    minWidth: '180px',
+    transition: 'background-color 0.1s ease',
+  },
+  castSelectorIcon: {
+    fontSize: '16px',
+  },
+  castSelectorText: {
+    flex: 1,
+    textAlign: 'left' as const,
+  },
+  castSelectorArrow: {
+    fontSize: '10px',
+    opacity: 0.8,
+  },
+  castDropdown: {
+    position: 'absolute' as const,
+    top: '100%',
+    left: 0,
+    marginTop: '4px',
+    backgroundColor: 'white',
+    borderRadius: '10px',
+    boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+    width: '280px',
+    zIndex: 100,
+    overflow: 'hidden',
+    animation: 'none',
+  },
+  dropdownSearch: {
+    width: '100%',
+    padding: '12px 16px',
+    border: 'none',
+    borderBottom: '1px solid #e2e8f0',
+    fontSize: '14px',
+    outline: 'none',
+    boxSizing: 'border-box' as const,
+  },
+  dropdownFilters: {
+    display: 'flex',
+    gap: '4px',
+    padding: '8px 12px',
+    borderBottom: '1px solid #e2e8f0',
+    backgroundColor: '#f8fafc',
+  },
+  filterBtn: {
+    padding: '4px 10px',
+    border: 'none',
+    borderRadius: '4px',
+    backgroundColor: 'transparent',
+    color: '#64748b',
+    fontSize: '12px',
+    cursor: 'pointer',
+    transition: 'background-color 0.1s ease',
+  },
+  filterBtnActive: {
+    backgroundColor: '#3498db',
+    color: 'white',
+  },
+  dropdownList: {
+    maxHeight: '300px',
+    overflowY: 'auto' as const,
+  },
+  dropdownItem: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    padding: '12px 16px',
+    border: 'none',
+    backgroundColor: 'white',
+    cursor: 'pointer',
+    textAlign: 'left' as const,
+    transition: 'background-color 0.1s ease',
+  },
+  dropdownItemActive: {
+    backgroundColor: '#eff6ff',
+  },
+  dropdownItemName: {
+    fontWeight: '500',
+    color: '#1e293b',
+  },
+  dropdownItemStatus: {
+    fontSize: '12px',
+    fontWeight: '500',
+  },
+  dropdownEmpty: {
+    padding: '20px',
+    textAlign: 'center' as const,
+    color: '#94a3b8',
+    fontSize: '13px',
   },
   headerBoxLabel: {
     fontSize: '13px',
@@ -1230,7 +2541,8 @@ const styles: { [key: string]: React.CSSProperties } = {
     padding: '15px 0',
   },
   main: {
-    flex: 1,
+    flex: '0 1 600px',
+    minWidth: '400px',
     backgroundColor: 'white',
     borderRadius: '10px',
     padding: '20px',
@@ -1249,8 +2561,16 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   emptyState: {
     textAlign: 'center' as const,
-    padding: '60px 20px',
+    padding: '80px 20px',
     color: '#7f8c8d',
+  },
+  emptyIcon: {
+    fontSize: '48px',
+    marginBottom: '16px',
+  },
+  emptyText: {
+    fontSize: '16px',
+    color: '#94a3b8',
   },
   section: {
     marginBottom: '30px',
@@ -1496,5 +2816,621 @@ const styles: { [key: string]: React.CSSProperties } = {
     gap: '4px',
     fontSize: '13px',
     whiteSpace: 'nowrap' as const,
+  },
+  // シミュレーションパネル
+  simulationPanel: {
+    width: '300px',
+    flexShrink: 0,
+    backgroundColor: '#f0f9ff',
+    borderRadius: '10px',
+    padding: '20px',
+    border: '1px solid #bae6fd',
+    alignSelf: 'flex-start',
+    position: 'sticky' as const,
+    top: '20px',
+  },
+  simulationTitle: {
+    fontSize: '16px',
+    fontWeight: '600',
+    color: '#0369a1',
+    marginBottom: '16px',
+    margin: '0 0 16px 0',
+  },
+  simInputSection: {
+    marginBottom: '20px',
+  },
+  simInputRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: '12px',
+  },
+  simLabel: {
+    fontSize: '13px',
+    fontWeight: '500',
+    color: '#334155',
+  },
+  simInputGroup: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+  },
+  simInput: {
+    width: '100px',
+    padding: '6px 8px',
+    fontSize: '13px',
+    border: '1px solid #94a3b8',
+    borderRadius: '4px',
+    textAlign: 'right' as const,
+  },
+  simUnit: {
+    fontSize: '12px',
+    color: '#64748b',
+    width: '30px',
+  },
+  simResultSection: {
+    backgroundColor: 'white',
+    borderRadius: '8px',
+    padding: '16px',
+    border: '1px solid #e2e8f0',
+  },
+  simResultTitle: {
+    fontSize: '14px',
+    fontWeight: '600',
+    color: '#334155',
+    marginBottom: '12px',
+    margin: '0 0 12px 0',
+  },
+  simBreakdown: {
+    marginBottom: '12px',
+    paddingBottom: '12px',
+    borderBottom: '1px solid #e2e8f0',
+  },
+  simBreakdownRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    fontSize: '13px',
+    color: '#64748b',
+    marginBottom: '6px',
+  },
+  simBreakdownSubtotal: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    fontSize: '13px',
+    fontWeight: '600',
+    color: '#334155',
+    marginTop: '8px',
+    paddingTop: '8px',
+    borderTop: '1px dashed #cbd5e1',
+  },
+  simComparison: {
+    backgroundColor: '#fef3c7',
+    borderRadius: '6px',
+    padding: '10px',
+    marginBottom: '12px',
+    fontSize: '12px',
+  },
+  simCompareRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '4px',
+  },
+  simCompareVs: {
+    color: '#92400e',
+    fontWeight: '600',
+  },
+  simCompareWinner: {
+    color: '#059669',
+    fontWeight: '600',
+  },
+  simCompareResult: {
+    textAlign: 'center' as const,
+    color: '#92400e',
+    fontWeight: '500',
+  },
+  simDeductionSection: {
+    marginBottom: '12px',
+  },
+  simDeductionText: {
+    color: '#ef4444',
+  },
+  simFinalPay: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '12px',
+    backgroundColor: '#f0fdf4',
+    borderRadius: '6px',
+    marginTop: '8px',
+  },
+  simFinalPayAmount: {
+    fontSize: '18px',
+    fontWeight: '700',
+    color: '#059669',
+  },
+  simEmptyState: {
+    padding: '40px 20px',
+    textAlign: 'center' as const,
+  },
+  simEmptyText: {
+    fontSize: '14px',
+    color: '#94a3b8',
+    margin: 0,
+  },
+  // 伝票詳細パネルWrapper（タブを外に配置）
+  receiptPanelWrapper: {
+    flex: '1 1 520px',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    alignSelf: 'flex-start',
+    position: 'sticky' as const,
+    top: '20px',
+  },
+  // 伝票詳細パネル
+  receiptPanel: {
+    flex: 1,
+    backgroundColor: 'white',
+    borderRadius: '0 8px 8px 8px',
+    padding: '16px',
+    border: '1px solid #e2e8f0',
+    maxHeight: 'calc(100vh - 200px)',
+    overflowY: 'auto' as const,
+  },
+  receiptPanelTitle: {
+    fontSize: '16px',
+    fontWeight: '600',
+    color: '#1e293b',
+    marginBottom: '16px',
+    margin: '0 0 16px 0',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+  },
+  salesTabs: {
+    display: 'flex',
+    gap: '0',
+    marginBottom: '-1px', // パネルと繋げる
+    paddingLeft: '0',
+    position: 'relative' as const,
+    zIndex: 1,
+  },
+  salesTab: {
+    padding: '10px 20px',
+    fontSize: '13px',
+    fontWeight: '500',
+    border: '1px solid #e2e8f0',
+    borderBottom: '1px solid #e2e8f0',
+    borderRadius: '8px 8px 0 0',
+    backgroundColor: '#f8fafc',
+    color: '#64748b',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
+    marginRight: '-1px',
+    position: 'relative' as const,
+  },
+  salesTabActive: {
+    backgroundColor: 'white',
+    color: '#1e293b',
+    fontWeight: '600',
+    borderBottom: '1px solid white',
+    zIndex: 2,
+  },
+  receiptLoading: {
+    padding: '40px 20px',
+    textAlign: 'center' as const,
+    color: '#94a3b8',
+  },
+  salesSummary: {
+    backgroundColor: 'white',
+    borderRadius: '8px',
+    padding: '16px',
+    marginBottom: '16px',
+    border: '1px solid #e2e8f0',
+  },
+  salesSummaryRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    fontSize: '13px',
+    color: '#64748b',
+    marginBottom: '8px',
+  },
+  salesAmount: {
+    fontWeight: '500',
+    color: '#334155',
+  },
+  salesSummaryTotal: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    fontSize: '14px',
+    fontWeight: '600',
+    color: '#334155',
+    marginTop: '8px',
+    paddingTop: '8px',
+    borderTop: '1px solid #e2e8f0',
+  },
+  salesTotalAmount: {
+    color: '#7c3aed',
+    fontSize: '16px',
+  },
+  noSalesData: {
+    padding: '20px',
+    textAlign: 'center' as const,
+    color: '#94a3b8',
+    fontSize: '13px',
+    backgroundColor: 'white',
+    borderRadius: '8px',
+    marginBottom: '16px',
+  },
+  receiptListSection: {
+    marginTop: '8px',
+  },
+  receiptListTitle: {
+    fontSize: '13px',
+    fontWeight: '600',
+    color: '#64748b',
+    margin: '0 0 10px 0',
+  },
+  receiptList: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '8px',
+  },
+  receiptItemHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '6px',
+  },
+  receiptDate: {
+    fontSize: '12px',
+    fontWeight: '600',
+    color: '#334155',
+  },
+  receiptType: {
+    fontSize: '10px',
+    fontWeight: '600',
+    padding: '2px 6px',
+    borderRadius: '4px',
+  },
+  receiptItemBody: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '6px',
+  },
+  receiptNomination: {
+    fontSize: '12px',
+    color: '#64748b',
+  },
+  receiptAmount: {
+    fontSize: '14px',
+    fontWeight: '600',
+    color: '#334155',
+  },
+  receiptItemProduct: {
+    fontSize: '11px',
+    color: '#94a3b8',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap' as const,
+  },
+  receiptMoreItems: {
+    fontSize: '11px',
+    color: '#94a3b8',
+    fontStyle: 'italic',
+  },
+  noReceipts: {
+    padding: '20px',
+    textAlign: 'center' as const,
+    color: '#94a3b8',
+    fontSize: '13px',
+    margin: 0,
+  },
+  receiptEmptyState: {
+    padding: '40px 20px',
+    textAlign: 'center' as const,
+  },
+  receiptEmptyText: {
+    fontSize: '14px',
+    color: '#94a3b8',
+    margin: 0,
+  },
+  // サンプル伝票エディター（sales-settings準拠）
+  nominationSelectWrapper: {
+    marginBottom: '16px',
+  },
+  nominationLabel: {
+    fontSize: '12px',
+    fontWeight: '600',
+    color: '#64748b',
+    marginBottom: '8px',
+    display: 'block',
+  },
+  nominationSelect: {
+    display: 'flex',
+    flexWrap: 'wrap' as const,
+    gap: '8px',
+  },
+  nominationBtn: {
+    width: '36px',
+    height: '36px',
+    borderRadius: '50%',
+    borderWidth: '2px',
+    borderStyle: 'solid',
+    borderColor: '#e2e8f0',
+    backgroundColor: 'white',
+    color: '#64748b',
+    fontSize: '14px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+  },
+  nominationBtnActive: {
+    borderColor: '#ec4899',
+    backgroundColor: '#fdf2f8',
+    color: '#ec4899',
+  },
+  nominationBtnNonHelp: {
+    width: 'auto',
+    minWidth: '36px',
+    padding: '0 10px',
+    borderColor: '#f97316',
+    color: '#f97316',
+  },
+  nominationBtnNonHelpActive: {
+    borderColor: '#f97316',
+    backgroundColor: '#fff7ed',
+    color: '#f97316',
+  },
+  receiptPreview: {
+    backgroundColor: '#f8fafc',
+    borderRadius: '8px',
+    padding: '15px',
+    marginBottom: '15px',
+  },
+  receiptHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    fontSize: '14px',
+    fontWeight: '600',
+    color: '#475569',
+    paddingBottom: '10px',
+    borderBottom: '1px dashed #cbd5e1',
+    marginBottom: '10px',
+  },
+  oshiLabel: {
+    fontSize: '12px',
+    fontWeight: '600',
+    color: '#ec4899',
+    backgroundColor: '#fdf2f8',
+    padding: '2px 8px',
+    borderRadius: '4px',
+  },
+  tableHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    padding: '8px 0',
+    borderBottom: '1px solid #e2e8f0',
+    marginBottom: '10px',
+    fontSize: '11px',
+    fontWeight: '600',
+    color: '#64748b',
+    gap: '8px',
+  },
+  tableHeaderName: {
+    flex: 1,
+    minWidth: 0,
+  },
+  tableHeaderCast: {
+    width: '80px',
+    textAlign: 'center' as const,
+    flexShrink: 0,
+  },
+  tableHeaderPrice: {
+    width: '80px',
+    textAlign: 'right' as const,
+    flexShrink: 0,
+    paddingRight: '28px',
+  },
+  receiptItemsScroll: {
+  },
+  receiptItem: {
+    marginBottom: '12px',
+    paddingBottom: '12px',
+    borderBottom: '1px solid #e2e8f0',
+  },
+  receiptItemRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    marginBottom: '6px',
+  },
+  itemNameCol: {
+    flex: 1,
+    minWidth: 0,
+  },
+  itemCastCol: {
+    width: '80px',
+    flexShrink: 0,
+    textAlign: 'center' as const,
+  },
+  itemCastDisplay: {
+    fontSize: '12px',
+    color: '#64748b',
+    fontWeight: '500',
+  },
+  itemPriceCol: {
+    width: '80px',
+    flexShrink: 0,
+  },
+  itemNameInput: {
+    width: '100%',
+    padding: '4px 6px',
+    fontSize: '12px',
+    border: '1px solid #e2e8f0',
+    borderRadius: '4px',
+    backgroundColor: 'white',
+    boxSizing: 'border-box' as const,
+  },
+  itemPriceInput: {
+    width: '100%',
+    padding: '4px 6px',
+    fontSize: '12px',
+    border: '1px solid #e2e8f0',
+    borderRadius: '4px',
+    backgroundColor: 'white',
+    textAlign: 'right' as const,
+    boxSizing: 'border-box' as const,
+  },
+  removeItemBtn: {
+    width: '20px',
+    height: '20px',
+    padding: 0,
+    border: 'none',
+    borderRadius: '50%',
+    backgroundColor: '#fee2e2',
+    color: '#ef4444',
+    fontSize: '12px',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  castSelectRow: {
+    display: 'flex',
+    gap: '4px',
+    marginTop: '4px',
+    flexWrap: 'wrap' as const,
+    alignItems: 'center',
+  },
+  castSelectLabel: {
+    fontSize: '11px',
+    color: '#94a3b8',
+    marginRight: '4px',
+  },
+  castSelectBtn: {
+    padding: '2px 8px',
+    fontSize: '11px',
+    borderWidth: '1px',
+    borderStyle: 'solid',
+    borderColor: '#e2e8f0',
+    borderRadius: '12px',
+    backgroundColor: 'white',
+    color: '#64748b',
+    cursor: 'pointer',
+  },
+  castSelectBtnActive: {
+    borderColor: '#3b82f6',
+    backgroundColor: '#eff6ff',
+    color: '#3b82f6',
+  },
+  clearCastBtn: {
+    padding: '2px 6px',
+    fontSize: '10px',
+    border: 'none',
+    borderRadius: '12px',
+    backgroundColor: '#f1f5f9',
+    color: '#94a3b8',
+    cursor: 'pointer',
+  },
+  addItemBtn: {
+    width: '100%',
+    padding: '8px',
+    marginTop: '8px',
+    fontSize: '12px',
+    border: '1px dashed #cbd5e1',
+    borderRadius: '6px',
+    backgroundColor: 'transparent',
+    color: '#64748b',
+    cursor: 'pointer',
+  },
+  receiptItemDetails: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    fontSize: '12px',
+    color: '#64748b',
+    marginTop: '6px',
+  },
+  skipTag: {
+    fontSize: '10px',
+    color: '#94a3b8',
+    backgroundColor: '#f1f5f9',
+    padding: '2px 6px',
+    borderRadius: '4px',
+    display: 'inline-block',
+  },
+  castBreakdownContainer: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '4px',
+    width: '100%',
+  },
+  castBreakdownRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '3px 0',
+    borderBottom: '1px dotted #e2e8f0',
+  },
+  castBreakdownName: {
+    fontSize: '11px',
+    fontWeight: '600',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+  },
+  castBreakdownType: {
+    fontSize: '10px',
+    fontWeight: '400',
+    color: '#94a3b8',
+  },
+  castBreakdownSales: {
+    fontWeight: '500',
+    fontSize: '11px',
+  },
+  receiptTotal: {
+    paddingTop: '10px',
+    borderTop: '2px solid #cbd5e1',
+  },
+  subtotalRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    padding: '4px 0',
+    fontSize: '13px',
+    color: '#64748b',
+  },
+  totalRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    padding: '8px 0',
+    fontSize: '15px',
+    fontWeight: '700',
+    color: '#1e293b',
+    borderTop: '1px solid #e2e8f0',
+    marginTop: '4px',
+  },
+  receiptTotalSection: {
+    backgroundColor: 'white',
+    borderRadius: '8px',
+    padding: '12px',
+    marginBottom: '16px',
+    border: '1px solid #e2e8f0',
+  },
+  receiptTotalRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    fontSize: '13px',
+    color: '#64748b',
+    marginBottom: '6px',
+  },
+  salesSummaryHeader: {
+    fontSize: '12px',
+    fontWeight: '600',
+    color: '#7c3aed',
+    marginBottom: '10px',
+    paddingBottom: '8px',
+    borderBottom: '1px solid #e9d5ff',
   },
 }
