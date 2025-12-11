@@ -137,6 +137,7 @@ interface SettingsState {
 
   // 商品別バック
   useProductBack: boolean
+  helpBackCalculationMethod: 'sales_based' | 'full_amount'
 
   // その他
   validFrom: string
@@ -168,6 +169,7 @@ const getDefaultSettingsState = (): SettingsState => ({
   deductionItems: null,
 
   useProductBack: false,
+  helpBackCalculationMethod: 'sales_based',
 
   validFrom: new Date().toISOString().split('T')[0],
   validTo: null,
@@ -200,6 +202,7 @@ const dbToState = (data: CompensationSettings): SettingsState => {
     deductionItems: data.deduction_items,
 
     useProductBack: data.use_product_back ?? false,
+    helpBackCalculationMethod: data.help_back_calculation_method || 'sales_based',
 
     validFrom: data.valid_from,
     validTo: data.valid_to,
@@ -240,6 +243,7 @@ const stateToDb = (state: SettingsState, castId: number, storeId: number, existi
     deduction_enabled: (state.deductionItems && state.deductionItems.length > 0) ? true : false,
     deduction_items: state.deductionItems,
     use_product_back: state.useProductBack,
+    help_back_calculation_method: state.helpBackCalculationMethod,
     valid_from: state.validFrom,
     valid_to: state.validTo,
     is_active: state.isActive,
@@ -525,7 +529,7 @@ export default function CompensationSettingsPage() {
             productId: item.product_id,
             name: item.product_name,
             category: item.category || '',
-            basePrice: item.base_price,
+            basePrice: Number(item.base_price) || 0,
             castNames: item.cast_names || [],
           })))
         }
@@ -946,24 +950,28 @@ export default function CompensationSettingsPage() {
 
         // 商品バックの計算（商品バックが有効な場合）
         const showProductBack = settingsState?.useProductBack || settingsState?.compareUseProductBack
+        const helpBackMethod = settingsState?.helpBackCalculationMethod || 'sales_based'
         const castBreakdownWithBack = castBreakdown.map(cb => {
-          if (!showProductBack || cb.sales === 0) {
-            return { ...cb, backAmount: 0 }
+          // ヘルプでfull_amountの場合は、売上0でも商品価格でバック計算
+          const isHelpFullAmount = !cb.isSelf && helpBackMethod === 'full_amount'
+          if (!showProductBack || (cb.sales === 0 && !isHelpFullAmount)) {
+            return cb  // backAmountを追加しない
           }
           // キャスト名からキャストIDを取得
           const castInfo = casts.find(c => c.name === cb.cast)
           if (!castInfo) {
-            return { ...cb, backAmount: 0 }
+            return cb  // backAmountを追加しない
           }
           // バック率を取得
           const backRateInfo = getBackRate(backRates, castInfo.id, item.category, item.name, cb.isSelf)
           if (!backRateInfo) {
-            return { ...cb, backAmount: 0 }
+            return cb  // backAmountを追加しない
           }
-          // バック金額を計算
+          // バック金額を計算（ヘルプでfull_amountの場合は商品価格を使用）
+          const baseForBack = isHelpFullAmount ? roundedBase : cb.sales
           const backAmount = backRateInfo.type === 'fixed'
             ? backRateInfo.fixedAmount
-            : Math.floor(cb.sales * backRateInfo.rate / 100)
+            : Math.floor(baseForBack * backRateInfo.rate / 100)
           return { ...cb, backAmount }
         })
 
@@ -979,7 +987,7 @@ export default function CompensationSettingsPage() {
         item.castBreakdown.forEach((cb: { cast: string; sales: number; isSelf: boolean; backAmount?: number }) => {
           if (cb.isSelf) selfSales += cb.sales
           else helpSales += cb.sales
-          totalProductBack += cb.backAmount || 0
+          if (cb.backAmount) totalProductBack += cb.backAmount
         })
       })
 
@@ -1197,8 +1205,11 @@ export default function CompensationSettingsPage() {
 
       // 商品バックの計算（商品バックが有効な場合）
       const showProductBack = settingsState?.useProductBack || settingsState?.compareUseProductBack
+      const helpBackMethod = settingsState?.helpBackCalculationMethod || 'sales_based'
       const castBreakdownWithBack = castBreakdown.map(cb => {
-        if (!showProductBack || cb.sales === 0) {
+        // ヘルプでfull_amountの場合は、売上0でも商品価格でバック計算
+        const isHelpFullAmount = !cb.isSelf && helpBackMethod === 'full_amount'
+        if (!showProductBack || (cb.sales === 0 && !isHelpFullAmount)) {
           return { ...cb, backAmount: 0 }
         }
         // キャスト名からキャストIDを取得
@@ -1211,10 +1222,11 @@ export default function CompensationSettingsPage() {
         if (!backRateInfo) {
           return { ...cb, backAmount: 0 }
         }
-        // バック金額を計算
+        // バック金額を計算（ヘルプでfull_amountの場合は商品価格を使用）
+        const baseForBack = isHelpFullAmount ? itemAmount : cb.sales
         const backAmount = backRateInfo.type === 'fixed'
           ? backRateInfo.fixedAmount
-          : Math.floor(cb.sales * backRateInfo.rate / 100)
+          : Math.floor(baseForBack * backRateInfo.rate / 100)
         return { ...cb, backAmount }
       })
 
@@ -1828,6 +1840,61 @@ export default function CompensationSettingsPage() {
                     </span>
                   </div>
                 </div>
+                {/* ヘルプバック計算方法 */}
+                {settingsState.useProductBack && (
+                  <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #e2e8f0' }}>
+                    <div style={{ fontSize: '13px', fontWeight: '500', marginBottom: '8px', color: '#475569' }}>
+                      ヘルプバック計算方法
+                      <HelpTooltip
+                        text="ヘルプでついた商品のバック計算方法を選択します。"
+                        width={280}
+                      />
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        onClick={() => setSettingsState(prev => prev ? { ...prev, helpBackCalculationMethod: 'sales_based' } : null)}
+                        style={{
+                          flex: 1,
+                          padding: '8px 12px',
+                          fontSize: '12px',
+                          fontWeight: '500',
+                          borderWidth: '1px',
+                          borderStyle: 'solid',
+                          borderColor: settingsState.helpBackCalculationMethod === 'sales_based' ? '#10b981' : '#cbd5e1',
+                          borderRadius: '6px',
+                          backgroundColor: settingsState.helpBackCalculationMethod === 'sales_based' ? '#ecfdf5' : 'white',
+                          color: settingsState.helpBackCalculationMethod === 'sales_based' ? '#059669' : '#64748b',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        売上設定に従う
+                      </button>
+                      <button
+                        onClick={() => setSettingsState(prev => prev ? { ...prev, helpBackCalculationMethod: 'full_amount' } : null)}
+                        style={{
+                          flex: 1,
+                          padding: '8px 12px',
+                          fontSize: '12px',
+                          fontWeight: '500',
+                          borderWidth: '1px',
+                          borderStyle: 'solid',
+                          borderColor: settingsState.helpBackCalculationMethod === 'full_amount' ? '#10b981' : '#cbd5e1',
+                          borderRadius: '6px',
+                          backgroundColor: settingsState.helpBackCalculationMethod === 'full_amount' ? '#ecfdf5' : 'white',
+                          color: settingsState.helpBackCalculationMethod === 'full_amount' ? '#059669' : '#64748b',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        商品全額
+                      </button>
+                    </div>
+                    <p style={{ fontSize: '11px', color: '#94a3b8', margin: '6px 0 0 0' }}>
+                      {settingsState.helpBackCalculationMethod === 'sales_based'
+                        ? '分配後の金額 × ヘルプバック率'
+                        : '商品の全額 × ヘルプバック率'}
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* 報酬形態2（高い方を支給） */}
@@ -2213,7 +2280,7 @@ export default function CompensationSettingsPage() {
                               color: cb.sales > 0 ? '#10b981' : '#94a3b8',
                             }}>
                               売上: ¥{cb.sales.toLocaleString()}
-                              {cb.backAmount && cb.backAmount > 0 && (
+                              {cb.backAmount != null && cb.backAmount > 0 && (
                                 <span style={{ color: '#f59e0b', marginLeft: '8px' }}>
                                   → バック: ¥{cb.backAmount.toLocaleString()}
                                 </span>

@@ -322,6 +322,11 @@ export type HelpSalesInclusion = 'both' | 'self_only' | 'help_only'
 // self_only: SELFのみ計上
 // help_only: HELPのみ計上
 
+// ヘルプバック計算方法
+export type HelpBackCalculationMethod = 'sales_based' | 'full_amount'
+// sales_based: 売上設定に従う（分配後の金額 × ヘルプバック率）
+// full_amount: 商品全額（商品の全額 × ヘルプバック率）
+
 // 公開する集計方法
 export type PublishedAggregation = 'none' | 'item_based' | 'receipt_based'
 // item_based: キャスト名が入ってる商品のみ
@@ -466,6 +471,7 @@ export interface CompensationSettings {
 
   // 商品別バック設定
   use_product_back: boolean  // 商品別バック率を使用するか（cast_back_ratesテーブル参照）
+  help_back_calculation_method: HelpBackCalculationMethod  // ヘルプバック計算方法
 
   // 対象年月（月ごとの報酬設定用）
   target_year: number | null   // 対象年（nullは全期間共通）
