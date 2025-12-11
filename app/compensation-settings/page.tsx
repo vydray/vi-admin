@@ -45,6 +45,62 @@ function applyRounding(amount: number, position: number, type: 'floor' | 'ceil' 
   }
 }
 
+// バック率を取得するヘルパー関数
+function getBackRate(
+  backRates: CastBackRate[],
+  castId: number,
+  category: string,
+  productName: string,
+  isSelf: boolean
+): { rate: number; type: 'ratio' | 'fixed'; fixedAmount: number } | null {
+  // 1. 商品名で完全マッチ
+  const productMatch = backRates.find(
+    r => r.cast_id === castId && r.category === category && r.product_name === productName && r.is_active
+  )
+  if (productMatch) {
+    const rate = isSelf
+      ? (productMatch.self_back_ratio ?? productMatch.back_ratio)
+      : (productMatch.help_back_ratio ?? productMatch.back_ratio)
+    return {
+      rate,
+      type: productMatch.back_type === 'fixed' ? 'fixed' : 'ratio',
+      fixedAmount: productMatch.back_fixed_amount,
+    }
+  }
+
+  // 2. カテゴリ全体（product_name = null）
+  const categoryMatch = backRates.find(
+    r => r.cast_id === castId && r.category === category && r.product_name === null && r.is_active
+  )
+  if (categoryMatch) {
+    const rate = isSelf
+      ? (categoryMatch.self_back_ratio ?? categoryMatch.back_ratio)
+      : (categoryMatch.help_back_ratio ?? categoryMatch.back_ratio)
+    return {
+      rate,
+      type: categoryMatch.back_type === 'fixed' ? 'fixed' : 'ratio',
+      fixedAmount: categoryMatch.back_fixed_amount,
+    }
+  }
+
+  // 3. 全カテゴリデフォルト（category = null, product_name = null）
+  const defaultMatch = backRates.find(
+    r => r.cast_id === castId && r.category === null && r.product_name === null && r.is_active
+  )
+  if (defaultMatch) {
+    const rate = isSelf
+      ? (defaultMatch.self_back_ratio ?? defaultMatch.back_ratio)
+      : (defaultMatch.help_back_ratio ?? defaultMatch.back_ratio)
+    return {
+      rate,
+      type: defaultMatch.back_type === 'fixed' ? 'fixed' : 'ratio',
+      fixedAmount: defaultMatch.back_fixed_amount,
+    }
+  }
+
+  return null
+}
+
 interface CastWithStatus {
   id: number
   name: string
@@ -867,7 +923,7 @@ export default function CompensationSettingsPage() {
           ? applyRounding(calcPrice, roundingPosition, roundingType)
           : calcPrice
 
-        const castBreakdown: { cast: string; sales: number; isSelf: boolean }[] = []
+        const castBreakdown: { cast: string; sales: number; isSelf: boolean; backAmount?: number }[] = []
 
         if (salesAttribution === 'all_equal') {
           // ヘルプ商品も売上に含める
@@ -983,17 +1039,42 @@ export default function CompensationSettingsPage() {
           })
         }
 
-        return { ...item, castBreakdown, notIncluded: false }
+        // 商品バックの計算（商品バックが有効な場合）
+        const showProductBack = settingsState?.useProductBack || settingsState?.compareUseProductBack
+        const castBreakdownWithBack = castBreakdown.map(cb => {
+          if (!showProductBack || cb.sales === 0) {
+            return { ...cb, backAmount: 0 }
+          }
+          // キャスト名からキャストIDを取得
+          const castInfo = casts.find(c => c.name === cb.cast)
+          if (!castInfo) {
+            return { ...cb, backAmount: 0 }
+          }
+          // バック率を取得
+          const backRateInfo = getBackRate(backRates, castInfo.id, item.category, item.name, cb.isSelf)
+          if (!backRateInfo) {
+            return { ...cb, backAmount: 0 }
+          }
+          // バック金額を計算
+          const backAmount = backRateInfo.type === 'fixed'
+            ? backRateInfo.fixedAmount
+            : Math.floor(cb.sales * backRateInfo.rate / 100)
+          return { ...cb, backAmount }
+        })
+
+        return { ...item, castBreakdown: castBreakdownWithBack, notIncluded: false }
       })
 
       // 売上集計
       let selfSales = 0
       let helpSales = 0
+      let totalProductBack = 0
       items.forEach(item => {
         if (item.notIncluded) return
-        item.castBreakdown.forEach(cb => {
+        item.castBreakdown.forEach((cb: { cast: string; sales: number; isSelf: boolean; backAmount?: number }) => {
           if (cb.isSelf) selfSales += cb.sales
           else helpSales += cb.sales
+          totalProductBack += cb.backAmount || 0
         })
       })
 
@@ -1022,6 +1103,7 @@ export default function CompensationSettingsPage() {
         selfSales,
         helpSales,
         totalSales: selfSales + helpSales,
+        totalProductBack,
         receiptTotalExcludingTax: sampleItems.reduce((sum, item) => sum + Math.floor(item.basePrice * 100 / 110), 0),
       }
     }
@@ -1064,7 +1146,7 @@ export default function CompensationSettingsPage() {
       const isHelpOnly = helpCasts.length > 0 && selfCasts.length === 0
       const isMixed = selfCasts.length > 0 && helpCasts.length > 0
 
-      const castBreakdown: { cast: string; sales: number; isSelf: boolean }[] = []
+      const castBreakdown: { cast: string; sales: number; isSelf: boolean; backAmount?: number }[] = []
 
       // 商品ごとに税計算・端数処理を適用
       let itemAmount = item.basePrice
@@ -1208,16 +1290,41 @@ export default function CompensationSettingsPage() {
         // フリー推しでキャスト名なしの場合はcastBreakdownは空（誰にも計上しない）
       }
 
-      return { ...item, castBreakdown, notIncluded: false }
+      // 商品バックの計算（商品バックが有効な場合）
+      const showProductBack = settingsState?.useProductBack || settingsState?.compareUseProductBack
+      const castBreakdownWithBack = castBreakdown.map(cb => {
+        if (!showProductBack || cb.sales === 0) {
+          return { ...cb, backAmount: 0 }
+        }
+        // キャスト名からキャストIDを取得
+        const castInfo = casts.find(c => c.name === cb.cast)
+        if (!castInfo) {
+          return { ...cb, backAmount: 0 }
+        }
+        // バック率を取得
+        const backRateInfo = getBackRate(backRates, castInfo.id, item.category, item.name, cb.isSelf)
+        if (!backRateInfo) {
+          return { ...cb, backAmount: 0 }
+        }
+        // バック金額を計算
+        const backAmount = backRateInfo.type === 'fixed'
+          ? backRateInfo.fixedAmount
+          : Math.floor(cb.sales * backRateInfo.rate / 100)
+        return { ...cb, backAmount }
+      })
+
+      return { ...item, castBreakdown: castBreakdownWithBack, notIncluded: false }
     })
 
     // 売上集計
     let selfSales = 0
     let helpSales = 0
+    let totalProductBack = 0
     items.forEach(item => {
-      item.castBreakdown.forEach(cb => {
+      item.castBreakdown.forEach((cb: { cast: string; sales: number; isSelf: boolean; backAmount?: number }) => {
         if (cb.isSelf) selfSales += cb.sales
         else helpSales += cb.sales
+        totalProductBack += cb.backAmount || 0
       })
     })
 
@@ -1246,9 +1353,10 @@ export default function CompensationSettingsPage() {
       selfSales,
       helpSales,
       totalSales: selfSales + helpSales,
+      totalProductBack,
       receiptTotalExcludingTax: sampleItems.reduce((sum, item) => sum + Math.floor(item.basePrice * 100 / 110), 0),
     }
-  }, [sampleItems, sampleNominations, nonHelpStaffNames, salesViewMode, salesSettings, systemSettings])
+  }, [sampleItems, sampleNominations, nonHelpStaffNames, salesViewMode, salesSettings, systemSettings, settingsState, casts, backRates])
 
   // カテゴリ別の商品リスト
   const productsByCategory = useMemo(() => {
@@ -2063,7 +2171,7 @@ export default function CompensationSettingsPage() {
                       <span style={styles.skipTag}>売上対象外</span>
                     ) : item.castBreakdown && item.castBreakdown.length > 0 ? (
                       <div style={styles.castBreakdownContainer}>
-                        {item.castBreakdown.map((cb, idx) => (
+                        {item.castBreakdown.map((cb: { cast: string; sales: number; isSelf: boolean; backAmount?: number }, idx) => (
                           <div key={idx} style={styles.castBreakdownRow}>
                             <span style={{
                               ...styles.castBreakdownName,
@@ -2079,6 +2187,11 @@ export default function CompensationSettingsPage() {
                               color: cb.sales > 0 ? '#10b981' : '#94a3b8',
                             }}>
                               売上: ¥{cb.sales.toLocaleString()}
+                              {cb.backAmount && cb.backAmount > 0 && (
+                                <span style={{ color: '#f59e0b', marginLeft: '8px' }}>
+                                  → バック: ¥{cb.backAmount.toLocaleString()}
+                                </span>
+                              )}
                             </span>
                           </div>
                         ))}
