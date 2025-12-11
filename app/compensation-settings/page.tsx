@@ -62,11 +62,12 @@ interface SettingsState {
   commissionRate: number
   salesTarget: SalesTargetType
 
-  // スライド比較
+  // 報酬形態2（比較用）
   useComparison: boolean
   compareUseHourly: boolean
   compareUseFixed: boolean
   compareUseSales: boolean
+  compareUseProductBack: boolean
   compareHourlyRate: number
   compareFixedAmount: number
   compareCommissionRate: number
@@ -101,6 +102,7 @@ const getDefaultSettingsState = (): SettingsState => ({
   compareUseHourly: false,
   compareUseFixed: false,
   compareUseSales: false,
+  compareUseProductBack: false,
   compareHourlyRate: 1500,
   compareFixedAmount: 0,
   compareCommissionRate: 50,
@@ -132,6 +134,7 @@ const dbToState = (data: CompensationSettings): SettingsState => {
     compareUseHourly: (data.compare_hourly_rate ?? 0) > 0,
     compareUseFixed: (data.compare_fixed_amount ?? 0) > 0,
     compareUseSales: (data.compare_commission_rate ?? 0) > 0,
+    compareUseProductBack: data.compare_use_product_back ?? false,
     compareHourlyRate: data.compare_hourly_rate ?? 1500,
     compareFixedAmount: data.compare_fixed_amount ?? 0,
     compareCommissionRate: data.compare_commission_rate ?? 50,
@@ -176,6 +179,7 @@ const stateToDb = (state: SettingsState, castId: number, storeId: number, existi
     compare_fixed_amount: state.useComparison && state.compareUseFixed ? state.compareFixedAmount : 0,
     compare_commission_rate: state.useComparison && state.compareUseSales ? state.compareCommissionRate : 0,
     compare_sales_target: state.compareSalesTarget,
+    compare_use_product_back: state.useComparison && state.compareUseProductBack,
     sliding_rates: state.slidingRates,
     deduction_enabled: (state.deductionItems && state.deductionItems.length > 0) ? true : false,
     deduction_items: state.deductionItems,
@@ -1584,12 +1588,12 @@ export default function CompensationSettingsPage() {
                 <h2 style={styles.mainTitle}>{selectedCast.name} の報酬設定</h2>
               </div>
 
-              {/* 基本給与設定 */}
+              {/* 報酬形態1 */}
               <div style={styles.section}>
                 <h3 style={styles.sectionTitle}>
-                  基本給与
+                  報酬形態1
                   <HelpTooltip
-                    text="チェックを入れた項目の合計が基本給与になります。複数選択可能です。"
+                    text="チェックを入れた項目の合計が報酬形態1になります。複数選択可能です。"
                     width={280}
                   />
                 </h3>
@@ -1692,7 +1696,7 @@ export default function CompensationSettingsPage() {
                 </div>
               </div>
 
-              {/* スライド制設定 */}
+              {/* 報酬形態2（高い方を支給） */}
               <div style={styles.section}>
                 <h3 style={styles.sectionTitle}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1702,18 +1706,16 @@ export default function CompensationSettingsPage() {
                       onChange={(e) => setSettingsState(prev => prev ? { ...prev, useComparison: e.target.checked } : null)}
                       style={styles.checkbox}
                     />
-                    スライド制（高い方を支給）
+                    報酬形態2（高い方を支給）
                   </label>
                   <HelpTooltip
-                    text="基本給与と比較対象を比べ、高い方を支給します。"
+                    text="報酬形態1と報酬形態2を比べ、高い方を支給します。"
                     width={280}
                   />
                 </h3>
 
                 {settingsState.useComparison && (
                   <div style={styles.compareSection}>
-                    <p style={styles.compareLabel}>比較対象:</p>
-
                     {/* 比較用: 時給 */}
                     <div style={styles.payRow}>
                       <label style={styles.payLabel}>
@@ -1789,6 +1791,24 @@ export default function CompensationSettingsPage() {
                           disabled={!settingsState.compareUseSales}
                         />
                         <span style={styles.payUnit}>%</span>
+                      </div>
+                    </div>
+
+                    {/* 比較用: 商品バック */}
+                    <div style={styles.payRow}>
+                      <label style={styles.payLabel}>
+                        <input
+                          type="checkbox"
+                          checked={settingsState.compareUseProductBack}
+                          onChange={(e) => setSettingsState(prev => prev ? { ...prev, compareUseProductBack: e.target.checked } : null)}
+                          style={styles.checkbox}
+                        />
+                        <span>商品バック</span>
+                      </label>
+                      <div style={styles.payInputGroup}>
+                        <span style={styles.productBackHint}>
+                          バック率設定ページで設定した商品別バック率を使用
+                        </span>
                       </div>
                     </div>
                   </div>
