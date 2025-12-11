@@ -450,6 +450,7 @@ export interface CompensationSettings {
   compare_commission_rate: number         // 比較用: 売上バック率（%）（未使用時は0）
   compare_sales_target: SalesTargetType   // 比較用: 売上計算対象
   compare_fixed_amount: number            // 比較用: 固定額（未使用時は0）
+  compare_use_product_back: boolean       // 比較用: 商品バック使用するか
 
   // スライド率テーブル（売上に応じてバック率変動）
   sliding_rates: SlidingRate[] | null
