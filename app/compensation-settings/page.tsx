@@ -475,7 +475,7 @@ export default function CompensationSettingsPage() {
     item_help_distribution_method: 'all_to_nomination',
     item_multi_cast_distribution: 'nomination_only',
     item_help_sales_inclusion: 'both',
-    item_help_ratio: 100,
+    item_help_ratio: 50,
     item_nomination_distribute_all: false,
     receipt_exclude_consumption_tax: true,
     receipt_exclude_service_charge: false,
@@ -485,7 +485,7 @@ export default function CompensationSettingsPage() {
     receipt_help_distribution_method: 'all_to_nomination',
     receipt_multi_cast_distribution: 'nomination_only',
     receipt_help_sales_inclusion: 'both',
-    receipt_help_ratio: 100,
+    receipt_help_ratio: 50,
   })
 
   // シミュレーション
@@ -749,7 +749,7 @@ export default function CompensationSettingsPage() {
           item_help_distribution_method: data.item_help_distribution_method ?? 'all_to_nomination',
           item_multi_cast_distribution: data.item_multi_cast_distribution ?? 'nomination_only',
           item_help_sales_inclusion: data.item_help_sales_inclusion ?? 'both',
-          item_help_ratio: data.item_help_ratio ?? 100,
+          item_help_ratio: data.item_help_ratio ?? 50,
           item_nomination_distribute_all: data.item_nomination_distribute_all ?? false,
           receipt_exclude_consumption_tax: data.receipt_exclude_consumption_tax ?? true,
           receipt_exclude_service_charge: data.receipt_exclude_service_charge ?? false,
@@ -759,7 +759,7 @@ export default function CompensationSettingsPage() {
           receipt_help_distribution_method: data.receipt_help_distribution_method ?? 'all_to_nomination',
           receipt_multi_cast_distribution: data.receipt_multi_cast_distribution ?? 'nomination_only',
           receipt_help_sales_inclusion: data.receipt_help_sales_inclusion ?? 'both',
-          receipt_help_ratio: data.receipt_help_ratio ?? 100,
+          receipt_help_ratio: data.receipt_help_ratio ?? 50,
         }
         console.log('=== 適用する設定 ===', newSettings)
         setSalesSettings(newSettings)
@@ -902,6 +902,13 @@ export default function CompensationSettingsPage() {
   const selectedCast = useMemo(() => {
     return casts.find(c => c.id === selectedCastId)
   }, [casts, selectedCastId])
+
+  // キャスト切り替え時に推しをリセット
+  useEffect(() => {
+    if (selectedCast) {
+      setSampleNominations([selectedCast.name])
+    }
+  }, [selectedCast])
 
   // キャスト選択肢（選択中キャスト名 + A〜D + ヘルプ除外名）
   const availableCastOptions = useMemo(() => {
@@ -1330,27 +1337,22 @@ export default function CompensationSettingsPage() {
               })
             }
           } else if (helpDistMethod === 'equal_per_person') {
+            // 全員で均等割（分配先全員 + ヘルプ）
             const totalPeople = distributeTargets.length + helpCount
             const perPerson = Math.floor(itemAmount / totalPeople)
 
-            let selfIdx = 0
-            let helpIdx = 0
+            let idx = 0
             castBreakdown.forEach(cb => {
-              if (cb.isSelf) {
-                const amount = selfIdx === distributeTargets.length - 1
-                  ? itemAmount - perPerson * (totalPeople - 1) - perPerson * helpCount
+              if (cb.isSelf || giveHelpSales) {
+                const amount = idx === totalPeople - 1
+                  ? itemAmount - perPerson * (totalPeople - 1)
                   : perPerson
                 cb.sales = amount
                 cb.calculatedShare = amount
-                selfIdx++
+                idx++
               } else {
-                // ヘルプのcalculatedShareは常に設定
-                const amount = helpIdx === helpCount - 1
-                  ? perPerson + (itemAmount - perPerson * totalPeople)
-                  : perPerson
-                cb.calculatedShare = amount
-                if (giveHelpSales) cb.sales = amount
-                helpIdx++
+                // ヘルプに売上計上しない場合でもcalculatedShareは設定
+                cb.calculatedShare = perPerson
               }
             })
           } else if (helpDistMethod === 'ratio') {
@@ -3117,7 +3119,7 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   compensationTypeTabActive: {
     color: '#3b82f6',
-    borderBottomColor: '#3b82f6',
+    borderBottom: '2px solid #3b82f6',
     fontWeight: '600',
   },
   addCompensationTypeBtn: {
@@ -3290,6 +3292,7 @@ const styles: { [key: string]: React.CSSProperties } = {
   layout: {
     display: 'flex',
     gap: '20px',
+    width: 'calc(100vw - 250px - 80px)',
     height: 'calc(100vh - 180px)',
     alignItems: 'stretch',
   },
@@ -3442,8 +3445,8 @@ const styles: { [key: string]: React.CSSProperties } = {
     padding: '15px 0',
   },
   main: {
-    flex: '0 1 600px',
-    minWidth: '400px',
+    flex: 1,
+    minWidth: 0,
     backgroundColor: 'white',
     borderRadius: '10px',
     padding: '20px',
@@ -3752,7 +3755,7 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   // シミュレーションパネル
   simulationPanel: {
-    width: '300px',
+    width: '260px',
     flexShrink: 0,
     backgroundColor: '#f0f9ff',
     borderRadius: '10px',
@@ -4054,7 +4057,8 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   // 伝票詳細パネルWrapper（タブを外に配置）
   receiptPanelWrapper: {
-    flex: '1 1 520px',
+    flex: 1,
+    minWidth: 0,
     display: 'flex',
     flexDirection: 'column' as const,
     minHeight: 0,
