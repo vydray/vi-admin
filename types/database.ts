@@ -560,6 +560,11 @@ export interface CastBackRate {
   back_sales_aggregation: 'item_based' | 'receipt_based'  // 売上計算方法
   sliding_back_rates: SlidingBackRateEntry[] | null       // スライド率テーブル
 
+  // 計算済みスライドバック率（会計時にトリガーで自動更新）
+  calculated_sliding_rate: number | null          // 計算されたバック率
+  calculated_at: string | null                    // 計算日時
+  calculated_sales_amount: number | null          // 計算時の累計売上
+
   // キャスト報酬設定（デフォルト設定用: category=null, product_name=null時）
   hourly_wage: number | null     // 時給
 

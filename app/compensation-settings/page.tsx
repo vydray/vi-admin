@@ -61,25 +61,36 @@ function getBackRate(
   type: 'ratio' | 'fixed'
   fixedAmount: number
   useSlidingBack?: boolean
-  backSalesAggregation?: 'item_based' | 'receipt_based'
-  slidingBackRates?: { min: number; max: number; rate: number }[] | null
 } | null {
+  // マッチするバック率設定を検索する関数
+  const getMatchedRate = (match: CastBackRate) => {
+    // スライドバック率が有効で計算済みレートがある場合はそれを使用
+    if (match.use_sliding_back && match.calculated_sliding_rate !== null) {
+      return {
+        rate: match.calculated_sliding_rate,
+        type: 'ratio' as const,
+        fixedAmount: 0,
+        useSlidingBack: true,
+      }
+    }
+    // 通常のバック率を使用
+    const rate = isSelf
+      ? (match.self_back_ratio ?? match.back_ratio)
+      : (match.help_back_ratio ?? match.back_ratio)
+    return {
+      rate,
+      type: match.back_type === 'fixed' ? 'fixed' as const : 'ratio' as const,
+      fixedAmount: match.back_fixed_amount,
+      useSlidingBack: false,
+    }
+  }
+
   // 1. 商品名で完全マッチ
   const productMatch = backRates.find(
     r => r.cast_id === castId && r.category === category && r.product_name === productName && r.is_active
   )
   if (productMatch) {
-    const rate = isSelf
-      ? (productMatch.self_back_ratio ?? productMatch.back_ratio)
-      : (productMatch.help_back_ratio ?? productMatch.back_ratio)
-    return {
-      rate,
-      type: productMatch.back_type === 'fixed' ? 'fixed' : 'ratio',
-      fixedAmount: productMatch.back_fixed_amount,
-      useSlidingBack: productMatch.use_sliding_back,
-      backSalesAggregation: productMatch.back_sales_aggregation,
-      slidingBackRates: productMatch.sliding_back_rates,
-    }
+    return getMatchedRate(productMatch)
   }
 
   // 2. カテゴリ全体（product_name = null）
@@ -87,17 +98,7 @@ function getBackRate(
     r => r.cast_id === castId && r.category === category && r.product_name === null && r.is_active
   )
   if (categoryMatch) {
-    const rate = isSelf
-      ? (categoryMatch.self_back_ratio ?? categoryMatch.back_ratio)
-      : (categoryMatch.help_back_ratio ?? categoryMatch.back_ratio)
-    return {
-      rate,
-      type: categoryMatch.back_type === 'fixed' ? 'fixed' : 'ratio',
-      fixedAmount: categoryMatch.back_fixed_amount,
-      useSlidingBack: categoryMatch.use_sliding_back,
-      backSalesAggregation: categoryMatch.back_sales_aggregation,
-      slidingBackRates: categoryMatch.sliding_back_rates,
-    }
+    return getMatchedRate(categoryMatch)
   }
 
   // 3. 全カテゴリデフォルト（category = null, product_name = null）
@@ -105,40 +106,10 @@ function getBackRate(
     r => r.cast_id === castId && r.category === null && r.product_name === null && r.is_active
   )
   if (defaultMatch) {
-    const rate = isSelf
-      ? (defaultMatch.self_back_ratio ?? defaultMatch.back_ratio)
-      : (defaultMatch.help_back_ratio ?? defaultMatch.back_ratio)
-    return {
-      rate,
-      type: defaultMatch.back_type === 'fixed' ? 'fixed' : 'ratio',
-      fixedAmount: defaultMatch.back_fixed_amount,
-      useSlidingBack: defaultMatch.use_sliding_back,
-      backSalesAggregation: defaultMatch.back_sales_aggregation,
-      slidingBackRates: defaultMatch.sliding_back_rates,
-    }
+    return getMatchedRate(defaultMatch)
   }
 
   return null
-}
-
-// スライド式バック率を取得するヘルパー関数
-// min以上の条件で、売上に該当する最も高いmin閾値のレートを返す
-function getSlidingBackRate(
-  slidingRates: { min: number; max: number; rate: number }[] | null | undefined,
-  totalSales: number
-): number | null {
-  if (!slidingRates || slidingRates.length === 0) return null
-
-  // minで降順ソートして、売上以下の最初のエントリを探す
-  const sorted = [...slidingRates].sort((a, b) => b.min - a.min)
-  for (const entry of sorted) {
-    if (totalSales >= entry.min) {
-      return entry.rate
-    }
-  }
-
-  // マッチしない場合は最小のminエントリのレートを使用
-  return sorted[sorted.length - 1]?.rate ?? null
 }
 
 interface CastWithStatus {
@@ -1284,25 +1255,13 @@ export default function CompensationSettingsPage() {
           if (!castInfo) {
             return cb  // backAmountを追加しない
           }
-          // バック率を取得
+          // バック率を取得（スライドバック率有効の場合はcalculated_sliding_rateが返される）
           const backRateInfo = getBackRate(backRates, castInfo.id, item.category, item.name, cb.isSelf)
           if (!backRateInfo) {
             return cb  // backAmountを追加しない
           }
           // バック金額を計算（full_amountは商品価格、sales_basedは分配計算額を使用）
           const baseForBack = isHelpFullAmount ? roundedBase : cb.calculatedShare
-          // スライドバック率の場合は後で再計算するため、情報を保持
-          if (backRateInfo.useSlidingBack && backRateInfo.slidingBackRates) {
-            return {
-              ...cb,
-              backAmount: 0, // 後で再計算
-              slidingBackInfo: {
-                baseForBack,
-                aggregation: backRateInfo.backSalesAggregation,
-                slidingRates: backRateInfo.slidingBackRates,
-              },
-            }
-          }
           const backAmount = backRateInfo.type === 'fixed'
             ? backRateInfo.fixedAmount
             : Math.floor(baseForBack * backRateInfo.rate / 100)
@@ -1312,39 +1271,15 @@ export default function CompensationSettingsPage() {
         return { ...item, castBreakdown: castBreakdownWithBack, notIncluded: false }
       })
 
-      // 売上集計（スライドバック率計算用にキャストごとの売上も計算）
+      // 売上集計
       let selfSales = 0
       let helpSales = 0
-      const castSalesMap: Record<string, { itemBased: number; receiptBased: number }> = {}
+      let totalProductBack = 0
       items.forEach(item => {
         if (item.notIncluded) return
         item.castBreakdown.forEach((cb: { cast: string; sales: number; calculatedShare: number; isSelf: boolean; backAmount?: number }) => {
           if (cb.isSelf) selfSales += cb.sales
           else helpSales += cb.sales
-          // キャストごとの売上を集計
-          if (!castSalesMap[cb.cast]) {
-            castSalesMap[cb.cast] = { itemBased: 0, receiptBased: 0 }
-          }
-          castSalesMap[cb.cast].itemBased += cb.sales
-        })
-      })
-
-      // スライドバック率の再計算
-      let totalProductBack = 0
-      items.forEach(item => {
-        if (item.notIncluded) return
-        item.castBreakdown.forEach((cb: { cast: string; sales: number; calculatedShare: number; isSelf: boolean; backAmount?: number; slidingBackInfo?: { baseForBack: number; aggregation?: 'item_based' | 'receipt_based'; slidingRates: { min: number; max: number; rate: number }[] } }) => {
-          if (cb.slidingBackInfo) {
-            // スライドバック率を適用
-            const castSales = castSalesMap[cb.cast]
-            const totalSalesForSliding = cb.slidingBackInfo.aggregation === 'receipt_based'
-              ? (selfSales + helpSales) // receipt_basedの場合は伝票小計を使用
-              : (castSales?.itemBased || 0) // item_basedの場合はキャストの売上合計
-            const slidingRate = getSlidingBackRate(cb.slidingBackInfo.slidingRates, totalSalesForSliding)
-            if (slidingRate !== null) {
-              cb.backAmount = Math.floor(cb.slidingBackInfo.baseForBack * slidingRate / 100)
-            }
-          }
           if (cb.backAmount) totalProductBack += cb.backAmount
         })
       })
@@ -1602,25 +1537,13 @@ export default function CompensationSettingsPage() {
         if (!castInfo) {
           return { ...cb, backAmount: 0 }
         }
-        // バック率を取得
+        // バック率を取得（スライドバック率有効の場合はcalculated_sliding_rateが返される）
         const backRateInfo = getBackRate(backRates, castInfo.id, item.category, item.name, cb.isSelf)
         if (!backRateInfo) {
           return { ...cb, backAmount: 0 }
         }
         // バック金額を計算（full_amountは商品価格、sales_basedは分配計算額を使用）
         const baseForBack = isHelpFullAmount ? itemAmount : cb.calculatedShare
-        // スライドバック率の場合は後で再計算するため、情報を保持
-        if (backRateInfo.useSlidingBack && backRateInfo.slidingBackRates) {
-          return {
-            ...cb,
-            backAmount: 0, // 後で再計算
-            slidingBackInfo: {
-              baseForBack,
-              aggregation: backRateInfo.backSalesAggregation,
-              slidingRates: backRateInfo.slidingBackRates,
-            },
-          }
-        }
         const backAmount = backRateInfo.type === 'fixed'
           ? backRateInfo.fixedAmount
           : Math.floor(baseForBack * backRateInfo.rate / 100)
@@ -1630,37 +1553,14 @@ export default function CompensationSettingsPage() {
       return { ...item, castBreakdown: castBreakdownWithBack, notIncluded: false }
     })
 
-    // 売上集計（スライドバック率計算用にキャストごとの売上も計算）
+    // 売上集計
     let selfSales = 0
     let helpSales = 0
-    const castSalesMap: Record<string, { itemBased: number; receiptBased: number }> = {}
+    let totalProductBack = 0
     items.forEach(item => {
       item.castBreakdown.forEach((cb: { cast: string; sales: number; calculatedShare: number; isSelf: boolean; backAmount?: number }) => {
         if (cb.isSelf) selfSales += cb.sales
         else helpSales += cb.sales
-        // キャストごとの売上を集計
-        if (!castSalesMap[cb.cast]) {
-          castSalesMap[cb.cast] = { itemBased: 0, receiptBased: 0 }
-        }
-        castSalesMap[cb.cast].itemBased += cb.sales
-      })
-    })
-
-    // スライドバック率の再計算
-    let totalProductBack = 0
-    items.forEach(item => {
-      item.castBreakdown.forEach((cb: { cast: string; sales: number; calculatedShare: number; isSelf: boolean; backAmount?: number; slidingBackInfo?: { baseForBack: number; aggregation?: 'item_based' | 'receipt_based'; slidingRates: { min: number; max: number; rate: number }[] } }) => {
-        if (cb.slidingBackInfo) {
-          // スライドバック率を適用
-          const castSales = castSalesMap[cb.cast]
-          const totalSalesForSliding = cb.slidingBackInfo.aggregation === 'receipt_based'
-            ? (selfSales + helpSales) // receipt_basedの場合は伝票小計を使用
-            : (castSales?.itemBased || 0) // item_basedの場合はキャストの売上合計
-          const slidingRate = getSlidingBackRate(cb.slidingBackInfo.slidingRates, totalSalesForSliding)
-          if (slidingRate !== null) {
-            cb.backAmount = Math.floor(cb.slidingBackInfo.baseForBack * slidingRate / 100)
-          }
-        }
         totalProductBack += cb.backAmount || 0
       })
     })
