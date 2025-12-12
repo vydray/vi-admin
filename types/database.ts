@@ -327,6 +327,41 @@ export type HelpBackCalculationMethod = 'sales_based' | 'full_amount'
 // sales_based: 売上設定に従う（分配後の金額 × ヘルプバック率）
 // full_amount: 商品全額（商品の全額 × ヘルプバック率）
 
+// 支給方法選択
+export type PaymentSelectionMethod = 'highest' | 'specific'
+// highest: 全報酬形態の中で最も高いものを支給
+// specific: 特定の報酬形態を指定して支給
+
+// 売上集計方法（報酬形態ごと）
+export type SalesAggregationMethod = 'item_based' | 'receipt_based'
+// item_based: 推し小計（キャスト名が入ってる商品のみ）
+// receipt_based: 伝票小計（伝票のすべての商品を集計）
+
+// 報酬形態（個別の設定）
+export interface CompensationType {
+  id: string                          // UUID
+  name: string                        // 表示名（報酬形態1, 報酬形態2, etc.）
+  order_index: number                 // 並び順
+  is_enabled: boolean                 // 有効/無効
+
+  // 売上収集方法
+  sales_aggregation: SalesAggregationMethod
+
+  // 基本給与設定
+  hourly_rate: number                 // 時給（未使用時は0）
+  commission_rate: number             // 売上バック率（%）（未使用時は0）
+  fixed_amount: number                // 固定額（未使用時は0）
+
+  // スライド式バック率
+  use_sliding_rate: boolean           // スライド式を使用するか
+  sliding_rates: SlidingRate[] | null // スライド率テーブル
+
+  // 商品バック設定
+  use_product_back: boolean           // 商品別バック率を使用するか
+  use_help_product_back: boolean      // ヘルプの商品バックを有効にするか
+  help_back_calculation_method: HelpBackCalculationMethod
+}
+
 // 公開する集計方法
 export type PublishedAggregation = 'none' | 'item_based' | 'receipt_based'
 // item_based: キャスト名が入ってる商品のみ
@@ -469,10 +504,15 @@ export interface CompensationSettings {
   deduction_enabled: boolean
   deduction_items: DeductionItem[] | null
 
-  // 商品別バック設定
+  // 商品別バック設定（レガシー、後方互換用）
   use_product_back: boolean  // 商品別バック率を使用するか（cast_back_ratesテーブル参照）
   use_help_product_back: boolean  // ヘルプの商品バックを有効にするか
   help_back_calculation_method: HelpBackCalculationMethod  // ヘルプバック計算方法
+
+  // 報酬形態設定（新構造）
+  payment_selection_method: PaymentSelectionMethod  // 支給方法: highest | specific
+  selected_compensation_type_id: string | null      // specific時に使用する報酬形態ID
+  compensation_types: CompensationType[] | null     // 報酬形態の配列
 
   // 対象年月（月ごとの報酬設定用）
   target_year: number | null   // 対象年（nullは全期間共通）

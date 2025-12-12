@@ -13,6 +13,10 @@ import {
   Product,
   Category,
   CastBackRate,
+  CompensationType,
+  PaymentSelectionMethod,
+  SalesAggregationMethod,
+  HelpBackCalculationMethod,
 } from '@/types'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
@@ -109,6 +113,20 @@ interface CastWithStatus {
 
 // UI用の設定状態（チェックボックス管理用）
 interface SettingsState {
+  // 支給方法設定（新構造）
+  paymentSelectionMethod: PaymentSelectionMethod  // 'highest' | 'specific'
+  selectedCompensationTypeId: string | null       // specific時に使用する報酬形態ID
+  compensationTypes: CompensationType[]           // 報酬形態の配列
+
+  // 控除（共通設定）
+  deductionItems: DeductionItem[] | null
+
+  // その他
+  validFrom: string
+  validTo: string | null
+  isActive: boolean
+
+  // === 以下レガシー（後方互換用、新UIでは非表示） ===
   // 基本設定
   useHourly: boolean
   useFixed: boolean
@@ -132,22 +150,43 @@ interface SettingsState {
   // スライド率テーブル
   slidingRates: SlidingRate[] | null
 
-  // 控除
-  deductionItems: DeductionItem[] | null
-
   // 商品別バック
   useProductBack: boolean
-  useHelpProductBack: boolean  // ヘルプの商品バックを有効にするか
-  helpBackCalculationMethod: 'sales_based' | 'full_amount'
-
-  // その他
-  validFrom: string
-  validTo: string | null
-  isActive: boolean
+  useHelpProductBack: boolean
+  helpBackCalculationMethod: HelpBackCalculationMethod
 }
+
+// デフォルトの報酬形態を生成
+const createDefaultCompensationType = (index: number): CompensationType => ({
+  id: crypto.randomUUID(),
+  name: `報酬形態${index + 1}`,
+  order_index: index,
+  is_enabled: true,
+  sales_aggregation: index === 0 ? 'item_based' : 'receipt_based',
+  hourly_rate: 0,
+  commission_rate: 50,
+  fixed_amount: 0,
+  use_sliding_rate: false,
+  sliding_rates: null,
+  use_product_back: false,
+  use_help_product_back: false,
+  help_back_calculation_method: 'sales_based',
+})
 
 // デフォルトの設定
 const getDefaultSettingsState = (): SettingsState => ({
+  // 新構造
+  paymentSelectionMethod: 'highest',
+  selectedCompensationTypeId: null,
+  compensationTypes: [createDefaultCompensationType(0)],
+
+  // 共通設定
+  deductionItems: null,
+  validFrom: new Date().toISOString().split('T')[0],
+  validTo: null,
+  isActive: true,
+
+  // レガシー（後方互換用）
   useHourly: false,
   useFixed: false,
   useSales: true,
@@ -167,21 +206,79 @@ const getDefaultSettingsState = (): SettingsState => ({
   compareSalesTarget: 'cast_sales',
 
   slidingRates: null,
-  deductionItems: null,
 
   useProductBack: false,
   useHelpProductBack: false,
   helpBackCalculationMethod: 'sales_based',
-
-  validFrom: new Date().toISOString().split('T')[0],
-  validTo: null,
-  isActive: true,
 })
+
+// レガシーデータから報酬形態を生成
+const legacyToCompensationTypes = (data: CompensationSettings): CompensationType[] => {
+  const types: CompensationType[] = []
+
+  // 報酬形態1（メイン）
+  const type1: CompensationType = {
+    id: crypto.randomUUID(),
+    name: '報酬形態1',
+    order_index: 0,
+    is_enabled: true,
+    sales_aggregation: data.sales_target === 'receipt_total' ? 'receipt_based' : 'item_based',
+    hourly_rate: data.hourly_rate ?? 0,
+    commission_rate: data.commission_rate ?? 50,
+    fixed_amount: data.fixed_amount ?? 0,
+    use_sliding_rate: (data.sliding_rates?.length ?? 0) > 0,
+    sliding_rates: data.sliding_rates,
+    use_product_back: data.use_product_back ?? false,
+    use_help_product_back: data.use_help_product_back ?? false,
+    help_back_calculation_method: data.help_back_calculation_method || 'sales_based',
+  }
+  types.push(type1)
+
+  // 報酬形態2（比較用がある場合）
+  if (data.use_sliding_comparison) {
+    const type2: CompensationType = {
+      id: crypto.randomUUID(),
+      name: '報酬形態2',
+      order_index: 1,
+      is_enabled: true,
+      sales_aggregation: data.compare_sales_target === 'receipt_total' ? 'receipt_based' : 'item_based',
+      hourly_rate: data.compare_hourly_rate ?? 0,
+      commission_rate: data.compare_commission_rate ?? 50,
+      fixed_amount: data.compare_fixed_amount ?? 0,
+      use_sliding_rate: false,
+      sliding_rates: null,
+      use_product_back: data.compare_use_product_back ?? false,
+      use_help_product_back: false,
+      help_back_calculation_method: 'sales_based',
+    }
+    types.push(type2)
+  }
+
+  return types
+}
 
 // DBデータをUI状態に変換
 const dbToState = (data: CompensationSettings): SettingsState => {
   const payType = data.pay_type || 'commission'
+
+  // 新構造のデータがあれば使用、なければレガシーから変換
+  const compensationTypes = data.compensation_types && data.compensation_types.length > 0
+    ? data.compensation_types
+    : legacyToCompensationTypes(data)
+
   return {
+    // 新構造
+    paymentSelectionMethod: data.payment_selection_method || 'highest',
+    selectedCompensationTypeId: data.selected_compensation_type_id || null,
+    compensationTypes,
+
+    // 共通設定
+    deductionItems: data.deduction_items,
+    validFrom: data.valid_from,
+    validTo: data.valid_to,
+    isActive: data.is_active,
+
+    // レガシー（後方互換用）
     useHourly: payType === 'hourly' || payType === 'hourly_plus_commission',
     useFixed: (data.fixed_amount ?? 0) > 0,
     useSales: payType === 'commission' || payType === 'hourly_plus_commission' || payType === 'sliding',
@@ -201,21 +298,16 @@ const dbToState = (data: CompensationSettings): SettingsState => {
     compareSalesTarget: data.compare_sales_target || 'cast_sales',
 
     slidingRates: data.sliding_rates,
-    deductionItems: data.deduction_items,
 
     useProductBack: data.use_product_back ?? false,
     useHelpProductBack: data.use_help_product_back ?? false,
     helpBackCalculationMethod: data.help_back_calculation_method || 'sales_based',
-
-    validFrom: data.valid_from,
-    validTo: data.valid_to,
-    isActive: data.is_active,
   }
 }
 
 // UI状態をDBデータに変換
 const stateToDb = (state: SettingsState, castId: number, storeId: number, existingId?: number): Partial<CompensationSettings> => {
-  // pay_typeを決定
+  // pay_typeを決定（レガシー互換）
   let payType: PayType = 'commission'
   if (state.useHourly && state.useSales) {
     payType = 'hourly_plus_commission'
@@ -231,6 +323,13 @@ const stateToDb = (state: SettingsState, castId: number, storeId: number, existi
     ...(existingId ? { id: existingId } : {}),
     cast_id: castId,
     store_id: storeId,
+
+    // 新構造
+    payment_selection_method: state.paymentSelectionMethod,
+    selected_compensation_type_id: state.selectedCompensationTypeId,
+    compensation_types: state.compensationTypes,
+
+    // レガシー（後方互換用）
     pay_type: payType,
     hourly_rate: state.useHourly ? state.hourlyRate : 0,
     fixed_amount: state.useFixed ? state.fixedAmount : 0,
@@ -293,6 +392,9 @@ export default function CompensationSettingsPage() {
       document.removeEventListener('mousedown', handleClickOutside)
     }
   }, [showCastDropdown])
+
+  // 報酬形態タブ
+  const [activeCompensationTypeId, setActiveCompensationTypeId] = useState<string | null>(null)
 
   // スライド率テーブル編集
   const [showSlidingModal, setShowSlidingModal] = useState(false)
@@ -729,6 +831,64 @@ export default function CompensationSettingsPage() {
       loadSettings(selectedCastId, selectedYear, selectedMonth)
     }
   }, [selectedCastId, selectedYear, selectedMonth, loadSettings])
+
+  // settingsStateが変わったら最初の報酬形態をアクティブに
+  useEffect(() => {
+    if (settingsState?.compensationTypes && settingsState.compensationTypes.length > 0) {
+      if (!activeCompensationTypeId || !settingsState.compensationTypes.find(t => t.id === activeCompensationTypeId)) {
+        setActiveCompensationTypeId(settingsState.compensationTypes[0].id)
+      }
+    }
+  }, [settingsState?.compensationTypes, activeCompensationTypeId])
+
+  // アクティブな報酬形態を取得
+  const activeCompensationType = useMemo(() => {
+    if (!settingsState?.compensationTypes || !activeCompensationTypeId) return null
+    return settingsState.compensationTypes.find(t => t.id === activeCompensationTypeId) || null
+  }, [settingsState?.compensationTypes, activeCompensationTypeId])
+
+  // 報酬形態を更新するヘルパー関数
+  const updateCompensationType = useCallback((typeId: string, updates: Partial<CompensationType>) => {
+    setSettingsState(prev => {
+      if (!prev) return null
+      return {
+        ...prev,
+        compensationTypes: prev.compensationTypes.map(t =>
+          t.id === typeId ? { ...t, ...updates } : t
+        ),
+      }
+    })
+  }, [])
+
+  // 報酬形態を追加
+  const addCompensationType = useCallback(() => {
+    setSettingsState(prev => {
+      if (!prev) return null
+      const newIndex = prev.compensationTypes.length
+      const newType = createDefaultCompensationType(newIndex)
+      setActiveCompensationTypeId(newType.id)
+      return {
+        ...prev,
+        compensationTypes: [...prev.compensationTypes, newType],
+      }
+    })
+  }, [])
+
+  // 報酬形態を削除
+  const deleteCompensationType = useCallback((typeId: string) => {
+    setSettingsState(prev => {
+      if (!prev || prev.compensationTypes.length <= 1) return prev
+      const newTypes = prev.compensationTypes.filter(t => t.id !== typeId)
+      // 削除したタブがアクティブだった場合、最初のタブをアクティブに
+      if (activeCompensationTypeId === typeId) {
+        setActiveCompensationTypeId(newTypes[0]?.id || null)
+      }
+      return {
+        ...prev,
+        compensationTypes: newTypes,
+      }
+    })
+  }, [activeCompensationTypeId])
 
   // フィルター済みキャスト一覧
   const filteredCasts = useMemo(() => {
@@ -1527,18 +1687,23 @@ export default function CompensationSettingsPage() {
 
   // スライド率テーブルを開く
   const openSlidingModal = () => {
-    setEditingSlidingRates(settingsState?.slidingRates || [
+    const currentRates = activeCompensationType?.sliding_rates || [
       { min: 0, max: 100000, rate: 40 },
       { min: 100000, max: 200000, rate: 45 },
       { min: 200000, max: 300000, rate: 50 },
       { min: 300000, max: 0, rate: 55 },
-    ])
+    ]
+    setEditingSlidingRates(currentRates)
     setShowSlidingModal(true)
   }
 
   // スライド率を保存
   const saveSlidingRates = () => {
-    setSettingsState(prev => prev ? { ...prev, slidingRates: editingSlidingRates } : null)
+    if (activeCompensationType) {
+      updateCompensationType(activeCompensationType.id, {
+        sliding_rates: editingSlidingRates
+      })
+    }
     setShowSlidingModal(false)
   }
 
@@ -1739,249 +1904,132 @@ export default function CompensationSettingsPage() {
                 <h2 style={styles.mainTitle}>{selectedCast.name} の報酬設定</h2>
               </div>
 
-              {/* 売上集計方法 */}
-              <div style={styles.section}>
-                <h3 style={styles.sectionTitle}>
-                  売上集計方法
+              {/* 支給方法選択 */}
+              <div style={styles.paymentMethodSection}>
+                <div style={styles.paymentMethodRow}>
+                  <span style={styles.paymentMethodLabel}>支給方法:</span>
+                  <select
+                    value={settingsState.paymentSelectionMethod === 'specific' && settingsState.selectedCompensationTypeId
+                      ? `specific_${settingsState.selectedCompensationTypeId}`
+                      : settingsState.paymentSelectionMethod}
+                    onChange={(e) => {
+                      const value = e.target.value
+                      if (value === 'highest') {
+                        setSettingsState(prev => prev ? { ...prev, paymentSelectionMethod: 'highest', selectedCompensationTypeId: null } : null)
+                      } else if (value.startsWith('specific_')) {
+                        const typeId = value.replace('specific_', '')
+                        setSettingsState(prev => prev ? { ...prev, paymentSelectionMethod: 'specific', selectedCompensationTypeId: typeId } : null)
+                      }
+                    }}
+                    style={styles.paymentMethodSelect}
+                  >
+                    <option value="highest">高い方を支給</option>
+                    {settingsState.compensationTypes.map(type => (
+                      <option key={type.id} value={`specific_${type.id}`}>
+                        {type.name}を使用
+                      </option>
+                    ))}
+                  </select>
                   <HelpTooltip
-                    text="売上の集計方法を選択します。この設定は売上バックや商品バックの計算に使用されます。"
+                    text="複数の報酬形態がある場合の支給方法を選択します。「高い方を支給」は全ての報酬形態を計算し、最も高い金額を支給します。"
                     width={280}
                   />
-                </h3>
-                <div style={styles.salesMethodToggle}>
-                  <button
-                    onClick={() => setSettingsState(prev => prev ? { ...prev, salesTarget: 'cast_sales' } : null)}
-                    style={{
-                      ...styles.salesMethodBtn,
-                      ...(settingsState.salesTarget === 'cast_sales' ? styles.salesMethodBtnActive : {}),
-                    }}
-                  >
-                    推し小計
-                  </button>
-                  <button
-                    onClick={() => setSettingsState(prev => prev ? { ...prev, salesTarget: 'receipt_total' } : null)}
-                    style={{
-                      ...styles.salesMethodBtn,
-                      ...(settingsState.salesTarget === 'receipt_total' ? styles.salesMethodBtnActive : {}),
-                    }}
-                  >
-                    伝票小計
-                  </button>
                 </div>
-                <p style={styles.salesMethodHint}>
-                  {settingsState.salesTarget === 'cast_sales'
-                    ? '推しの商品ごとに売上を集計します'
-                    : '伝票全体から推しの売上を集計します'}
-                </p>
               </div>
 
-              {/* 報酬形態1 */}
-              <div style={styles.section}>
-                <h3 style={styles.sectionTitle}>
-                  報酬形態1
-                  <HelpTooltip
-                    text="チェックを入れた項目の合計が報酬形態1になります。複数選択可能です。"
-                    width={280}
-                  />
-                </h3>
+              {/* 報酬形態タブ */}
+              <div style={styles.compensationTypeTabs}>
+                {settingsState.compensationTypes.map(type => (
+                  <button
+                    key={type.id}
+                    onClick={() => setActiveCompensationTypeId(type.id)}
+                    style={{
+                      ...styles.compensationTypeTab,
+                      ...(activeCompensationTypeId === type.id ? styles.compensationTypeTabActive : {}),
+                    }}
+                  >
+                    {type.name}
+                    {settingsState.compensationTypes.length > 1 && (
+                      <span
+                        style={styles.deleteCompensationTypeBtn}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          if (confirm(`${type.name}を削除しますか？`)) {
+                            deleteCompensationType(type.id)
+                          }
+                        }}
+                      >
+                        ✕
+                      </span>
+                    )}
+                  </button>
+                ))}
+                <button
+                  onClick={addCompensationType}
+                  style={styles.addCompensationTypeBtn}
+                >
+                  + 追加
+                </button>
+              </div>
 
-                {/* 時給 */}
-                <div style={styles.payRow}>
-                  <label style={styles.payLabel}>
-                    <input
-                      type="checkbox"
-                      checked={settingsState.useHourly}
-                      onChange={(e) => setSettingsState(prev => prev ? { ...prev, useHourly: e.target.checked } : null)}
-                      style={styles.checkbox}
-                    />
-                    <span>時給</span>
-                  </label>
-                  <div style={styles.payInputGroup}>
-                    <input
-                      type="number"
-                      value={settingsState.hourlyRate}
-                      onChange={(e) => setSettingsState(prev => prev ? { ...prev, hourlyRate: Number(e.target.value) } : null)}
-                      style={styles.payInput}
-                      disabled={!settingsState.useHourly}
-                    />
-                    <span style={styles.payUnit}>円/時</span>
-                  </div>
-                </div>
-
-                {/* 固定額 */}
-                <div style={styles.payRow}>
-                  <label style={styles.payLabel}>
-                    <input
-                      type="checkbox"
-                      checked={settingsState.useFixed}
-                      onChange={(e) => setSettingsState(prev => prev ? { ...prev, useFixed: e.target.checked } : null)}
-                      style={styles.checkbox}
-                    />
-                    <span>固定額</span>
-                  </label>
-                  <div style={styles.payInputGroup}>
-                    <input
-                      type="number"
-                      value={settingsState.fixedAmount}
-                      onChange={(e) => setSettingsState(prev => prev ? { ...prev, fixedAmount: Number(e.target.value) } : null)}
-                      style={styles.payInput}
-                      disabled={!settingsState.useFixed}
-                    />
-                    <span style={styles.payUnit}>円</span>
-                  </div>
-                </div>
-
-                {/* 売上ベース */}
-                <div style={styles.payRow}>
-                  <label style={styles.payLabel}>
-                    <input
-                      type="checkbox"
-                      checked={settingsState.useSales}
-                      onChange={(e) => setSettingsState(prev => prev ? { ...prev, useSales: e.target.checked } : null)}
-                      style={styles.checkbox}
-                    />
-                    <span>売上</span>
-                  </label>
-                  <div style={styles.payInputGroup}>
-                    <select
-                      value={settingsState.salesTarget}
-                      onChange={(e) => setSettingsState(prev => prev ? { ...prev, salesTarget: e.target.value as SalesTargetType } : null)}
-                      style={styles.paySelect}
-                      disabled={!settingsState.useSales}
-                    >
-                      <option value="cast_sales">推し小計売上</option>
-                      <option value="receipt_total">伝票小計売上</option>
-                    </select>
-                    <span style={styles.payTimes}>×</span>
-                    <input
-                      type="number"
-                      value={settingsState.commissionRate}
-                      onChange={(e) => setSettingsState(prev => prev ? { ...prev, commissionRate: Number(e.target.value) } : null)}
-                      style={{ ...styles.payInput, width: '70px' }}
-                      disabled={!settingsState.useSales}
-                    />
-                    <span style={styles.payUnit}>%</span>
-                  </div>
-                </div>
-
-                {/* 商品別バック */}
-                <div style={styles.payRow}>
-                  <label style={styles.payLabel}>
-                    <input
-                      type="checkbox"
-                      checked={settingsState.useProductBack}
-                      onChange={(e) => setSettingsState(prev => prev ? { ...prev, useProductBack: e.target.checked } : null)}
-                      style={styles.checkbox}
-                    />
-                    <span>商品バック</span>
-                  </label>
-                  <div style={styles.payInputGroup}>
-                    <span style={styles.productBackHint}>
-                      バック率設定ページで設定した商品別バック率を使用
-                    </span>
-                  </div>
-                </div>
-                {/* ヘルプバック設定 */}
-                {settingsState.useProductBack && (
-                  <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #e2e8f0' }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={settingsState.useHelpProductBack}
-                        onChange={(e) => setSettingsState(prev => prev ? { ...prev, useHelpProductBack: e.target.checked } : null)}
-                        style={styles.checkbox}
-                      />
-                      <span style={{ fontSize: '13px', fontWeight: '500', color: '#334155' }}>ヘルプバックを有効にする</span>
+              {/* アクティブな報酬形態の設定 */}
+              {activeCompensationType && (
+                <>
+                  {/* 売上集計方法 */}
+                  <div style={styles.section}>
+                    <h3 style={styles.sectionTitle}>
+                      売上集計方法
                       <HelpTooltip
-                        text="ONにすると、ヘルプでついた卓の商品にもバックが付きます。OFFの場合は推しの商品にのみバックが付きます。"
+                        text="売上の集計方法を選択します。この設定は売上バックや商品バックの計算に使用されます。"
                         width={280}
                       />
-                    </label>
-                    {settingsState.useHelpProductBack && (
-                      <>
-                        <div style={{ fontSize: '13px', fontWeight: '500', marginBottom: '8px', color: '#475569' }}>
-                          ヘルプバック計算方法
-                          <HelpTooltip
-                            text="ヘルプでついた商品のバック計算方法を選択します。"
-                            width={280}
-                          />
-                        </div>
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                          <button
-                            onClick={() => setSettingsState(prev => prev ? { ...prev, helpBackCalculationMethod: 'sales_based' } : null)}
-                            style={{
-                              flex: 1,
-                              padding: '8px 12px',
-                              fontSize: '12px',
-                              fontWeight: '500',
-                              borderWidth: '1px',
-                              borderStyle: 'solid',
-                              borderColor: settingsState.helpBackCalculationMethod === 'sales_based' ? '#10b981' : '#cbd5e1',
-                              borderRadius: '6px',
-                              backgroundColor: settingsState.helpBackCalculationMethod === 'sales_based' ? '#ecfdf5' : 'white',
-                              color: settingsState.helpBackCalculationMethod === 'sales_based' ? '#059669' : '#64748b',
-                              cursor: 'pointer',
-                            }}
-                          >
-                            売上設定に従う
-                          </button>
-                          <button
-                            onClick={() => setSettingsState(prev => prev ? { ...prev, helpBackCalculationMethod: 'full_amount' } : null)}
-                            style={{
-                              flex: 1,
-                              padding: '8px 12px',
-                              fontSize: '12px',
-                              fontWeight: '500',
-                              borderWidth: '1px',
-                              borderStyle: 'solid',
-                              borderColor: settingsState.helpBackCalculationMethod === 'full_amount' ? '#10b981' : '#cbd5e1',
-                              borderRadius: '6px',
-                              backgroundColor: settingsState.helpBackCalculationMethod === 'full_amount' ? '#ecfdf5' : 'white',
-                              color: settingsState.helpBackCalculationMethod === 'full_amount' ? '#059669' : '#64748b',
-                              cursor: 'pointer',
-                            }}
-                          >
-                            商品全額
-                          </button>
-                        </div>
-                        <p style={{ fontSize: '11px', color: '#94a3b8', margin: '6px 0 0 0' }}>
-                          {settingsState.helpBackCalculationMethod === 'sales_based'
-                            ? '分配後の金額 × ヘルプバック率'
-                            : '商品の全額 × ヘルプバック率'}
-                        </p>
-                      </>
-                    )}
+                    </h3>
+                    <div style={styles.salesMethodToggle}>
+                      <button
+                        onClick={() => updateCompensationType(activeCompensationType.id, { sales_aggregation: 'item_based' })}
+                        style={{
+                          ...styles.salesMethodBtn,
+                          ...(activeCompensationType.sales_aggregation === 'item_based' ? styles.salesMethodBtnActive : {}),
+                        }}
+                      >
+                        推し小計
+                      </button>
+                      <button
+                        onClick={() => updateCompensationType(activeCompensationType.id, { sales_aggregation: 'receipt_based' })}
+                        style={{
+                          ...styles.salesMethodBtn,
+                          ...(activeCompensationType.sales_aggregation === 'receipt_based' ? styles.salesMethodBtnActive : {}),
+                        }}
+                      >
+                        伝票小計
+                      </button>
+                    </div>
+                    <p style={styles.salesMethodHint}>
+                      {activeCompensationType.sales_aggregation === 'item_based'
+                        ? '推しの商品ごとに売上を集計します'
+                        : '伝票全体から推しの売上を集計します'}
+                    </p>
                   </div>
-                )}
-              </div>
 
-              {/* 報酬形態2（高い方を支給） */}
-              <div style={styles.section}>
-                <h3 style={styles.sectionTitle}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <input
-                      type="checkbox"
-                      checked={settingsState.useComparison}
-                      onChange={(e) => setSettingsState(prev => prev ? { ...prev, useComparison: e.target.checked } : null)}
-                      style={styles.checkbox}
-                    />
-                    報酬形態2（高い方を支給）
-                  </label>
-                  <HelpTooltip
-                    text="報酬形態1と報酬形態2を比べ、高い方を支給します。"
-                    width={280}
-                  />
-                </h3>
+                  {/* 報酬設定 */}
+                  <div style={styles.section}>
+                    <h3 style={styles.sectionTitle}>
+                      報酬設定
+                      <HelpTooltip
+                        text="この報酬形態の報酬計算方法を設定します。"
+                        width={280}
+                      />
+                    </h3>
 
-                {settingsState.useComparison && (
-                  <div style={styles.compareSection}>
-                    {/* 比較用: 時給 */}
+                    {/* 時給 */}
                     <div style={styles.payRow}>
                       <label style={styles.payLabel}>
                         <input
                           type="checkbox"
-                          checked={settingsState.compareUseHourly}
-                          onChange={(e) => setSettingsState(prev => prev ? { ...prev, compareUseHourly: e.target.checked } : null)}
+                          checked={activeCompensationType.hourly_rate > 0}
+                          onChange={(e) => updateCompensationType(activeCompensationType.id, {
+                            hourly_rate: e.target.checked ? 1500 : 0
+                          })}
                           style={styles.checkbox}
                         />
                         <span>時給</span>
@@ -1989,22 +2037,26 @@ export default function CompensationSettingsPage() {
                       <div style={styles.payInputGroup}>
                         <input
                           type="number"
-                          value={settingsState.compareHourlyRate}
-                          onChange={(e) => setSettingsState(prev => prev ? { ...prev, compareHourlyRate: Number(e.target.value) } : null)}
+                          value={activeCompensationType.hourly_rate}
+                          onChange={(e) => updateCompensationType(activeCompensationType.id, {
+                            hourly_rate: Number(e.target.value)
+                          })}
                           style={styles.payInput}
-                          disabled={!settingsState.compareUseHourly}
+                          disabled={activeCompensationType.hourly_rate === 0}
                         />
                         <span style={styles.payUnit}>円/時</span>
                       </div>
                     </div>
 
-                    {/* 比較用: 固定額 */}
+                    {/* 固定額 */}
                     <div style={styles.payRow}>
                       <label style={styles.payLabel}>
                         <input
                           type="checkbox"
-                          checked={settingsState.compareUseFixed}
-                          onChange={(e) => setSettingsState(prev => prev ? { ...prev, compareUseFixed: e.target.checked } : null)}
+                          checked={activeCompensationType.fixed_amount > 0}
+                          onChange={(e) => updateCompensationType(activeCompensationType.id, {
+                            fixed_amount: e.target.checked ? 10000 : 0
+                          })}
                           style={styles.checkbox}
                         />
                         <span>固定額</span>
@@ -2012,54 +2064,53 @@ export default function CompensationSettingsPage() {
                       <div style={styles.payInputGroup}>
                         <input
                           type="number"
-                          value={settingsState.compareFixedAmount}
-                          onChange={(e) => setSettingsState(prev => prev ? { ...prev, compareFixedAmount: Number(e.target.value) } : null)}
+                          value={activeCompensationType.fixed_amount}
+                          onChange={(e) => updateCompensationType(activeCompensationType.id, {
+                            fixed_amount: Number(e.target.value)
+                          })}
                           style={styles.payInput}
-                          disabled={!settingsState.compareUseFixed}
+                          disabled={activeCompensationType.fixed_amount === 0}
                         />
                         <span style={styles.payUnit}>円</span>
                       </div>
                     </div>
 
-                    {/* 比較用: 売上 */}
+                    {/* 売上バック率 */}
                     <div style={styles.payRow}>
                       <label style={styles.payLabel}>
                         <input
                           type="checkbox"
-                          checked={settingsState.compareUseSales}
-                          onChange={(e) => setSettingsState(prev => prev ? { ...prev, compareUseSales: e.target.checked } : null)}
+                          checked={activeCompensationType.commission_rate > 0}
+                          onChange={(e) => updateCompensationType(activeCompensationType.id, {
+                            commission_rate: e.target.checked ? 50 : 0
+                          })}
                           style={styles.checkbox}
                         />
-                        <span>売上</span>
+                        <span>売上バック</span>
                       </label>
                       <div style={styles.payInputGroup}>
-                        <select
-                          value={settingsState.compareSalesTarget}
-                          onChange={(e) => setSettingsState(prev => prev ? { ...prev, compareSalesTarget: e.target.value as SalesTargetType } : null)}
-                          style={styles.paySelect}
-                          disabled={!settingsState.compareUseSales}
-                        >
-                          <option value="cast_sales">推し小計売上</option>
-                          <option value="receipt_total">伝票小計売上</option>
-                        </select>
                         <input
                           type="number"
-                          value={settingsState.compareCommissionRate}
-                          onChange={(e) => setSettingsState(prev => prev ? { ...prev, compareCommissionRate: Number(e.target.value) } : null)}
+                          value={activeCompensationType.commission_rate}
+                          onChange={(e) => updateCompensationType(activeCompensationType.id, {
+                            commission_rate: Number(e.target.value)
+                          })}
                           style={{ ...styles.payInput, width: '70px' }}
-                          disabled={!settingsState.compareUseSales}
+                          disabled={activeCompensationType.commission_rate === 0}
                         />
                         <span style={styles.payUnit}>%</span>
                       </div>
                     </div>
 
-                    {/* 比較用: 商品バック */}
+                    {/* 商品別バック */}
                     <div style={styles.payRow}>
                       <label style={styles.payLabel}>
                         <input
                           type="checkbox"
-                          checked={settingsState.compareUseProductBack}
-                          onChange={(e) => setSettingsState(prev => prev ? { ...prev, compareUseProductBack: e.target.checked } : null)}
+                          checked={activeCompensationType.use_product_back}
+                          onChange={(e) => updateCompensationType(activeCompensationType.id, {
+                            use_product_back: e.target.checked
+                          })}
                           style={styles.checkbox}
                         />
                         <span>商品バック</span>
@@ -2070,38 +2121,131 @@ export default function CompensationSettingsPage() {
                         </span>
                       </div>
                     </div>
-                  </div>
-                )}
-              </div>
 
-              {/* スライド率テーブル */}
-              <div style={styles.section}>
-                <h3 style={styles.sectionTitle}>
-                  スライド率テーブル
-                  <button onClick={openSlidingModal} style={styles.editBtn}>
-                    設定
-                  </button>
-                  <HelpTooltip
-                    text="売上に応じてバック率が変動します。設定すると上記の売上バック率の代わりにこのテーブルが使用されます。"
-                    width={300}
-                  />
-                </h3>
-
-                {settingsState.slidingRates && settingsState.slidingRates.length > 0 ? (
-                  <div style={styles.slidingPreview}>
-                    {settingsState.slidingRates.map((rate, idx) => (
-                      <div key={idx} style={styles.slidingPreviewRow}>
-                        {rate.max > 0
-                          ? `${(rate.min / 10000).toFixed(0)}万〜${(rate.max / 10000).toFixed(0)}万: ${rate.rate}%`
-                          : `${(rate.min / 10000).toFixed(0)}万〜: ${rate.rate}%`
-                        }
+                    {/* ヘルプバック設定 */}
+                    {activeCompensationType.use_product_back && (
+                      <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #e2e8f0' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', cursor: 'pointer' }}>
+                          <input
+                            type="checkbox"
+                            checked={activeCompensationType.use_help_product_back}
+                            onChange={(e) => updateCompensationType(activeCompensationType.id, {
+                              use_help_product_back: e.target.checked
+                            })}
+                            style={styles.checkbox}
+                          />
+                          <span style={{ fontSize: '13px', fontWeight: '500', color: '#334155' }}>ヘルプバックを有効にする</span>
+                          <HelpTooltip
+                            text="ONにすると、ヘルプでついた卓の商品にもバックが付きます。OFFの場合は推しの商品にのみバックが付きます。"
+                            width={280}
+                          />
+                        </label>
+                        {activeCompensationType.use_help_product_back && (
+                          <>
+                            <div style={{ fontSize: '13px', fontWeight: '500', marginBottom: '8px', color: '#475569' }}>
+                              ヘルプバック計算方法
+                              <HelpTooltip
+                                text="ヘルプでついた商品のバック計算方法を選択します。"
+                                width={280}
+                              />
+                            </div>
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                              <button
+                                onClick={() => updateCompensationType(activeCompensationType.id, {
+                                  help_back_calculation_method: 'sales_based'
+                                })}
+                                style={{
+                                  flex: 1,
+                                  padding: '8px 12px',
+                                  fontSize: '12px',
+                                  fontWeight: '500',
+                                  borderWidth: '1px',
+                                  borderStyle: 'solid',
+                                  borderColor: activeCompensationType.help_back_calculation_method === 'sales_based' ? '#10b981' : '#cbd5e1',
+                                  borderRadius: '6px',
+                                  backgroundColor: activeCompensationType.help_back_calculation_method === 'sales_based' ? '#ecfdf5' : 'white',
+                                  color: activeCompensationType.help_back_calculation_method === 'sales_based' ? '#059669' : '#64748b',
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                売上設定に従う
+                              </button>
+                              <button
+                                onClick={() => updateCompensationType(activeCompensationType.id, {
+                                  help_back_calculation_method: 'full_amount'
+                                })}
+                                style={{
+                                  flex: 1,
+                                  padding: '8px 12px',
+                                  fontSize: '12px',
+                                  fontWeight: '500',
+                                  borderWidth: '1px',
+                                  borderStyle: 'solid',
+                                  borderColor: activeCompensationType.help_back_calculation_method === 'full_amount' ? '#10b981' : '#cbd5e1',
+                                  borderRadius: '6px',
+                                  backgroundColor: activeCompensationType.help_back_calculation_method === 'full_amount' ? '#ecfdf5' : 'white',
+                                  color: activeCompensationType.help_back_calculation_method === 'full_amount' ? '#059669' : '#64748b',
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                商品全額
+                              </button>
+                            </div>
+                            <p style={{ fontSize: '11px', color: '#94a3b8', margin: '6px 0 0 0' }}>
+                              {activeCompensationType.help_back_calculation_method === 'sales_based'
+                                ? '分配後の金額 × ヘルプバック率'
+                                : '商品の全額 × ヘルプバック率'}
+                            </p>
+                          </>
+                        )}
                       </div>
-                    ))}
+                    )}
                   </div>
-                ) : (
-                  <p style={styles.noDeductions}>スライド率テーブルは未設定です（固定バック率を使用）</p>
-                )}
-              </div>
+
+                  {/* スライド率テーブル */}
+                  <div style={styles.section}>
+                    <h3 style={styles.sectionTitle}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <input
+                          type="checkbox"
+                          checked={activeCompensationType.use_sliding_rate}
+                          onChange={(e) => updateCompensationType(activeCompensationType.id, {
+                            use_sliding_rate: e.target.checked
+                          })}
+                          style={styles.checkbox}
+                        />
+                        スライド率テーブル
+                      </label>
+                      <button onClick={openSlidingModal} style={styles.editBtn}>
+                        設定
+                      </button>
+                      <HelpTooltip
+                        text="売上に応じてバック率が変動します。ONにすると上記の売上バック率の代わりにこのテーブルが使用されます。"
+                        width={300}
+                      />
+                    </h3>
+
+                    {activeCompensationType.use_sliding_rate && activeCompensationType.sliding_rates && activeCompensationType.sliding_rates.length > 0 ? (
+                      <div style={styles.slidingPreview}>
+                        {activeCompensationType.sliding_rates.map((rate, idx) => (
+                          <div key={idx} style={styles.slidingPreviewRow}>
+                            {rate.max > 0
+                              ? `${(rate.min / 10000).toFixed(0)}万〜${(rate.max / 10000).toFixed(0)}万: ${rate.rate}%`
+                              : `${(rate.min / 10000).toFixed(0)}万〜: ${rate.rate}%`
+                            }
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p style={styles.noDeductions}>
+                        {activeCompensationType.use_sliding_rate
+                          ? 'スライド率テーブルは未設定です（設定ボタンから追加）'
+                          : '固定バック率を使用中'}
+                      </p>
+                    )}
+                  </div>
+                </>
+              )}
 
               {/* 控除設定 */}
               <div style={styles.section}>
@@ -2922,6 +3066,80 @@ const styles: { [key: string]: React.CSSProperties } = {
     padding: '8px 12px',
     borderRadius: '8px',
     border: '1px solid #e2e8f0',
+  },
+  // 支給方法・報酬形態タブ
+  paymentMethodSection: {
+    marginBottom: '16px',
+    padding: '12px 16px',
+    backgroundColor: '#f8fafc',
+    borderRadius: '8px',
+    border: '1px solid #e2e8f0',
+  },
+  paymentMethodRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+  },
+  paymentMethodLabel: {
+    fontSize: '13px',
+    fontWeight: '600',
+    color: '#374151',
+    whiteSpace: 'nowrap' as const,
+  },
+  paymentMethodSelect: {
+    padding: '6px 10px',
+    fontSize: '13px',
+    border: '1px solid #d1d5db',
+    borderRadius: '6px',
+    backgroundColor: 'white',
+    cursor: 'pointer',
+    minWidth: '160px',
+  },
+  compensationTypeTabs: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+    marginBottom: '16px',
+    borderBottom: '2px solid #e2e8f0',
+    paddingBottom: '0',
+  },
+  compensationTypeTab: {
+    padding: '10px 16px',
+    fontSize: '13px',
+    fontWeight: '500',
+    color: '#64748b',
+    backgroundColor: 'transparent',
+    border: 'none',
+    borderBottom: '2px solid transparent',
+    marginBottom: '-2px',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
+  },
+  compensationTypeTabActive: {
+    color: '#3b82f6',
+    borderBottomColor: '#3b82f6',
+    fontWeight: '600',
+  },
+  addCompensationTypeBtn: {
+    padding: '8px 12px',
+    fontSize: '13px',
+    fontWeight: '500',
+    color: '#64748b',
+    backgroundColor: 'transparent',
+    border: '1px dashed #cbd5e1',
+    borderRadius: '6px',
+    cursor: 'pointer',
+    marginLeft: '8px',
+    transition: 'all 0.15s ease',
+  },
+  deleteCompensationTypeBtn: {
+    padding: '2px 6px',
+    fontSize: '11px',
+    color: '#ef4444',
+    backgroundColor: 'transparent',
+    border: 'none',
+    cursor: 'pointer',
+    marginLeft: '4px',
   },
   // キャスト選択ドロップダウン
   castSelectorWrapper: {

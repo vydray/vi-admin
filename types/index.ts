@@ -28,6 +28,7 @@ export type {
   MultiCastDistribution,
   NonNominationSalesHandling,
   HelpSalesInclusion,
+  HelpBackCalculationMethod,
   PublishedAggregation,
   PayType,
   BackType,
@@ -42,6 +43,10 @@ export type {
   SalesType,
   CalculatedSalesItem,
   CastSalesSummary,
+  // 報酬形態タブ関連
+  PaymentSelectionMethod,
+  SalesAggregationMethod,
+  CompensationType,
 } from './database'
 
 // UI Component types
