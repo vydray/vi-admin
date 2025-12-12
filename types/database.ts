@@ -529,6 +529,13 @@ export interface CompensationSettings {
   updated_at: string
 }
 
+// スライドバック率エントリ
+export interface SlidingBackRateEntry {
+  min: number       // 売上下限
+  max: number       // 売上上限 (0 = 上限なし)
+  rate: number      // バック率 (%)
+}
+
 // キャスト×商品別バック率
 export interface CastBackRate {
   id: number
@@ -547,6 +554,11 @@ export interface CastBackRate {
   // SELF/HELP別バック率
   self_back_ratio: number | null  // NULLの場合はback_ratioを使用
   help_back_ratio: number | null  // NULLの場合はsales_settings.help_ratioを使用
+
+  // スライド式バック率
+  use_sliding_back: boolean                       // スライド式を使用するか
+  back_sales_aggregation: 'item_based' | 'receipt_based'  // 売上計算方法
+  sliding_back_rates: SlidingBackRateEntry[] | null       // スライド率テーブル
 
   // キャスト報酬設定（デフォルト設定用: category=null, product_name=null時）
   hourly_wage: number | null     // 時給

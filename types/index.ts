@@ -40,6 +40,7 @@ export type {
   DeductionItem,
   CompensationSettings,
   CastBackRate,
+  SlidingBackRateEntry,
   SalesType,
   CalculatedSalesItem,
   CastSalesSummary,

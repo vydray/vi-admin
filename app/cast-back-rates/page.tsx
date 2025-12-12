@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
-import { CastBackRate, BackType, Category, Product } from '@/types'
+import { CastBackRate, BackType, Category, Product, SlidingBackRateEntry } from '@/types'
 
 interface CastWithStatus {
   id: number
@@ -25,6 +25,10 @@ interface BackRateForm {
   back_fixed_amount: number
   self_back_ratio: number | null
   help_back_ratio: number | null
+  // スライド式バック率
+  use_sliding_back: boolean
+  back_sales_aggregation: 'item_based' | 'receipt_based'
+  sliding_back_rates: SlidingBackRateEntry[] | null
 }
 
 interface ProductWithRate {
@@ -53,6 +57,13 @@ export default function CastBackRatesPage() {
   const [bulkSelfRate, setBulkSelfRate] = useState<number>(0)
   const [bulkHelpRate, setBulkHelpRate] = useState<number | null>(null)
   const [bulkApplyToAll, setBulkApplyToAll] = useState(false)
+  // 一括設定用スライドバック率
+  const [bulkUseSlidingBack, setBulkUseSlidingBack] = useState(false)
+  const [bulkBackSalesAggregation, setBulkBackSalesAggregation] = useState<'item_based' | 'receipt_based'>('item_based')
+  const [bulkSlidingBackRates, setBulkSlidingBackRates] = useState<SlidingBackRateEntry[]>([
+    { min: 0, max: 0, rate: 10 },
+    { min: 500000, max: 0, rate: 15 },
+  ])
 
   // 商品モーダルで全キャスト適用
   const [rateApplyToAll, setRateApplyToAll] = useState(false)
@@ -189,6 +200,10 @@ export default function CastBackRatesPage() {
         back_fixed_amount: item.rate.back_fixed_amount,
         self_back_ratio: item.rate.self_back_ratio,
         help_back_ratio: item.rate.help_back_ratio,
+        // スライド式バック率
+        use_sliding_back: item.rate.use_sliding_back ?? false,
+        back_sales_aggregation: item.rate.back_sales_aggregation ?? 'item_based',
+        sliding_back_rates: item.rate.sliding_back_rates ?? null,
       })
     } else {
       setEditingRate({
@@ -200,6 +215,10 @@ export default function CastBackRatesPage() {
         back_fixed_amount: 0,
         self_back_ratio: null,
         help_back_ratio: null,
+        // スライド式バック率
+        use_sliding_back: false,
+        back_sales_aggregation: 'item_based',
+        sliding_back_rates: null,
       })
     }
     setRateApplyToAll(false)
@@ -238,6 +257,10 @@ export default function CastBackRatesPage() {
             back_fixed_amount: editingRate.back_fixed_amount,
             self_back_ratio: editingRate.self_back_ratio,
             help_back_ratio: editingRate.help_back_ratio,
+            // スライド式バック率
+            use_sliding_back: editingRate.use_sliding_back,
+            back_sales_aggregation: editingRate.back_sales_aggregation,
+            sliding_back_rates: editingRate.sliding_back_rates,
             hourly_wage: null,
             is_active: true,
           }
@@ -267,6 +290,10 @@ export default function CastBackRatesPage() {
           back_fixed_amount: editingRate.back_fixed_amount,
           self_back_ratio: editingRate.self_back_ratio,
           help_back_ratio: editingRate.help_back_ratio,
+          // スライド式バック率
+          use_sliding_back: editingRate.use_sliding_back,
+          back_sales_aggregation: editingRate.back_sales_aggregation,
+          sliding_back_rates: editingRate.sliding_back_rates,
           hourly_wage: null,
           is_active: true,
         }
@@ -352,6 +379,10 @@ export default function CastBackRatesPage() {
             back_fixed_amount: 0,
             self_back_ratio: bulkSelfRate,
             help_back_ratio: bulkHelpRate,
+            // スライド式バック率
+            use_sliding_back: bulkUseSlidingBack,
+            back_sales_aggregation: bulkBackSalesAggregation,
+            sliding_back_rates: bulkUseSlidingBack ? bulkSlidingBackRates : null,
             hourly_wage: null,
             is_active: true,
           }
@@ -597,7 +628,21 @@ export default function CastBackRatesPage() {
                             <td style={styles.td}>{item.product.name}</td>
                             <td style={styles.td}>
                               {item.rate ? (
-                                item.rate.back_type === 'ratio'
+                                item.rate.use_sliding_back ? (
+                                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <span style={{
+                                      backgroundColor: '#8b5cf6',
+                                      color: 'white',
+                                      padding: '2px 6px',
+                                      borderRadius: '4px',
+                                      fontSize: '10px',
+                                      fontWeight: '600',
+                                    }}>スライド</span>
+                                    <span style={{ fontSize: '11px', color: '#6b7280' }}>
+                                      ({item.rate.back_sales_aggregation === 'item_based' ? '推し' : '伝票'})
+                                    </span>
+                                  </span>
+                                ) : item.rate.back_type === 'ratio'
                                   ? `${item.rate.self_back_ratio ?? item.rate.back_ratio}%`
                                   : `¥${item.rate.back_fixed_amount.toLocaleString()}`
                               ) : (
@@ -606,7 +651,9 @@ export default function CastBackRatesPage() {
                             </td>
                             <td style={styles.td}>
                               {item.rate ? (
-                                item.rate.back_type === 'ratio'
+                                item.rate.use_sliding_back ? (
+                                  <span style={{ fontSize: '11px', color: '#6b7280' }}>-</span>
+                                ) : item.rate.back_type === 'ratio'
                                   ? `${item.rate.help_back_ratio ?? '-'}%`
                                   : `¥${item.rate.back_fixed_amount.toLocaleString()}`
                               ) : (
@@ -667,7 +714,7 @@ export default function CastBackRatesPage() {
               </select>
             </div>
 
-            {editingRate.back_type === 'ratio' ? (
+            {editingRate.back_type === 'ratio' && !editingRate.use_sliding_back ? (
               <div style={styles.formRow}>
                 <div style={styles.formGroup}>
                   <label style={styles.label}>SELF時バック率 (%)</label>
@@ -712,7 +759,7 @@ export default function CastBackRatesPage() {
                   />
                 </div>
               </div>
-            ) : (
+            ) : editingRate.back_type === 'fixed' ? (
               <div style={styles.formGroup}>
                 <label style={styles.label}>バック固定額 (円)</label>
                 <input
@@ -728,6 +775,144 @@ export default function CastBackRatesPage() {
                   min="0"
                   step="100"
                 />
+              </div>
+            ) : null}
+
+            {/* スライド式バック率設定 */}
+            {editingRate.back_type === 'ratio' && (
+              <div style={{ ...styles.formGroup, marginTop: '16px', borderTop: '1px solid #e5e7eb', paddingTop: '16px' }}>
+                <label style={styles.checkboxLabel}>
+                  <input
+                    type="checkbox"
+                    checked={editingRate.use_sliding_back}
+                    onChange={(e) =>
+                      setEditingRate({
+                        ...editingRate,
+                        use_sliding_back: e.target.checked,
+                        sliding_back_rates: e.target.checked && !editingRate.sliding_back_rates
+                          ? [{ min: 0, max: 0, rate: 10 }, { min: 500000, max: 0, rate: 15 }]
+                          : editingRate.sliding_back_rates,
+                      })
+                    }
+                    style={styles.checkbox}
+                  />
+                  <span style={{ fontWeight: '500' }}>スライド式バック率を使用</span>
+                </label>
+
+                {editingRate.use_sliding_back && (
+                  <div style={{ marginTop: '12px' }}>
+                    <div style={styles.formGroup}>
+                      <label style={styles.label}>売上計算方法</label>
+                      <select
+                        value={editingRate.back_sales_aggregation}
+                        onChange={(e) =>
+                          setEditingRate({
+                            ...editingRate,
+                            back_sales_aggregation: e.target.value as 'item_based' | 'receipt_based',
+                          })
+                        }
+                        style={styles.select}
+                      >
+                        <option value="item_based">推し小計</option>
+                        <option value="receipt_based">伝票小計</option>
+                      </select>
+                    </div>
+
+                    <div style={{ marginTop: '12px' }}>
+                      <label style={styles.label}>スライド率テーブル</label>
+                      <p style={{ fontSize: '11px', color: '#6b7280', marginTop: '4px' }}>
+                        売上が指定金額以上の場合に適用されるバック率を設定
+                      </p>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '8px' }}>
+                        <thead>
+                          <tr style={{ backgroundColor: '#f3f4f6' }}>
+                            <th style={{ padding: '8px', border: '1px solid #e5e7eb', fontSize: '12px' }}>売上（〜以上）</th>
+                            <th style={{ padding: '8px', border: '1px solid #e5e7eb', fontSize: '12px' }}>バック率(%)</th>
+                            <th style={{ padding: '8px', border: '1px solid #e5e7eb', fontSize: '12px', width: '40px' }}></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(editingRate.sliding_back_rates || []).map((entry, index) => (
+                            <tr key={index}>
+                              <td style={{ padding: '4px', border: '1px solid #e5e7eb' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  <span style={{ fontSize: '12px', color: '#6b7280' }}>¥</span>
+                                  <input
+                                    type="text"
+                                    value={entry.min.toLocaleString()}
+                                    onChange={(e) => {
+                                      const numValue = parseInt(e.target.value.replace(/,/g, '')) || 0
+                                      const newRates = [...(editingRate.sliding_back_rates || [])]
+                                      newRates[index] = { ...entry, min: numValue }
+                                      setEditingRate({ ...editingRate, sliding_back_rates: newRates })
+                                    }}
+                                    style={{ ...styles.input, padding: '4px 8px', fontSize: '12px', width: '100px', textAlign: 'right' }}
+                                  />
+                                  <span style={{ fontSize: '11px', color: '#6b7280', whiteSpace: 'nowrap' }}>円以上</span>
+                                </div>
+                              </td>
+                              <td style={{ padding: '4px', border: '1px solid #e5e7eb' }}>
+                                <input
+                                  type="number"
+                                  value={entry.rate}
+                                  onChange={(e) => {
+                                    const newRates = [...(editingRate.sliding_back_rates || [])]
+                                    newRates[index] = { ...entry, rate: parseFloat(e.target.value) || 0 }
+                                    setEditingRate({ ...editingRate, sliding_back_rates: newRates })
+                                  }}
+                                  style={{ ...styles.input, padding: '4px 8px', fontSize: '12px' }}
+                                  min="0"
+                                  max="100"
+                                  step="1"
+                                />
+                              </td>
+                              <td style={{ padding: '4px', border: '1px solid #e5e7eb', textAlign: 'center' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const newRates = (editingRate.sliding_back_rates || []).filter((_, i) => i !== index)
+                                    setEditingRate({ ...editingRate, sliding_back_rates: newRates })
+                                  }}
+                                  style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    color: '#ef4444',
+                                    cursor: 'pointer',
+                                    fontSize: '16px',
+                                    padding: '2px 6px',
+                                  }}
+                                >
+                                  ×
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const currentRates = editingRate.sliding_back_rates || []
+                          const lastEntry = currentRates[currentRates.length - 1]
+                          const newMin = lastEntry ? lastEntry.max || (lastEntry.min + 50000) : 0
+                          const newRates = [...currentRates, { min: newMin, max: 0, rate: 0 }]
+                          setEditingRate({ ...editingRate, sliding_back_rates: newRates })
+                        }}
+                        style={{
+                          marginTop: '8px',
+                          padding: '6px 12px',
+                          fontSize: '12px',
+                          backgroundColor: '#f3f4f6',
+                          border: '1px solid #d1d5db',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        + 行を追加
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -799,36 +984,161 @@ export default function CastBackRatesPage() {
               )}
             </div>
 
-            <div style={styles.formRow}>
-              <div style={styles.formGroup}>
-                <label style={styles.label}>SELF時バック率 (%)</label>
-                <input
-                  type="number"
-                  value={bulkSelfRate}
-                  onChange={(e) =>
-                    setBulkSelfRate(e.target.value ? parseFloat(e.target.value) : 0)
-                  }
-                  style={styles.input}
-                  min="0"
-                  max="100"
-                  step="1"
-                />
+            {!bulkUseSlidingBack && (
+              <div style={styles.formRow}>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>SELF時バック率 (%)</label>
+                  <input
+                    type="number"
+                    value={bulkSelfRate}
+                    onChange={(e) =>
+                      setBulkSelfRate(e.target.value ? parseFloat(e.target.value) : 0)
+                    }
+                    style={styles.input}
+                    min="0"
+                    max="100"
+                    step="1"
+                  />
+                </div>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>HELP時バック率 (%)</label>
+                  <input
+                    type="number"
+                    value={bulkHelpRate ?? ''}
+                    onChange={(e) =>
+                      setBulkHelpRate(e.target.value ? parseFloat(e.target.value) : null)
+                    }
+                    style={styles.input}
+                    min="0"
+                    max="100"
+                    step="1"
+                    placeholder="空欄でSELFと同じ"
+                  />
+                </div>
               </div>
-              <div style={styles.formGroup}>
-                <label style={styles.label}>HELP時バック率 (%)</label>
+            )}
+
+            {/* スライド式バック率設定 */}
+            <div style={{ ...styles.formGroup, marginTop: '16px', borderTop: '1px solid #e5e7eb', paddingTop: '16px' }}>
+              <label style={styles.checkboxLabel}>
                 <input
-                  type="number"
-                  value={bulkHelpRate ?? ''}
-                  onChange={(e) =>
-                    setBulkHelpRate(e.target.value ? parseFloat(e.target.value) : null)
-                  }
-                  style={styles.input}
-                  min="0"
-                  max="100"
-                  step="1"
-                  placeholder="空欄でSELFと同じ"
+                  type="checkbox"
+                  checked={bulkUseSlidingBack}
+                  onChange={(e) => setBulkUseSlidingBack(e.target.checked)}
+                  style={styles.checkbox}
                 />
-              </div>
+                <span style={{ fontWeight: '500' }}>スライド式バック率を使用</span>
+              </label>
+
+              {bulkUseSlidingBack && (
+                <div style={{ marginTop: '12px' }}>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>売上計算方法</label>
+                    <select
+                      value={bulkBackSalesAggregation}
+                      onChange={(e) =>
+                        setBulkBackSalesAggregation(e.target.value as 'item_based' | 'receipt_based')
+                      }
+                      style={styles.select}
+                    >
+                      <option value="item_based">推し小計</option>
+                      <option value="receipt_based">伝票小計</option>
+                    </select>
+                  </div>
+
+                  <div style={{ marginTop: '12px' }}>
+                    <label style={styles.label}>スライド率テーブル</label>
+                    <p style={{ fontSize: '11px', color: '#6b7280', marginTop: '4px' }}>
+                      売上が指定金額以上の場合に適用されるバック率を設定
+                    </p>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '8px' }}>
+                      <thead>
+                        <tr style={{ backgroundColor: '#f3f4f6' }}>
+                          <th style={{ padding: '8px', border: '1px solid #e5e7eb', fontSize: '12px' }}>売上（〜以上）</th>
+                          <th style={{ padding: '8px', border: '1px solid #e5e7eb', fontSize: '12px' }}>バック率(%)</th>
+                          <th style={{ padding: '8px', border: '1px solid #e5e7eb', fontSize: '12px', width: '40px' }}></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {bulkSlidingBackRates.map((entry, index) => (
+                          <tr key={index}>
+                            <td style={{ padding: '4px', border: '1px solid #e5e7eb' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <span style={{ fontSize: '12px', color: '#6b7280' }}>¥</span>
+                                <input
+                                  type="text"
+                                  value={entry.min.toLocaleString()}
+                                  onChange={(e) => {
+                                    const numValue = parseInt(e.target.value.replace(/,/g, '')) || 0
+                                    const newRates = [...bulkSlidingBackRates]
+                                    newRates[index] = { ...entry, min: numValue }
+                                    setBulkSlidingBackRates(newRates)
+                                  }}
+                                  style={{ ...styles.input, padding: '4px 8px', fontSize: '12px', width: '100px', textAlign: 'right' }}
+                                />
+                                <span style={{ fontSize: '11px', color: '#6b7280', whiteSpace: 'nowrap' }}>円以上</span>
+                              </div>
+                            </td>
+                            <td style={{ padding: '4px', border: '1px solid #e5e7eb' }}>
+                              <input
+                                type="number"
+                                value={entry.rate}
+                                onChange={(e) => {
+                                  const newRates = [...bulkSlidingBackRates]
+                                  newRates[index] = { ...entry, rate: parseFloat(e.target.value) || 0 }
+                                  setBulkSlidingBackRates(newRates)
+                                }}
+                                style={{ ...styles.input, padding: '4px 8px', fontSize: '12px' }}
+                                min="0"
+                                max="100"
+                                step="1"
+                              />
+                            </td>
+                            <td style={{ padding: '4px', border: '1px solid #e5e7eb', textAlign: 'center' }}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const newRates = bulkSlidingBackRates.filter((_, i) => i !== index)
+                                  setBulkSlidingBackRates(newRates)
+                                }}
+                                style={{
+                                  background: 'none',
+                                  border: 'none',
+                                  color: '#ef4444',
+                                  cursor: 'pointer',
+                                  fontSize: '16px',
+                                  padding: '2px 6px',
+                                }}
+                              >
+                                ×
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const lastEntry = bulkSlidingBackRates[bulkSlidingBackRates.length - 1]
+                        const newMin = lastEntry ? (lastEntry.min + 50000) : 0
+                        setBulkSlidingBackRates([...bulkSlidingBackRates, { min: newMin, max: 0, rate: 0 }])
+                      }}
+                      style={{
+                        marginTop: '8px',
+                        padding: '6px 12px',
+                        fontSize: '12px',
+                        backgroundColor: '#f3f4f6',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      + 行を追加
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div style={styles.modalActions}>
