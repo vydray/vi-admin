@@ -86,13 +86,13 @@ BEGIN
             -- 累計売上を計算
             IF v_back_rate.back_sales_aggregation = 'receipt_based' THEN
                 -- 伝票小計: このキャストが関わった伝票の合計
-                SELECT COALESCE(SUM(r.subtotal_excl_tax), 0) INTO v_cumulative_sales
-                FROM receipts r
-                JOIN order_items oi ON oi.order_id = r.id
-                WHERE r.store_id = v_store_id
-                  AND r.deleted_at IS NULL
-                  AND r.checkout_datetime >= v_month_start
-                  AND r.checkout_datetime < v_month_end
+                SELECT COALESCE(SUM(o.subtotal_excl_tax), 0) INTO v_cumulative_sales
+                FROM orders o
+                JOIN order_items oi ON oi.order_id = o.id
+                WHERE o.store_id = v_store_id
+                  AND o.deleted_at IS NULL
+                  AND o.checkout_datetime >= v_month_start
+                  AND o.checkout_datetime < v_month_end
                   AND (
                       (jsonb_typeof(to_jsonb(oi.cast_name)) = 'array' AND to_jsonb(oi.cast_name) ? v_cast_name)
                       OR oi.cast_name::TEXT = v_cast_name
@@ -101,11 +101,11 @@ BEGIN
                 -- 推し小計: このキャストの商品売上合計
                 SELECT COALESCE(SUM(oi.subtotal), 0) INTO v_cumulative_sales
                 FROM order_items oi
-                JOIN receipts r ON r.id = oi.order_id
-                WHERE r.store_id = v_store_id
-                  AND r.deleted_at IS NULL
-                  AND r.checkout_datetime >= v_month_start
-                  AND r.checkout_datetime < v_month_end
+                JOIN orders o ON o.id = oi.order_id
+                WHERE o.store_id = v_store_id
+                  AND o.deleted_at IS NULL
+                  AND o.checkout_datetime >= v_month_start
+                  AND o.checkout_datetime < v_month_end
                   AND (
                       (jsonb_typeof(to_jsonb(oi.cast_name)) = 'array' AND to_jsonb(oi.cast_name) ? v_cast_name)
                       OR oi.cast_name::TEXT = v_cast_name
@@ -144,11 +144,11 @@ $$ LANGUAGE plpgsql;
 -- ============================================
 
 -- 既存のトリガーがあれば削除
-DROP TRIGGER IF EXISTS trigger_calculate_sliding_back_rate ON receipts;
+DROP TRIGGER IF EXISTS trigger_calculate_sliding_back_rate ON orders;
 
 -- 伝票作成時にスライドバック率を計算
 CREATE TRIGGER trigger_calculate_sliding_back_rate
-AFTER INSERT ON receipts
+AFTER INSERT ON orders
 FOR EACH ROW
 EXECUTE FUNCTION calculate_sliding_back_rate();
 
