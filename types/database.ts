@@ -606,3 +606,49 @@ export interface CastSalesSummary {
   total_back: number        // バック合計
   items: CalculatedSalesItem[]
 }
+
+// ============================================================================
+// Cast Daily Stats Types (キャスト日別統計)
+// ============================================================================
+
+// 日別商品詳細
+export interface CastDailyItem {
+  id: number
+  cast_id: number
+  store_id: number
+  date: string
+  category: string | null
+  product_name: string | null
+  quantity: number
+  subtotal: number
+  back_amount: number
+  created_at: string
+  updated_at: string
+}
+
+// 日別売上サマリー
+export interface CastDailyStats {
+  id: number
+  cast_id: number
+  store_id: number
+  date: string
+
+  // 推し小計ベース（item_based）
+  self_sales_item_based: number
+  help_sales_item_based: number
+  total_sales_item_based: number
+  product_back_item_based: number
+
+  // 伝票小計ベース（receipt_based）
+  self_sales_receipt_based: number
+  help_sales_receipt_based: number
+  total_sales_receipt_based: number
+  product_back_receipt_based: number
+
+  // 確定フラグ
+  is_finalized: boolean
+  finalized_at: string | null
+
+  created_at: string
+  updated_at: string
+}

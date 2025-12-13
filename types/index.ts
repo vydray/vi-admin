@@ -48,6 +48,9 @@ export type {
   PaymentSelectionMethod,
   SalesAggregationMethod,
   CompensationType,
+  // キャスト日別統計
+  CastDailyItem,
+  CastDailyStats,
 } from './database'
 
 // UI Component types
