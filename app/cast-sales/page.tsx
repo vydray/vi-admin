@@ -10,6 +10,7 @@ import { calculateCastSalesByPublishedMethod, getDefaultSalesSettings } from '@/
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
 import Link from 'next/link'
+import { useConfirm } from '@/contexts/ConfirmContext'
 
 interface DailySalesData {
   selfSales: number
@@ -54,11 +55,15 @@ interface Order {
 
 export default function CastSalesPage() {
   const { storeId, storeName } = useStore()
+  const { confirm } = useConfirm()
   const [selectedMonth, setSelectedMonth] = useState(new Date())
   const [salesData, setSalesData] = useState<CastSalesData[]>([])
   const [salesSettings, setSalesSettings] = useState<SalesSettings | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [recalculating, setRecalculating] = useState(false)
+  const [finalizing, setFinalizing] = useState(false)
+  const [isFinalized, setIsFinalized] = useState(false)
 
   const currencyFormatter = useMemo(() => {
     return new Intl.NumberFormat('ja-JP', {
@@ -285,6 +290,131 @@ export default function CastSalesPage() {
     loadData()
   }, [loadData])
 
+  // 確定状態を確認
+  const checkFinalizedStatus = useCallback(async () => {
+    const yearMonth = format(selectedMonth, 'yyyy-MM')
+    const { data } = await supabase
+      .from('cast_daily_stats')
+      .select('is_finalized')
+      .eq('store_id', storeId)
+      .gte('date', `${yearMonth}-01`)
+      .lte('date', `${yearMonth}-31`)
+      .eq('is_finalized', true)
+      .limit(1)
+
+    setIsFinalized((data?.length || 0) > 0)
+  }, [storeId, selectedMonth])
+
+  useEffect(() => {
+    checkFinalizedStatus()
+  }, [checkFinalizedStatus])
+
+  // 売上再計算
+  const handleRecalculate = async () => {
+    const confirmed = await confirm(
+      `${format(selectedMonth, 'yyyy年M月', { locale: ja })}の売上データを再計算します。\n確定済みのデータは再計算されません。`
+    )
+
+    if (!confirmed) return
+
+    setRecalculating(true)
+    try {
+      const start = startOfMonth(selectedMonth)
+      const end = endOfMonth(selectedMonth)
+
+      const response = await fetch('/api/cast-stats/recalculate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          store_id: storeId,
+          date_from: format(start, 'yyyy-MM-dd'),
+          date_to: format(end, 'yyyy-MM-dd'),
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('再計算に失敗しました')
+      }
+
+      await loadData()
+      alert('売上データを再計算しました')
+    } catch (err) {
+      console.error('再計算エラー:', err)
+      alert('再計算に失敗しました')
+    } finally {
+      setRecalculating(false)
+    }
+  }
+
+  // 月次確定
+  const handleFinalize = async () => {
+    const yearMonth = format(selectedMonth, 'yyyy-MM')
+    const confirmed = await confirm(
+      `${format(selectedMonth, 'yyyy年M月', { locale: ja })}の売上データを確定します。\n確定後は自動再計算の対象外になります。`
+    )
+
+    if (!confirmed) return
+
+    setFinalizing(true)
+    try {
+      const response = await fetch('/api/cast-stats/finalize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          store_id: storeId,
+          year_month: yearMonth,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('確定に失敗しました')
+      }
+
+      setIsFinalized(true)
+      alert('売上データを確定しました')
+    } catch (err) {
+      console.error('確定エラー:', err)
+      alert('確定に失敗しました')
+    } finally {
+      setFinalizing(false)
+    }
+  }
+
+  // 確定解除
+  const handleUnfinalize = async () => {
+    const yearMonth = format(selectedMonth, 'yyyy-MM')
+    const confirmed = await confirm(
+      `${format(selectedMonth, 'yyyy年M月', { locale: ja })}の確定を解除します。\n解除後は自動再計算の対象になります。`
+    )
+
+    if (!confirmed) return
+
+    setFinalizing(true)
+    try {
+      const response = await fetch('/api/cast-stats/finalize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          store_id: storeId,
+          year_month: yearMonth,
+          unfinalize: true,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('解除に失敗しました')
+      }
+
+      setIsFinalized(false)
+      alert('確定を解除しました')
+    } catch (err) {
+      console.error('解除エラー:', err)
+      alert('解除に失敗しました')
+    } finally {
+      setFinalizing(false)
+    }
+  }
+
   const days = useMemo(() => {
     const start = startOfMonth(selectedMonth)
     const end = endOfMonth(selectedMonth)
@@ -423,6 +553,18 @@ export default function CastSalesPage() {
             </Button>
             <span style={{ fontSize: '16px', fontWeight: '600' }}>
               {format(selectedMonth, 'yyyy年M月', { locale: ja })}
+              {isFinalized && (
+                <span style={{
+                  marginLeft: '8px',
+                  fontSize: '12px',
+                  backgroundColor: '#dcfce7',
+                  color: '#166534',
+                  padding: '2px 8px',
+                  borderRadius: '4px',
+                }}>
+                  確定済
+                </span>
+              )}
             </span>
             <Button
               onClick={() => setSelectedMonth(addMonths(selectedMonth, 1))}
@@ -431,6 +573,38 @@ export default function CastSalesPage() {
             >
               →
             </Button>
+          </div>
+
+          {/* 操作ボタン */}
+          <div style={{ display: 'flex', gap: '8px', marginLeft: 'auto' }}>
+            <Button
+              onClick={handleRecalculate}
+              variant="outline"
+              size="small"
+              disabled={recalculating || finalizing}
+            >
+              {recalculating ? '計算中...' : '再計算'}
+            </Button>
+            {isFinalized ? (
+              <Button
+                onClick={handleUnfinalize}
+                variant="outline"
+                size="small"
+                disabled={recalculating || finalizing}
+                style={{ color: '#dc2626', borderColor: '#dc2626' }}
+              >
+                {finalizing ? '処理中...' : '確定解除'}
+              </Button>
+            ) : (
+              <Button
+                onClick={handleFinalize}
+                variant="primary"
+                size="small"
+                disabled={recalculating || finalizing}
+              >
+                {finalizing ? '処理中...' : '月次確定'}
+              </Button>
+            )}
           </div>
         </div>
       </div>

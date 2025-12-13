@@ -1,0 +1,48 @@
+-- ordersテーブルの変更を監視してEdge Functionを呼び出すためのwebhook設定
+-- 実行方法: Supabase Dashboard > Database > Webhooks で設定
+
+-- ============================================
+-- Supabase Dashboard での設定手順:
+-- ============================================
+--
+-- 1. Supabase Dashboard にログイン
+-- 2. Database > Webhooks に移動
+-- 3. 「Create a new webhook」をクリック
+-- 4. 以下の設定を入力:
+--
+--    Name: calculate-cast-stats
+--    Table: orders
+--    Events: INSERT, UPDATE, DELETE
+--
+--    Type: Supabase Edge Functions
+--    Edge Function: calculate-cast-stats
+--
+--    または
+--
+--    Type: HTTP Request
+--    URL: https://your-project-ref.supabase.co/functions/v1/calculate-cast-stats
+--    Method: POST
+--    Headers:
+--      Authorization: Bearer <SUPABASE_SERVICE_ROLE_KEY>
+--      Content-Type: application/json
+--
+-- 5. 「Create webhook」をクリック
+--
+-- ============================================
+-- 環境変数の設定 (Edge Function用):
+-- ============================================
+--
+-- Supabase Dashboard > Edge Functions > calculate-cast-stats > Settings
+--
+-- VI_ADMIN_URL: https://your-vi-admin-url.vercel.app
+-- WEBHOOK_SECRET: (任意のシークレット文字列)
+--
+-- ============================================
+-- 注意事項:
+-- ============================================
+--
+-- - Edge FunctionはSupabase CLIでデプロイする必要があります
+--   supabase functions deploy calculate-cast-stats
+--
+-- - vi-admin側でも環境変数WEBHOOK_SECRETを設定してください
+--
