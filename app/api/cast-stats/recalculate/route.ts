@@ -64,9 +64,9 @@ interface Cast {
 }
 
 interface Attendance {
-  cast_id: number
-  clock_in: string | null
-  clock_out: string | null
+  cast_name: string
+  check_in_datetime: string | null
+  check_out_datetime: string | null
   costume_id: number | null
 }
 
@@ -143,15 +143,16 @@ async function recalculateForDate(storeId: number, date: string): Promise<{
     casts?.forEach((c: Cast) => castMap.set(c.name, c))
 
     // 3.5 時給関連データを取得
-    // 勤怠データ
+    // 勤怠データ（POSのフィールド名に合わせる）
     const { data: attendances } = await supabaseAdmin
       .from('attendance')
-      .select('cast_id, clock_in, clock_out, costume_id')
+      .select('cast_name, check_in_datetime, check_out_datetime, costume_id')
       .eq('store_id', storeId)
       .eq('date', date)
 
-    const attendanceMap = new Map<number, Attendance>()
-    attendances?.forEach((a: Attendance) => attendanceMap.set(a.cast_id, a))
+    // cast_name をキーにしてマップ作成
+    const attendanceMap = new Map<string, Attendance>()
+    attendances?.forEach((a: Attendance) => attendanceMap.set(a.cast_name, a))
 
     // 報酬設定（時給関連フィールド）
     const { data: compensationSettings } = await supabaseAdmin
@@ -256,10 +257,10 @@ async function recalculateForDate(storeId: number, date: string): Promise<{
           if (finalizedCastIds.has(cast.id)) continue
 
           if (!castStats.has(cast.id)) {
-            // 時給データを計算
-            const attendance = attendanceMap.get(cast.id)
+            // 時給データを計算（cast_nameでattendance取得）
+            const attendance = attendanceMap.get(castName)
             const compSettings = compSettingsMap.get(cast.id)
-            const workHours = calculateWorkHours(attendance?.clock_in || null, attendance?.clock_out || null)
+            const workHours = calculateWorkHours(attendance?.check_in_datetime || null, attendance?.check_out_datetime || null)
             const costumeId = attendance?.costume_id || null
             const wageStatusId = compSettings?.status_id || null
 
@@ -343,10 +344,10 @@ async function recalculateForDate(storeId: number, date: string): Promise<{
           if (finalizedCastIds.has(cast.id)) continue
 
           if (!castStats.has(cast.id)) {
-            // 時給データを計算
-            const attendance = attendanceMap.get(cast.id)
+            // 時給データを計算（cast_nameでattendance取得）
+            const attendance = attendanceMap.get(castName)
             const compSettings = compSettingsMap.get(cast.id)
-            const workHours = calculateWorkHours(attendance?.clock_in || null, attendance?.clock_out || null)
+            const workHours = calculateWorkHours(attendance?.check_in_datetime || null, attendance?.check_out_datetime || null)
             const costumeId = attendance?.costume_id || null
             const wageStatusId = compSettings?.status_id || null
 
