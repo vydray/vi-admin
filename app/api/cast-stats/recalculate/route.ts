@@ -63,6 +63,42 @@ interface Cast {
   store_id: number
 }
 
+interface Attendance {
+  cast_id: number
+  clock_in: string | null
+  clock_out: string | null
+  costume_id: number | null
+}
+
+interface CompensationSettingsWage {
+  cast_id: number
+  status_id: number | null
+  hourly_wage_override: number | null
+}
+
+interface WageStatus {
+  id: number
+  hourly_wage: number
+}
+
+interface SpecialWageDay {
+  wage_adjustment: number
+}
+
+interface Costume {
+  wage_adjustment: number
+}
+
+// 勤務時間を計算（時間単位）
+function calculateWorkHours(clockIn: string | null, clockOut: string | null): number {
+  if (!clockIn || !clockOut) return 0
+  const start = new Date(clockIn)
+  const end = new Date(clockOut)
+  const diffMs = end.getTime() - start.getTime()
+  const hours = diffMs / (1000 * 60 * 60)
+  return Math.max(0, Math.round(hours * 100) / 100) // 小数点2桁
+}
+
 // 指定日のデータを再計算して保存
 async function recalculateForDate(storeId: number, date: string): Promise<{
   success: boolean
@@ -106,6 +142,57 @@ async function recalculateForDate(storeId: number, date: string): Promise<{
     const castMap = new Map<string, Cast>()
     casts?.forEach((c: Cast) => castMap.set(c.name, c))
 
+    // 3.5 時給関連データを取得
+    // 勤怠データ
+    const { data: attendances } = await supabaseAdmin
+      .from('attendance')
+      .select('cast_id, clock_in, clock_out, costume_id')
+      .eq('store_id', storeId)
+      .eq('date', date)
+
+    const attendanceMap = new Map<number, Attendance>()
+    attendances?.forEach((a: Attendance) => attendanceMap.set(a.cast_id, a))
+
+    // 報酬設定（時給関連フィールド）
+    const { data: compensationSettings } = await supabaseAdmin
+      .from('compensation_settings')
+      .select('cast_id, status_id, hourly_wage_override')
+      .eq('store_id', storeId)
+
+    const compSettingsMap = new Map<number, CompensationSettingsWage>()
+    compensationSettings?.forEach((c: CompensationSettingsWage) => compSettingsMap.set(c.cast_id, c))
+
+    // 時給ステータス
+    const { data: wageStatuses } = await supabaseAdmin
+      .from('wage_statuses')
+      .select('id, hourly_wage')
+      .eq('store_id', storeId)
+      .eq('is_active', true)
+
+    const wageStatusMap = new Map<number, WageStatus>()
+    wageStatuses?.forEach((s: WageStatus) => wageStatusMap.set(s.id, s))
+
+    // 特別日
+    const { data: specialDay } = await supabaseAdmin
+      .from('special_wage_days')
+      .select('wage_adjustment')
+      .eq('store_id', storeId)
+      .eq('date', date)
+      .eq('is_active', true)
+      .single()
+
+    const specialDayBonus = (specialDay as SpecialWageDay | null)?.wage_adjustment || 0
+
+    // 衣装マスタ
+    const { data: costumes } = await supabaseAdmin
+      .from('costumes')
+      .select('id, wage_adjustment')
+      .eq('store_id', storeId)
+      .eq('is_active', true)
+
+    const costumeMap = new Map<number, number>()
+    costumes?.forEach((c: { id: number; wage_adjustment: number }) => costumeMap.set(c.id, c.wage_adjustment))
+
     // 4. 確定済みかチェック
     const { data: existingStats } = await supabaseAdmin
       .from('cast_daily_stats')
@@ -128,6 +215,15 @@ async function recalculateForDate(storeId: number, date: string): Promise<{
       helpSalesReceiptBased: number
       productBackItemBased: number
       productBackReceiptBased: number
+      // 時給関連
+      workHours: number
+      baseHourlyWage: number
+      specialDayBonus: number
+      costumeBonus: number
+      totalHourlyWage: number
+      wageAmount: number
+      costumeId: number | null
+      wageStatusId: number | null
       items: Map<string, { category: string | null; productName: string; quantity: number; subtotal: number; backAmount: number }>
     }>()
 
@@ -160,6 +256,31 @@ async function recalculateForDate(storeId: number, date: string): Promise<{
           if (finalizedCastIds.has(cast.id)) continue
 
           if (!castStats.has(cast.id)) {
+            // 時給データを計算
+            const attendance = attendanceMap.get(cast.id)
+            const compSettings = compSettingsMap.get(cast.id)
+            const workHours = calculateWorkHours(attendance?.clock_in || null, attendance?.clock_out || null)
+            const costumeId = attendance?.costume_id || null
+            const wageStatusId = compSettings?.status_id || null
+
+            // 基本時給の決定
+            let baseHourlyWage = 0
+            if (compSettings?.hourly_wage_override) {
+              baseHourlyWage = compSettings.hourly_wage_override
+            } else if (wageStatusId) {
+              const wageStatus = wageStatusMap.get(wageStatusId)
+              baseHourlyWage = wageStatus?.hourly_wage || 0
+            }
+
+            // 衣装加算
+            const costumeBonus = costumeId ? (costumeMap.get(costumeId) || 0) : 0
+
+            // 合計時給
+            const totalHourlyWage = baseHourlyWage + specialDayBonus + costumeBonus
+
+            // 時給収入
+            const wageAmount = Math.round(totalHourlyWage * workHours)
+
             castStats.set(cast.id, {
               castId: cast.id,
               selfSalesItemBased: 0,
@@ -168,6 +289,14 @@ async function recalculateForDate(storeId: number, date: string): Promise<{
               helpSalesReceiptBased: 0,
               productBackItemBased: 0,
               productBackReceiptBased: 0,
+              workHours,
+              baseHourlyWage,
+              specialDayBonus,
+              costumeBonus,
+              totalHourlyWage,
+              wageAmount,
+              costumeId,
+              wageStatusId,
               items: new Map()
             })
           }
@@ -214,6 +343,31 @@ async function recalculateForDate(storeId: number, date: string): Promise<{
           if (finalizedCastIds.has(cast.id)) continue
 
           if (!castStats.has(cast.id)) {
+            // 時給データを計算
+            const attendance = attendanceMap.get(cast.id)
+            const compSettings = compSettingsMap.get(cast.id)
+            const workHours = calculateWorkHours(attendance?.clock_in || null, attendance?.clock_out || null)
+            const costumeId = attendance?.costume_id || null
+            const wageStatusId = compSettings?.status_id || null
+
+            // 基本時給の決定
+            let baseHourlyWage = 0
+            if (compSettings?.hourly_wage_override) {
+              baseHourlyWage = compSettings.hourly_wage_override
+            } else if (wageStatusId) {
+              const wageStatus = wageStatusMap.get(wageStatusId)
+              baseHourlyWage = wageStatus?.hourly_wage || 0
+            }
+
+            // 衣装加算
+            const costumeBonus = costumeId ? (costumeMap.get(costumeId) || 0) : 0
+
+            // 合計時給
+            const totalHourlyWage = baseHourlyWage + specialDayBonus + costumeBonus
+
+            // 時給収入
+            const wageAmount = Math.round(totalHourlyWage * workHours)
+
             castStats.set(cast.id, {
               castId: cast.id,
               selfSalesItemBased: 0,
@@ -222,6 +376,14 @@ async function recalculateForDate(storeId: number, date: string): Promise<{
               helpSalesReceiptBased: 0,
               productBackItemBased: 0,
               productBackReceiptBased: 0,
+              workHours,
+              baseHourlyWage,
+              specialDayBonus,
+              costumeBonus,
+              totalHourlyWage,
+              wageAmount,
+              costumeId,
+              wageStatusId,
               items: new Map()
             })
           }
@@ -251,6 +413,15 @@ async function recalculateForDate(storeId: number, date: string): Promise<{
       help_sales_receipt_based: Math.round(stats.helpSalesReceiptBased),
       total_sales_receipt_based: Math.round(stats.selfSalesReceiptBased + stats.helpSalesReceiptBased),
       product_back_receipt_based: Math.round(stats.productBackReceiptBased),
+      // 時給関連
+      work_hours: stats.workHours,
+      base_hourly_wage: stats.baseHourlyWage,
+      special_day_bonus: stats.specialDayBonus,
+      costume_bonus: stats.costumeBonus,
+      total_hourly_wage: stats.totalHourlyWage,
+      wage_amount: stats.wageAmount,
+      costume_id: stats.costumeId,
+      wage_status_id: stats.wageStatusId,
       is_finalized: false,
       updated_at: new Date().toISOString()
     }))

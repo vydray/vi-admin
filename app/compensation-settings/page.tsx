@@ -17,6 +17,7 @@ import {
   PaymentSelectionMethod,
   SalesAggregationMethod,
   HelpBackCalculationMethod,
+  WageStatus,
 } from '@/types'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
@@ -161,6 +162,13 @@ interface SettingsState {
   useProductBack: boolean
   useHelpProductBack: boolean
   helpBackCalculationMethod: HelpBackCalculationMethod
+
+  // 時給システム
+  statusId: number | null
+  statusLocked: boolean
+  hourlyWageOverride: number | null
+  minDaysRuleEnabled: boolean
+  firstMonthExemptOverride: boolean | null
 }
 
 // デフォルトの報酬形態を生成
@@ -217,6 +225,13 @@ const getDefaultSettingsState = (): SettingsState => ({
   useProductBack: false,
   useHelpProductBack: false,
   helpBackCalculationMethod: 'sales_based',
+
+  // 時給システム
+  statusId: null,
+  statusLocked: false,
+  hourlyWageOverride: null,
+  minDaysRuleEnabled: true,
+  firstMonthExemptOverride: null,
 })
 
 // レガシーデータから報酬形態を生成
@@ -309,6 +324,13 @@ const dbToState = (data: CompensationSettings): SettingsState => {
     useProductBack: data.use_product_back ?? false,
     useHelpProductBack: data.use_help_product_back ?? false,
     helpBackCalculationMethod: data.help_back_calculation_method || 'sales_based',
+
+    // 時給システム
+    statusId: data.status_id ?? null,
+    statusLocked: data.status_locked ?? false,
+    hourlyWageOverride: data.hourly_wage_override ?? null,
+    minDaysRuleEnabled: data.min_days_rule_enabled ?? true,
+    firstMonthExemptOverride: data.first_month_exempt_override ?? null,
   }
 }
 
@@ -357,6 +379,13 @@ const stateToDb = (state: SettingsState, castId: number, storeId: number, existi
     valid_from: state.validFrom,
     valid_to: state.validTo,
     is_active: state.isActive,
+
+    // 時給システム
+    status_id: state.statusId,
+    status_locked: state.statusLocked,
+    hourly_wage_override: state.hourlyWageOverride,
+    min_days_rule_enabled: state.minDaysRuleEnabled,
+    first_month_exempt_override: state.firstMonthExemptOverride,
   }
 }
 
@@ -415,6 +444,9 @@ export default function CompensationSettingsPage() {
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [backRates, setBackRates] = useState<CastBackRate[]>([])
+
+  // 時給ステータス
+  const [wageStatuses, setWageStatuses] = useState<WageStatus[]>([])
 
   // サンプル伝票（売上設定のプレビューと同じ形式）
   const [sampleNominations, setSampleNominations] = useState<string[]>(['A']) // 推しキャスト（複数選択可能）
@@ -608,6 +640,23 @@ export default function CompensationSettingsPage() {
       setBackRates((data || []) as CastBackRate[])
     } catch (error) {
       console.error('バック率設定読み込みエラー:', error)
+    }
+  }, [storeId])
+
+  // 時給ステータスを読み込み
+  const loadWageStatuses = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('wage_statuses')
+        .select('*')
+        .eq('store_id', storeId)
+        .eq('is_active', true)
+        .order('priority', { ascending: false })
+
+      if (error) throw error
+      setWageStatuses((data || []) as WageStatus[])
+    } catch (error) {
+      console.error('時給ステータス読み込みエラー:', error)
     }
   }, [storeId])
 
@@ -831,8 +880,9 @@ export default function CompensationSettingsPage() {
     loadSystemSettings()
     loadProducts()
     loadBackRates()
+    loadWageStatuses()
     loadSampleReceipt()
-  }, [loadCasts, loadPayDay, loadSalesSettings, loadSystemSettings, loadProducts, loadBackRates, loadSampleReceipt])
+  }, [loadCasts, loadPayDay, loadSalesSettings, loadSystemSettings, loadProducts, loadBackRates, loadWageStatuses, loadSampleReceipt])
 
   useEffect(() => {
     if (selectedCastId) {
@@ -2403,6 +2453,97 @@ export default function CompensationSettingsPage() {
                 )}
               </div>
 
+              {/* 時給設定 */}
+              {wageStatuses.length > 0 && (
+                <div style={styles.section}>
+                  <h3 style={styles.sectionTitle}>時給設定</h3>
+
+                  <div style={styles.wageSettingsGrid}>
+                    <div style={styles.wageSettingItem}>
+                      <label style={styles.wageLabel}>時給ステータス</label>
+                      <select
+                        value={settingsState.statusId || ''}
+                        onChange={(e) => setSettingsState(prev => prev ? {
+                          ...prev,
+                          statusId: e.target.value ? parseInt(e.target.value) : null,
+                        } : null)}
+                        style={styles.wageSelect}
+                      >
+                        <option value="">選択してください</option>
+                        {wageStatuses.map((status) => (
+                          <option key={status.id} value={status.id}>
+                            {status.name} ({status.hourly_wage.toLocaleString()}円/時)
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div style={styles.wageSettingItem}>
+                      <label style={styles.wageLabel}>時給オーバーライド</label>
+                      <div style={styles.wageInputRow}>
+                        <input
+                          type="number"
+                          value={settingsState.hourlyWageOverride ?? ''}
+                          onChange={(e) => setSettingsState(prev => prev ? {
+                            ...prev,
+                            hourlyWageOverride: e.target.value ? parseInt(e.target.value) : null,
+                          } : null)}
+                          placeholder="ステータスの時給を使用"
+                          style={styles.wageInput}
+                        />
+                        <span style={styles.wageUnit}>円</span>
+                      </div>
+                    </div>
+
+                    <div style={styles.wageSettingItem}>
+                      <label style={styles.wageCheckboxLabel}>
+                        <input
+                          type="checkbox"
+                          checked={settingsState.statusLocked}
+                          onChange={(e) => setSettingsState(prev => prev ? {
+                            ...prev,
+                            statusLocked: e.target.checked,
+                          } : null)}
+                          style={styles.wageCheckbox}
+                        />
+                        ステータスをロック（自動昇格を無効化）
+                      </label>
+                    </div>
+
+                    <div style={styles.wageSettingItem}>
+                      <label style={styles.wageCheckboxLabel}>
+                        <input
+                          type="checkbox"
+                          checked={settingsState.minDaysRuleEnabled}
+                          onChange={(e) => setSettingsState(prev => prev ? {
+                            ...prev,
+                            minDaysRuleEnabled: e.target.checked,
+                          } : null)}
+                          style={styles.wageCheckbox}
+                        />
+                        最低出勤日数ルールを適用
+                      </label>
+                    </div>
+
+                    <div style={styles.wageSettingItem}>
+                      <label style={styles.wageLabel}>入店初月の除外</label>
+                      <select
+                        value={settingsState.firstMonthExemptOverride === null ? '' : settingsState.firstMonthExemptOverride.toString()}
+                        onChange={(e) => setSettingsState(prev => prev ? {
+                          ...prev,
+                          firstMonthExemptOverride: e.target.value === '' ? null : e.target.value === 'true',
+                        } : null)}
+                        style={styles.wageSelect}
+                      >
+                        <option value="">店舗設定に従う</option>
+                        <option value="true">入店初月は除外</option>
+                        <option value="false">入店初月も適用</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* 保存ボタン */}
               <div style={styles.saveArea}>
                 <Button
@@ -3716,6 +3857,61 @@ const styles: { [key: string]: React.CSSProperties } = {
   noDeductions: {
     color: '#94a3b8',
     fontSize: '14px',
+  },
+  // 時給設定スタイル
+  wageSettingsGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+    gap: '20px',
+  },
+  wageSettingItem: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '8px',
+  },
+  wageLabel: {
+    fontSize: '14px',
+    fontWeight: '500',
+    color: '#374151',
+  },
+  wageSelect: {
+    padding: '10px 12px',
+    fontSize: '14px',
+    border: '1px solid #d1d5db',
+    borderRadius: '6px',
+    backgroundColor: 'white',
+    cursor: 'pointer',
+  },
+  wageInputRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+  },
+  wageInput: {
+    padding: '10px 12px',
+    fontSize: '14px',
+    border: '1px solid #d1d5db',
+    borderRadius: '6px',
+    outline: 'none',
+    width: '150px',
+    boxSizing: 'border-box' as const,
+  },
+  wageUnit: {
+    fontSize: '14px',
+    color: '#666',
+  },
+  wageCheckboxLabel: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    fontSize: '14px',
+    cursor: 'pointer',
+    color: '#374151',
+  },
+  wageCheckbox: {
+    width: '18px',
+    height: '18px',
+    cursor: 'pointer',
   },
   saveArea: {
     marginTop: '30px',

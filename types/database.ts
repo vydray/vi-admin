@@ -652,6 +652,16 @@ export interface CastDailyStats {
   total_sales_receipt_based: number
   product_back_receipt_based: number
 
+  // 時給関連
+  work_hours: number              // 勤務時間（時間単位）
+  base_hourly_wage: number        // 基本時給
+  special_day_bonus: number       // 特別日加算額
+  costume_bonus: number           // 衣装加算額
+  total_hourly_wage: number       // 合計時給
+  wage_amount: number             // 時給収入（合計時給×勤務時間）
+  costume_id: number | null       // 衣装ID
+  wage_status_id: number | null   // 時給ステータスID
+
   // 確定フラグ
   is_finalized: boolean
   finalized_at: string | null
