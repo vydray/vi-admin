@@ -652,3 +652,89 @@ export interface CastDailyStats {
   created_at: string
   updated_at: string
 }
+
+// ============================================================================
+// Wage System Types (時給システム)
+// ============================================================================
+
+// 時給ステータス（研修、レギュラー、ゴールド等）
+export interface WageStatus {
+  id: number
+  store_id: number
+  name: string
+  hourly_wage: number
+  priority: number
+  is_default: boolean
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+// 昇格/降格条件タイプ
+export type WageConditionType = 'attendance_days' | 'sales' | 'nominations'
+
+// 条件演算子
+export type WageConditionOperator = '>=' | '<=' | '>' | '<' | '='
+
+// ステータス昇格/降格条件
+export interface WageStatusCondition {
+  id: number
+  status_id: number
+  condition_type: WageConditionType
+  operator: WageConditionOperator
+  value: number
+  logic_group: number  // 同グループはAND、別グループはOR
+  created_at: string
+  updated_at: string
+}
+
+// 特別日カレンダー（クリスマス等の時給加算日）
+export interface SpecialWageDay {
+  id: number
+  store_id: number
+  date: string
+  name: string
+  wage_adjustment: number  // 時給調整額（+1000円等）
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+// 衣装マスタ（衣装ごとの時給調整）
+export interface Costume {
+  id: number
+  store_id: number
+  name: string
+  wage_adjustment: number  // 時給調整額（+500円等）
+  display_order: number
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+// 店舗別時給ルール設定
+export interface StoreWageSettings {
+  id: number
+  store_id: number
+  default_hourly_wage: number
+  min_hours_for_full_day: number  // 1日出勤とカウントする最低時間（例: 5.0）
+  min_days_for_back: number       // バック対象となる最低出勤日数
+  wage_only_max_days: number      // この日数以下は時給のみ（バックなし）
+  first_month_exempt: boolean     // 入店初月はルールから除外
+  created_at: string
+  updated_at: string
+}
+
+// CompensationSettings への追加フィールド（extend用）
+export interface CompensationSettingsWageExtension {
+  status_id: number | null        // 固定ステータス（NULLなら自動計算）
+  status_locked: boolean          // ステータス固定フラグ
+  hourly_wage_override: number | null  // 時給直接指定（NULLならステータスの時給）
+  min_days_rule_enabled: boolean  // 最低日数ルール適用
+  first_month_exempt_override: boolean | null  // 入店初月除外（NULL=店舗設定に従う）
+}
+
+// Attendance への追加フィールド（extend用）
+export interface AttendanceWageExtension {
+  costume_id: number | null  // その日着用した衣装
+}

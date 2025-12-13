@@ -51,6 +51,16 @@ export type {
   // キャスト日別統計
   CastDailyItem,
   CastDailyStats,
+  // 時給システム
+  WageStatus,
+  WageConditionType,
+  WageConditionOperator,
+  WageStatusCondition,
+  SpecialWageDay,
+  Costume,
+  StoreWageSettings,
+  CompensationSettingsWageExtension,
+  AttendanceWageExtension,
 } from './database'
 
 // UI Component types
