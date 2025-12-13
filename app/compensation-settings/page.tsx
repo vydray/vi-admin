@@ -677,13 +677,15 @@ export default function CompensationSettingsPage() {
 
       const { data, error } = await supabase
         .from('cast_daily_stats')
-        .select('work_hours, wage_amount')
+        .select('date, work_hours, wage_amount, base_hourly_wage, total_hourly_wage')
         .eq('cast_id', castId)
         .eq('store_id', storeId)
         .gte('date', startDate)
         .lte('date', endDate)
 
       if (error) throw error
+
+      console.log('時給実績データ:', { castId, storeId, startDate, endDate, data })
 
       if (data && data.length > 0) {
         const totalWorkHours = data.reduce((sum, d) => sum + (d.work_hours || 0), 0)

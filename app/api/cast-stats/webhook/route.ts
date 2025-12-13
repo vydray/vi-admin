@@ -78,11 +78,17 @@ interface SpecialWageDay {
   wage_adjustment: number
 }
 
-// 勤務時間を計算（時間単位）
+// 勤務時間を計算（時間単位）- 深夜勤務（日をまたぐ）対応
 function calculateWorkHours(clockIn: string | null, clockOut: string | null): number {
   if (!clockIn || !clockOut) return 0
   const start = new Date(clockIn)
-  const end = new Date(clockOut)
+  let end = new Date(clockOut)
+
+  // 退勤が出勤より前の場合は翌日扱い（深夜勤務）
+  if (end.getTime() <= start.getTime()) {
+    end = new Date(end.getTime() + 24 * 60 * 60 * 1000)
+  }
+
   const diffMs = end.getTime() - start.getTime()
   const hours = diffMs / (1000 * 60 * 60)
   return Math.max(0, Math.round(hours * 100) / 100)
