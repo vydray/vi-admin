@@ -452,7 +452,7 @@ function StatusesTab({ storeId, statuses, conditions, onReload }: StatusesTabPro
                 onChange={(e) => setEditingStatus({ ...editingStatus, priority: parseInt(e.target.value) || 0 })}
                 style={styles.input}
               />
-              <p style={styles.helpText}>高い方が上位ステータス</p>
+              <p style={styles.helpText}>数字が大きいほど上位ステータス（例: 研修=0, レギュラー=1, ゴールド=2）</p>
             </div>
             <div style={styles.formGroup}>
               <label style={styles.checkboxLabel}>

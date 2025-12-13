@@ -29,6 +29,7 @@ const menuItems: MenuItem[] = [
   { name: 'バック率設定', path: '/cast-back-rates', icon: '💵' },
   { name: '報酬計算設定', path: '/compensation-settings', icon: '💳' },
   { name: '時給設定', path: '/wage-settings', icon: '⏱️' },
+  { name: 'キャスト別時給', path: '/cast-wage-settings', icon: '👤' },
   { name: '店舗設定', path: '/store-settings', icon: '🏪' },
   { name: '設定', path: '/settings', icon: '⚙️' },
   // スーパーアドミン専用

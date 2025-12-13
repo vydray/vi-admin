@@ -524,6 +524,13 @@ export interface CompensationSettings {
   valid_from: string
   valid_to: string | null
 
+  // 時給システム拡張フィールド
+  status_id: number | null        // 時給ステータス（wage_statuses参照）
+  status_locked: boolean          // ステータス固定フラグ
+  hourly_wage_override: number | null  // 時給直接指定
+  min_days_rule_enabled: boolean  // 最低日数ルール適用
+  first_month_exempt_override: boolean | null  // 入店初月除外
+
   is_active: boolean
   created_at: string
   updated_at: string
