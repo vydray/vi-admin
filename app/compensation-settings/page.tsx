@@ -448,6 +448,14 @@ export default function CompensationSettingsPage() {
   // 時給ステータス
   const [wageStatuses, setWageStatuses] = useState<WageStatus[]>([])
 
+  // 時給実績データ（cast_daily_statsから取得）
+  const [wageStats, setWageStats] = useState<{
+    totalWorkHours: number
+    totalWageAmount: number
+    averageHourlyWage: number
+    daysWorked: number
+  } | null>(null)
+
   // サンプル伝票（売上設定のプレビューと同じ形式）
   const [sampleNominations, setSampleNominations] = useState<string[]>(['A']) // 推しキャスト（複数選択可能）
   const [sampleItems, setSampleItems] = useState<{
@@ -657,6 +665,44 @@ export default function CompensationSettingsPage() {
       setWageStatuses((data || []) as WageStatus[])
     } catch (error) {
       console.error('時給ステータス読み込みエラー:', error)
+    }
+  }, [storeId])
+
+  // 時給実績データを読み込み（cast_daily_statsから）
+  const loadWageStats = useCallback(async (castId: number, year: number, month: number) => {
+    try {
+      const startDate = `${year}-${String(month).padStart(2, '0')}-01`
+      const lastDay = new Date(year, month, 0).getDate()
+      const endDate = `${year}-${String(month).padStart(2, '0')}-${lastDay}`
+
+      const { data, error } = await supabase
+        .from('cast_daily_stats')
+        .select('work_hours, wage_amount')
+        .eq('cast_id', castId)
+        .eq('store_id', storeId)
+        .gte('date', startDate)
+        .lte('date', endDate)
+
+      if (error) throw error
+
+      if (data && data.length > 0) {
+        const totalWorkHours = data.reduce((sum, d) => sum + (d.work_hours || 0), 0)
+        const totalWageAmount = data.reduce((sum, d) => sum + (d.wage_amount || 0), 0)
+        const daysWorked = data.filter(d => d.work_hours > 0).length
+        const averageHourlyWage = totalWorkHours > 0 ? Math.round(totalWageAmount / totalWorkHours) : 0
+
+        setWageStats({
+          totalWorkHours: Math.round(totalWorkHours * 100) / 100,
+          totalWageAmount,
+          averageHourlyWage,
+          daysWorked
+        })
+      } else {
+        setWageStats(null)
+      }
+    } catch (error) {
+      console.error('時給実績データ読み込みエラー:', error)
+      setWageStats(null)
     }
   }, [storeId])
 
@@ -887,8 +933,9 @@ export default function CompensationSettingsPage() {
   useEffect(() => {
     if (selectedCastId) {
       loadSettings(selectedCastId, selectedYear, selectedMonth)
+      loadWageStats(selectedCastId, selectedYear, selectedMonth)
     }
-  }, [selectedCastId, selectedYear, selectedMonth, loadSettings])
+  }, [selectedCastId, selectedYear, selectedMonth, loadSettings, loadWageStats])
 
   // settingsStateが変わったら最初の報酬形態をアクティブに
   useEffect(() => {
@@ -2539,6 +2586,49 @@ export default function CompensationSettingsPage() {
                         <option value="true">入店初月は除外</option>
                         <option value="false">入店初月も適用</option>
                       </select>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 時給実績（cast_daily_statsから取得） */}
+              {wageStats && (
+                <div style={{
+                  ...styles.section,
+                  backgroundColor: '#f0f9ff',
+                  border: '1px solid #bae6fd'
+                }}>
+                  <h3 style={{ ...styles.sectionTitle, color: '#0369a1' }}>
+                    {selectedYear}年{selectedMonth}月の時給実績
+                  </h3>
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(4, 1fr)',
+                    gap: '16px'
+                  }}>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>出勤日数</div>
+                      <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#0369a1' }}>
+                        {wageStats.daysWorked}日
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>合計勤務時間</div>
+                      <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#0369a1' }}>
+                        {wageStats.totalWorkHours}h
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>平均時給</div>
+                      <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#0369a1' }}>
+                        ¥{wageStats.averageHourlyWage.toLocaleString()}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>合計時給収入</div>
+                      <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#0369a1' }}>
+                        ¥{wageStats.totalWageAmount.toLocaleString()}
+                      </div>
                     </div>
                   </div>
                 </div>
