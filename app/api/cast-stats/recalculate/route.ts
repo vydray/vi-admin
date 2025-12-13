@@ -85,10 +85,6 @@ interface SpecialWageDay {
   wage_adjustment: number
 }
 
-interface Costume {
-  wage_adjustment: number
-}
-
 // 勤務時間を計算（時間単位）
 function calculateWorkHours(clockIn: string | null, clockOut: string | null): number {
   if (!clockIn || !clockOut) return 0
@@ -117,19 +113,18 @@ async function recalculateForDate(storeId: number, date: string): Promise<{
 
     if (ordersError) throw ordersError
 
-    if (!orders || orders.length === 0) {
-      // 伝票がない日は空のデータを保存（既存データを削除しない）
-      return { success: true, castsProcessed: 0 }
-    }
-
     // 2. 伝票のorder_itemsを取得
-    const orderIds = orders.map((o: Order) => o.id)
-    const { data: orderItems, error: itemsError } = await supabaseAdmin
-      .from('order_items')
-      .select('*')
-      .in('order_id', orderIds)
+    const orderIds = (orders || []).map((o: Order) => o.id)
+    let orderItems: OrderItem[] = []
+    if (orderIds.length > 0) {
+      const { data: items, error: itemsError } = await supabaseAdmin
+        .from('order_items')
+        .select('*')
+        .in('order_id', orderIds)
 
-    if (itemsError) throw itemsError
+      if (itemsError) throw itemsError
+      orderItems = items || []
+    }
 
     // 3. キャスト情報を取得
     const { data: casts, error: castsError } = await supabaseAdmin
@@ -398,6 +393,59 @@ async function recalculateForDate(storeId: number, date: string): Promise<{
             stats.helpSalesReceiptBased += sharePerCast
           }
         }
+      }
+    }
+
+    // 5.5 勤怠データがあるが伝票に登場しないキャストも追加（時給のみ）
+    for (const [castName, attendance] of attendanceMap) {
+      const cast = castMap.get(castName)
+      if (!cast) continue
+      if (finalizedCastIds.has(cast.id)) continue
+      if (castStats.has(cast.id)) continue // 既に追加済み
+
+      // 勤怠があれば時給データを初期化
+      if (attendance.check_in_datetime && attendance.check_out_datetime) {
+        const compSettings = compSettingsMap.get(cast.id)
+        const workHours = calculateWorkHours(attendance.check_in_datetime, attendance.check_out_datetime)
+        const costumeId = attendance.costume_id || null
+        const wageStatusId = compSettings?.status_id || null
+
+        // 基本時給の決定
+        let baseHourlyWage = 0
+        if (compSettings?.hourly_wage_override) {
+          baseHourlyWage = compSettings.hourly_wage_override
+        } else if (wageStatusId) {
+          const wageStatus = wageStatusMap.get(wageStatusId)
+          baseHourlyWage = wageStatus?.hourly_wage || 0
+        }
+
+        // 衣装加算
+        const costumeBonus = costumeId ? (costumeMap.get(costumeId) || 0) : 0
+
+        // 合計時給
+        const totalHourlyWage = baseHourlyWage + specialDayBonus + costumeBonus
+
+        // 時給収入
+        const wageAmount = Math.round(totalHourlyWage * workHours)
+
+        castStats.set(cast.id, {
+          castId: cast.id,
+          selfSalesItemBased: 0,
+          helpSalesItemBased: 0,
+          selfSalesReceiptBased: 0,
+          helpSalesReceiptBased: 0,
+          productBackItemBased: 0,
+          productBackReceiptBased: 0,
+          workHours,
+          baseHourlyWage,
+          specialDayBonus,
+          costumeBonus,
+          totalHourlyWage,
+          wageAmount,
+          costumeId,
+          wageStatusId,
+          items: new Map()
+        })
       }
     }
 

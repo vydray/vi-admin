@@ -13,6 +13,21 @@ import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
 import type { CastBasic, Attendance, AttendanceStatus } from '@/types'
 
+// 再計算API呼び出し
+async function recalculateMonth(storeId: number, year: number, month: number): Promise<{ success: boolean; results?: { date: string; castsProcessed: number }[]; error?: string }> {
+  const dateFrom = `${year}-${String(month).padStart(2, '0')}-01`
+  const lastDay = new Date(year, month, 0).getDate()
+  const dateTo = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
+
+  const response = await fetch('/api/cast-stats/recalculate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ store_id: storeId, date_from: dateFrom, date_to: dateTo })
+  })
+
+  return response.json()
+}
+
 export default function AttendancePage() {
   const { storeId } = useStore()
   const { confirm } = useConfirm()
@@ -29,6 +44,7 @@ export default function AttendancePage() {
   const [editingStatus, setEditingStatus] = useState<AttendanceStatus | null>(null)
   const [newStatusName, setNewStatusName] = useState('')
   const [newStatusColor, setNewStatusColor] = useState('#4CAF50')
+  const [isRecalculating, setIsRecalculating] = useState(false)
 
   const loadCasts = useCallback(async () => {
     const { data, error} = await supabase
@@ -399,6 +415,28 @@ export default function AttendancePage() {
     return days[date.getDay()]
   }
 
+  const handleRecalculate = async () => {
+    if (!await confirm(`${format(selectedMonth, 'yyyy年M月', { locale: ja })}の時給データを再計算しますか？`)) return
+
+    setIsRecalculating(true)
+    try {
+      const year = selectedMonth.getFullYear()
+      const month = selectedMonth.getMonth() + 1
+      const result = await recalculateMonth(storeId, year, month)
+
+      if (result.success) {
+        const totalProcessed = result.results?.reduce((sum, r) => sum + r.castsProcessed, 0) || 0
+        toast.success(`再計算完了: ${totalProcessed}件のデータを更新しました`)
+      } else {
+        toast.error('再計算に失敗しました: ' + (result.error || '不明なエラー'))
+      }
+    } catch (error) {
+      handleUnexpectedError(error, { operation: '時給データの再計算' })
+    } finally {
+      setIsRecalculating(false)
+    }
+  }
+
   const getAttendanceCount = (date: Date) => {
     const dateStr = format(date, 'yyyy-MM-dd')
     return attendances.filter(a => a.date === dateStr).length
@@ -451,12 +489,21 @@ export default function AttendancePage() {
           <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: 0, color: '#1a1a1a' }}>
             勤怠管理
           </h1>
-          <Button
-            onClick={() => setShowStatusModal(true)}
-            variant="primary"
-          >
-            ステータス管理
-          </Button>
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <Button
+              onClick={handleRecalculate}
+              variant="secondary"
+              disabled={isRecalculating}
+            >
+              {isRecalculating ? '再計算中...' : '時給再計算'}
+            </Button>
+            <Button
+              onClick={() => setShowStatusModal(true)}
+              variant="primary"
+            >
+              ステータス管理
+            </Button>
+          </div>
         </div>
 
         {/* 月選択 */}
