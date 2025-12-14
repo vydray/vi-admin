@@ -1141,7 +1141,6 @@ export default function PayslipPage() {
                       <th style={{ ...styles.th, textAlign: 'right' }}>数量</th>
                       <th style={{ ...styles.th, textAlign: 'right' }}>金額</th>
                       <th style={{ ...styles.th, textAlign: 'center' }}>率</th>
-                      <th style={{ ...styles.th, textAlign: 'center' }}>種別</th>
                       <th style={{ ...styles.th, textAlign: 'right' }}>バック</th>
                     </tr>
                   </thead>
@@ -1197,10 +1196,6 @@ export default function PayslipPage() {
                             <td style={{ ...styles.td, textAlign: 'right' }}>{item.quantity}</td>
                             <td style={{ ...styles.td, textAlign: 'right' }}>{currencyFormatter.format(item.subtotal)}</td>
                             <td style={{ ...styles.td, textAlign: 'center' }}>{item.backRatio}%</td>
-                            <td style={{ ...styles.td, textAlign: 'center' }}>
-                              {item.selfCount > 0 && <span style={{ color: '#34C759', marginRight: '4px' }}>推{item.selfCount}</span>}
-                              {item.helpCount > 0 && <span style={{ color: '#FF9500' }}>ヘ{item.helpCount}</span>}
-                            </td>
                             <td style={{ ...styles.td, textAlign: 'right', fontWeight: '600', color: '#FF9500' }}>
                               {currencyFormatter.format(item.backAmount)}
                             </td>
@@ -1208,7 +1203,7 @@ export default function PayslipPage() {
                         ))
                     })()}
                     <tr style={styles.tableTotal}>
-                      <td colSpan={6} style={{ ...styles.td, fontWeight: 'bold' }}>合計</td>
+                      <td colSpan={5} style={{ ...styles.td, fontWeight: 'bold' }}>合計</td>
                       <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold', color: '#FF9500' }}>
                         {currencyFormatter.format(summary.totalProductBack)}
                       </td>
