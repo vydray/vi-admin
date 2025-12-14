@@ -1152,37 +1152,33 @@ export default function PayslipPage() {
                         allItems.push(...day.items)
                       })
 
-                      // 商品名+カテゴリでグループ化
+                      // 商品名+カテゴリ+売上タイプでグループ化（推し/ヘルプを分ける）
                       const grouped = new Map<string, {
                         productName: string
                         category: string | null
+                        salesType: 'self' | 'help'
                         quantity: number
                         subtotal: number
                         backRatio: number
                         backAmount: number
-                        selfCount: number
-                        helpCount: number
                       }>()
 
                       allItems.forEach(item => {
-                        const key = `${item.category || ''}:${item.productName}`
+                        const key = `${item.category || ''}:${item.productName}:${item.salesType}`
                         const existing = grouped.get(key)
                         if (existing) {
                           existing.quantity += item.quantity
                           existing.subtotal += item.subtotal
                           existing.backAmount += item.backAmount
-                          if (item.salesType === 'self') existing.selfCount++
-                          else existing.helpCount++
                         } else {
                           grouped.set(key, {
                             productName: item.productName,
                             category: item.category,
+                            salesType: item.salesType,
                             quantity: item.quantity,
                             subtotal: item.subtotal,
                             backRatio: item.backRatio,
                             backAmount: item.backAmount,
-                            selfCount: item.salesType === 'self' ? 1 : 0,
-                            helpCount: item.salesType === 'help' ? 1 : 0
                           })
                         }
                       })
@@ -1191,7 +1187,19 @@ export default function PayslipPage() {
                         .sort((a, b) => b.backAmount - a.backAmount)
                         .map((item, i) => (
                           <tr key={i} style={i % 2 === 0 ? styles.tableRowEven : styles.tableRow}>
-                            <td style={styles.td}>{item.productName}</td>
+                            <td style={styles.td}>
+                              {item.productName}
+                              <span style={{
+                                marginLeft: '6px',
+                                fontSize: '11px',
+                                padding: '2px 6px',
+                                borderRadius: '4px',
+                                backgroundColor: item.salesType === 'self' ? '#d4edda' : '#fff3cd',
+                                color: item.salesType === 'self' ? '#155724' : '#856404'
+                              }}>
+                                {item.salesType === 'self' ? '推し' : 'ヘルプ'}
+                              </span>
+                            </td>
                             <td style={{ ...styles.td, color: '#86868b', fontSize: '12px' }}>{item.category || '-'}</td>
                             <td style={{ ...styles.td, textAlign: 'right' }}>{item.quantity}</td>
                             <td style={{ ...styles.td, textAlign: 'right' }}>{currencyFormatter.format(item.subtotal)}</td>
