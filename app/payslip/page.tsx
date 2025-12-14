@@ -957,9 +957,17 @@ export default function PayslipPage() {
           {activeCompensationType && (
             <div style={styles.compensationTypeLabel}>
               適用報酬形態: {activeCompensationType.name}
-              {activeCompensationType.commission_rate > 0 && ` (売上${activeCompensationType.commission_rate}%)`}
-              {activeCompensationType.use_sliding_rate && ' (スライド式)'}
-              {activeCompensationType.use_product_back && ' + 商品バック'}
+              {(() => {
+                const parts: string[] = []
+                if (activeCompensationType.hourly_rate > 0) parts.push('時給')
+                if (activeCompensationType.commission_rate > 0 || activeCompensationType.use_sliding_rate) {
+                  parts.push(activeCompensationType.use_sliding_rate
+                    ? 'スライド式売上バック'
+                    : `売上バック${activeCompensationType.commission_rate}%`)
+                }
+                if (activeCompensationType.use_product_back) parts.push('商品バック')
+                return parts.length > 0 ? `（${parts.join(' + ')}）` : ''
+              })()}
             </div>
           )}
 
