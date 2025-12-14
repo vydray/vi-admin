@@ -117,22 +117,38 @@ export default function Home() {
     register_amount: number
     cash_collection: number
   } | null>(null)
+  const [dailyPaymentTotal, setDailyPaymentTotal] = useState(0)
   const [cashCountLoading, setCashCountLoading] = useState(false)
 
-  // レジ金データを取得
+  // レジ金データと日払いデータを取得
   const fetchCashCount = async (date: string) => {
     setCashCountLoading(true)
     try {
-      const { data } = await supabase
+      // レジ金データ
+      const { data: cashData } = await supabase
         .from('cash_counts')
         .select('*')
         .eq('store_id', storeId)
         .eq('business_date', date)
         .single()
 
-      setCashCountData(data)
+      setCashCountData(cashData)
+
+      // 日払いデータ（勤怠から取得）
+      const { data: attendanceData } = await supabase
+        .from('attendance')
+        .select('daily_payment')
+        .eq('store_id', storeId)
+        .eq('work_date', date)
+
+      const totalDailyPayment = (attendanceData || []).reduce(
+        (sum, att) => sum + (att.daily_payment || 0),
+        0
+      )
+      setDailyPaymentTotal(totalDailyPayment)
     } catch {
       setCashCountData(null)
+      setDailyPaymentTotal(0)
     } finally {
       setCashCountLoading(false)
     }
@@ -773,50 +789,91 @@ export default function Home() {
                 {cashCountLoading ? (
                   <div style={{ padding: '20px', textAlign: 'center', color: '#999' }}>読み込み中...</div>
                 ) : cashCountData ? (
-                  <>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
-                      <div style={{ fontSize: '12px', color: '#666' }}>
-                        <div>1万円: {cashCountData.bill_10000}枚</div>
-                        <div>5千円: {cashCountData.bill_5000}枚</div>
-                        <div>2千円: {cashCountData.bill_2000}枚</div>
-                        <div>千円: {cashCountData.bill_1000}枚</div>
-                      </div>
-                      <div style={{ fontSize: '12px', color: '#666' }}>
-                        <div>500円: {cashCountData.coin_500}枚</div>
-                        <div>100円: {cashCountData.coin_100}枚</div>
-                        <div>50円: {cashCountData.coin_50}枚</div>
-                        <div>10円: {cashCountData.coin_10}枚</div>
-                        <div>5円: {cashCountData.coin_5}枚</div>
-                        <div>1円: {cashCountData.coin_1}枚</div>
-                      </div>
-                    </div>
-                    <div style={{ borderTop: '1px solid #eee', paddingTop: '12px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                        <span style={{ color: '#666', fontSize: '13px' }}>実際の現金</span>
-                        <span style={{ fontWeight: '600' }}>¥{cashCountData.total_amount.toLocaleString()}</span>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                        <span style={{ color: '#666', fontSize: '13px' }}>釣銭準備金</span>
-                        <span style={{ fontWeight: '600' }}>¥{cashCountData.register_amount.toLocaleString()}</span>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                        <span style={{ color: '#666', fontSize: '13px' }}>現金売上（理論値）</span>
-                        <span style={{ fontWeight: '600' }}>¥{selectedDayData.cashSales.toLocaleString()}</span>
-                      </div>
-                      <div style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        paddingTop: '8px',
-                        borderTop: '1px solid #eee',
-                        marginTop: '8px'
-                      }}>
-                        <span style={{ fontWeight: '600' }}>回収金</span>
-                        <span style={{ fontWeight: '700', fontSize: '18px', color: '#007AFF' }}>
-                          ¥{cashCountData.cash_collection.toLocaleString()}
-                        </span>
-                      </div>
-                    </div>
-                  </>
+                  (() => {
+                    // 理論値 = 釣銭準備金 + 現金売上 - 日払い
+                    const theoreticalCash = cashCountData.register_amount + selectedDayData.cashSales - dailyPaymentTotal
+                    // 差額 = 実際の現金 - 理論値
+                    const difference = cashCountData.total_amount - theoreticalCash
+                    return (
+                      <>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
+                          <div style={{ fontSize: '12px', color: '#666' }}>
+                            <div>1万円: {cashCountData.bill_10000}枚</div>
+                            <div>5千円: {cashCountData.bill_5000}枚</div>
+                            <div>2千円: {cashCountData.bill_2000}枚</div>
+                            <div>千円: {cashCountData.bill_1000}枚</div>
+                          </div>
+                          <div style={{ fontSize: '12px', color: '#666' }}>
+                            <div>500円: {cashCountData.coin_500}枚</div>
+                            <div>100円: {cashCountData.coin_100}枚</div>
+                            <div>50円: {cashCountData.coin_50}枚</div>
+                            <div>10円: {cashCountData.coin_10}枚</div>
+                            <div>5円: {cashCountData.coin_5}枚</div>
+                            <div>1円: {cashCountData.coin_1}枚</div>
+                          </div>
+                        </div>
+                        <div style={{ borderTop: '1px solid #eee', paddingTop: '12px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                            <span style={{ color: '#666', fontSize: '13px' }}>実際の現金</span>
+                            <span style={{ fontWeight: '600' }}>¥{cashCountData.total_amount.toLocaleString()}</span>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                            <span style={{ color: '#666', fontSize: '13px' }}>釣銭準備金</span>
+                            <span style={{ fontWeight: '600' }}>¥{cashCountData.register_amount.toLocaleString()}</span>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                            <span style={{ color: '#666', fontSize: '13px' }}>現金売上</span>
+                            <span style={{ fontWeight: '600' }}>¥{selectedDayData.cashSales.toLocaleString()}</span>
+                          </div>
+                          {dailyPaymentTotal > 0 && (
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                              <span style={{ color: '#e74c3c', fontSize: '13px' }}>日払い</span>
+                              <span style={{ fontWeight: '600', color: '#e74c3c' }}>-¥{dailyPaymentTotal.toLocaleString()}</span>
+                            </div>
+                          )}
+                          <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            paddingTop: '8px',
+                            borderTop: '1px solid #eee',
+                            marginTop: '8px'
+                          }}>
+                            <span style={{ color: '#666', fontSize: '13px' }}>理論値</span>
+                            <span style={{ fontWeight: '600' }}>¥{theoreticalCash.toLocaleString()}</span>
+                          </div>
+                          <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            marginTop: '4px',
+                            padding: '8px',
+                            backgroundColor: difference === 0 ? '#d4edda' : difference > 0 ? '#fff3cd' : '#f8d7da',
+                            borderRadius: '6px'
+                          }}>
+                            <span style={{ fontWeight: '600' }}>差額</span>
+                            <span style={{
+                              fontWeight: '700',
+                              fontSize: '16px',
+                              color: difference === 0 ? '#28a745' : difference > 0 ? '#856404' : '#dc3545'
+                            }}>
+                              {difference >= 0 ? '+' : ''}¥{difference.toLocaleString()}
+                            </span>
+                          </div>
+                          <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            paddingTop: '8px',
+                            marginTop: '8px',
+                            borderTop: '1px solid #eee'
+                          }}>
+                            <span style={{ fontWeight: '600' }}>回収金</span>
+                            <span style={{ fontWeight: '700', fontSize: '18px', color: '#007AFF' }}>
+                              ¥{cashCountData.cash_collection.toLocaleString()}
+                            </span>
+                          </div>
+                        </div>
+                      </>
+                    )
+                  })()
                 ) : (
                   <div style={{ padding: '20px', textAlign: 'center', color: '#999', fontSize: '13px' }}>
                     レジ金データがありません
