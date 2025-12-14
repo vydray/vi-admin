@@ -20,7 +20,7 @@ interface OrderItemWithTax {
   order_id: string
   product_name: string
   category: string | null
-  cast_name: string | null
+  cast_name: string[] | null  // 配列として保存されている
   quantity: number
   unit_price: number
   unit_price_excl_tax: number
@@ -216,17 +216,13 @@ export function calculateCastSales(
 
   // 各オーダーの商品を処理
   orders.forEach(order => {
+    // オーダーの推し（staff_name）を取得
+    const orderStaffName = order.staff_name
+    const allNominations = orderStaffName ? orderStaffName.split(', ').map(n => n.trim()) : []
+
     order.order_items.forEach(item => {
-      if (!item.cast_name) return // キャスト紐付けなしはスキップ
-
-      const cast = castNameMap.get(item.cast_name)
-      if (!cast) return // 該当キャストなし
-
-      const summary = summaryMap.get(cast.id)
-      if (!summary) return
-
-      // SELF/HELP判定
-      const salesType = determineSalesType(order.staff_name, item.cast_name)
+      const castsOnItem = item.cast_name || []
+      if (castsOnItem.length === 0) return // キャスト紐付けなしはスキップ
 
       // 税抜き金額を使用するか判定
       const unitPrice = salesSettings.use_tax_excluded
@@ -240,45 +236,59 @@ export function calculateCastSales(
         subtotal = applyRounding(subtotal, salesSettings.rounding_method)
       }
 
-      // バック率を取得
-      const backRatio = getBackRatio(
-        cast.id,
-        item.category,
-        item.product_name,
-        salesType,
-        backRates,
-        salesSettings
-      )
+      // 各キャストに分配
+      const perCastAmount = Math.floor(subtotal / castsOnItem.length)
 
-      // バック金額を計算
-      let backAmount = subtotal * (backRatio / 100)
-      if (salesSettings.rounding_timing === 'per_item') {
-        backAmount = applyRounding(backAmount, salesSettings.rounding_method)
-      }
+      castsOnItem.forEach(castName => {
+        const cast = castNameMap.get(castName)
+        if (!cast) return // 該当キャストなし
 
-      // 集計に追加
-      const calculatedItem: CalculatedSalesItem = {
-        order_item_id: item.id,
-        cast_id: cast.id,
-        cast_name: cast.name,
-        product_name: item.product_name,
-        category: item.category,
-        quantity: item.quantity,
-        unit_price_excl_tax: unitPrice,
-        subtotal_excl_tax: subtotal,
-        sales_type: salesType,
-        back_ratio: backRatio,
-        back_amount: backAmount,
-      }
+        const summary = summaryMap.get(cast.id)
+        if (!summary) return
 
-      summary.items.push(calculatedItem)
+        // SELF/HELP判定（推しに含まれていればSELF）
+        const salesType: SalesType = allNominations.includes(castName) ? 'self' : 'help'
 
-      if (salesType === 'self') {
-        summary.self_sales += subtotal
-      } else {
-        summary.help_sales += subtotal
-      }
-      summary.total_back += backAmount
+        // バック率を取得
+        const backRatio = getBackRatio(
+          cast.id,
+          item.category,
+          item.product_name,
+          salesType,
+          backRates,
+          salesSettings
+        )
+
+        // バック金額を計算
+        let backAmount = perCastAmount * (backRatio / 100)
+        if (salesSettings.rounding_timing === 'per_item') {
+          backAmount = applyRounding(backAmount, salesSettings.rounding_method)
+        }
+
+        // 集計に追加
+        const calculatedItem: CalculatedSalesItem = {
+          order_item_id: item.id,
+          cast_id: cast.id,
+          cast_name: cast.name,
+          product_name: item.product_name,
+          category: item.category,
+          quantity: item.quantity,
+          unit_price_excl_tax: unitPrice,
+          subtotal_excl_tax: perCastAmount,
+          sales_type: salesType,
+          back_ratio: backRatio,
+          back_amount: backAmount,
+        }
+
+        summary.items.push(calculatedItem)
+
+        if (salesType === 'self') {
+          summary.self_sales += perCastAmount
+        } else {
+          summary.help_sales += perCastAmount
+        }
+        summary.total_back += backAmount
+      })
     })
   })
 
@@ -363,7 +373,7 @@ export function calculateItemBased(
     order.order_items.forEach(item => {
       if (!item.cast_name) return // キャスト紐付けなしはスキップ
 
-      const castsOnItem = item.cast_name ? [item.cast_name] : []
+      const castsOnItem = item.cast_name || []
       if (castsOnItem.length === 0) return
 
       // SELF/HELP判定
@@ -585,7 +595,7 @@ export function calculateReceiptBased(
       const itemAmount = item.unit_price * item.quantity
       receiptTotalRaw += itemAmount
 
-      const castsOnItem = item.cast_name ? [item.cast_name] : []
+      const castsOnItem = item.cast_name || []
 
       // nonHelpNamesは売上対象外なので除外
       const realCastsOnItem = castsOnItem.filter(c => !nonHelpNames.includes(c))

@@ -38,7 +38,7 @@ interface OrderItemWithTax {
   order_id: string
   product_name: string
   category: string | null
-  cast_name: string | null
+  cast_name: string[] | null  // 配列として保存されている
   quantity: number
   unit_price: number
   unit_price_excl_tax: number

@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns'
 import { ja } from 'date-fns/locale'
 import { useStore } from '@/contexts/StoreContext'
 import { SalesSettings, CompensationType, CastBackRate } from '@/types'
-import { calculateCastSales, calculateCastSalesByPublishedMethod, getDefaultSalesSettings } from '@/lib/salesCalculation'
+import { calculateCastSalesByPublishedMethod, getDefaultSalesSettings, applyRoundingNew } from '@/lib/salesCalculation'
 import LoadingSpinner from '@/components/LoadingSpinner'
 
 interface Cast {
@@ -65,7 +65,7 @@ interface OrderItemWithTax {
   order_id: string
   product_name: string
   category: string | null
-  cast_name: string | null
+  cast_name: string[] | null  // 配列として保存されている
   quantity: number
   unit_price: number
   unit_price_excl_tax: number
@@ -93,6 +93,18 @@ interface DailySalesData {
   helpSales: number
   totalSales: number
   productBack: number
+  items: ProductBackItem[]
+}
+
+interface ProductBackItem {
+  orderId: string
+  productName: string
+  category: string | null
+  quantity: number
+  subtotal: number
+  backRatio: number
+  backAmount: number
+  salesType: 'self' | 'help'
 }
 
 export default function PayslipPage() {
@@ -108,9 +120,11 @@ export default function PayslipPage() {
   const [deductionTypes, setDeductionTypes] = useState<DeductionType[]>([])
   const [latePenaltyRules, setLatePenaltyRules] = useState<Map<number, LatePenaltyRule>>(new Map())
   const [compensationSettings, setCompensationSettings] = useState<CompensationSettings | null>(null)
+  const compensationSettingsRef = useRef<CompensationSettings | null>(null)
   const [salesSettings, setSalesSettings] = useState<SalesSettings | null>(null)
   const [backRates, setBackRates] = useState<CastBackRate[]>([])
   const [dailySalesData, setDailySalesData] = useState<Map<string, DailySalesData>>(new Map())
+  const [selectedDayDetail, setSelectedDayDetail] = useState<string | null>(null) // 日別詳細モーダル用
 
   const currencyFormatter = useMemo(() => {
     return new Intl.NumberFormat('ja-JP', {
@@ -194,12 +208,15 @@ export default function PayslipPage() {
 
   // バック率設定を取得
   const loadBackRates = useCallback(async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('cast_back_rates')
       .select('*')
       .eq('store_id', storeId)
       .eq('is_active', true)
 
+    if (error) {
+      console.error('バック率取得エラー:', error)
+    }
     setBackRates((data || []) as CastBackRate[])
   }, [storeId])
 
@@ -213,6 +230,7 @@ export default function PayslipPage() {
       .single()
 
     setCompensationSettings(data || null)
+    compensationSettingsRef.current = data || null
   }, [storeId])
 
   // 日別統計データを取得
@@ -259,9 +277,89 @@ export default function PayslipPage() {
     setAttendanceData(data || [])
   }, [storeId, casts])
 
+  // RoundingMethodをposition+typeに変換
+  const parseRoundingMethod = useCallback((method: string): { position: number; type: 'floor' | 'ceil' | 'round' | 'none' } => {
+    switch (method) {
+      case 'floor_100': return { position: 100, type: 'floor' }
+      case 'floor_10': return { position: 10, type: 'floor' }
+      case 'floor_1': return { position: 1, type: 'floor' }
+      case 'ceil_100': return { position: 100, type: 'ceil' }
+      case 'ceil_10': return { position: 10, type: 'ceil' }
+      case 'ceil_1': return { position: 1, type: 'ceil' }
+      case 'round': return { position: 1, type: 'round' }
+      case 'none':
+      default: return { position: 1, type: 'none' }
+    }
+  }, [])
+
+  // 商品バック率を取得（cast_back_ratesに設定がある場合のみ）
+  // SELF/HELP別のバック率を返す
+  const getProductBackRatio = useCallback((
+    castId: number,
+    category: string | null,
+    productName: string,
+    salesType: 'self' | 'help'
+  ): number | null => {
+    if (backRates.length === 0) return null
+
+    // キャストのバック率設定をフィルタ（is_activeはロード時に既にフィルタ済み）
+    const castRates = backRates.filter(r => r.cast_id === castId)
+    if (castRates.length === 0) return null
+
+    // マッチする設定を探す
+    let matchedRate: CastBackRate | undefined
+
+    // 1. 商品名完全一致を探す
+    matchedRate = castRates.find(
+      r => r.product_name === productName && r.category === category
+    )
+
+    // 2. カテゴリ一致（商品名なし = null）を探す
+    if (!matchedRate) {
+      matchedRate = castRates.find(
+        r => r.category === category && r.product_name === null
+      )
+    }
+
+    // 3. 全カテゴリ対象（category=null, product_name=null）を探す
+    if (!matchedRate) {
+      matchedRate = castRates.find(
+        r => r.category === null && r.product_name === null
+      )
+    }
+
+    // 設定がない場合はnull（バックなし）
+    if (!matchedRate) return null
+
+    // SELF/HELP別のバック率を返す
+    if (salesType === 'self') {
+      // SELF: self_back_ratioがあればそれを使用、なければback_ratio
+      return matchedRate.self_back_ratio ?? matchedRate.back_ratio
+    } else {
+      // HELP: help_back_ratioがあればそれを使用、なければback_ratioを使用
+      return matchedRate.help_back_ratio ?? matchedRate.back_ratio
+    }
+  }, [backRates])
+
   // 注文データから売上を計算
   const calculateSalesFromOrders = useCallback(async (castId: number, month: Date) => {
     if (!salesSettings) return
+
+    // refから最新のcompensationSettingsを取得（依存配列に含めないため）
+    const currentCompSettings = compensationSettingsRef.current
+
+    // 有効な報酬形態を取得
+    const types = (currentCompSettings?.compensation_types || []).filter(t => t.is_enabled)
+    let currentCompensationType = types[0] || null
+    if (currentCompSettings?.payment_selection_method === 'specific' && currentCompSettings?.selected_compensation_type_id) {
+      currentCompensationType = types.find(t => t.id === currentCompSettings.selected_compensation_type_id) || currentCompensationType
+    }
+
+    // 商品バック設定（報酬形態から取得）
+    const salesAggregation = currentCompensationType?.sales_aggregation ?? 'item_based'
+    const useProductBack = currentCompensationType?.use_product_back ?? false
+    const useHelpProductBack = currentCompensationType?.use_help_product_back ?? false
+    const helpBackMethod = currentCompensationType?.help_back_calculation_method ?? 'sales_based'
 
     const startDate = format(startOfMonth(month), 'yyyy-MM-dd')
     const endDate = format(endOfMonth(month), 'yyyy-MM-dd')
@@ -324,30 +422,202 @@ export default function PayslipPage() {
         0    // serviceRate
       )
 
-      // 商品バックはバック率を使って計算
-      const backSales = calculateCastSales(
-        dayOrders,
-        castList,
-        salesSettings,
-        backRates
-      )
-
       const publishedResult = publishedSales.find(r => r.cast_id === castId)
-      const backResult = backSales.find(r => r.cast_id === castId)
 
-      if (publishedResult || backResult) {
+      // 商品バックを独自計算（cast_back_ratesに設定がある商品のみ）
+      let productBackTotal = 0
+      const productBackItems: ProductBackItem[] = []
+
+      // 商品バックが無効な場合、またはreceipt_basedモードの場合はスキップ
+      // (商品バックはitem_basedモードでのみ計算)
+      if (!useProductBack || salesAggregation !== 'item_based') {
+        if (publishedResult) {
+          dailyMap.set(dateStr, {
+            date: dateStr,
+            selfSales: publishedResult.self_sales || 0,
+            helpSales: publishedResult.help_sales || 0,
+            totalSales: publishedResult.total_sales || 0,
+            productBack: 0,
+            items: []
+          })
+        }
+        return
+      }
+
+      // 端数処理設定を取得（商品単位の設定を使用）
+      const excludeTax = salesSettings.item_exclude_consumption_tax ?? salesSettings.use_tax_excluded ?? false
+      const roundingPosition = salesSettings.item_rounding_position ?? 100
+      const roundingMethod = salesSettings.item_rounding_method ?? 'floor_100'
+      const { type: roundingType } = parseRoundingMethod(roundingMethod)
+      const roundingTiming = salesSettings.item_rounding_timing ?? 'per_item'
+
+      // ヘルプ除外名リスト（フリー等）
+      const nonHelpNames = salesSettings.non_help_staff_names || []
+
+      dayOrders.forEach(order => {
+        const orderStaffName = order.staff_name
+        // staff_nameはカンマ区切りの場合がある（例: "あんり, にな"）
+        const allNominations = orderStaffName ? orderStaffName.split(', ').map(n => n.trim()) : []
+
+        // ヘルプ除外名を推しから除外（実在キャストの推しのみ残す）
+        const realNominations = allNominations.filter(n => !nonHelpNames.includes(n))
+        // 推しがヘルプ除外名のみの場合（フリーなど）
+        const nominationIsNonHelpOnly = allNominations.length > 0 && realNominations.length === 0
+
+        order.order_items.forEach(item => {
+          // このキャストの商品のみ対象（cast_nameは配列）
+          if (!item.cast_name || !item.cast_name.includes(cast.name)) return
+
+          // SELF/HELP判定
+          // nominationIsNonHelpOnlyの場合（フリー推し等）は商品についてるキャスト全員がSELF
+          // それ以外は、実推しに含まれていればSELF、含まれていなければHELP
+          const salesType: 'self' | 'help' = nominationIsNonHelpOnly
+            ? 'self'
+            : (realNominations.includes(cast.name) ? 'self' : 'help')
+
+          // ヘルプの場合、ヘルプバックが無効ならスキップ
+          if (salesType === 'help' && !useHelpProductBack) {
+            return
+          }
+
+          // バック率設定を取得（SELF/HELP別）
+          const backRatio = getProductBackRatio(castId, item.category, item.product_name, salesType)
+          if (backRatio === null) return // 設定がない商品はスキップ
+
+          // 金額計算（compensation-settingsと同じロジック）
+          // 商品ごとの処理（per_itemの場合）は単価に対して適用
+          let subtotal: number
+
+          if (roundingTiming === 'per_item') {
+            // 単価に対して税抜き・端数処理を適用
+            let unitPrice = item.unit_price
+            if (excludeTax) {
+              const taxPercent = 10  // 10%
+              unitPrice = Math.floor(unitPrice * 100 / (100 + taxPercent))
+            }
+            unitPrice = applyRoundingNew(unitPrice, roundingPosition, roundingType)
+            subtotal = unitPrice * item.quantity
+          } else {
+            // totalの場合は小計をそのまま（合計時に処理）
+            subtotal = item.unit_price * item.quantity
+          }
+
+          // バック金額計算（compensation-settingsと同じロジック）
+          // item_multi_cast_distribution: 'all_equal'=ヘルプ商品も売上に含める, 'nomination_only'=推しのみ
+          const salesAttribution = salesSettings.item_multi_cast_distribution ?? 'nomination_only'
+          const castsOnItem = item.cast_name || []
+          const helpDistMethod = salesSettings.item_help_distribution_method ?? 'all_to_nomination'
+          const helpRatioSetting = salesSettings.item_help_ratio ?? 50
+
+          // このアイテム上のヘルプキャストをカウント
+          const helpCastsOnItem = castsOnItem.filter(c => !realNominations.includes(c))
+          const numHelpCasts = helpCastsOnItem.length
+          const hasOrderNomination = realNominations.length > 0
+
+          let baseForBack = subtotal
+
+          if (salesAttribution === 'all_equal') {
+            // ヘルプ商品も売上に含める → 分配計算が必要
+            if (helpDistMethod === 'equal_per_person' || helpDistMethod === 'equal_all') {
+              // 均等割: 全キャストで等分
+              const totalPeople = (hasOrderNomination ? realNominations.length : 0) + numHelpCasts
+              baseForBack = totalPeople > 0 ? Math.floor(subtotal / totalPeople) : 0
+            } else if (helpDistMethod === 'equal') {
+              // 推し・ヘルプで半分ずつ
+              if (hasOrderNomination && numHelpCasts > 0) {
+                if (salesType === 'self') {
+                  const selfShare = Math.floor(subtotal / 2)
+                  baseForBack = realNominations.length > 0 ? Math.floor(selfShare / realNominations.length) : 0
+                } else {
+                  const helpShare = subtotal - Math.floor(subtotal / 2)
+                  baseForBack = Math.floor(helpShare / numHelpCasts)
+                }
+              } else if (hasOrderNomination && numHelpCasts === 0) {
+                // ヘルプがいない場合、推しが全額
+                baseForBack = realNominations.length > 0 ? Math.floor(subtotal / realNominations.length) : subtotal
+              } else if (!hasOrderNomination && numHelpCasts > 0) {
+                // 推しがいない場合、ヘルプが全額
+                baseForBack = Math.floor(subtotal / numHelpCasts)
+              } else {
+                baseForBack = 0
+              }
+            } else if (helpDistMethod === 'ratio') {
+              // 比率で分配（helpRatioSettingは推しの割合）
+              if (hasOrderNomination && numHelpCasts > 0) {
+                if (salesType === 'self') {
+                  const selfShare = Math.floor(subtotal * helpRatioSetting / 100)
+                  baseForBack = realNominations.length > 0 ? Math.floor(selfShare / realNominations.length) : 0
+                } else {
+                  const selfShare = Math.floor(subtotal * helpRatioSetting / 100)
+                  const helpShare = subtotal - selfShare
+                  baseForBack = Math.floor(helpShare / numHelpCasts)
+                }
+              } else if (hasOrderNomination && numHelpCasts === 0) {
+                // ヘルプがいない場合、推しが全額
+                baseForBack = realNominations.length > 0 ? Math.floor(subtotal / realNominations.length) : subtotal
+              } else if (!hasOrderNomination && numHelpCasts > 0) {
+                // 推しがいない場合、ヘルプが全額
+                baseForBack = Math.floor(subtotal / numHelpCasts)
+              } else {
+                baseForBack = 0
+              }
+            } else {
+              // all_to_nomination: 全額推しに
+              if (salesType === 'self') {
+                baseForBack = realNominations.length > 0 ? Math.floor(subtotal / realNominations.length) : subtotal
+              } else {
+                baseForBack = 0
+              }
+            }
+          } else {
+            // nomination_only: 推しのみ
+            if (salesType === 'self') {
+              // SELFの場合、推し人数で分配
+              baseForBack = realNominations.length > 0 ? Math.floor(subtotal / realNominations.length) : subtotal
+            } else {
+              // HELPの場合、full_amountなら商品価格、それ以外は0
+              if (helpBackMethod === 'full_amount') {
+                baseForBack = subtotal
+              } else {
+                baseForBack = 0
+              }
+            }
+          }
+
+          // バック金額計算（端数処理は売上金額にのみ適用、バック金額には適用しない）
+          const backAmount = Math.floor(baseForBack * backRatio / 100)
+
+          productBackTotal += backAmount
+          productBackItems.push({
+            orderId: order.id,
+            productName: item.product_name,
+            category: item.category,
+            quantity: item.quantity,
+            subtotal,
+            backRatio,
+            backAmount,
+            salesType
+          })
+        })
+      })
+
+      if (publishedResult || productBackTotal > 0) {
         dailyMap.set(dateStr, {
           date: dateStr,
           selfSales: publishedResult?.self_sales || 0,
           helpSales: publishedResult?.help_sales || 0,
           totalSales: publishedResult?.total_sales || 0,
-          productBack: backResult?.total_back || 0
+          productBack: productBackTotal,
+          items: productBackItems
         })
       }
     })
 
     setDailySalesData(dailyMap)
-  }, [storeId, casts, salesSettings, backRates])
+  }, [storeId, casts, salesSettings, backRates, getProductBackRatio, parseRoundingMethod])
+
+  // 初期ロード完了フラグ
+  const [initialized, setInitialized] = useState(false)
 
   // 初期ロード
   useEffect(() => {
@@ -357,13 +627,15 @@ export default function PayslipPage() {
       await loadDeductionSettings()
       await loadSalesSettings()
       await loadBackRates()
+      setInitialized(true)
       setLoading(false)
     }
     init()
   }, [loadCasts, loadDeductionSettings, loadSalesSettings, loadBackRates])
 
-  // キャストまたは月が変わったらデータを再取得
+  // キャストまたは月が変わったらデータを再取得（初期ロード完了後のみ）
   useEffect(() => {
+    if (!initialized) return
     if (selectedCastId && casts.length > 0 && salesSettings) {
       const loadData = async () => {
         setLoading(true)
@@ -375,7 +647,7 @@ export default function PayslipPage() {
       }
       loadData()
     }
-  }, [selectedCastId, selectedMonth, casts, salesSettings, loadDailyStats, loadAttendanceData, loadCompensationSettings, calculateSalesFromOrders])
+  }, [initialized, selectedCastId, selectedMonth, casts, salesSettings, loadDailyStats, loadAttendanceData, loadCompensationSettings, calculateSalesFromOrders])
 
   // アクティブな報酬形態を取得
   const activeCompensationType = useMemo((): CompensationType | null => {
@@ -678,7 +950,26 @@ export default function PayslipPage() {
                   </thead>
                   <tbody>
                     {dailyDetails.map((day, i) => (
-                      <tr key={day.date} style={i % 2 === 0 ? styles.tableRowEven : styles.tableRow}>
+                      <tr
+                        key={day.date}
+                        style={{
+                          ...(i % 2 === 0 ? styles.tableRowEven : styles.tableRow),
+                          cursor: (day.sales > 0 || day.productBack > 0) ? 'pointer' : 'default'
+                        }}
+                        onClick={() => {
+                          if (day.sales > 0 || day.productBack > 0) {
+                            setSelectedDayDetail(day.date)
+                          }
+                        }}
+                        onMouseEnter={(e) => {
+                          if (day.sales > 0 || day.productBack > 0) {
+                            e.currentTarget.style.backgroundColor = '#f0f7ff'
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = i % 2 === 0 ? '#fafafa' : 'transparent'
+                        }}
+                      >
                         <td style={styles.td}>{day.dayOfMonth}日({day.dayOfWeek})</td>
                         <td style={{ ...styles.td, textAlign: 'right' }}>{day.workHours > 0 ? `${day.workHours}h` : '-'}</td>
                         <td style={{ ...styles.td, textAlign: 'right' }}>{day.wageAmount > 0 ? currencyFormatter.format(day.wageAmount) : '-'}</td>
@@ -707,6 +998,97 @@ export default function PayslipPage() {
               <div style={styles.noData}>この月の勤務データがありません</div>
             )}
           </div>
+
+          {/* 商品バック詳細 */}
+          {summary.totalProductBack > 0 && (
+            <div style={styles.section}>
+              <h2 style={styles.sectionTitle}>商品バック詳細</h2>
+              <div style={styles.tableWrapper}>
+                <table style={styles.table}>
+                  <thead>
+                    <tr style={styles.tableHeader}>
+                      <th style={styles.th}>商品名</th>
+                      <th style={styles.th}>カテゴリ</th>
+                      <th style={{ ...styles.th, textAlign: 'right' }}>数量</th>
+                      <th style={{ ...styles.th, textAlign: 'right' }}>金額</th>
+                      <th style={{ ...styles.th, textAlign: 'center' }}>率</th>
+                      <th style={{ ...styles.th, textAlign: 'center' }}>種別</th>
+                      <th style={{ ...styles.th, textAlign: 'right' }}>バック</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(() => {
+                      // 全商品バックアイテムを集約
+                      const allItems: ProductBackItem[] = []
+                      dailySalesData.forEach(day => {
+                        allItems.push(...day.items)
+                      })
+
+                      // 商品名+カテゴリでグループ化
+                      const grouped = new Map<string, {
+                        productName: string
+                        category: string | null
+                        quantity: number
+                        subtotal: number
+                        backRatio: number
+                        backAmount: number
+                        selfCount: number
+                        helpCount: number
+                      }>()
+
+                      allItems.forEach(item => {
+                        const key = `${item.category || ''}:${item.productName}`
+                        const existing = grouped.get(key)
+                        if (existing) {
+                          existing.quantity += item.quantity
+                          existing.subtotal += item.subtotal
+                          existing.backAmount += item.backAmount
+                          if (item.salesType === 'self') existing.selfCount++
+                          else existing.helpCount++
+                        } else {
+                          grouped.set(key, {
+                            productName: item.productName,
+                            category: item.category,
+                            quantity: item.quantity,
+                            subtotal: item.subtotal,
+                            backRatio: item.backRatio,
+                            backAmount: item.backAmount,
+                            selfCount: item.salesType === 'self' ? 1 : 0,
+                            helpCount: item.salesType === 'help' ? 1 : 0
+                          })
+                        }
+                      })
+
+                      return Array.from(grouped.values())
+                        .sort((a, b) => b.backAmount - a.backAmount)
+                        .map((item, i) => (
+                          <tr key={i} style={i % 2 === 0 ? styles.tableRowEven : styles.tableRow}>
+                            <td style={styles.td}>{item.productName}</td>
+                            <td style={{ ...styles.td, color: '#86868b', fontSize: '12px' }}>{item.category || '-'}</td>
+                            <td style={{ ...styles.td, textAlign: 'right' }}>{item.quantity}</td>
+                            <td style={{ ...styles.td, textAlign: 'right' }}>{currencyFormatter.format(item.subtotal)}</td>
+                            <td style={{ ...styles.td, textAlign: 'center' }}>{item.backRatio}%</td>
+                            <td style={{ ...styles.td, textAlign: 'center' }}>
+                              {item.selfCount > 0 && <span style={{ color: '#34C759', marginRight: '4px' }}>推{item.selfCount}</span>}
+                              {item.helpCount > 0 && <span style={{ color: '#FF9500' }}>ヘ{item.helpCount}</span>}
+                            </td>
+                            <td style={{ ...styles.td, textAlign: 'right', fontWeight: '600', color: '#FF9500' }}>
+                              {currencyFormatter.format(item.backAmount)}
+                            </td>
+                          </tr>
+                        ))
+                    })()}
+                    <tr style={styles.tableTotal}>
+                      <td colSpan={6} style={{ ...styles.td, fontWeight: 'bold' }}>合計</td>
+                      <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold', color: '#FF9500' }}>
+                        {currencyFormatter.format(summary.totalProductBack)}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           {/* 控除内訳 */}
           <div style={styles.section}>
@@ -739,6 +1121,146 @@ export default function PayslipPage() {
           </div>
         </>
       )}
+
+      {/* 日別詳細モーダル */}
+      {selectedDayDetail && (() => {
+        const dayData = dailySalesData.get(selectedDayDetail)
+        const dayDetail = dailyDetails.find(d => d.date === selectedDayDetail)
+        if (!dayData && !dayDetail) return null
+
+        return (
+          <>
+            <div
+              style={styles.modalOverlay}
+              onClick={() => setSelectedDayDetail(null)}
+            />
+            <div style={styles.modal}>
+              <div style={styles.modalHeader}>
+                <h3 style={styles.modalTitle}>
+                  {format(new Date(selectedDayDetail), 'M月d日(E)', { locale: ja })} - {selectedCast?.name}
+                </h3>
+                <button
+                  onClick={() => setSelectedDayDetail(null)}
+                  style={styles.modalCloseBtn}
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div style={styles.modalContent}>
+                {/* サマリー */}
+                <div style={styles.modalSummary}>
+                  <div style={styles.modalSummaryItem}>
+                    <div style={styles.modalSummaryLabel}>売上</div>
+                    <div style={styles.modalSummaryValue}>
+                      {currencyFormatter.format(dayData?.totalSales || 0)}
+                    </div>
+                  </div>
+                  <div style={styles.modalSummaryItem}>
+                    <div style={styles.modalSummaryLabel}>商品バック</div>
+                    <div style={{ ...styles.modalSummaryValue, color: '#FF9500' }}>
+                      {currencyFormatter.format(dayData?.productBack || 0)}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 売上内訳 */}
+                {dayData && (dayData.selfSales > 0 || dayData.helpSales > 0) && (
+                  <div style={styles.modalSection}>
+                    <div style={styles.modalSectionTitle}>売上内訳</div>
+                    <div style={styles.modalGrid}>
+                      <div style={styles.modalGridItem}>
+                        <span style={{ color: '#34C759' }}>推し売上</span>
+                        <span style={{ fontWeight: '600' }}>{currencyFormatter.format(dayData.selfSales)}</span>
+                      </div>
+                      <div style={styles.modalGridItem}>
+                        <span style={{ color: '#FF9500' }}>ヘルプ売上</span>
+                        <span style={{ fontWeight: '600' }}>{currencyFormatter.format(dayData.helpSales)}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 商品バック詳細 */}
+                {dayData && dayData.items.length > 0 && (
+                  <div style={styles.modalSection}>
+                    <div style={styles.modalSectionTitle}>商品バック詳細</div>
+                    <div style={styles.modalItemList}>
+                      {dayData.items.map((item, idx) => (
+                        <div key={idx} style={styles.modalItem}>
+                          <div style={styles.modalItemMain}>
+                            <div style={styles.modalItemName}>
+                              {item.productName}
+                              <span style={{
+                                marginLeft: '6px',
+                                fontSize: '11px',
+                                padding: '2px 6px',
+                                borderRadius: '4px',
+                                backgroundColor: item.salesType === 'self' ? '#d4edda' : '#fff3cd',
+                                color: item.salesType === 'self' ? '#155724' : '#856404'
+                              }}>
+                                {item.salesType === 'self' ? '推し' : 'ヘルプ'}
+                              </span>
+                            </div>
+                            <div style={styles.modalItemCategory}>{item.category || '-'}</div>
+                          </div>
+                          <div style={styles.modalItemDetail}>
+                            <div style={{ fontSize: '12px', color: '#86868b' }}>
+                              {item.quantity}個 × {currencyFormatter.format(Math.floor(item.subtotal / item.quantity))} = {currencyFormatter.format(item.subtotal)}
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span style={{ fontSize: '12px', color: '#86868b' }}>{item.backRatio}%</span>
+                              <span style={{ fontWeight: '600', color: '#FF9500' }}>
+                                {currencyFormatter.format(item.backAmount)}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 勤務情報 */}
+                {dayDetail && (dayDetail.workHours > 0 || dayDetail.dailyPayment > 0) && (
+                  <div style={styles.modalSection}>
+                    <div style={styles.modalSectionTitle}>勤務情報</div>
+                    <div style={styles.modalGrid}>
+                      {dayDetail.workHours > 0 && (
+                        <div style={styles.modalGridItem}>
+                          <span>勤務時間</span>
+                          <span style={{ fontWeight: '600' }}>{dayDetail.workHours}h</span>
+                        </div>
+                      )}
+                      {dayDetail.wageAmount > 0 && (
+                        <div style={styles.modalGridItem}>
+                          <span>時給額</span>
+                          <span style={{ fontWeight: '600' }}>{currencyFormatter.format(dayDetail.wageAmount)}</span>
+                        </div>
+                      )}
+                      {dayDetail.dailyPayment > 0 && (
+                        <div style={styles.modalGridItem}>
+                          <span style={{ color: '#e74c3c' }}>日払い</span>
+                          <span style={{ fontWeight: '600', color: '#e74c3c' }}>{currencyFormatter.format(dayDetail.dailyPayment)}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div style={styles.modalFooter}>
+                <button
+                  onClick={() => setSelectedDayDetail(null)}
+                  style={styles.modalButton}
+                >
+                  閉じる
+                </button>
+              </div>
+            </div>
+          </>
+        )
+      })()}
     </div>
   )
 }
@@ -952,5 +1474,145 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '32px',
     fontWeight: '700',
     color: 'white'
+  },
+  // Modal styles
+  modalOverlay: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    zIndex: 1000
+  },
+  modal: {
+    position: 'fixed',
+    top: '50%',
+    left: '50%',
+    transform: 'translate(-50%, -50%)',
+    backgroundColor: '#f5f5f7',
+    borderRadius: '16px',
+    boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
+    zIndex: 1001,
+    width: '90%',
+    maxWidth: '500px',
+    maxHeight: '85vh',
+    overflow: 'hidden',
+    display: 'flex',
+    flexDirection: 'column'
+  },
+  modalHeader: {
+    padding: '16px 20px',
+    background: '#007AFF',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center'
+  },
+  modalTitle: {
+    margin: 0,
+    fontSize: '17px',
+    fontWeight: '600',
+    color: 'white'
+  },
+  modalCloseBtn: {
+    background: 'rgba(255,255,255,0.2)',
+    border: 'none',
+    fontSize: '14px',
+    cursor: 'pointer',
+    padding: '6px 10px',
+    borderRadius: '6px',
+    color: 'white'
+  },
+  modalContent: {
+    padding: '16px',
+    overflowY: 'auto',
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '12px'
+  },
+  modalSummary: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: '12px'
+  },
+  modalSummaryItem: {
+    background: 'white',
+    borderRadius: '10px',
+    padding: '12px',
+    textAlign: 'center'
+  },
+  modalSummaryLabel: {
+    fontSize: '12px',
+    color: '#86868b',
+    marginBottom: '4px'
+  },
+  modalSummaryValue: {
+    fontSize: '20px',
+    fontWeight: '700',
+    color: '#1d1d1f'
+  },
+  modalSection: {
+    background: 'white',
+    borderRadius: '10px',
+    padding: '14px'
+  },
+  modalSectionTitle: {
+    fontSize: '13px',
+    fontWeight: '600',
+    color: '#86868b',
+    marginBottom: '10px'
+  },
+  modalGrid: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px'
+  },
+  modalGridItem: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    fontSize: '14px'
+  },
+  modalItemList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '10px'
+  },
+  modalItem: {
+    borderBottom: '1px solid #f0f0f0',
+    paddingBottom: '10px'
+  },
+  modalItemMain: {
+    marginBottom: '4px'
+  },
+  modalItemName: {
+    fontSize: '14px',
+    fontWeight: '500',
+    color: '#1d1d1f'
+  },
+  modalItemCategory: {
+    fontSize: '12px',
+    color: '#86868b'
+  },
+  modalItemDetail: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center'
+  },
+  modalFooter: {
+    padding: '12px 16px',
+    borderTop: '1px solid #e5e5e5'
+  },
+  modalButton: {
+    width: '100%',
+    padding: '12px',
+    fontSize: '15px',
+    fontWeight: '600',
+    backgroundColor: '#007AFF',
+    color: 'white',
+    border: 'none',
+    borderRadius: '10px',
+    cursor: 'pointer'
   }
 }
