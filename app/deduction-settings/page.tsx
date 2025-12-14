@@ -12,17 +12,25 @@ interface DeductionType {
   id: number
   store_id: number
   name: string
-  type: 'percentage' | 'fixed' | 'penalty' | 'manual'
+  type: 'percentage' | 'fixed' | 'penalty_status' | 'penalty_late' | 'daily_payment' | 'manual'
   percentage: number | null
   default_amount: number
-  attendance_status_id: number | null
+  attendance_status_id: string | null
   penalty_amount: number
   display_order: number
   is_active: boolean
 }
 
-interface AttendanceStatus {
+interface LatePenaltyRule {
   id: number
+  deduction_type_id: number
+  minutes_from: number
+  minutes_to: number | null
+  penalty_amount: number
+}
+
+interface AttendanceStatus {
+  id: string
   name: string
   color: string
 }
@@ -30,8 +38,19 @@ interface AttendanceStatus {
 const typeLabels: Record<string, string> = {
   percentage: '%計算',
   fixed: '固定額',
-  penalty: '罰金（ステータス連動）',
+  penalty_status: 'ステータス連動罰金',
+  penalty_late: '遅刻罰金（時間ベース）',
+  daily_payment: '日払い（自動取得）',
   manual: '都度入力'
+}
+
+const typeDescriptions: Record<string, string> = {
+  percentage: '総支給額から自動で%を計算（源泉徴収など）',
+  fixed: '毎月同じ金額を控除（寮費など）',
+  penalty_status: '出勤ステータスに連動して自動で罰金（当欠・無欠など）',
+  penalty_late: '遅刻時間に応じて段階的に罰金',
+  daily_payment: '勤怠データの日払い額を自動で合計',
+  manual: '月ごとに金額を入力（前借りなど）'
 }
 
 export default function DeductionSettingsPage() {
@@ -39,6 +58,7 @@ export default function DeductionSettingsPage() {
   const { confirm } = useConfirm()
   const [loading, setLoading] = useState(true)
   const [deductionTypes, setDeductionTypes] = useState<DeductionType[]>([])
+  const [latePenaltyRules, setLatePenaltyRules] = useState<Map<number, LatePenaltyRule[]>>(new Map())
   const [attendanceStatuses, setAttendanceStatuses] = useState<AttendanceStatus[]>([])
   const [showAddModal, setShowAddModal] = useState(false)
   const [editingItem, setEditingItem] = useState<DeductionType | null>(null)
@@ -53,6 +73,13 @@ export default function DeductionSettingsPage() {
     penalty_amount: ''
   })
 
+  // 遅刻罰金ルール（編集用）
+  const [editingLatePenalties, setEditingLatePenalties] = useState<{
+    minutes_from: string
+    minutes_to: string
+    penalty_amount: string
+  }[]>([])
+
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
@@ -66,12 +93,35 @@ export default function DeductionSettingsPage() {
       if (typesError) throw typesError
       setDeductionTypes(types || [])
 
+      // 遅刻罰金ルールを取得
+      if (types && types.length > 0) {
+        const lateTypeIds = types.filter(t => t.type === 'penalty_late').map(t => t.id)
+        if (lateTypeIds.length > 0) {
+          const { data: rules, error: rulesError } = await supabase
+            .from('late_penalty_rules')
+            .select('*')
+            .in('deduction_type_id', lateTypeIds)
+            .order('minutes_from')
+
+          if (rulesError) throw rulesError
+
+          const rulesMap = new Map<number, LatePenaltyRule[]>()
+          for (const rule of (rules || [])) {
+            const existing = rulesMap.get(rule.deduction_type_id) || []
+            existing.push(rule)
+            rulesMap.set(rule.deduction_type_id, existing)
+          }
+          setLatePenaltyRules(rulesMap)
+        }
+      }
+
       // 出勤ステータスを取得（罰金連動用）
       const { data: statuses, error: statusError } = await supabase
         .from('attendance_statuses')
         .select('id, name, color')
         .eq('store_id', storeId)
-        .order('display_order')
+        .eq('is_active', true)
+        .order('order_index')
 
       if (statusError) throw statusError
       setAttendanceStatuses(statuses || [])
@@ -96,6 +146,7 @@ export default function DeductionSettingsPage() {
       attendance_status_id: '',
       penalty_amount: ''
     })
+    setEditingLatePenalties([])
     setEditingItem(null)
   }
 
@@ -110,11 +161,36 @@ export default function DeductionSettingsPage() {
       type: item.type,
       percentage: item.percentage?.toString() || '',
       default_amount: item.default_amount?.toString() || '',
-      attendance_status_id: item.attendance_status_id?.toString() || '',
+      attendance_status_id: item.attendance_status_id || '',
       penalty_amount: item.penalty_amount?.toString() || ''
     })
+
+    // 遅刻罰金ルールをロード
+    if (item.type === 'penalty_late') {
+      const rules = latePenaltyRules.get(item.id) || []
+      setEditingLatePenalties(rules.map(r => ({
+        minutes_from: r.minutes_from.toString(),
+        minutes_to: r.minutes_to?.toString() || '',
+        penalty_amount: r.penalty_amount.toString()
+      })))
+    } else {
+      setEditingLatePenalties([])
+    }
+
     setEditingItem(item)
     setShowAddModal(true)
+  }
+
+  const addLatePenaltyRule = () => {
+    setEditingLatePenalties(prev => [...prev, {
+      minutes_from: prev.length > 0 ? prev[prev.length - 1].minutes_to || '30' : '15',
+      minutes_to: '',
+      penalty_amount: '1000'
+    }])
+  }
+
+  const removeLatePenaltyRule = (index: number) => {
+    setEditingLatePenalties(prev => prev.filter((_, i) => i !== index))
   }
 
   const handleSave = async () => {
@@ -130,10 +206,12 @@ export default function DeductionSettingsPage() {
         type: formData.type,
         percentage: formData.type === 'percentage' ? parseFloat(formData.percentage) || null : null,
         default_amount: formData.type === 'fixed' ? parseInt(formData.default_amount) || 0 : 0,
-        attendance_status_id: formData.type === 'penalty' ? parseInt(formData.attendance_status_id) || null : null,
-        penalty_amount: formData.type === 'penalty' ? parseInt(formData.penalty_amount) || 0 : 0,
+        attendance_status_id: formData.type === 'penalty_status' ? formData.attendance_status_id || null : null,
+        penalty_amount: formData.type === 'penalty_status' ? parseInt(formData.penalty_amount) || 0 : 0,
         display_order: editingItem?.display_order || deductionTypes.length
       }
+
+      let typeId = editingItem?.id
 
       if (editingItem) {
         const { error } = await supabase
@@ -142,16 +220,43 @@ export default function DeductionSettingsPage() {
           .eq('id', editingItem.id)
 
         if (error) throw error
-        toast.success('更新しました')
       } else {
-        const { error } = await supabase
+        const { data: inserted, error } = await supabase
           .from('deduction_types')
           .insert(data)
+          .select()
+          .single()
 
         if (error) throw error
-        toast.success('追加しました')
+        typeId = inserted.id
       }
 
+      // 遅刻罰金ルールを保存
+      if (formData.type === 'penalty_late' && typeId) {
+        // 既存ルールを削除
+        await supabase
+          .from('late_penalty_rules')
+          .delete()
+          .eq('deduction_type_id', typeId)
+
+        // 新しいルールを挿入
+        if (editingLatePenalties.length > 0) {
+          const rulesToInsert = editingLatePenalties.map(r => ({
+            deduction_type_id: typeId,
+            minutes_from: parseInt(r.minutes_from) || 0,
+            minutes_to: r.minutes_to ? parseInt(r.minutes_to) : null,
+            penalty_amount: parseInt(r.penalty_amount) || 0
+          }))
+
+          const { error: rulesError } = await supabase
+            .from('late_penalty_rules')
+            .insert(rulesToInsert)
+
+          if (rulesError) throw rulesError
+        }
+      }
+
+      toast.success(editingItem ? '更新しました' : '追加しました')
       setShowAddModal(false)
       resetForm()
       loadData()
@@ -194,6 +299,35 @@ export default function DeductionSettingsPage() {
     }
   }
 
+  const getStatusName = (statusId: string | null) => {
+    if (!statusId) return '未設定'
+    return attendanceStatuses.find(s => s.id === statusId)?.name || '不明'
+  }
+
+  const renderDeductionDetail = (item: DeductionType) => {
+    switch (item.type) {
+      case 'percentage':
+        return `総支給の ${item.percentage}%`
+      case 'fixed':
+        return `固定 ${item.default_amount?.toLocaleString()}円`
+      case 'penalty_status':
+        return `${getStatusName(item.attendance_status_id)} → -${item.penalty_amount?.toLocaleString()}円/回`
+      case 'penalty_late': {
+        const rules = latePenaltyRules.get(item.id) || []
+        if (rules.length === 0) return '遅刻罰金ルール未設定'
+        return rules.map(r =>
+          `${r.minutes_from}分${r.minutes_to ? `〜${r.minutes_to}分` : '以上'}: -${r.penalty_amount.toLocaleString()}円`
+        ).join(', ')
+      }
+      case 'daily_payment':
+        return '勤怠の日払い額を自動集計'
+      case 'manual':
+        return '金額は都度入力'
+      default:
+        return ''
+    }
+  }
+
   if (loading) return <LoadingSpinner />
 
   return (
@@ -214,7 +348,7 @@ export default function DeductionSettingsPage() {
         </div>
 
         <p style={{ color: '#666', marginBottom: '20px', fontSize: '14px' }}>
-          店舗で使用する控除項目を設定します。設定した項目は報酬計算設定でキャストに適用できます。
+          店舗で使用する控除項目を設定します。勤怠データと連動して自動計算するものと、手動で入力するものがあります。
         </p>
 
         {/* 控除項目リスト */}
@@ -244,7 +378,7 @@ export default function DeductionSettingsPage() {
                 }}
               >
                 <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
                     <span style={{ fontWeight: '600', fontSize: '16px' }}>{item.name}</span>
                     <span style={{
                       padding: '2px 8px',
@@ -268,19 +402,11 @@ export default function DeductionSettingsPage() {
                     )}
                   </div>
                   <div style={{ marginTop: '6px', color: '#666', fontSize: '14px' }}>
-                    {item.type === 'percentage' && `総支給の ${item.percentage}%`}
-                    {item.type === 'fixed' && `固定 ${item.default_amount?.toLocaleString()}円`}
-                    {item.type === 'penalty' && (
-                      <>
-                        {attendanceStatuses.find(s => s.id === item.attendance_status_id)?.name || '未設定'}
-                        {' → '}-{item.penalty_amount?.toLocaleString()}円/回
-                      </>
-                    )}
-                    {item.type === 'manual' && '金額は都度入力'}
+                    {renderDeductionDetail(item)}
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
                   <button
                     onClick={() => toggleActive(item)}
                     style={{
@@ -341,10 +467,10 @@ export default function DeductionSettingsPage() {
             よくある控除項目の例
           </div>
           <ul style={{ margin: 0, paddingLeft: '20px', color: '#666', lineHeight: '1.8' }}>
-            <li><strong>源泉徴収</strong>: %計算（10.21%など）</li>
-            <li><strong>遅刻罰金</strong>: 罰金（出勤ステータス「遅刻」に連動）</li>
-            <li><strong>無断欠勤</strong>: 罰金（出勤ステータス「無断欠勤」に連動）</li>
-            <li><strong>日払い</strong>: 都度入力</li>
+            <li><strong>源泉徴収</strong>: %計算（10.21%）</li>
+            <li><strong>遅刻罰金</strong>: 遅刻罰金（15分〜30分: -1,000円、30分以上: -2,000円）</li>
+            <li><strong>当欠罰金</strong>: ステータス連動罰金（「当欠」に連動）</li>
+            <li><strong>日払い</strong>: 日払い（勤怠データから自動集計）</li>
             <li><strong>前借り</strong>: 都度入力</li>
             <li><strong>寮費</strong>: 固定額</li>
           </ul>
@@ -369,8 +495,8 @@ export default function DeductionSettingsPage() {
             backgroundColor: 'white',
             padding: '30px',
             borderRadius: '12px',
-            width: '500px',
-            maxHeight: '80vh',
+            width: '550px',
+            maxHeight: '85vh',
             overflowY: 'auto'
           }}>
             <h2 style={{ margin: '0 0 20px 0', fontSize: '20px' }}>
@@ -405,7 +531,12 @@ export default function DeductionSettingsPage() {
                 </label>
                 <select
                   value={formData.type}
-                  onChange={(e) => setFormData({ ...formData, type: e.target.value as DeductionType['type'] })}
+                  onChange={(e) => {
+                    setFormData({ ...formData, type: e.target.value as DeductionType['type'] })
+                    if (e.target.value === 'penalty_late' && editingLatePenalties.length === 0) {
+                      setEditingLatePenalties([{ minutes_from: '15', minutes_to: '', penalty_amount: '1000' }])
+                    }
+                  }}
                   style={{
                     width: '100%',
                     padding: '10px 12px',
@@ -414,11 +545,16 @@ export default function DeductionSettingsPage() {
                     fontSize: '14px'
                   }}
                 >
-                  <option value="percentage">%計算（総支給から自動計算）</option>
-                  <option value="fixed">固定額（毎月同じ金額）</option>
-                  <option value="penalty">罰金（出勤ステータス連動）</option>
-                  <option value="manual">都度入力（日払い・前借りなど）</option>
+                  <option value="percentage">%計算（源泉徴収など）</option>
+                  <option value="fixed">固定額（寮費など）</option>
+                  <option value="penalty_status">ステータス連動罰金（当欠・無欠など）</option>
+                  <option value="penalty_late">遅刻罰金（時間ベース）</option>
+                  <option value="daily_payment">日払い（勤怠から自動取得）</option>
+                  <option value="manual">都度入力（前借りなど）</option>
                 </select>
+                <p style={{ marginTop: '6px', fontSize: '12px', color: '#666' }}>
+                  {typeDescriptions[formData.type]}
+                </p>
               </div>
 
               {/* %計算の場合 */}
@@ -441,9 +577,6 @@ export default function DeductionSettingsPage() {
                       fontSize: '14px'
                     }}
                   />
-                  <p style={{ marginTop: '6px', fontSize: '12px', color: '#666' }}>
-                    総支給額に対してこの%を控除します（源泉徴収は通常10.21%）
-                  </p>
                 </div>
               )}
 
@@ -469,8 +602,8 @@ export default function DeductionSettingsPage() {
                 </div>
               )}
 
-              {/* 罰金の場合 */}
-              {formData.type === 'penalty' && (
+              {/* ステータス連動罰金の場合 */}
+              {formData.type === 'penalty_status' && (
                 <>
                   <div>
                     <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500' }}>
@@ -494,9 +627,6 @@ export default function DeductionSettingsPage() {
                         </option>
                       ))}
                     </select>
-                    <p style={{ marginTop: '6px', fontSize: '12px', color: '#666' }}>
-                      このステータスが勤怠に記録されると自動で罰金が適用されます
-                    </p>
                   </div>
                   <div>
                     <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500' }}>
@@ -506,7 +636,7 @@ export default function DeductionSettingsPage() {
                       type="number"
                       value={formData.penalty_amount}
                       onChange={(e) => setFormData({ ...formData, penalty_amount: e.target.value })}
-                      placeholder="例: 1000"
+                      placeholder="例: 3000"
                       style={{
                         width: '100%',
                         padding: '10px 12px',
@@ -517,6 +647,119 @@ export default function DeductionSettingsPage() {
                     />
                   </div>
                 </>
+              )}
+
+              {/* 遅刻罰金の場合 */}
+              {formData.type === 'penalty_late' && (
+                <div>
+                  <label style={{ display: 'block', marginBottom: '10px', fontWeight: '500' }}>
+                    遅刻罰金ルール（段階式）
+                  </label>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {editingLatePenalties.map((rule, index) => (
+                      <div key={index} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <input
+                          type="number"
+                          value={rule.minutes_from}
+                          onChange={(e) => {
+                            const newRules = [...editingLatePenalties]
+                            newRules[index].minutes_from = e.target.value
+                            setEditingLatePenalties(newRules)
+                          }}
+                          placeholder="15"
+                          style={{
+                            width: '70px',
+                            padding: '8px',
+                            border: '1px solid #ddd',
+                            borderRadius: '4px',
+                            fontSize: '14px'
+                          }}
+                        />
+                        <span>分〜</span>
+                        <input
+                          type="number"
+                          value={rule.minutes_to}
+                          onChange={(e) => {
+                            const newRules = [...editingLatePenalties]
+                            newRules[index].minutes_to = e.target.value
+                            setEditingLatePenalties(newRules)
+                          }}
+                          placeholder="なし"
+                          style={{
+                            width: '70px',
+                            padding: '8px',
+                            border: '1px solid #ddd',
+                            borderRadius: '4px',
+                            fontSize: '14px'
+                          }}
+                        />
+                        <span>分:</span>
+                        <input
+                          type="number"
+                          value={rule.penalty_amount}
+                          onChange={(e) => {
+                            const newRules = [...editingLatePenalties]
+                            newRules[index].penalty_amount = e.target.value
+                            setEditingLatePenalties(newRules)
+                          }}
+                          placeholder="1000"
+                          style={{
+                            width: '90px',
+                            padding: '8px',
+                            border: '1px solid #ddd',
+                            borderRadius: '4px',
+                            fontSize: '14px'
+                          }}
+                        />
+                        <span>円</span>
+                        <button
+                          onClick={() => removeLatePenaltyRule(index)}
+                          style={{
+                            padding: '4px 8px',
+                            backgroundColor: '#ffebee',
+                            color: '#c62828',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      onClick={addLatePenaltyRule}
+                      style={{
+                        padding: '8px 12px',
+                        backgroundColor: '#e3f2fd',
+                        color: '#1976d2',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontSize: '13px',
+                        alignSelf: 'flex-start'
+                      }}
+                    >
+                      + ルール追加
+                    </button>
+                  </div>
+                  <p style={{ marginTop: '10px', fontSize: '12px', color: '#666' }}>
+                    「〜分」が空の場合は「以上」として扱います（上限なし）
+                  </p>
+                </div>
+              )}
+
+              {/* 日払いの場合 */}
+              {formData.type === 'daily_payment' && (
+                <div style={{
+                  padding: '12px',
+                  backgroundColor: '#e8f5e9',
+                  borderRadius: '6px',
+                  fontSize: '14px',
+                  color: '#2e7d32'
+                }}>
+                  勤怠データの「日払い」フィールドから自動で月の合計を計算します
+                </div>
               )}
 
               {/* 都度入力の場合 */}
