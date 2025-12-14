@@ -380,12 +380,8 @@ const stateToDb = (state: SettingsState, castId: number, storeId: number, existi
     valid_to: state.validTo,
     is_active: state.isActive,
 
-    // 時給システム
-    status_id: state.statusId,
-    status_locked: state.statusLocked,
-    hourly_wage_override: state.hourlyWageOverride,
-    min_days_rule_enabled: state.minDaysRuleEnabled,
-    first_month_exempt_override: state.firstMonthExemptOverride,
+    // 時給システムはキャスト別時給設定ページで管理するため、ここでは保存しない
+    // status_id, status_locked, hourly_wage_override, min_days_rule_enabled, first_month_exempt_override
   }
 }
 
@@ -555,7 +551,10 @@ export default function CompensationSettingsPage() {
         setPayDay(Number(data.setting_value) || 25)
       }
     } catch (error) {
-      console.error('給料日設定読み込みエラー:', error)
+      // データが存在しない場合は無視（デフォルト値を使用）
+      if (error && Object.keys(error as object).length > 0) {
+        console.error('給料日設定読み込みエラー:', error)
+      }
     }
   }, [storeId])
 
@@ -2267,22 +2266,22 @@ export default function CompensationSettingsPage() {
                           type="checkbox"
                           checked={activeCompensationType.hourly_rate > 0}
                           onChange={(e) => updateCompensationType(activeCompensationType.id, {
-                            hourly_rate: e.target.checked ? 1500 : 0
+                            hourly_rate: e.target.checked ? (wageStats?.averageHourlyWage || 1500) : 0
                           })}
                           style={styles.checkbox}
                         />
                         <span>時給</span>
                       </label>
                       <div style={styles.payInputGroup}>
-                        <input
-                          type="number"
-                          value={activeCompensationType.hourly_rate}
-                          onChange={(e) => updateCompensationType(activeCompensationType.id, {
-                            hourly_rate: Number(e.target.value)
-                          })}
-                          style={styles.payInput}
-                          disabled={activeCompensationType.hourly_rate === 0}
-                        />
+                        <div style={{
+                          ...styles.payInput,
+                          backgroundColor: '#f5f5f5',
+                          display: 'flex',
+                          alignItems: 'center',
+                          color: activeCompensationType.hourly_rate === 0 ? '#999' : '#333'
+                        }}>
+                          {wageStats?.averageHourlyWage?.toLocaleString() || '-'}
+                        </div>
                         <span style={styles.payUnit}>円/時</span>
                       </div>
                     </div>
@@ -2502,134 +2501,105 @@ export default function CompensationSettingsPage() {
                 )}
               </div>
 
-              {/* 時給設定 */}
+              {/* 時給設定（読み取り専用） */}
               {wageStatuses.length > 0 && (
                 <div style={styles.section}>
-                  <h3 style={styles.sectionTitle}>時給設定</h3>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                    <h3 style={{ ...styles.sectionTitle, marginBottom: 0 }}>時給設定</h3>
+                    <a
+                      href="/cast-hourly-wage"
+                      style={{
+                        fontSize: '12px',
+                        color: '#3b82f6',
+                        textDecoration: 'none',
+                      }}
+                    >
+                      編集する →
+                    </a>
+                  </div>
 
                   <div style={styles.wageSettingsGrid}>
                     <div style={styles.wageSettingItem}>
                       <label style={styles.wageLabel}>時給ステータス</label>
-                      <select
-                        value={settingsState.statusId || ''}
-                        onChange={(e) => setSettingsState(prev => prev ? {
-                          ...prev,
-                          statusId: e.target.value ? parseInt(e.target.value) : null,
-                        } : null)}
-                        style={styles.wageSelect}
-                      >
-                        <option value="">選択してください</option>
-                        {wageStatuses.map((status) => (
-                          <option key={status.id} value={status.id}>
-                            {status.name} ({status.hourly_wage.toLocaleString()}円/時)
-                          </option>
-                        ))}
-                      </select>
+                      <div style={{
+                        padding: '8px 12px',
+                        backgroundColor: '#f3f4f6',
+                        borderRadius: '6px',
+                        fontSize: '14px',
+                        color: '#374151',
+                      }}>
+                        {(() => {
+                          const status = wageStatuses.find(s => s.id === settingsState.statusId)
+                          return status ? `${status.name} (${status.hourly_wage.toLocaleString()}円/時)` : '未設定'
+                        })()}
+                      </div>
                     </div>
 
                     <div style={styles.wageSettingItem}>
                       <label style={styles.wageLabel}>時給オーバーライド</label>
-                      <div style={styles.wageInputRow}>
-                        <input
-                          type="number"
-                          value={settingsState.hourlyWageOverride ?? ''}
-                          onChange={(e) => setSettingsState(prev => prev ? {
-                            ...prev,
-                            hourlyWageOverride: e.target.value ? parseInt(e.target.value) : null,
-                          } : null)}
-                          placeholder="ステータスの時給を使用"
-                          style={styles.wageInput}
-                        />
-                        <span style={styles.wageUnit}>円</span>
+                      <div style={{
+                        padding: '8px 12px',
+                        backgroundColor: '#f3f4f6',
+                        borderRadius: '6px',
+                        fontSize: '14px',
+                        color: '#374151',
+                      }}>
+                        {settingsState.hourlyWageOverride != null
+                          ? `${settingsState.hourlyWageOverride.toLocaleString()}円`
+                          : 'ステータスの時給を使用'}
                       </div>
                     </div>
 
                     <div style={styles.wageSettingItem}>
-                      <label style={styles.wageCheckboxLabel}>
-                        <input
-                          type="checkbox"
-                          checked={settingsState.statusLocked}
-                          onChange={(e) => setSettingsState(prev => prev ? {
-                            ...prev,
-                            statusLocked: e.target.checked,
-                          } : null)}
-                          style={styles.wageCheckbox}
-                        />
-                        ステータスをロック（自動昇格を無効化）
-                      </label>
+                      <div style={{
+                        padding: '8px 12px',
+                        backgroundColor: '#f3f4f6',
+                        borderRadius: '6px',
+                        fontSize: '14px',
+                        color: '#374151',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                      }}>
+                        <span style={{ color: settingsState.statusLocked ? '#059669' : '#9ca3af' }}>
+                          {settingsState.statusLocked ? '✓' : '○'}
+                        </span>
+                        ステータスをロック
+                      </div>
                     </div>
 
                     <div style={styles.wageSettingItem}>
-                      <label style={styles.wageCheckboxLabel}>
-                        <input
-                          type="checkbox"
-                          checked={settingsState.minDaysRuleEnabled}
-                          onChange={(e) => setSettingsState(prev => prev ? {
-                            ...prev,
-                            minDaysRuleEnabled: e.target.checked,
-                          } : null)}
-                          style={styles.wageCheckbox}
-                        />
-                        最低出勤日数ルールを適用
-                      </label>
+                      <div style={{
+                        padding: '8px 12px',
+                        backgroundColor: '#f3f4f6',
+                        borderRadius: '6px',
+                        fontSize: '14px',
+                        color: '#374151',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                      }}>
+                        <span style={{ color: settingsState.minDaysRuleEnabled ? '#059669' : '#9ca3af' }}>
+                          {settingsState.minDaysRuleEnabled ? '✓' : '○'}
+                        </span>
+                        最低出勤日数ルール
+                      </div>
                     </div>
 
                     <div style={styles.wageSettingItem}>
                       <label style={styles.wageLabel}>入店初月の除外</label>
-                      <select
-                        value={settingsState.firstMonthExemptOverride === null ? '' : settingsState.firstMonthExemptOverride.toString()}
-                        onChange={(e) => setSettingsState(prev => prev ? {
-                          ...prev,
-                          firstMonthExemptOverride: e.target.value === '' ? null : e.target.value === 'true',
-                        } : null)}
-                        style={styles.wageSelect}
-                      >
-                        <option value="">店舗設定に従う</option>
-                        <option value="true">入店初月は除外</option>
-                        <option value="false">入店初月も適用</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* 時給実績（cast_daily_statsから取得） */}
-              {wageStats && (
-                <div style={{
-                  ...styles.section,
-                  backgroundColor: '#f0f9ff',
-                  border: '1px solid #bae6fd'
-                }}>
-                  <h3 style={{ ...styles.sectionTitle, color: '#0369a1' }}>
-                    {selectedYear}年{selectedMonth}月の時給実績
-                  </h3>
-                  <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(4, 1fr)',
-                    gap: '16px'
-                  }}>
-                    <div style={{ textAlign: 'center' }}>
-                      <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>出勤日数</div>
-                      <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#0369a1' }}>
-                        {wageStats.daysWorked}日
-                      </div>
-                    </div>
-                    <div style={{ textAlign: 'center' }}>
-                      <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>合計勤務時間</div>
-                      <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#0369a1' }}>
-                        {wageStats.totalWorkHours}h
-                      </div>
-                    </div>
-                    <div style={{ textAlign: 'center' }}>
-                      <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>平均時給</div>
-                      <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#0369a1' }}>
-                        ¥{wageStats.averageHourlyWage.toLocaleString()}
-                      </div>
-                    </div>
-                    <div style={{ textAlign: 'center' }}>
-                      <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>合計時給収入</div>
-                      <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#0369a1' }}>
-                        ¥{wageStats.totalWageAmount.toLocaleString()}
+                      <div style={{
+                        padding: '8px 12px',
+                        backgroundColor: '#f3f4f6',
+                        borderRadius: '6px',
+                        fontSize: '14px',
+                        color: '#374151',
+                      }}>
+                        {settingsState.firstMonthExemptOverride === null
+                          ? '店舗設定に従う'
+                          : settingsState.firstMonthExemptOverride
+                            ? '入店初月は除外'
+                            : '入店初月も適用'}
                       </div>
                     </div>
                   </div>
@@ -2932,6 +2902,51 @@ export default function CompensationSettingsPage() {
         <div style={styles.simulationPanel}>
           <h3 style={styles.simulationTitle}>給料明細シミュレーション</h3>
 
+          {/* 時給実績（cast_daily_statsから取得） */}
+          {wageStats && (
+            <div style={{
+              backgroundColor: '#dcfce7',
+              border: '1px solid #86efac',
+              borderRadius: '8px',
+              padding: '12px',
+              marginBottom: '16px'
+            }}>
+              <div style={{ fontSize: '12px', color: '#166534', fontWeight: 'bold', marginBottom: '8px' }}>
+                {selectedYear}年{selectedMonth}月の時給実績
+              </div>
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(2, 1fr)',
+                gap: '8px'
+              }}>
+                <div style={{ textAlign: 'center', padding: '4px' }}>
+                  <div style={{ fontSize: '10px', color: '#64748b' }}>出勤日数</div>
+                  <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#166534' }}>
+                    {wageStats.daysWorked}日
+                  </div>
+                </div>
+                <div style={{ textAlign: 'center', padding: '4px' }}>
+                  <div style={{ fontSize: '10px', color: '#64748b' }}>勤務時間</div>
+                  <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#166534' }}>
+                    {wageStats.totalWorkHours}h
+                  </div>
+                </div>
+                <div style={{ textAlign: 'center', padding: '4px' }}>
+                  <div style={{ fontSize: '10px', color: '#64748b' }}>平均時給</div>
+                  <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#166534' }}>
+                    ¥{wageStats.averageHourlyWage.toLocaleString()}
+                  </div>
+                </div>
+                <div style={{ textAlign: 'center', padding: '4px' }}>
+                  <div style={{ fontSize: '10px', color: '#64748b' }}>時給収入</div>
+                  <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#166534' }}>
+                    ¥{wageStats.totalWageAmount.toLocaleString()}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {selectedCast && settingsState && salaryData ? (
             <div style={styles.salarySlip}>
               {/* ヘッダー */}
@@ -2940,23 +2955,25 @@ export default function CompensationSettingsPage() {
                 <div style={styles.slipDate}>{new Date().toLocaleDateString('ja-JP')}</div>
               </div>
 
-              {/* 勤務時間入力 */}
-              <div style={styles.slipInputSection}>
-                <div style={styles.slipInputRow}>
-                  <span style={styles.slipInputLabel}>勤務時間</span>
-                  <div style={styles.slipInputGroup}>
-                    <input
-                      type="number"
-                      value={simWorkHours}
-                      onChange={(e) => setSimWorkHours(Number(e.target.value))}
-                      style={styles.slipInput}
-                      min={0}
-                      step={0.5}
-                    />
-                    <span style={styles.slipInputUnit}>時間</span>
+              {/* 勤務時間入力（実績データがない場合のみ表示） */}
+              {!wageStats && (
+                <div style={styles.slipInputSection}>
+                  <div style={styles.slipInputRow}>
+                    <span style={styles.slipInputLabel}>勤務時間</span>
+                    <div style={styles.slipInputGroup}>
+                      <input
+                        type="number"
+                        value={simWorkHours}
+                        onChange={(e) => setSimWorkHours(Number(e.target.value))}
+                        style={styles.slipInput}
+                        min={0}
+                        step={0.5}
+                      />
+                      <span style={styles.slipInputUnit}>時間</span>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
 
               {/* 報酬形態タブ */}
               {compensationResults.length > 0 && (
@@ -2994,6 +3011,11 @@ export default function CompensationSettingsPage() {
                     if (!selectedResult) return null
                     const { type, hourly, fixed, salesBack, selfProductBack, helpProductBack, itemsWithSelfBack, itemsWithHelpBack, total, salesAmount, mode } = selectedResult
 
+                    // 実績データ使用時は実際の時給収入で合計を再計算
+                    const actualTotal = wageStats
+                      ? wageStats.totalWageAmount + salesBack + selfProductBack + helpProductBack
+                      : total
+
                     return (
                       <div style={{
                         border: '1px solid #e5e7eb',
@@ -3018,7 +3040,18 @@ export default function CompensationSettingsPage() {
                         </div>
 
                         {/* 時給・固定セクション */}
-                        {(hourly > 0 || fixed > 0) && (
+                        {wageStats ? (
+                          /* 実績データ使用時 */
+                          <div style={{ backgroundColor: '#dcfce7', borderLeft: '3px solid #22c55e', padding: '8px 10px', marginBottom: '8px', borderRadius: '0 4px 4px 0' }}>
+                            <div style={{ fontSize: '11px', color: '#166534', marginBottom: '4px', fontWeight: 'bold' }}>時給実績</div>
+                            <div style={styles.slipRow}>
+                              <span style={{ ...styles.slipRowLabel, fontSize: '11px' }}>
+                                {wageStats.totalWorkHours}h × ¥{wageStats.averageHourlyWage.toLocaleString()}
+                              </span>
+                              <span style={{ ...styles.slipRowValue, fontSize: '11px', color: '#166534' }}>¥{wageStats.totalWageAmount.toLocaleString()}</span>
+                            </div>
+                          </div>
+                        ) : (hourly > 0 || fixed > 0) && (
                           <div style={{ backgroundColor: '#f8fafc', borderLeft: '3px solid #3b82f6', padding: '8px 10px', marginBottom: '8px', borderRadius: '0 4px 4px 0' }}>
                             <div style={{ fontSize: '11px', color: '#3b82f6', marginBottom: '4px', fontWeight: 'bold' }}>時給・固定</div>
                             {hourly > 0 && (
@@ -3085,7 +3118,7 @@ export default function CompensationSettingsPage() {
 
                         <div style={styles.slipSubtotalRow}>
                           <span style={{ fontSize: '12px' }}>{type.name} 計</span>
-                          <span style={{ ...styles.slipSubtotalValue, fontSize: '12px' }}>¥{total.toLocaleString()}</span>
+                          <span style={{ ...styles.slipSubtotalValue, fontSize: '12px' }}>¥{actualTotal.toLocaleString()}</span>
                         </div>
                       </div>
                     )
@@ -3098,7 +3131,16 @@ export default function CompensationSettingsPage() {
                 <div style={styles.slipCompareSection}>
                   <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '8px', fontWeight: 'bold' }}>報酬形態比較</div>
                   {compensationResults.map((result) => {
-                    const isHighest = result.total === Math.max(...compensationResults.map(r => r.total))
+                    // 実績データがある場合は実際の時給収入で合計を再計算
+                    const resultTotal = wageStats
+                      ? wageStats.totalWageAmount + result.salesBack + result.selfProductBack + result.helpProductBack
+                      : result.total
+                    const maxTotal = Math.max(...compensationResults.map(r =>
+                      wageStats
+                        ? wageStats.totalWageAmount + r.salesBack + r.selfProductBack + r.helpProductBack
+                        : r.total
+                    ))
+                    const isHighest = resultTotal === maxTotal
                     const isSelected = settingsState.paymentSelectionMethod === 'specific' && settingsState.selectedCompensationTypeId === result.type.id
                     return (
                       <div key={result.type.id} style={{
@@ -3121,7 +3163,7 @@ export default function CompensationSettingsPage() {
                           </span>
                         </div>
                         <span style={{ fontSize: '11px', fontWeight: '600', color: (settingsState.paymentSelectionMethod === 'highest' && isHighest) || isSelected ? '#059669' : '#334155' }}>
-                          ¥{result.total.toLocaleString()}
+                          ¥{resultTotal.toLocaleString()}
                         </span>
                       </div>
                     )
@@ -3166,15 +3208,21 @@ export default function CompensationSettingsPage() {
 
               {/* 最終支給額 */}
               {(() => {
+                // 実績データがある場合の合計計算ヘルパー
+                const getAdjustedTotal = (r: typeof compensationResults[0]) =>
+                  wageStats
+                    ? wageStats.totalWageAmount + r.salesBack + r.selfProductBack + r.helpProductBack
+                    : r.total
+
                 let selectedPay = 0
                 if (compensationResults.length > 0) {
                   if (settingsState.paymentSelectionMethod === 'highest') {
-                    selectedPay = Math.max(...compensationResults.map(r => r.total))
+                    selectedPay = Math.max(...compensationResults.map(r => getAdjustedTotal(r)))
                   } else if (settingsState.selectedCompensationTypeId) {
                     const selected = compensationResults.find(r => r.type.id === settingsState.selectedCompensationTypeId)
-                    selectedPay = selected?.total || 0
+                    selectedPay = selected ? getAdjustedTotal(selected) : 0
                   } else {
-                    selectedPay = compensationResults[0]?.total || 0
+                    selectedPay = compensationResults[0] ? getAdjustedTotal(compensationResults[0]) : 0
                   }
                 }
 
@@ -4172,6 +4220,8 @@ const styles: { [key: string]: React.CSSProperties } = {
     alignSelf: 'flex-start',
     position: 'sticky' as const,
     top: '20px',
+    maxHeight: 'calc(100vh - 40px)',
+    overflowY: 'auto' as const,
   },
   simulationTitle: {
     fontSize: '16px',
