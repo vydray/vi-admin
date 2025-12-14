@@ -746,21 +746,12 @@ export default function Home() {
 
               {/* レジ金チェック */}
               <button
-                onClick={() => {
-                  setCashCount({
-                    yen10000: 0, yen5000: 0, yen1000: 0, yen500: 0,
-                    yen100: 0, yen50: 0, yen10: 0, yen5: 0, yen1: 0,
-                  })
-                  setShowCashCountModal(true)
-                }}
+                onClick={() => setShowCashCountModal(true)}
                 style={styles.cashCheckButton}
               >
-                <span style={{ fontSize: '20px' }}>💰</span>
-                <div>
-                  <div style={{ fontWeight: '600' }}>レジ金チェック</div>
-                  <div style={{ fontSize: '12px', opacity: 0.8 }}>
-                    理論値: ¥{(selectedDayData.cashSales + registerStartAmount).toLocaleString()}
-                  </div>
+                <div style={{ fontWeight: '600' }}>レジ金チェック</div>
+                <div style={{ fontSize: '12px', opacity: 0.7 }}>
+                  理論値: ¥{(selectedDayData.cashSales + registerStartAmount).toLocaleString()}
                 </div>
               </button>
 
@@ -1197,17 +1188,13 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   cashCheckButton: {
     width: '100%',
-    padding: '16px',
-    background: 'linear-gradient(135deg, #FFD700 0%, #FFA500 100%)',
-    border: 'none',
+    padding: '14px 16px',
+    background: '#f8f9fa',
+    border: '1px solid #e0e0e0',
     borderRadius: '12px',
     cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '12px',
     color: '#333',
     textAlign: 'left',
-    marginBottom: '16px',
   },
   cashCountModal: {
     position: 'fixed',
@@ -1221,11 +1208,12 @@ const styles: { [key: string]: React.CSSProperties } = {
     width: '90%',
     maxWidth: '450px',
     maxHeight: '90vh',
-    overflow: 'hidden',
+    display: 'flex',
+    flexDirection: 'column',
   },
   cashCountHeader: {
     padding: '16px 20px',
-    background: '#FFD700',
+    background: '#5c6bc0',
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -1233,7 +1221,7 @@ const styles: { [key: string]: React.CSSProperties } = {
   cashCountContent: {
     padding: '16px',
     overflowY: 'auto',
-    maxHeight: 'calc(90vh - 140px)',
+    flex: 1,
   },
   cashCountSummary: {
     background: 'white',
