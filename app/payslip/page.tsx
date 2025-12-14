@@ -6,7 +6,7 @@ import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterv
 import { ja } from 'date-fns/locale'
 import { useStore } from '@/contexts/StoreContext'
 import { SalesSettings, CompensationType, CastBackRate } from '@/types'
-import { calculateCastSales, getDefaultSalesSettings } from '@/lib/salesCalculation'
+import { calculateCastSales, calculateCastSalesByPublishedMethod, getDefaultSalesSettings } from '@/lib/salesCalculation'
 import LoadingSpinner from '@/components/LoadingSpinner'
 
 interface Cast {
@@ -261,7 +261,7 @@ export default function PayslipPage() {
 
   // 注文データから売上を計算
   const calculateSalesFromOrders = useCallback(async (castId: number, month: Date) => {
-    if (!salesSettings || backRates.length === 0) return
+    if (!salesSettings) return
 
     const startDate = format(startOfMonth(month), 'yyyy-MM-dd')
     const endDate = format(endOfMonth(month), 'yyyy-MM-dd')
@@ -311,24 +311,37 @@ export default function PayslipPage() {
 
     // 日別に集計
     const dailyMap = new Map<string, DailySalesData>()
+    const castList = casts.map(c => ({ id: c.id, name: c.name }))
 
-    // 各日の売上を計算（backRatesを使用して商品バックも計算）
+    // 各日の売上を計算
     ordersByDate.forEach((dayOrders, dateStr) => {
-      const daySalesResult = calculateCastSales(
+      // 売上は公開設定に基づいて計算
+      const publishedSales = calculateCastSalesByPublishedMethod(
         dayOrders,
-        casts.map(c => ({ id: c.id, name: c.name })),
+        castList,
+        salesSettings,
+        0.1, // taxRate
+        0    // serviceRate
+      )
+
+      // 商品バックはバック率を使って計算
+      const backSales = calculateCastSales(
+        dayOrders,
+        castList,
         salesSettings,
         backRates
       )
 
-      const dayCastResult = daySalesResult.find(r => r.cast_id === castId)
-      if (dayCastResult) {
+      const publishedResult = publishedSales.find(r => r.cast_id === castId)
+      const backResult = backSales.find(r => r.cast_id === castId)
+
+      if (publishedResult || backResult) {
         dailyMap.set(dateStr, {
           date: dateStr,
-          selfSales: dayCastResult.self_sales,
-          helpSales: dayCastResult.help_sales,
-          totalSales: dayCastResult.total_sales,
-          productBack: dayCastResult.total_back
+          selfSales: publishedResult?.self_sales || 0,
+          helpSales: publishedResult?.help_sales || 0,
+          totalSales: publishedResult?.total_sales || 0,
+          productBack: backResult?.total_back || 0
         })
       }
     })
@@ -351,7 +364,7 @@ export default function PayslipPage() {
 
   // キャストまたは月が変わったらデータを再取得
   useEffect(() => {
-    if (selectedCastId && casts.length > 0 && salesSettings && backRates.length > 0) {
+    if (selectedCastId && casts.length > 0 && salesSettings) {
       const loadData = async () => {
         setLoading(true)
         await loadDailyStats(selectedCastId, selectedMonth)
@@ -362,7 +375,7 @@ export default function PayslipPage() {
       }
       loadData()
     }
-  }, [selectedCastId, selectedMonth, casts, salesSettings, backRates, loadDailyStats, loadAttendanceData, loadCompensationSettings, calculateSalesFromOrders])
+  }, [selectedCastId, selectedMonth, casts, salesSettings, loadDailyStats, loadAttendanceData, loadCompensationSettings, calculateSalesFromOrders])
 
   // アクティブな報酬形態を取得
   const activeCompensationType = useMemo((): CompensationType | null => {
