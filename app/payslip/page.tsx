@@ -13,6 +13,7 @@ interface Cast {
   id: number
   name: string
   display_order: number | null
+  status: string | null
 }
 
 interface DailyStats {
@@ -114,6 +115,19 @@ export default function PayslipPage() {
   const [casts, setCasts] = useState<Cast[]>([])
   const [selectedCastId, setSelectedCastId] = useState<number | null>(null)
 
+  // 検索・フィルター
+  const [searchText, setSearchText] = useState('')
+  const [statusFilter, setStatusFilter] = useState<string>('在籍')
+
+  // フィルター済みキャスト一覧
+  const filteredCasts = useMemo(() => {
+    return casts.filter(cast => {
+      if (statusFilter && cast.status !== statusFilter) return false
+      if (searchText && !cast.name.toLowerCase().includes(searchText.toLowerCase())) return false
+      return true
+    })
+  }, [casts, statusFilter, searchText])
+
   // Data
   const [dailyStats, setDailyStats] = useState<DailyStats[]>([])
   const [attendanceData, setAttendanceData] = useState<AttendanceData[]>([])
@@ -138,7 +152,7 @@ export default function PayslipPage() {
   const loadCasts = useCallback(async () => {
     const { data, error } = await supabase
       .from('casts')
-      .select('id, name, display_order')
+      .select('id, name, display_order, status')
       .eq('store_id', storeId)
       .eq('is_active', true)
       .order('display_order', { ascending: true, nullsFirst: false })
@@ -698,16 +712,15 @@ export default function PayslipPage() {
   }, [loadCasts, loadDeductionSettings, loadSalesSettings, loadBackRates])
 
   // キャストまたは月が変わったらデータを再取得（初期ロード完了後のみ）
+  // ※ キャスト切り替え時のチカチカを防ぐため、loading状態は変更しない
   useEffect(() => {
     if (!initialized) return
     if (selectedCastId && casts.length > 0 && salesSettings) {
       const loadData = async () => {
-        setLoading(true)
         await loadDailyStats(selectedCastId, selectedMonth)
         await loadAttendanceData(selectedCastId, selectedMonth)
         await loadCompensationSettings(selectedCastId)
         await calculateSalesFromOrders(selectedCastId, selectedMonth)
-        setLoading(false)
       }
       loadData()
     }
@@ -915,22 +928,55 @@ export default function PayslipPage() {
 
   return (
     <div style={styles.pageWrapper}>
-      {/* 左側：キャスト一覧 */}
-      <div style={styles.castListPanel}>
-        <div style={styles.castListHeader}>キャスト</div>
+      {/* 左側：キャスト一覧サイドバー */}
+      <div style={styles.sidebar}>
+        <h3 style={styles.sidebarTitle}>キャスト選択</h3>
+
+        {/* 検索 */}
+        <input
+          type="text"
+          placeholder="名前で検索..."
+          value={searchText}
+          onChange={(e) => setSearchText(e.target.value)}
+          style={styles.searchInput}
+        />
+
+        {/* ステータスフィルター */}
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          style={styles.filterSelect}
+        >
+          <option value="">全て</option>
+          <option value="在籍">在籍</option>
+          <option value="体験">体験</option>
+          <option value="退店">退店</option>
+        </select>
+
         <div style={styles.castList}>
-          {casts.map(cast => (
-            <div
+          {filteredCasts.map((cast) => (
+            <button
               key={cast.id}
               onClick={() => setSelectedCastId(cast.id)}
               style={{
-                ...styles.castListItem,
-                ...(selectedCastId === cast.id ? styles.castListItemActive : {})
+                ...styles.castItem,
+                ...(selectedCastId === cast.id ? styles.castItemActive : {}),
               }}
             >
-              {cast.name}
-            </div>
+              <div style={styles.castInfo}>
+                <span style={styles.castName}>{cast.name}</span>
+                <span style={{
+                  ...styles.castStatus,
+                  color: cast.status === '在籍' ? '#10b981' : cast.status === '体験' ? '#f59e0b' : '#94a3b8',
+                }}>
+                  {cast.status}
+                </span>
+              </div>
+            </button>
           ))}
+          {filteredCasts.length === 0 && (
+            <p style={styles.noResults}>該当するキャストがいません</p>
+          )}
         </div>
       </div>
 
@@ -1352,42 +1398,101 @@ export default function PayslipPage() {
 const styles: { [key: string]: React.CSSProperties } = {
   pageWrapper: {
     display: 'flex',
+    gap: '20px',
+    padding: '20px',
+    backgroundColor: '#f5f6fa',
     minHeight: '100vh'
   },
-  castListPanel: {
-    width: '180px',
-    backgroundColor: '#f8f9fa',
-    borderRight: '1px solid #e5e5e7',
-    padding: '16px 0',
-    flexShrink: 0
+  sidebar: {
+    width: '200px',
+    flexShrink: 0,
+    backgroundColor: 'white',
+    borderRadius: '10px',
+    padding: '15px',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+    maxHeight: 'calc(100vh - 60px)',
+    overflowY: 'auto' as const
   },
-  castListHeader: {
-    padding: '8px 16px',
-    fontSize: '12px',
+  sidebarTitle: {
+    fontSize: '14px',
     fontWeight: '600',
-    color: '#86868b',
+    color: '#7f8c8d',
+    marginBottom: '15px',
+    marginTop: 0,
     textTransform: 'uppercase' as const
+  },
+  searchInput: {
+    width: '100%',
+    padding: '8px 10px',
+    fontSize: '13px',
+    border: '1px solid #ddd',
+    borderRadius: '6px',
+    marginBottom: '10px',
+    boxSizing: 'border-box' as const
+  },
+  filterSelect: {
+    width: '100%',
+    padding: '8px 10px',
+    fontSize: '13px',
+    border: '1px solid #ddd',
+    borderRadius: '6px',
+    marginBottom: '15px',
+    backgroundColor: 'white',
+    cursor: 'pointer'
   },
   castList: {
     display: 'flex',
-    flexDirection: 'column' as const
+    flexDirection: 'column' as const,
+    gap: '5px'
   },
-  castListItem: {
-    padding: '10px 16px',
-    fontSize: '14px',
-    color: '#1d1d1f',
+  castItem: {
+    padding: '10px 12px',
+    border: 'none',
+    borderRadius: '6px',
+    backgroundColor: '#f8f9fa',
     cursor: 'pointer',
-    transition: 'background-color 0.2s'
+    textAlign: 'left' as const,
+    fontSize: '14px',
+    color: '#2c3e50',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    transition: 'all 0.2s',
+    width: '100%'
   },
-  castListItemActive: {
-    backgroundColor: '#007AFF',
-    color: 'white',
+  castItemActive: {
+    backgroundColor: '#3498db',
+    color: 'white'
+  },
+  castInfo: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '2px',
+    flex: 1,
+    minWidth: 0
+  },
+  castName: {
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap' as const
+  },
+  castStatus: {
+    fontSize: '11px',
     fontWeight: '500'
   },
+  noResults: {
+    textAlign: 'center' as const,
+    color: '#95a5a6',
+    fontSize: '13px',
+    padding: '20px 0'
+  },
   container: {
-    padding: '20px',
     flex: 1,
-    maxWidth: '900px'
+    maxWidth: '900px',
+    backgroundColor: 'white',
+    borderRadius: '10px',
+    padding: '20px',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
   },
   subtitle: {
     fontSize: '14px',
