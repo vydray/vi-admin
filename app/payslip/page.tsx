@@ -144,6 +144,12 @@ export default function PayslipPage() {
     category: string | null
     salesType: 'self' | 'help'
   } | null>(null) // 商品別詳細モーダル用
+  const [selectedProductDayDetail, setSelectedProductDayDetail] = useState<{
+    date: string
+    productName: string
+    category: string | null
+    salesType: 'self' | 'help'
+  } | null>(null) // 商品日別詳細モーダル用（伝票一覧）
 
   const currencyFormatter = useMemo(() => {
     return new Intl.NumberFormat('ja-JP', {
@@ -1507,7 +1513,25 @@ export default function PayslipPage() {
                       </thead>
                       <tbody>
                         {dailyBreakdown.map((day, i) => (
-                          <tr key={day.date} style={i % 2 === 0 ? styles.tableRowEven : styles.tableRow}>
+                          <tr
+                            key={day.date}
+                            style={{
+                              ...(i % 2 === 0 ? styles.tableRowEven : styles.tableRow),
+                              cursor: 'pointer'
+                            }}
+                            onClick={() => setSelectedProductDayDetail({
+                              date: day.date,
+                              productName: selectedProductDetail.productName,
+                              category: selectedProductDetail.category,
+                              salesType: selectedProductDetail.salesType
+                            })}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.backgroundColor = '#fff5e6'
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.backgroundColor = i % 2 === 0 ? '#fafafa' : 'transparent'
+                            }}
+                          >
                             <td style={styles.td}>
                               {format(new Date(day.date), 'M/d(E)', { locale: ja })}
                             </td>
@@ -1536,6 +1560,114 @@ export default function PayslipPage() {
                 <button
                   onClick={() => setSelectedProductDetail(null)}
                   style={{ ...styles.modalButton, backgroundColor: '#FF9500' }}
+                >
+                  閉じる
+                </button>
+              </div>
+            </div>
+          </>
+        )
+      })()}
+
+      {/* 商品日別詳細モーダル（伝票一覧） */}
+      {selectedProductDayDetail && (() => {
+        const dayData = dailySalesData.get(selectedProductDayDetail.date)
+        if (!dayData) return null
+
+        // その日のその商品のアイテム一覧を抽出
+        const matchingItems = dayData.items.filter(item =>
+          item.productName === selectedProductDayDetail.productName &&
+          item.category === selectedProductDayDetail.category &&
+          item.salesType === selectedProductDayDetail.salesType
+        )
+
+        const totalQuantity = matchingItems.reduce((sum, item) => sum + item.quantity, 0)
+        const totalBack = matchingItems.reduce((sum, item) => sum + item.backAmount, 0)
+
+        return (
+          <>
+            <div
+              style={styles.modalOverlay}
+              onClick={() => setSelectedProductDayDetail(null)}
+            />
+            <div style={styles.modal}>
+              <div style={{ ...styles.modalHeader, backgroundColor: '#34C759' }}>
+                <h3 style={styles.modalTitle}>
+                  {format(new Date(selectedProductDayDetail.date), 'M月d日(E)', { locale: ja })}
+                  <span style={{ marginLeft: '8px', fontSize: '13px', opacity: 0.9 }}>
+                    {selectedProductDayDetail.productName}
+                  </span>
+                </h3>
+                <button
+                  onClick={() => setSelectedProductDayDetail(null)}
+                  style={styles.modalCloseBtn}
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div style={styles.modalContent}>
+                {/* サマリー */}
+                <div style={styles.modalSummary}>
+                  <div style={styles.modalSummaryItem}>
+                    <div style={styles.modalSummaryLabel}>伝票数</div>
+                    <div style={styles.modalSummaryValue}>{matchingItems.length}件</div>
+                  </div>
+                  <div style={styles.modalSummaryItem}>
+                    <div style={styles.modalSummaryLabel}>合計バック</div>
+                    <div style={{ ...styles.modalSummaryValue, color: '#FF9500' }}>
+                      {currencyFormatter.format(totalBack)}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 伝票一覧 */}
+                <div style={styles.modalSection}>
+                  <div style={styles.modalSectionTitle}>伝票一覧</div>
+                  <div style={styles.modalItemList}>
+                    {matchingItems.map((item, idx) => (
+                      <div key={idx} style={styles.modalItem}>
+                        <div style={styles.modalItemMain}>
+                          <div style={styles.modalItemName}>
+                            伝票 #{item.orderId.slice(-6).toUpperCase()}
+                          </div>
+                        </div>
+                        <div style={styles.modalItemDetail}>
+                          <div style={{ fontSize: '13px' }}>
+                            {item.quantity}個 × {currencyFormatter.format(Math.floor(item.subtotal / item.quantity))}
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <span style={{ fontSize: '13px', color: '#86868b' }}>
+                              {currencyFormatter.format(item.subtotal)}
+                            </span>
+                            <span style={{ fontWeight: '600', color: '#FF9500' }}>
+                              {currencyFormatter.format(item.backAmount)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* 合計 */}
+                  <div style={{
+                    marginTop: '12px',
+                    paddingTop: '12px',
+                    borderTop: '2px solid #e5e5e5',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    fontWeight: '600'
+                  }}>
+                    <span>合計 {totalQuantity}個</span>
+                    <span style={{ color: '#FF9500' }}>{currencyFormatter.format(totalBack)}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div style={styles.modalFooter}>
+                <button
+                  onClick={() => setSelectedProductDayDetail(null)}
+                  style={{ ...styles.modalButton, backgroundColor: '#34C759' }}
                 >
                   閉じる
                 </button>
