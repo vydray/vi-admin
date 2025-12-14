@@ -855,12 +855,11 @@ export default function PayslipPage() {
         }
       })
 
-    // 源泉徴収（%計算）
+    // 源泉徴収（%計算）- 総支給額に対して計算
     const percentageDeductions = deductionTypes.filter(d => d.type === 'percentage' && d.percentage && (enabledIds.length === 0 || enabledIds.includes(d.id)))
     percentageDeductions.forEach(d => {
-      const currentDeductionTotal = results.reduce((sum, r) => sum + r.amount, 0)
-      const taxableAmount = summary.grossEarnings - currentDeductionTotal
-      const amount = Math.round(taxableAmount * (d.percentage || 0) / 100)
+      // 総支給額に対して源泉徴収を計算（他の控除を引く前）
+      const amount = Math.round(summary.grossEarnings * (d.percentage || 0) / 100)
       if (amount > 0) {
         results.push({
           name: d.name,
