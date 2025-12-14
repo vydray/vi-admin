@@ -150,6 +150,29 @@ export default function PayslipPage() {
     category: string | null
     salesType: 'self' | 'help'
   } | null>(null) // 商品日別詳細モーダル用（伝票一覧）
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null) // 伝票詳細モーダル用
+  const [orderDetail, setOrderDetail] = useState<{
+    id: string
+    receipt_number: string | null
+    guest_name: string | null
+    staff_name: string | null
+    table_number: string | null
+    order_date: string
+    subtotal_excl_tax: number
+    tax_amount: number
+    service_charge: number
+    total_incl_tax: number
+    order_items: {
+      id: number
+      product_name: string
+      category: string | null
+      cast_name: string[] | null
+      quantity: number
+      unit_price: number
+      subtotal: number
+      tax_amount: number
+    }[]
+  } | null>(null)
 
   const currencyFormatter = useMemo(() => {
     return new Intl.NumberFormat('ja-JP', {
@@ -736,6 +759,52 @@ export default function PayslipPage() {
       loadData()
     }
   }, [initialized, selectedCastId, selectedMonth, casts, salesSettings, loadDailyStats, loadAttendanceData, loadCompensationSettings, calculateSalesFromOrders])
+
+  // 伝票詳細を取得
+  useEffect(() => {
+    if (!selectedOrderId) {
+      setOrderDetail(null)
+      return
+    }
+
+    const loadOrderDetail = async () => {
+      const { data, error } = await supabase
+        .from('orders')
+        .select(`
+          id,
+          receipt_number,
+          guest_name,
+          staff_name,
+          table_number,
+          order_date,
+          subtotal_excl_tax,
+          tax_amount,
+          service_charge,
+          total_incl_tax,
+          order_items (
+            id,
+            product_name,
+            category,
+            cast_name,
+            quantity,
+            unit_price,
+            subtotal,
+            tax_amount
+          )
+        `)
+        .eq('id', selectedOrderId)
+        .single()
+
+      if (error) {
+        console.error('伝票詳細取得エラー:', error)
+        return
+      }
+
+      setOrderDetail(data)
+    }
+
+    loadOrderDetail()
+  }, [selectedOrderId])
 
   // アクティブな報酬形態を取得
   const activeCompensationType = useMemo((): CompensationType | null => {
@@ -1623,10 +1692,27 @@ export default function PayslipPage() {
 
                 {/* 伝票一覧 */}
                 <div style={styles.modalSection}>
-                  <div style={styles.modalSectionTitle}>伝票一覧</div>
+                  <div style={styles.modalSectionTitle}>伝票一覧（タップで詳細）</div>
                   <div style={styles.modalItemList}>
                     {matchingItems.map((item, idx) => (
-                      <div key={idx} style={styles.modalItem}>
+                      <div
+                        key={idx}
+                        style={{
+                          ...styles.modalItem,
+                          cursor: 'pointer',
+                          borderRadius: '8px',
+                          padding: '10px',
+                          margin: '-10px -10px 0 -10px',
+                          marginBottom: idx < matchingItems.length - 1 ? '10px' : '0'
+                        }}
+                        onClick={() => setSelectedOrderId(item.orderId)}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.backgroundColor = '#f0f7ff'
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = 'transparent'
+                        }}
+                      >
                         <div style={styles.modalItemMain}>
                           <div style={styles.modalItemName}>
                             伝票 #{item.orderId.slice(-6).toUpperCase()}
@@ -1676,6 +1762,142 @@ export default function PayslipPage() {
           </>
         )
       })()}
+
+      {/* 伝票詳細モーダル */}
+      {selectedOrderId && orderDetail && (
+        <>
+          <div
+            style={styles.modalOverlay}
+            onClick={() => setSelectedOrderId(null)}
+          />
+          <div style={{ ...styles.modal, maxWidth: '550px' }}>
+            <div style={{ ...styles.modalHeader, backgroundColor: '#5856D6' }}>
+              <h3 style={styles.modalTitle}>
+                伝票詳細
+                {orderDetail.receipt_number && (
+                  <span style={{ marginLeft: '8px', fontSize: '13px', opacity: 0.9 }}>
+                    #{orderDetail.receipt_number}
+                  </span>
+                )}
+              </h3>
+              <button
+                onClick={() => setSelectedOrderId(null)}
+                style={styles.modalCloseBtn}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={styles.modalContent}>
+              {/* 基本情報 */}
+              <div style={styles.modalSection}>
+                <div style={styles.modalSectionTitle}>基本情報</div>
+                <div style={styles.modalGrid}>
+                  {orderDetail.guest_name && (
+                    <div style={styles.modalGridItem}>
+                      <span>お客様</span>
+                      <span style={{ fontWeight: '600' }}>{orderDetail.guest_name}</span>
+                    </div>
+                  )}
+                  {orderDetail.staff_name && (
+                    <div style={styles.modalGridItem}>
+                      <span>推し</span>
+                      <span style={{ fontWeight: '600' }}>{orderDetail.staff_name}</span>
+                    </div>
+                  )}
+                  {orderDetail.table_number && (
+                    <div style={styles.modalGridItem}>
+                      <span>卓番</span>
+                      <span style={{ fontWeight: '600' }}>{orderDetail.table_number}</span>
+                    </div>
+                  )}
+                  <div style={styles.modalGridItem}>
+                    <span>日時</span>
+                    <span style={{ fontWeight: '600' }}>
+                      {format(new Date(orderDetail.order_date), 'M/d(E) HH:mm', { locale: ja })}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* 商品一覧 */}
+              <div style={styles.modalSection}>
+                <div style={styles.modalSectionTitle}>注文商品</div>
+                <div style={styles.tableWrapper}>
+                  <table style={{ ...styles.table, fontSize: '13px' }}>
+                    <thead>
+                      <tr style={styles.tableHeader}>
+                        <th style={styles.th}>商品名</th>
+                        <th style={{ ...styles.th, textAlign: 'center' }}>数量</th>
+                        <th style={{ ...styles.th, textAlign: 'right' }}>単価</th>
+                        <th style={{ ...styles.th, textAlign: 'right' }}>小計</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {orderDetail.order_items.map((item, i) => (
+                        <tr key={item.id} style={i % 2 === 0 ? styles.tableRowEven : styles.tableRow}>
+                          <td style={styles.td}>
+                            <div>{item.product_name}</div>
+                            {item.cast_name && item.cast_name.length > 0 && (
+                              <div style={{ fontSize: '11px', color: '#86868b' }}>
+                                {item.cast_name.join(', ')}
+                              </div>
+                            )}
+                          </td>
+                          <td style={{ ...styles.td, textAlign: 'center' }}>{item.quantity}</td>
+                          <td style={{ ...styles.td, textAlign: 'right' }}>{currencyFormatter.format(item.unit_price)}</td>
+                          <td style={{ ...styles.td, textAlign: 'right' }}>{currencyFormatter.format(item.subtotal)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* 金額明細 */}
+              <div style={styles.modalSection}>
+                <div style={styles.modalSectionTitle}>金額明細</div>
+                <div style={styles.modalGrid}>
+                  <div style={styles.modalGridItem}>
+                    <span>小計（税抜）</span>
+                    <span>{currencyFormatter.format(orderDetail.subtotal_excl_tax || 0)}</span>
+                  </div>
+                  {(orderDetail.service_charge || 0) > 0 && (
+                    <div style={styles.modalGridItem}>
+                      <span>サービス料</span>
+                      <span>{currencyFormatter.format(orderDetail.service_charge)}</span>
+                    </div>
+                  )}
+                  <div style={styles.modalGridItem}>
+                    <span>消費税</span>
+                    <span>{currencyFormatter.format(orderDetail.tax_amount || 0)}</span>
+                  </div>
+                  <div style={{
+                    ...styles.modalGridItem,
+                    borderTop: '2px solid #e5e5e5',
+                    paddingTop: '8px',
+                    marginTop: '4px'
+                  }}>
+                    <span style={{ fontWeight: '600' }}>合計</span>
+                    <span style={{ fontWeight: '700', fontSize: '18px', color: '#5856D6' }}>
+                      {currencyFormatter.format(orderDetail.total_incl_tax || 0)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style={styles.modalFooter}>
+              <button
+                onClick={() => setSelectedOrderId(null)}
+                style={{ ...styles.modalButton, backgroundColor: '#5856D6' }}
+              >
+                閉じる
+              </button>
+            </div>
+          </div>
+        </>
+      )}
       </div>
     </div>
   )
