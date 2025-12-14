@@ -137,9 +137,9 @@ export default function Home() {
       // 日払いデータ（勤怠から取得）
       const { data: attendanceData } = await supabase
         .from('attendance')
-        .select('daily_payment')
+        .select('daily_payment, late_minutes, costume_id')
         .eq('store_id', storeId)
-        .eq('work_date', date)
+        .eq('date', date)
 
       const totalDailyPayment = (attendanceData || []).reduce(
         (sum, att) => sum + (att.daily_payment || 0),
