@@ -139,6 +139,11 @@ export default function PayslipPage() {
   const [backRates, setBackRates] = useState<CastBackRate[]>([])
   const [dailySalesData, setDailySalesData] = useState<Map<string, DailySalesData>>(new Map())
   const [selectedDayDetail, setSelectedDayDetail] = useState<string | null>(null) // 日別詳細モーダル用
+  const [selectedProductDetail, setSelectedProductDetail] = useState<{
+    productName: string
+    category: string | null
+    salesType: 'self' | 'help'
+  } | null>(null) // 商品別詳細モーダル用
 
   const currencyFormatter = useMemo(() => {
     return new Intl.NumberFormat('ja-JP', {
@@ -1186,7 +1191,24 @@ export default function PayslipPage() {
                       return Array.from(grouped.values())
                         .sort((a, b) => b.backAmount - a.backAmount)
                         .map((item, i) => (
-                          <tr key={i} style={i % 2 === 0 ? styles.tableRowEven : styles.tableRow}>
+                          <tr
+                            key={i}
+                            style={{
+                              ...(i % 2 === 0 ? styles.tableRowEven : styles.tableRow),
+                              cursor: 'pointer'
+                            }}
+                            onClick={() => setSelectedProductDetail({
+                              productName: item.productName,
+                              category: item.category,
+                              salesType: item.salesType
+                            })}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.backgroundColor = '#f0f7ff'
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.backgroundColor = i % 2 === 0 ? '#fafafa' : 'transparent'
+                            }}
+                          >
                             <td style={styles.td}>
                               {item.productName}
                               <span style={{
@@ -1385,6 +1407,135 @@ export default function PayslipPage() {
                 <button
                   onClick={() => setSelectedDayDetail(null)}
                   style={styles.modalButton}
+                >
+                  閉じる
+                </button>
+              </div>
+            </div>
+          </>
+        )
+      })()}
+
+      {/* 商品別詳細モーダル */}
+      {selectedProductDetail && (() => {
+        // 選択した商品の日別明細を抽出
+        const dailyBreakdown: { date: string; quantity: number; subtotal: number; backAmount: number }[] = []
+
+        dailySalesData.forEach((dayData, dateStr) => {
+          const matchingItems = dayData.items.filter(item =>
+            item.productName === selectedProductDetail.productName &&
+            item.category === selectedProductDetail.category &&
+            item.salesType === selectedProductDetail.salesType
+          )
+
+          if (matchingItems.length > 0) {
+            const totalQuantity = matchingItems.reduce((sum, item) => sum + item.quantity, 0)
+            const totalSubtotal = matchingItems.reduce((sum, item) => sum + item.subtotal, 0)
+            const totalBack = matchingItems.reduce((sum, item) => sum + item.backAmount, 0)
+
+            dailyBreakdown.push({
+              date: dateStr,
+              quantity: totalQuantity,
+              subtotal: totalSubtotal,
+              backAmount: totalBack
+            })
+          }
+        })
+
+        // 日付順にソート
+        dailyBreakdown.sort((a, b) => a.date.localeCompare(b.date))
+
+        const totalQuantity = dailyBreakdown.reduce((sum, d) => sum + d.quantity, 0)
+        const totalSubtotal = dailyBreakdown.reduce((sum, d) => sum + d.subtotal, 0)
+        const totalBack = dailyBreakdown.reduce((sum, d) => sum + d.backAmount, 0)
+
+        return (
+          <>
+            <div
+              style={styles.modalOverlay}
+              onClick={() => setSelectedProductDetail(null)}
+            />
+            <div style={styles.modal}>
+              <div style={{ ...styles.modalHeader, backgroundColor: '#FF9500' }}>
+                <h3 style={styles.modalTitle}>
+                  {selectedProductDetail.productName}
+                  <span style={{
+                    marginLeft: '8px',
+                    fontSize: '12px',
+                    padding: '2px 8px',
+                    borderRadius: '4px',
+                    backgroundColor: 'rgba(255,255,255,0.2)',
+                  }}>
+                    {selectedProductDetail.salesType === 'self' ? '推し' : 'ヘルプ'}
+                  </span>
+                </h3>
+                <button
+                  onClick={() => setSelectedProductDetail(null)}
+                  style={styles.modalCloseBtn}
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div style={styles.modalContent}>
+                {/* サマリー */}
+                <div style={styles.modalSummary}>
+                  <div style={styles.modalSummaryItem}>
+                    <div style={styles.modalSummaryLabel}>合計数量</div>
+                    <div style={styles.modalSummaryValue}>{totalQuantity}個</div>
+                  </div>
+                  <div style={styles.modalSummaryItem}>
+                    <div style={styles.modalSummaryLabel}>合計バック</div>
+                    <div style={{ ...styles.modalSummaryValue, color: '#FF9500' }}>
+                      {currencyFormatter.format(totalBack)}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 日別明細 */}
+                <div style={styles.modalSection}>
+                  <div style={styles.modalSectionTitle}>日別明細</div>
+                  <div style={styles.tableWrapper}>
+                    <table style={{ ...styles.table, fontSize: '13px' }}>
+                      <thead>
+                        <tr style={styles.tableHeader}>
+                          <th style={styles.th}>日付</th>
+                          <th style={{ ...styles.th, textAlign: 'right' }}>数量</th>
+                          <th style={{ ...styles.th, textAlign: 'right' }}>金額</th>
+                          <th style={{ ...styles.th, textAlign: 'right' }}>バック</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {dailyBreakdown.map((day, i) => (
+                          <tr key={day.date} style={i % 2 === 0 ? styles.tableRowEven : styles.tableRow}>
+                            <td style={styles.td}>
+                              {format(new Date(day.date), 'M/d(E)', { locale: ja })}
+                            </td>
+                            <td style={{ ...styles.td, textAlign: 'right' }}>{day.quantity}</td>
+                            <td style={{ ...styles.td, textAlign: 'right' }}>{currencyFormatter.format(day.subtotal)}</td>
+                            <td style={{ ...styles.td, textAlign: 'right', color: '#FF9500', fontWeight: '600' }}>
+                              {currencyFormatter.format(day.backAmount)}
+                            </td>
+                          </tr>
+                        ))}
+                        <tr style={styles.tableTotal}>
+                          <td style={{ ...styles.td, fontWeight: 'bold' }}>合計</td>
+                          <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold' }}>{totalQuantity}</td>
+                          <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold' }}>{currencyFormatter.format(totalSubtotal)}</td>
+                          <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold', color: '#FF9500' }}>
+                            {currencyFormatter.format(totalBack)}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+
+              <div style={styles.modalFooter}>
+                <button
+                  onClick={() => setSelectedProductDetail(null)}
+                  style={{ ...styles.modalButton, backgroundColor: '#FF9500' }}
                 >
                   閉じる
                 </button>
