@@ -26,6 +26,7 @@ const mainItems: MenuItem[] = [
   { name: '勤怠管理', path: '/attendance', icon: '⏰' },
   { name: 'シフト管理', path: '/shifts/manage', icon: '📅' },
   { name: '伝票管理', path: '/receipts', icon: '🧾' },
+  { name: '報酬明細', path: '/payslip', icon: '📄' },
 ]
 
 // グループ化されたメニュー
@@ -43,7 +44,6 @@ const menuGroups: MenuGroup[] = [
     icon: '👥',
     items: [
       { name: 'キャスト管理', path: '/casts', icon: '👥' },
-      { name: '報酬明細', path: '/payslip', icon: '📄' },
       { name: '報酬計算設定', path: '/compensation-settings', icon: '💳' },
       { name: 'バック率設定', path: '/cast-back-rates', icon: '💵' },
       { name: 'キャスト別時給', path: '/cast-wage-settings', icon: '👤' },
