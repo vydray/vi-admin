@@ -292,14 +292,14 @@ export default function PayslipPage() {
     }
   }, [])
 
-  // 商品バック率を取得（cast_back_ratesに設定がある場合のみ）
-  // SELF/HELP別のバック率を返す
-  const getProductBackRatio = useCallback((
+  // 商品バック情報を取得（cast_back_ratesに設定がある場合のみ）
+  // SELF/HELP別のバック情報（type, rate, fixedAmount）を返す
+  const getProductBackInfo = useCallback((
     castId: number,
     category: string | null,
     productName: string,
     salesType: 'self' | 'help'
-  ): number | null => {
+  ): { type: 'ratio' | 'fixed'; rate: number; fixedAmount: number } | null => {
     if (backRates.length === 0) return null
 
     // キャストのバック率設定をフィルタ（is_activeはロード時に既にフィルタ済み）
@@ -332,12 +332,14 @@ export default function PayslipPage() {
     if (!matchedRate) return null
 
     // SELF/HELP別のバック率を返す
-    if (salesType === 'self') {
-      // SELF: self_back_ratioがあればそれを使用、なければback_ratio
-      return matchedRate.self_back_ratio ?? matchedRate.back_ratio
-    } else {
-      // HELP: help_back_ratioがあればそれを使用、なければback_ratioを使用
-      return matchedRate.help_back_ratio ?? matchedRate.back_ratio
+    const rate = salesType === 'self'
+      ? (matchedRate.self_back_ratio ?? matchedRate.back_ratio)
+      : (matchedRate.help_back_ratio ?? matchedRate.back_ratio)
+
+    return {
+      type: matchedRate.back_type || 'ratio',
+      rate,
+      fixedAmount: matchedRate.back_fixed_amount || 0
     }
   }, [backRates])
 
@@ -446,10 +448,14 @@ export default function PayslipPage() {
 
       // 端数処理設定を取得（商品単位の設定を使用）
       const excludeTax = salesSettings.item_exclude_consumption_tax ?? salesSettings.use_tax_excluded ?? false
+      const excludeService = salesSettings.item_exclude_service_charge ?? false
+      const serviceRate = 0.1 // サービス料率（10%）TODO: systemSettingsから取得
+      const taxPercent = 10 // 消費税率（10%）TODO: systemSettingsから取得
       const roundingPosition = salesSettings.item_rounding_position ?? 100
       const roundingMethod = salesSettings.item_rounding_method ?? 'floor_100'
       const { type: roundingType } = parseRoundingMethod(roundingMethod)
       const roundingTiming = salesSettings.item_rounding_timing ?? 'per_item'
+      const nominationDistributeAll = salesSettings.item_nomination_distribute_all ?? false
 
       // ヘルプ除外名リスト（フリー等）
       const nonHelpNames = salesSettings.non_help_staff_names || []
@@ -468,6 +474,19 @@ export default function PayslipPage() {
           // このキャストの商品のみ対象（cast_nameは配列）
           if (!item.cast_name || !item.cast_name.includes(cast.name)) return
 
+          // 商品上の実キャスト（nonHelpNamesを除外）
+          const castsOnItem = item.cast_name || []
+          const realCastsOnItem = castsOnItem.filter(c => !nonHelpNames.includes(c))
+
+          // 商品上の推しキャスト
+          const nominationCastsOnItem = nominationIsNonHelpOnly
+            ? realCastsOnItem
+            : realCastsOnItem.filter(c => realNominations.includes(c))
+          // 商品上のヘルプキャスト
+          const helpCastsOnItem = nominationIsNonHelpOnly
+            ? []
+            : realCastsOnItem.filter(c => !realNominations.includes(c))
+
           // SELF/HELP判定
           // nominationIsNonHelpOnlyの場合（フリー推し等）は商品についてるキャスト全員がSELF
           // それ以外は、実推しに含まれていればSELF、含まれていなければHELP
@@ -480,37 +499,36 @@ export default function PayslipPage() {
             return
           }
 
-          // バック率設定を取得（SELF/HELP別）
-          const backRatio = getProductBackRatio(castId, item.category, item.product_name, salesType)
-          if (backRatio === null) return // 設定がない商品はスキップ
+          // バック情報を取得（SELF/HELP別）
+          const backInfo = getProductBackInfo(castId, item.category, item.product_name, salesType)
+          if (backInfo === null) return // 設定がない商品はスキップ
 
           // 金額計算（compensation-settingsと同じロジック）
           // 商品ごとの処理（per_itemの場合）は単価に対して適用
-          let subtotal: number
+          let calcPrice = item.unit_price
 
           if (roundingTiming === 'per_item') {
             // 単価に対して税抜き・端数処理を適用
-            let unitPrice = item.unit_price
             if (excludeTax) {
-              const taxPercent = 10  // 10%
-              unitPrice = Math.floor(unitPrice * 100 / (100 + taxPercent))
+              calcPrice = Math.floor(calcPrice * 100 / (100 + taxPercent))
             }
-            unitPrice = applyRoundingNew(unitPrice, roundingPosition, roundingType)
-            subtotal = unitPrice * item.quantity
-          } else {
-            // totalの場合は小計をそのまま（合計時に処理）
-            subtotal = item.unit_price * item.quantity
+            calcPrice = applyRoundingNew(calcPrice, roundingPosition, roundingType)
+            // サービス料を除外する場合
+            if (excludeService && serviceRate > 0) {
+              const servicePercent = Math.round(serviceRate * 100)
+              const afterServicePrice = Math.floor(calcPrice * (100 + servicePercent) / 100)
+              calcPrice = applyRoundingNew(afterServicePrice, roundingPosition, roundingType)
+            }
           }
+
+          const subtotal = calcPrice * item.quantity
 
           // バック金額計算（compensation-settingsと同じロジック）
           // item_multi_cast_distribution: 'all_equal'=ヘルプ商品も売上に含める, 'nomination_only'=推しのみ
           const salesAttribution = salesSettings.item_multi_cast_distribution ?? 'nomination_only'
-          const castsOnItem = item.cast_name || []
           const helpDistMethod = salesSettings.item_help_distribution_method ?? 'all_to_nomination'
           const helpRatioSetting = salesSettings.item_help_ratio ?? 50
 
-          // このアイテム上のヘルプキャストをカウント
-          const helpCastsOnItem = castsOnItem.filter(c => !realNominations.includes(c))
           const numHelpCasts = helpCastsOnItem.length
           const hasOrderNomination = realNominations.length > 0
 
@@ -520,21 +538,44 @@ export default function PayslipPage() {
             // ヘルプ商品も売上に含める → 分配計算が必要
             if (helpDistMethod === 'equal_per_person' || helpDistMethod === 'equal_all') {
               // 均等割: 全キャストで等分
-              const totalPeople = (hasOrderNomination ? realNominations.length : 0) + numHelpCasts
-              baseForBack = totalPeople > 0 ? Math.floor(subtotal / totalPeople) : 0
+              // nominationDistributeAllがtrueの場合、商品についていない推しも含める
+              const shouldIncludeAllNominations = nominationDistributeAll || nominationCastsOnItem.length === 0
+              const nominationsNotOnItem = realNominations.filter(n => !castsOnItem.includes(n))
+
+              if (shouldIncludeAllNominations && !nominationIsNonHelpOnly && nominationsNotOnItem.length > 0) {
+                // 全員（商品上 + 商品外の実推し）で計算
+                const totalPeople = realCastsOnItem.length + nominationsNotOnItem.length
+                baseForBack = totalPeople > 0 ? Math.floor(subtotal / totalPeople) : 0
+              } else if (realCastsOnItem.length > 0) {
+                // 商品上のキャストのみで計算
+                baseForBack = Math.floor(subtotal / realCastsOnItem.length)
+              } else {
+                baseForBack = 0
+              }
             } else if (helpDistMethod === 'equal') {
               // 推し・ヘルプで半分ずつ
               if (hasOrderNomination && numHelpCasts > 0) {
                 if (salesType === 'self') {
                   const selfShare = Math.floor(subtotal / 2)
-                  baseForBack = realNominations.length > 0 ? Math.floor(selfShare / realNominations.length) : 0
+                  // nominationDistributeAllの場合は全推しで分配
+                  const shouldIncludeAllNominations = nominationDistributeAll || nominationCastsOnItem.length === 0
+                  if (shouldIncludeAllNominations && !nominationIsNonHelpOnly) {
+                    baseForBack = realNominations.length > 0 ? Math.floor(selfShare / realNominations.length) : 0
+                  } else {
+                    baseForBack = nominationCastsOnItem.length > 0 ? Math.floor(selfShare / nominationCastsOnItem.length) : 0
+                  }
                 } else {
                   const helpShare = subtotal - Math.floor(subtotal / 2)
                   baseForBack = Math.floor(helpShare / numHelpCasts)
                 }
               } else if (hasOrderNomination && numHelpCasts === 0) {
                 // ヘルプがいない場合、推しが全額
-                baseForBack = realNominations.length > 0 ? Math.floor(subtotal / realNominations.length) : subtotal
+                const shouldIncludeAllNominations = nominationDistributeAll || nominationCastsOnItem.length === 0
+                if (shouldIncludeAllNominations && !nominationIsNonHelpOnly) {
+                  baseForBack = realNominations.length > 0 ? Math.floor(subtotal / realNominations.length) : subtotal
+                } else {
+                  baseForBack = nominationCastsOnItem.length > 0 ? Math.floor(subtotal / nominationCastsOnItem.length) : subtotal
+                }
               } else if (!hasOrderNomination && numHelpCasts > 0) {
                 // 推しがいない場合、ヘルプが全額
                 baseForBack = Math.floor(subtotal / numHelpCasts)
@@ -546,7 +587,12 @@ export default function PayslipPage() {
               if (hasOrderNomination && numHelpCasts > 0) {
                 if (salesType === 'self') {
                   const selfShare = Math.floor(subtotal * helpRatioSetting / 100)
-                  baseForBack = realNominations.length > 0 ? Math.floor(selfShare / realNominations.length) : 0
+                  const shouldIncludeAllNominations = nominationDistributeAll || nominationCastsOnItem.length === 0
+                  if (shouldIncludeAllNominations && !nominationIsNonHelpOnly) {
+                    baseForBack = realNominations.length > 0 ? Math.floor(selfShare / realNominations.length) : 0
+                  } else {
+                    baseForBack = nominationCastsOnItem.length > 0 ? Math.floor(selfShare / nominationCastsOnItem.length) : 0
+                  }
                 } else {
                   const selfShare = Math.floor(subtotal * helpRatioSetting / 100)
                   const helpShare = subtotal - selfShare
@@ -554,7 +600,12 @@ export default function PayslipPage() {
                 }
               } else if (hasOrderNomination && numHelpCasts === 0) {
                 // ヘルプがいない場合、推しが全額
-                baseForBack = realNominations.length > 0 ? Math.floor(subtotal / realNominations.length) : subtotal
+                const shouldIncludeAllNominations = nominationDistributeAll || nominationCastsOnItem.length === 0
+                if (shouldIncludeAllNominations && !nominationIsNonHelpOnly) {
+                  baseForBack = realNominations.length > 0 ? Math.floor(subtotal / realNominations.length) : subtotal
+                } else {
+                  baseForBack = nominationCastsOnItem.length > 0 ? Math.floor(subtotal / nominationCastsOnItem.length) : subtotal
+                }
               } else if (!hasOrderNomination && numHelpCasts > 0) {
                 // 推しがいない場合、ヘルプが全額
                 baseForBack = Math.floor(subtotal / numHelpCasts)
@@ -564,7 +615,12 @@ export default function PayslipPage() {
             } else {
               // all_to_nomination: 全額推しに
               if (salesType === 'self') {
-                baseForBack = realNominations.length > 0 ? Math.floor(subtotal / realNominations.length) : subtotal
+                const shouldIncludeAllNominations = nominationDistributeAll || nominationCastsOnItem.length === 0
+                if (shouldIncludeAllNominations && !nominationIsNonHelpOnly) {
+                  baseForBack = realNominations.length > 0 ? Math.floor(subtotal / realNominations.length) : subtotal
+                } else {
+                  baseForBack = nominationCastsOnItem.length > 0 ? Math.floor(subtotal / nominationCastsOnItem.length) : subtotal
+                }
               } else {
                 baseForBack = 0
               }
@@ -573,7 +629,12 @@ export default function PayslipPage() {
             // nomination_only: 推しのみ
             if (salesType === 'self') {
               // SELFの場合、推し人数で分配
-              baseForBack = realNominations.length > 0 ? Math.floor(subtotal / realNominations.length) : subtotal
+              const shouldIncludeAllNominations = nominationDistributeAll || nominationCastsOnItem.length === 0
+              if (shouldIncludeAllNominations && !nominationIsNonHelpOnly) {
+                baseForBack = realNominations.length > 0 ? Math.floor(subtotal / realNominations.length) : subtotal
+              } else {
+                baseForBack = nominationCastsOnItem.length > 0 ? Math.floor(subtotal / nominationCastsOnItem.length) : subtotal
+              }
             } else {
               // HELPの場合、full_amountなら商品価格、それ以外は0
               if (helpBackMethod === 'full_amount') {
@@ -585,7 +646,10 @@ export default function PayslipPage() {
           }
 
           // バック金額計算（端数処理は売上金額にのみ適用、バック金額には適用しない）
-          const backAmount = Math.floor(baseForBack * backRatio / 100)
+          // 固定額バックの場合はfixedAmountを使用、それ以外は率で計算
+          const backAmount = backInfo.type === 'fixed'
+            ? backInfo.fixedAmount
+            : Math.floor(baseForBack * backInfo.rate / 100)
 
           productBackTotal += backAmount
           productBackItems.push({
@@ -594,7 +658,7 @@ export default function PayslipPage() {
             category: item.category,
             quantity: item.quantity,
             subtotal,
-            backRatio,
+            backRatio: backInfo.rate,
             backAmount,
             salesType
           })
@@ -614,7 +678,7 @@ export default function PayslipPage() {
     })
 
     setDailySalesData(dailyMap)
-  }, [storeId, casts, salesSettings, backRates, getProductBackRatio, parseRoundingMethod])
+  }, [storeId, casts, salesSettings, backRates, getProductBackInfo, parseRoundingMethod])
 
   // 初期ロード完了フラグ
   const [initialized, setInitialized] = useState(false)
