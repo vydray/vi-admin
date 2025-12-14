@@ -36,7 +36,16 @@ export default function AttendancePage() {
   const [attendances, setAttendances] = useState<Attendance[]>([])
   const [loading, setLoading] = useState(true)
   const [editingCell, setEditingCell] = useState<string | null>(null)
-  const [tempTime, setTempTime] = useState({ clockIn: '', clockOut: '', statusId: '' })
+  const [tempTime, setTempTime] = useState({
+    clockIn: '',
+    clockOut: '',
+    statusId: '',
+    lateMinutes: 0,
+    breakMinutes: 0,
+    dailyPayment: 0,
+    costumeId: null as number | null
+  })
+  const [costumes, setCostumes] = useState<{ id: number; name: string }[]>([])
   const [showStatusModal, setShowStatusModal] = useState(false)
   const [attendanceStatuses, setAttendanceStatuses] = useState<AttendanceStatus[]>([])
   const [showAddStatus, setShowAddStatus] = useState(false)
@@ -67,7 +76,7 @@ export default function AttendancePage() {
 
     const { data, error } = await supabase
       .from('attendance')
-      .select('id, cast_name, date, check_in_datetime, check_out_datetime, status, status_id, store_id')
+      .select('id, cast_name, date, check_in_datetime, check_out_datetime, status, status_id, store_id, late_minutes, break_minutes, daily_payment, costume_id')
       .eq('store_id', storeId)
       .gte('date', format(start, 'yyyy-MM-dd'))
       .lte('date', format(end, 'yyyy-MM-dd'))
@@ -89,15 +98,29 @@ export default function AttendancePage() {
     }
   }, [storeId])
 
+  const loadCostumes = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('costumes')
+      .select('id, name')
+      .eq('store_id', storeId)
+      .eq('is_active', true)
+      .order('display_order')
+
+    if (!error && data) {
+      setCostumes(data)
+    }
+  }, [storeId])
+
   const loadData = useCallback(async () => {
     setLoading(true)
     await Promise.all([
       loadCasts(),
       loadAttendances(),
-      loadAttendanceStatuses()
+      loadAttendanceStatuses(),
+      loadCostumes()
     ])
     setLoading(false)
-  }, [loadCasts, loadAttendances, loadAttendanceStatuses])
+  }, [loadCasts, loadAttendances, loadAttendanceStatuses, loadCostumes])
 
   useEffect(() => {
     loadData()
@@ -273,12 +296,24 @@ export default function AttendancePage() {
       setTempTime({
         clockIn: attendance.check_in_datetime ? convertTo24Plus(attendance.check_in_datetime) : '',
         clockOut: attendance.check_out_datetime ? convertTo24Plus(attendance.check_out_datetime) : '',
-        statusId
+        statusId,
+        lateMinutes: attendance.late_minutes || 0,
+        breakMinutes: attendance.break_minutes || 0,
+        dailyPayment: attendance.daily_payment || 0,
+        costumeId: attendance.costume_id || null
       })
     } else {
       // 新規の場合はデフォルトで「出勤」を選択して時間も設定
       const defaultStatus = attendanceStatuses.find(s => s.name === '出勤')
-      setTempTime({ clockIn: '18:00', clockOut: '24:00', statusId: defaultStatus?.id || '' })
+      setTempTime({
+        clockIn: '18:00',
+        clockOut: '24:00',
+        statusId: defaultStatus?.id || '',
+        lateMinutes: 0,
+        breakMinutes: 0,
+        dailyPayment: 0,
+        costumeId: null
+      })
     }
   }
 
@@ -289,7 +324,11 @@ export default function AttendancePage() {
     setTempTime({
       clockIn: needsTime ? '18:00' : '',
       clockOut: needsTime ? '24:00' : '',
-      statusId
+      statusId,
+      lateMinutes: 0,
+      breakMinutes: 0,
+      dailyPayment: 0,
+      costumeId: null
     })
   }
 
@@ -347,7 +386,11 @@ export default function AttendancePage() {
           .update({
             check_in_datetime: normalizedClockIn,
             check_out_datetime: normalizedClockOut,
-            status_id: tempTime.statusId
+            status_id: tempTime.statusId,
+            late_minutes: tempTime.lateMinutes || 0,
+            break_minutes: tempTime.breakMinutes || 0,
+            daily_payment: tempTime.dailyPayment || 0,
+            costume_id: tempTime.costumeId
           })
           .eq('id', existingAttendance.id)
 
@@ -367,7 +410,11 @@ export default function AttendancePage() {
             check_in_datetime: normalizedClockIn,
             check_out_datetime: normalizedClockOut,
             status_id: tempTime.statusId,
-            store_id: storeId
+            store_id: storeId,
+            late_minutes: tempTime.lateMinutes || 0,
+            break_minutes: tempTime.breakMinutes || 0,
+            daily_payment: tempTime.dailyPayment || 0,
+            costume_id: tempTime.costumeId
           })
 
         if (error) {
@@ -693,7 +740,9 @@ export default function AttendancePage() {
             borderRadius: '12px',
             boxShadow: '0 10px 40px rgba(0,0,0,0.2)',
             zIndex: 1000,
-            minWidth: '380px'
+            minWidth: '380px',
+            maxHeight: '90vh',
+            overflowY: 'auto'
           }}
         >
           <h3 style={{
@@ -824,6 +873,130 @@ export default function AttendancePage() {
                         <option key={time} value={time}>{time}</option>
                       ))}
                     </select>
+                  </div>
+
+                  {/* 遅刻分数（遅刻ステータスの場合のみ） */}
+                  {attendanceStatuses.find(s => s.id === tempTime.statusId)?.name === '遅刻' && (
+                    <div style={{ marginBottom: '16px' }}>
+                      <label style={{
+                        display: 'block',
+                        fontSize: '14px',
+                        fontWeight: '500',
+                        color: '#475569',
+                        marginBottom: '6px'
+                      }}>
+                        遅刻（分）
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={tempTime.lateMinutes}
+                        onChange={(e) => setTempTime({ ...tempTime, lateMinutes: parseInt(e.target.value) || 0 })}
+                        style={{
+                          width: '100%',
+                          padding: '8px 12px',
+                          fontSize: '14px',
+                          border: '1px solid #e2e8f0',
+                          borderRadius: '6px',
+                          backgroundColor: '#fff',
+                          boxSizing: 'border-box'
+                        }}
+                        placeholder="0"
+                      />
+                    </div>
+                  )}
+
+                  {/* 休憩時間 */}
+                  <div style={{ marginBottom: '16px' }}>
+                    <label style={{
+                      display: 'block',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      color: '#475569',
+                      marginBottom: '6px'
+                    }}>
+                      休憩（分）
+                    </label>
+                    <select
+                      value={tempTime.breakMinutes}
+                      onChange={(e) => setTempTime({ ...tempTime, breakMinutes: parseInt(e.target.value) || 0 })}
+                      style={{
+                        width: '100%',
+                        padding: '8px 12px',
+                        fontSize: '14px',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '6px',
+                        backgroundColor: '#fff',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {[0, 15, 30, 45, 60, 75, 90, 105, 120, 135, 150, 165, 180, 195, 210, 225, 240, 255, 270, 285, 300].map(min => (
+                        <option key={min} value={min}>{min}分</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* 衣装 */}
+                  <div style={{ marginBottom: '16px' }}>
+                    <label style={{
+                      display: 'block',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      color: '#475569',
+                      marginBottom: '6px'
+                    }}>
+                      衣装
+                    </label>
+                    <select
+                      value={tempTime.costumeId || ''}
+                      onChange={(e) => setTempTime({ ...tempTime, costumeId: e.target.value ? parseInt(e.target.value) : null })}
+                      style={{
+                        width: '100%',
+                        padding: '8px 12px',
+                        fontSize: '14px',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '6px',
+                        backgroundColor: '#fff',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <option value="">なし</option>
+                      {costumes.map(costume => (
+                        <option key={costume.id} value={costume.id}>
+                          {costume.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* 日払い金額 */}
+                  <div style={{ marginBottom: '16px' }}>
+                    <label style={{
+                      display: 'block',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      color: '#475569',
+                      marginBottom: '6px'
+                    }}>
+                      日払い（円）
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1000"
+                      value={tempTime.dailyPayment}
+                      onChange={(e) => setTempTime({ ...tempTime, dailyPayment: parseInt(e.target.value) || 0 })}
+                      style={{
+                        width: '100%',
+                        padding: '8px 12px',
+                        fontSize: '14px',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '6px',
+                        backgroundColor: '#fff',
+                        boxSizing: 'border-box'
+                      }}
+                      placeholder="0"
+                    />
                   </div>
                 </>
               )}

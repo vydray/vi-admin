@@ -165,6 +165,7 @@ export interface Attendance {
   late_minutes?: number
   break_minutes?: number
   daily_payment?: number
+  costume_id?: number       // 衣装ID
 }
 
 export interface AttendanceStatus {
