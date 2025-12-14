@@ -440,7 +440,18 @@ export default function CompensationSettingsPage() {
     default_amount: number
     penalty_amount: number
     is_active: boolean
+    // 遅刻罰金ルール（type=penalty_lateの場合）
+    latePenaltyRule?: {
+      calculation_type: 'fixed' | 'tiered' | 'cumulative'
+      fixed_amount: number
+      interval_minutes: number
+      amount_per_interval: number
+      max_amount: number
+    }
   }[]>([])
+
+  // キャストの控除設定（選択された控除ID）
+  const [enabledDeductionIds, setEnabledDeductionIds] = useState<number[]>([])
 
   // 商品マスタ・カテゴリ・バック率
   const [products, setProducts] = useState<Product[]>([])
@@ -623,7 +634,41 @@ export default function CompensationSettingsPage() {
         .order('display_order')
 
       if (error) throw error
-      setStoreDeductionTypes(data || [])
+
+      // 遅刻罰金ルールを取得
+      const lateTypeIds = (data || []).filter(d => d.type === 'penalty_late').map(d => d.id)
+      let rulesMap = new Map<number, {
+        calculation_type: 'fixed' | 'tiered' | 'cumulative'
+        fixed_amount: number
+        interval_minutes: number
+        amount_per_interval: number
+        max_amount: number
+      }>()
+
+      if (lateTypeIds.length > 0) {
+        const { data: rules } = await supabase
+          .from('late_penalty_rules')
+          .select('deduction_type_id, calculation_type, fixed_amount, interval_minutes, amount_per_interval, max_amount')
+          .in('deduction_type_id', lateTypeIds)
+
+        rules?.forEach(r => {
+          rulesMap.set(r.deduction_type_id, {
+            calculation_type: r.calculation_type,
+            fixed_amount: r.fixed_amount || 0,
+            interval_minutes: r.interval_minutes || 15,
+            amount_per_interval: r.amount_per_interval || 0,
+            max_amount: r.max_amount || 0
+          })
+        })
+      }
+
+      // 控除項目にルールを結合
+      const typesWithRules = (data || []).map(d => ({
+        ...d,
+        latePenaltyRule: d.type === 'penalty_late' ? rulesMap.get(d.id) : undefined
+      }))
+
+      setStoreDeductionTypes(typesWithRules)
     } catch (error) {
       console.error('控除項目読み込みエラー:', error)
     }
@@ -862,10 +907,7 @@ export default function CompensationSettingsPage() {
         if (data.non_help_staff_names) {
           setNonHelpStaffNames(data.non_help_staff_names)
         }
-        // 売上設定の集計方法をタブの初期値に反映（'none'の場合はitem_basedをデフォルトに）
-        if (data.published_aggregation && data.published_aggregation !== 'none') {
-          setSalesViewMode(data.published_aggregation as 'item_based' | 'receipt_based')
-        }
+        // サンプル伝票パネルのタブは常に「推し小計」をデフォルトに（売上設定とは連動しない）
         // 計算ロジック用の設定を保存
         const newSettings = {
           item_exclude_consumption_tax: data.item_exclude_consumption_tax ?? true,
@@ -931,10 +973,12 @@ export default function CompensationSettingsPage() {
         setSettingsState(dbToState(data))
         setIsLocked(data.is_locked ?? false)
         setExistingId(data.id)
+        setEnabledDeductionIds(data.enabled_deduction_ids || [])
       } else {
         // 新規設定
         setSettingsState(getDefaultSettingsState())
         setExistingId(undefined)
+        setEnabledDeductionIds([])
       }
     } catch (error) {
       console.error('設定読み込みエラー:', error)
@@ -1918,6 +1962,7 @@ export default function CompensationSettingsPage() {
         ...stateToDb(settingsState, selectedCastId, storeId, existingId),
         target_year: selectedYear,
         target_month: selectedMonth,
+        enabled_deduction_ids: enabledDeductionIds,
       }
 
       if (existingId) {
@@ -1944,6 +1989,91 @@ export default function CompensationSettingsPage() {
       toast.error('保存に失敗しました')
     } finally {
       setSaving(false)
+    }
+  }
+
+  // 全キャストに設定を一括適用
+  const [showBulkApplyModal, setShowBulkApplyModal] = useState(false)
+  const [applyingToAll, setApplyingToAll] = useState(false)
+  const applySettingsToAllCasts = async (mode: 'all' | 'deductions') => {
+    if (!settingsState) {
+      toast.error('設定がありません')
+      return
+    }
+
+    if (mode === 'deductions' && enabledDeductionIds.length === 0) {
+      toast.error('適用する控除項目を選択してください')
+      return
+    }
+
+    const modeText = mode === 'all' ? '報酬設定全体' : '控除設定'
+    const confirmed = window.confirm(
+      `現在の${modeText}を全キャスト（${casts.length}名）に適用します。既存の設定は上書きされます。よろしいですか？`
+    )
+    if (!confirmed) return
+
+    setApplyingToAll(true)
+    try {
+      let successCount = 0
+      for (const cast of casts) {
+        // 既存の設定を確認
+        const { data: existing } = await supabase
+          .from('compensation_settings')
+          .select('id')
+          .eq('cast_id', cast.id)
+          .eq('store_id', storeId)
+          .eq('target_year', selectedYear)
+          .eq('target_month', selectedMonth)
+          .eq('is_active', true)
+          .maybeSingle()
+
+        if (mode === 'all') {
+          // 報酬設定全体を適用
+          const saveData = {
+            ...stateToDb(settingsState, cast.id, storeId, existing?.id),
+            target_year: selectedYear,
+            target_month: selectedMonth,
+            enabled_deduction_ids: enabledDeductionIds,
+          }
+
+          if (existing) {
+            await supabase
+              .from('compensation_settings')
+              .update(saveData)
+              .eq('id', existing.id)
+          } else {
+            await supabase
+              .from('compensation_settings')
+              .insert(saveData)
+          }
+        } else {
+          // 控除設定のみ適用
+          if (existing) {
+            await supabase
+              .from('compensation_settings')
+              .update({ enabled_deduction_ids: enabledDeductionIds })
+              .eq('id', existing.id)
+          } else {
+            await supabase
+              .from('compensation_settings')
+              .insert({
+                cast_id: cast.id,
+                store_id: storeId,
+                target_year: selectedYear,
+                target_month: selectedMonth,
+                enabled_deduction_ids: enabledDeductionIds,
+                is_active: true
+              })
+          }
+        }
+        successCount++
+      }
+      toast.success(`${successCount}名のキャストに${modeText}を適用しました`)
+    } catch (error) {
+      console.error('一括適用エラー:', error)
+      toast.error('一括適用に失敗しました')
+    } finally {
+      setApplyingToAll(false)
     }
   }
 
@@ -2127,8 +2257,23 @@ export default function CompensationSettingsPage() {
         <div style={styles.main}>
           {selectedCast && settingsState ? (
             <>
-              <div style={styles.mainHeader}>
+              <div style={{ ...styles.mainHeader, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h2 style={styles.mainTitle}>{selectedCast.name} の報酬設定</h2>
+                <button
+                  onClick={() => setShowBulkApplyModal(true)}
+                  style={{
+                    padding: '8px 16px',
+                    fontSize: '13px',
+                    fontWeight: '500',
+                    backgroundColor: '#f59e0b',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  全キャストに一括適用
+                </button>
               </div>
 
               {/* 支給方法選択 */}
@@ -2482,23 +2627,82 @@ export default function CompensationSettingsPage() {
                 </div>
 
                 {storeDeductionTypes.length > 0 ? (
-                  <div style={styles.deductionList}>
-                    {storeDeductionTypes.map((item) => (
-                      <div key={item.id} style={styles.deductionItem}>
-                        <span style={styles.deductionName}>{item.name}</span>
-                        <span style={styles.deductionAmount}>
-                          {item.type === 'percentage' && item.percentage
-                            ? `${item.percentage}%`
-                            : item.type === 'fixed' && item.default_amount
-                            ? `${item.default_amount.toLocaleString()}円`
-                            : item.type === 'penalty_status' || item.type === 'penalty_late'
-                            ? '罰金'
-                            : item.type === 'daily_payment'
-                            ? '日払い自動'
-                            : '変動'}
-                        </span>
-                      </div>
-                    ))}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {storeDeductionTypes.map((item) => {
+                      const isEnabled = enabledDeductionIds.includes(item.id)
+                      return (
+                        <label
+                          key={item.id}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'flex-start',
+                            gap: '10px',
+                            padding: '10px 12px',
+                            backgroundColor: isEnabled ? '#f0f9ff' : '#f8fafc',
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                            border: isEnabled ? '1px solid #3b82f6' : '1px solid #e2e8f0',
+                            transition: 'all 0.15s ease',
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isEnabled}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setEnabledDeductionIds(prev => [...prev, item.id])
+                              } else {
+                                setEnabledDeductionIds(prev => prev.filter(id => id !== item.id))
+                              }
+                            }}
+                            style={{
+                              width: '18px',
+                              height: '18px',
+                              marginTop: '2px',
+                              cursor: 'pointer',
+                            }}
+                          />
+                          <div style={{ flex: 1 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ fontWeight: '500', color: '#1e293b' }}>{item.name}</span>
+                              <span style={{ fontSize: '13px', color: '#64748b' }}>
+                                {item.type === 'percentage' && item.percentage
+                                  ? `${item.percentage}%`
+                                  : item.type === 'fixed' && item.default_amount
+                                  ? `${item.default_amount.toLocaleString()}円/月`
+                                  : item.type === 'penalty_status'
+                                  ? `${(item.penalty_amount || 0).toLocaleString()}円/回`
+                                  : item.type === 'penalty_late' && item.latePenaltyRule
+                                  ? item.latePenaltyRule.calculation_type === 'fixed'
+                                    ? `${item.latePenaltyRule.fixed_amount.toLocaleString()}円/回`
+                                    : item.latePenaltyRule.calculation_type === 'cumulative'
+                                    ? `${item.latePenaltyRule.amount_per_interval.toLocaleString()}円/${item.latePenaltyRule.interval_minutes}分`
+                                    : '段階式'
+                                  : item.type === 'daily_payment'
+                                  ? '勤怠から自動'
+                                  : '都度入力'}
+                              </span>
+                            </div>
+                            {/* 遅刻罰金の詳細 */}
+                            {item.type === 'penalty_late' && item.latePenaltyRule && (
+                              <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px' }}>
+                                {item.latePenaltyRule.calculation_type === 'fixed' && (
+                                  <>遅刻1回につき {item.latePenaltyRule.fixed_amount.toLocaleString()}円</>
+                                )}
+                                {item.latePenaltyRule.calculation_type === 'cumulative' && (
+                                  <>{item.latePenaltyRule.interval_minutes}分毎に {item.latePenaltyRule.amount_per_interval.toLocaleString()}円
+                                    {item.latePenaltyRule.max_amount > 0 && `（上限 ${item.latePenaltyRule.max_amount.toLocaleString()}円）`}
+                                  </>
+                                )}
+                                {item.latePenaltyRule.calculation_type === 'tiered' && (
+                                  <>遅刻時間に応じて段階的に罰金</>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </label>
+                      )
+                    })}
                   </div>
                 ) : (
                   <p style={styles.noDeductions}>
@@ -2507,6 +2711,29 @@ export default function CompensationSettingsPage() {
                       設定する
                     </a>
                   </p>
+                )}
+
+                {/* 全キャストに一括適用ボタン */}
+                {storeDeductionTypes.length > 0 && (
+                  <button
+                    onClick={() => applySettingsToAllCasts('deductions')}
+                    disabled={applyingToAll || enabledDeductionIds.length === 0}
+                    style={{
+                      marginTop: '12px',
+                      padding: '10px 16px',
+                      fontSize: '13px',
+                      fontWeight: '500',
+                      backgroundColor: enabledDeductionIds.length > 0 ? '#8b5cf6' : '#e2e8f0',
+                      color: enabledDeductionIds.length > 0 ? '#fff' : '#94a3b8',
+                      border: 'none',
+                      borderRadius: '6px',
+                      cursor: enabledDeductionIds.length > 0 ? 'pointer' : 'not-allowed',
+                      width: '100%',
+                      opacity: applyingToAll ? 0.7 : 1,
+                    }}
+                  >
+                    {applyingToAll ? '適用中...' : `控除設定を全キャストに適用`}
+                  </button>
                 )}
               </div>
 
@@ -3357,6 +3584,90 @@ export default function CompensationSettingsPage() {
               </Button>
               <Button onClick={saveSlidingRates} variant="primary" size="medium">
                 適用
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 全キャスト一括適用モーダル */}
+      {showBulkApplyModal && (
+        <div style={styles.modalOverlay} onClick={() => setShowBulkApplyModal(false)}>
+          <div style={{ ...styles.modal, maxWidth: '500px' }} onClick={(e) => e.stopPropagation()}>
+            <h3 style={styles.modalTitle}>全キャストに一括適用</h3>
+
+            <div style={{ marginBottom: '20px', padding: '16px', backgroundColor: '#fef3c7', borderRadius: '8px', border: '1px solid #f59e0b' }}>
+              <p style={{ fontSize: '14px', color: '#92400e', margin: 0, fontWeight: '500' }}>
+                現在表示中の「{selectedCast?.name}」の設定を全キャスト（{casts.length}名）にコピーします。
+              </p>
+              <p style={{ fontSize: '13px', color: '#78350f', margin: '8px 0 0 0' }}>
+                ※ 既存の設定は上書きされます
+              </p>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '20px' }}>
+              {/* 報酬設定全体 */}
+              <div style={{ padding: '16px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontWeight: '600', color: '#1e293b', marginBottom: '8px' }}>報酬設定全体</div>
+                <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 12px 0' }}>
+                  支給方法、報酬形態（歩合率、スライド率など）、控除設定をすべてコピー
+                </p>
+                <button
+                  onClick={async () => {
+                    await applySettingsToAllCasts('all')
+                    setShowBulkApplyModal(false)
+                  }}
+                  disabled={applyingToAll}
+                  style={{
+                    padding: '10px 16px',
+                    fontSize: '14px',
+                    fontWeight: '500',
+                    backgroundColor: '#f59e0b',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    width: '100%',
+                    opacity: applyingToAll ? 0.7 : 1,
+                  }}
+                >
+                  {applyingToAll ? '適用中...' : '報酬設定全体を一括適用'}
+                </button>
+              </div>
+
+              {/* 控除設定のみ */}
+              <div style={{ padding: '16px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontWeight: '600', color: '#1e293b', marginBottom: '8px' }}>控除設定のみ</div>
+                <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 12px 0' }}>
+                  選択中の控除項目（{enabledDeductionIds.length}件）のみをコピー。報酬形態は変更しない
+                </p>
+                <button
+                  onClick={async () => {
+                    await applySettingsToAllCasts('deductions')
+                    setShowBulkApplyModal(false)
+                  }}
+                  disabled={applyingToAll || enabledDeductionIds.length === 0}
+                  style={{
+                    padding: '10px 16px',
+                    fontSize: '14px',
+                    fontWeight: '500',
+                    backgroundColor: enabledDeductionIds.length > 0 ? '#8b5cf6' : '#e2e8f0',
+                    color: enabledDeductionIds.length > 0 ? '#fff' : '#94a3b8',
+                    border: 'none',
+                    borderRadius: '6px',
+                    cursor: enabledDeductionIds.length > 0 ? 'pointer' : 'not-allowed',
+                    width: '100%',
+                    opacity: applyingToAll ? 0.7 : 1,
+                  }}
+                >
+                  {applyingToAll ? '適用中...' : '控除設定のみ一括適用'}
+                </button>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <Button onClick={() => setShowBulkApplyModal(false)} variant="outline" size="medium">
+                キャンセル
               </Button>
             </div>
           </div>
