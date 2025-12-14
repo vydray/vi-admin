@@ -8,7 +8,6 @@ import {
   SlidingRate,
   DeductionItem,
   SalesTargetType,
-  DeductionType,
   PayType,
   Product,
   Category,
@@ -432,9 +431,16 @@ export default function CompensationSettingsPage() {
   const [showSlidingModal, setShowSlidingModal] = useState(false)
   const [editingSlidingRates, setEditingSlidingRates] = useState<SlidingRate[]>([])
 
-  // 控除項目編集
-  const [showDeductionModal, setShowDeductionModal] = useState(false)
-  const [editingDeductions, setEditingDeductions] = useState<DeductionItem[]>([])
+  // 控除項目（deduction_typesテーブルから取得）
+  const [storeDeductionTypes, setStoreDeductionTypes] = useState<{
+    id: number
+    name: string
+    type: string
+    percentage: number | null
+    default_amount: number
+    penalty_amount: number
+    is_active: boolean
+  }[]>([])
 
   // 商品マスタ・カテゴリ・バック率
   const [products, setProducts] = useState<Product[]>([])
@@ -603,6 +609,23 @@ export default function CompensationSettingsPage() {
       }
     } catch (error) {
       console.error('システム設定読み込みエラー:', error)
+    }
+  }, [storeId])
+
+  // 控除項目を読み込み（deduction_typesテーブルから）
+  const loadDeductionTypes = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('deduction_types')
+        .select('id, name, type, percentage, default_amount, penalty_amount, is_active')
+        .eq('store_id', storeId)
+        .eq('is_active', true)
+        .order('display_order')
+
+      if (error) throw error
+      setStoreDeductionTypes(data || [])
+    } catch (error) {
+      console.error('控除項目読み込みエラー:', error)
     }
   }, [storeId])
 
@@ -929,7 +952,8 @@ export default function CompensationSettingsPage() {
     loadBackRates()
     loadWageStatuses()
     loadSampleReceipt()
-  }, [loadCasts, loadPayDay, loadSalesSettings, loadSystemSettings, loadProducts, loadBackRates, loadWageStatuses, loadSampleReceipt])
+    loadDeductionTypes()
+  }, [loadCasts, loadPayDay, loadSalesSettings, loadSystemSettings, loadProducts, loadBackRates, loadWageStatuses, loadSampleReceipt, loadDeductionTypes])
 
   useEffect(() => {
     if (selectedCastId) {
@@ -1945,41 +1969,6 @@ export default function CompensationSettingsPage() {
     setShowSlidingModal(false)
   }
 
-  // 控除項目を開く
-  const openDeductionModal = () => {
-    setEditingDeductions(settingsState?.deductionItems || [])
-    setShowDeductionModal(true)
-  }
-
-  // 控除項目を追加
-  const addDeduction = () => {
-    setEditingDeductions(prev => [
-      ...prev,
-      {
-        id: crypto.randomUUID(),
-        type: 'misc' as DeductionType,
-        name: '',
-        amount: 0,
-        isVariable: true,
-      }
-    ])
-  }
-
-  // 控除項目を削除
-  const removeDeduction = (id: string) => {
-    setEditingDeductions(prev => prev.filter(d => d.id !== id))
-  }
-
-  // 控除項目を保存
-  const saveDeductions = () => {
-    const validDeductions = editingDeductions.filter(d => d.name.trim())
-    setSettingsState(prev => prev ? {
-      ...prev,
-      deductionItems: validDeductions.length > 0 ? validDeductions : null
-    } : null)
-    setShowDeductionModal(false)
-  }
-
   if (loading) {
     return <LoadingSpinner />
   }
@@ -2478,26 +2467,46 @@ export default function CompensationSettingsPage() {
 
               {/* 控除設定 */}
               <div style={styles.section}>
-                <h3 style={styles.sectionTitle}>
-                  控除項目
-                  <button onClick={openDeductionModal} style={styles.editBtn}>
-                    編集
-                  </button>
-                </h3>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                  <h3 style={{ ...styles.sectionTitle, marginBottom: 0 }}>控除項目</h3>
+                  <a
+                    href="/deduction-settings"
+                    style={{
+                      fontSize: '12px',
+                      color: '#3b82f6',
+                      textDecoration: 'none',
+                    }}
+                  >
+                    控除設定へ →
+                  </a>
+                </div>
 
-                {settingsState.deductionItems && settingsState.deductionItems.length > 0 ? (
+                {storeDeductionTypes.length > 0 ? (
                   <div style={styles.deductionList}>
-                    {settingsState.deductionItems.map((item) => (
+                    {storeDeductionTypes.map((item) => (
                       <div key={item.id} style={styles.deductionItem}>
                         <span style={styles.deductionName}>{item.name}</span>
                         <span style={styles.deductionAmount}>
-                          {item.isVariable ? '変動' : `${item.amount.toLocaleString()}円`}
+                          {item.type === 'percentage' && item.percentage
+                            ? `${item.percentage}%`
+                            : item.type === 'fixed' && item.default_amount
+                            ? `${item.default_amount.toLocaleString()}円`
+                            : item.type === 'penalty_status' || item.type === 'penalty_late'
+                            ? '罰金'
+                            : item.type === 'daily_payment'
+                            ? '日払い自動'
+                            : '変動'}
                         </span>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <p style={styles.noDeductions}>控除項目はありません</p>
+                  <p style={styles.noDeductions}>
+                    控除項目はありません。
+                    <a href="/deduction-settings" style={{ color: '#3b82f6', marginLeft: '8px' }}>
+                      設定する
+                    </a>
+                  </p>
                 )}
               </div>
 
@@ -3354,86 +3363,6 @@ export default function CompensationSettingsPage() {
         </div>
       )}
 
-      {/* 控除項目編集モーダル */}
-      {showDeductionModal && (
-        <div style={styles.modalOverlay} onClick={() => setShowDeductionModal(false)}>
-          <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
-            <h3 style={styles.modalTitle}>控除項目設定</h3>
-
-            <div style={styles.deductionTable}>
-              {editingDeductions.map((item) => (
-                <div key={item.id} style={styles.deductionRow}>
-                  <select
-                    value={item.type}
-                    onChange={(e) => {
-                      setEditingDeductions(prev => prev.map(d =>
-                        d.id === item.id ? { ...d, type: e.target.value as DeductionType } : d
-                      ))
-                    }}
-                    style={styles.deductionSelect}
-                  >
-                    <option value="daily_payment">日払い</option>
-                    <option value="penalty">罰金</option>
-                    <option value="misc">雑費</option>
-                  </select>
-                  <input
-                    type="text"
-                    value={item.name}
-                    onChange={(e) => {
-                      setEditingDeductions(prev => prev.map(d =>
-                        d.id === item.id ? { ...d, name: e.target.value } : d
-                      ))
-                    }}
-                    placeholder="項目名"
-                    style={styles.deductionNameInput}
-                  />
-                  <label style={styles.variableLabel}>
-                    <input
-                      type="checkbox"
-                      checked={item.isVariable}
-                      onChange={(e) => {
-                        setEditingDeductions(prev => prev.map(d =>
-                          d.id === item.id ? { ...d, isVariable: e.target.checked } : d
-                        ))
-                      }}
-                    />
-                    変動
-                  </label>
-                  {!item.isVariable && (
-                    <input
-                      type="number"
-                      value={item.amount}
-                      onChange={(e) => {
-                        setEditingDeductions(prev => prev.map(d =>
-                          d.id === item.id ? { ...d, amount: Number(e.target.value) } : d
-                        ))
-                      }}
-                      placeholder="金額"
-                      style={styles.deductionAmountInput}
-                    />
-                  )}
-                  <button onClick={() => removeDeduction(item.id)} style={styles.removeBtn}>
-                    ×
-                  </button>
-                </div>
-              ))}
-            </div>
-
-            <button onClick={addDeduction} style={styles.addRowBtn}>
-              + 控除項目を追加
-            </button>
-
-            <div style={styles.modalActions}>
-              <Button onClick={() => setShowDeductionModal(false)} variant="outline" size="medium">
-                キャンセル
-              </Button>
-              <Button onClick={saveDeductions} variant="primary" size="medium">
-                適用
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

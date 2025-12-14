@@ -160,7 +160,8 @@ export interface Attendance {
   check_in_datetime: string | null
   check_out_datetime: string | null
   store_id: number
-  status?: string
+  status?: string           // 後方互換用（status_idを優先）
+  status_id?: string        // 出勤ステータスID（attendance_statuses参照）
   late_minutes?: number
   break_minutes?: number
   daily_payment?: number

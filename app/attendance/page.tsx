@@ -36,7 +36,7 @@ export default function AttendancePage() {
   const [attendances, setAttendances] = useState<Attendance[]>([])
   const [loading, setLoading] = useState(true)
   const [editingCell, setEditingCell] = useState<string | null>(null)
-  const [tempTime, setTempTime] = useState({ clockIn: '', clockOut: '', status: '' })
+  const [tempTime, setTempTime] = useState({ clockIn: '', clockOut: '', statusId: '' })
   const [showStatusModal, setShowStatusModal] = useState(false)
   const [attendanceStatuses, setAttendanceStatuses] = useState<AttendanceStatus[]>([])
   const [showAddStatus, setShowAddStatus] = useState(false)
@@ -67,7 +67,7 @@ export default function AttendancePage() {
 
     const { data, error } = await supabase
       .from('attendance')
-      .select('id, cast_name, date, check_in_datetime, check_out_datetime, status, store_id')
+      .select('id, cast_name, date, check_in_datetime, check_out_datetime, status, status_id, store_id')
       .eq('store_id', storeId)
       .gte('date', format(start, 'yyyy-MM-dd'))
       .lte('date', format(end, 'yyyy-MM-dd'))
@@ -264,35 +264,44 @@ export default function AttendancePage() {
     }
 
     if (attendance) {
+      // status_idがあればそれを使用、なければstatusから検索
+      let statusId = attendance.status_id || ''
+      if (!statusId && attendance.status) {
+        const foundStatus = attendanceStatuses.find(s => s.name === attendance.status)
+        statusId = foundStatus?.id || ''
+      }
       setTempTime({
         clockIn: attendance.check_in_datetime ? convertTo24Plus(attendance.check_in_datetime) : '',
         clockOut: attendance.check_out_datetime ? convertTo24Plus(attendance.check_out_datetime) : '',
-        status: attendance.status || ''
+        statusId
       })
     } else {
       // 新規の場合はデフォルトで「出勤」を選択して時間も設定
-      setTempTime({ clockIn: '18:00', clockOut: '24:00', status: '出勤' })
+      const defaultStatus = attendanceStatuses.find(s => s.name === '出勤')
+      setTempTime({ clockIn: '18:00', clockOut: '24:00', statusId: defaultStatus?.id || '' })
     }
   }
 
-  const addAttendance = (status: string = '出勤') => {
+  const addAttendance = (statusId: string) => {
     // 出勤系ステータスの場合は時間を設定、それ以外は時間なし
-    const needsTime = status === '出勤' || status === '遅刻' || status === '早退' || status === 'リクエスト出勤'
+    const status = attendanceStatuses.find(s => s.id === statusId)
+    const needsTime = status?.name === '出勤' || status?.name === '遅刻' || status?.name === '早退' || status?.name === 'リクエスト出勤'
     setTempTime({
       clockIn: needsTime ? '18:00' : '',
       clockOut: needsTime ? '24:00' : '',
-      status
+      statusId
     })
   }
 
   const saveAttendance = async () => {
-    if (!editingCell || !tempTime.status) {
+    if (!editingCell || !tempTime.statusId) {
       toast.error('ステータスを選択してください')
       return
     }
 
     // 出勤系ステータスの場合は時間が必須
-    const needsTime = tempTime.status === '出勤' || tempTime.status === '遅刻' || tempTime.status === '早退' || tempTime.status === 'リクエスト出勤'
+    const selectedStatus = attendanceStatuses.find(s => s.id === tempTime.statusId)
+    const needsTime = selectedStatus?.name === '出勤' || selectedStatus?.name === '遅刻' || selectedStatus?.name === '早退' || selectedStatus?.name === 'リクエスト出勤'
     if (needsTime && !tempTime.clockIn) {
       toast.error('出勤時間を入力してください')
       return
@@ -338,7 +347,7 @@ export default function AttendancePage() {
           .update({
             check_in_datetime: normalizedClockIn,
             check_out_datetime: normalizedClockOut,
-            status: tempTime.status
+            status_id: tempTime.statusId
           })
           .eq('id', existingAttendance.id)
 
@@ -357,7 +366,7 @@ export default function AttendancePage() {
             date: dateStr,
             check_in_datetime: normalizedClockIn,
             check_out_datetime: normalizedClockOut,
-            status: tempTime.status,
+            status_id: tempTime.statusId,
             store_id: storeId
           })
 
@@ -706,7 +715,7 @@ export default function AttendancePage() {
           </div>
 
           {/* ステータス選択または編集フォーム */}
-          {tempTime.status ? (
+          {tempTime.statusId ? (
             <>
               {/* ステータス表示・変更 */}
               <div style={{ marginBottom: '16px' }}>
@@ -720,13 +729,14 @@ export default function AttendancePage() {
                   ステータス
                 </label>
                 <select
-                  value={tempTime.status}
+                  value={tempTime.statusId}
                   onChange={(e) => {
-                    const newStatus = e.target.value
-                    const needsTime = newStatus === '出勤' || newStatus === '遅刻' || newStatus === '早退' || newStatus === 'リクエスト出勤'
+                    const newStatusId = e.target.value
+                    const newStatus = attendanceStatuses.find(s => s.id === newStatusId)
+                    const needsTime = newStatus?.name === '出勤' || newStatus?.name === '遅刻' || newStatus?.name === '早退' || newStatus?.name === 'リクエスト出勤'
                     setTempTime({
                       ...tempTime,
-                      status: newStatus,
+                      statusId: newStatusId,
                       clockIn: needsTime ? (tempTime.clockIn || '18:00') : '',
                       clockOut: needsTime ? (tempTime.clockOut || '24:00') : ''
                     })
@@ -742,7 +752,7 @@ export default function AttendancePage() {
                   }}
                 >
                   {attendanceStatuses.map(status => (
-                    <option key={status.id} value={status.name}>
+                    <option key={status.id} value={status.id}>
                       {status.name}
                     </option>
                   ))}
@@ -750,7 +760,10 @@ export default function AttendancePage() {
               </div>
 
               {/* 出勤系ステータスの場合のみ時間入力を表示 */}
-              {(tempTime.status === '出勤' || tempTime.status === '遅刻' || tempTime.status === '早退' || tempTime.status === 'リクエスト出勤') && (
+              {(() => {
+                const currentStatus = attendanceStatuses.find(s => s.id === tempTime.statusId)
+                return currentStatus?.name === '出勤' || currentStatus?.name === '遅刻' || currentStatus?.name === '早退' || currentStatus?.name === 'リクエスト出勤'
+              })() && (
                 <>
                   <div style={{ marginBottom: '16px' }}>
                     <label style={{
@@ -829,7 +842,7 @@ export default function AttendancePage() {
                 {attendanceStatuses.map(status => (
                   <button
                     key={status.id}
-                    onClick={() => addAttendance(status.name)}
+                    onClick={() => addAttendance(status.id)}
                     style={{
                       padding: '8px 16px',
                       fontSize: '13px',
@@ -850,7 +863,7 @@ export default function AttendancePage() {
 
           {/* アクションボタン */}
           <div style={{ display: 'flex', gap: '8px' }}>
-            {tempTime.status && (
+            {tempTime.statusId && (
               <>
                 <button
                   onClick={saveAttendance}
@@ -1033,7 +1046,7 @@ export default function AttendancePage() {
                           }}
                         />
                         <span style={{ color: status.is_active ? '#4CAF50' : '#94a3b8' }}>
-                          {status.is_active ? '有効' : '無効'}
+                          {status.is_active ? '出勤扱い' : '欠勤扱い'}
                         </span>
                       </label>
                       <button

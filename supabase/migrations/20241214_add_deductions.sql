@@ -97,25 +97,41 @@ ALTER TABLE late_penalty_rules ENABLE ROW LEVEL SECURITY;
 ALTER TABLE late_penalty_tiers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE cast_deductions ENABLE ROW LEVEL SECURITY;
 
--- RLSポリシー: deduction_types
+-- RLSポリシー: deduction_types（既存があれば削除）
+DROP POLICY IF EXISTS "deduction_types_select" ON deduction_types;
+DROP POLICY IF EXISTS "deduction_types_insert" ON deduction_types;
+DROP POLICY IF EXISTS "deduction_types_update" ON deduction_types;
+DROP POLICY IF EXISTS "deduction_types_delete" ON deduction_types;
 CREATE POLICY "deduction_types_select" ON deduction_types FOR SELECT USING (true);
 CREATE POLICY "deduction_types_insert" ON deduction_types FOR INSERT WITH CHECK (true);
 CREATE POLICY "deduction_types_update" ON deduction_types FOR UPDATE USING (true);
 CREATE POLICY "deduction_types_delete" ON deduction_types FOR DELETE USING (true);
 
--- RLSポリシー: late_penalty_rules
+-- RLSポリシー: late_penalty_rules（既存があれば削除）
+DROP POLICY IF EXISTS "late_penalty_rules_select" ON late_penalty_rules;
+DROP POLICY IF EXISTS "late_penalty_rules_insert" ON late_penalty_rules;
+DROP POLICY IF EXISTS "late_penalty_rules_update" ON late_penalty_rules;
+DROP POLICY IF EXISTS "late_penalty_rules_delete" ON late_penalty_rules;
 CREATE POLICY "late_penalty_rules_select" ON late_penalty_rules FOR SELECT USING (true);
 CREATE POLICY "late_penalty_rules_insert" ON late_penalty_rules FOR INSERT WITH CHECK (true);
 CREATE POLICY "late_penalty_rules_update" ON late_penalty_rules FOR UPDATE USING (true);
 CREATE POLICY "late_penalty_rules_delete" ON late_penalty_rules FOR DELETE USING (true);
 
--- RLSポリシー: late_penalty_tiers
+-- RLSポリシー: late_penalty_tiers（既存があれば削除）
+DROP POLICY IF EXISTS "late_penalty_tiers_select" ON late_penalty_tiers;
+DROP POLICY IF EXISTS "late_penalty_tiers_insert" ON late_penalty_tiers;
+DROP POLICY IF EXISTS "late_penalty_tiers_update" ON late_penalty_tiers;
+DROP POLICY IF EXISTS "late_penalty_tiers_delete" ON late_penalty_tiers;
 CREATE POLICY "late_penalty_tiers_select" ON late_penalty_tiers FOR SELECT USING (true);
 CREATE POLICY "late_penalty_tiers_insert" ON late_penalty_tiers FOR INSERT WITH CHECK (true);
 CREATE POLICY "late_penalty_tiers_update" ON late_penalty_tiers FOR UPDATE USING (true);
 CREATE POLICY "late_penalty_tiers_delete" ON late_penalty_tiers FOR DELETE USING (true);
 
--- RLSポリシー: cast_deductions
+-- RLSポリシー: cast_deductions（既存があれば削除）
+DROP POLICY IF EXISTS "cast_deductions_select" ON cast_deductions;
+DROP POLICY IF EXISTS "cast_deductions_insert" ON cast_deductions;
+DROP POLICY IF EXISTS "cast_deductions_update" ON cast_deductions;
+DROP POLICY IF EXISTS "cast_deductions_delete" ON cast_deductions;
 CREATE POLICY "cast_deductions_select" ON cast_deductions FOR SELECT USING (true);
 CREATE POLICY "cast_deductions_insert" ON cast_deductions FOR INSERT WITH CHECK (true);
 CREATE POLICY "cast_deductions_update" ON cast_deductions FOR UPDATE USING (true);
@@ -130,11 +146,13 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS update_deduction_types_updated_at ON deduction_types;
 CREATE TRIGGER update_deduction_types_updated_at
   BEFORE UPDATE ON deduction_types
   FOR EACH ROW
   EXECUTE FUNCTION update_deduction_updated_at();
 
+DROP TRIGGER IF EXISTS update_cast_deductions_updated_at ON cast_deductions;
 CREATE TRIGGER update_cast_deductions_updated_at
   BEFORE UPDATE ON cast_deductions
   FOR EACH ROW
