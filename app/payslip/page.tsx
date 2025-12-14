@@ -31,6 +31,10 @@ interface AttendanceData {
   daily_payment: number
   late_minutes: number
   status_id: string | null
+  status: string | null
+  check_in_datetime: string | null
+  check_out_datetime: string | null
+  break_minutes: number
 }
 
 interface DeductionType {
@@ -139,6 +143,7 @@ export default function PayslipPage() {
   const [backRates, setBackRates] = useState<CastBackRate[]>([])
   const [dailySalesData, setDailySalesData] = useState<Map<string, DailySalesData>>(new Map())
   const [selectedDayDetail, setSelectedDayDetail] = useState<string | null>(null) // 日別詳細モーダル用
+  const [showDailyWageModal, setShowDailyWageModal] = useState(false) // 日別時給モーダル用
   const [selectedProductDetail, setSelectedProductDetail] = useState<{
     productName: string
     category: string | null
@@ -310,7 +315,7 @@ export default function PayslipPage() {
 
     const { data } = await supabase
       .from('attendance')
-      .select('date, daily_payment, late_minutes, status_id')
+      .select('date, daily_payment, late_minutes, status_id, status, check_in_datetime, check_out_datetime, break_minutes')
       .eq('store_id', storeId)
       .eq('cast_name', cast.name)
       .gte('date', startDate)
@@ -1106,20 +1111,34 @@ export default function PayslipPage() {
           {/* サマリーカード */}
           <div style={styles.summarySection}>
             <div style={styles.summaryGrid}>
-              <div style={styles.summaryCard}>
-                <div style={styles.summaryLabel}>勤務時間</div>
-                <div style={styles.summaryValue}>{summary.totalWorkHours}h</div>
+              <div
+                style={{ ...styles.summaryCard, cursor: 'pointer' }}
+                onClick={() => setShowDailyWageModal(true)}
+              >
+                <div style={styles.summaryLabel}>勤務時間 / 平均時給 ▶</div>
+                <div style={styles.summaryValue}>
+                  {summary.totalWorkHours}h / {summary.totalWorkHours > 0
+                    ? currencyFormatter.format(Math.round(summary.totalWageAmount / summary.totalWorkHours))
+                    : '—'}
+                </div>
+              </div>
+              <div
+                style={{ ...styles.summaryCard, cursor: 'pointer' }}
+                onClick={() => setShowDailyWageModal(true)}
+              >
+                <div style={styles.summaryLabel}>出勤日数 ▶</div>
+                <div style={styles.summaryValue}>{dailyDetails.filter(d => d.workHours > 0).length}日</div>
               </div>
               <div style={styles.summaryCard}>
                 <div style={styles.summaryLabel}>時給収入</div>
                 <div style={styles.summaryValue}>{currencyFormatter.format(summary.totalWageAmount)}</div>
               </div>
+            </div>
+            <div style={styles.summaryGrid}>
               <div style={styles.summaryCard}>
                 <div style={styles.summaryLabel}>売上</div>
                 <div style={styles.summaryValue}>{currencyFormatter.format(summary.totalSales)}</div>
               </div>
-            </div>
-            <div style={styles.summaryGrid}>
               <div style={styles.summaryCard}>
                 <div style={styles.summaryLabel}>売上バック</div>
                 <div style={{ ...styles.summaryValue, color: '#007AFF' }}>{currencyFormatter.format(summary.salesBack)}</div>
@@ -1767,6 +1786,142 @@ export default function PayslipPage() {
               <button
                 onClick={() => setSelectedOrderId(null)}
                 style={{ ...styles.modalButton, backgroundColor: '#5856D6' }}
+              >
+                閉じる
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* 日別勤務時間・時給モーダル */}
+      {showDailyWageModal && (
+        <>
+          <div
+            style={styles.modalOverlay}
+            onClick={() => setShowDailyWageModal(false)}
+          />
+          <div style={{ ...styles.modal, maxWidth: '700px' }}>
+            <div style={{ ...styles.modalHeader, backgroundColor: '#34C759' }}>
+              <h3 style={styles.modalTitle}>日別勤務時間</h3>
+              <button
+                onClick={() => setShowDailyWageModal(false)}
+                style={styles.modalCloseBtn}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={styles.modalContent}>
+              {/* サマリー */}
+              <div style={styles.modalSummary}>
+                <div style={styles.modalSummaryItem}>
+                  <div style={styles.modalSummaryLabel}>出勤日数</div>
+                  <div style={styles.modalSummaryValue}>{dailyDetails.filter(d => d.workHours > 0).length}日</div>
+                </div>
+                <div style={styles.modalSummaryItem}>
+                  <div style={styles.modalSummaryLabel}>勤務時間</div>
+                  <div style={styles.modalSummaryValue}>{summary.totalWorkHours}h</div>
+                </div>
+                <div style={styles.modalSummaryItem}>
+                  <div style={styles.modalSummaryLabel}>平均時給</div>
+                  <div style={{ ...styles.modalSummaryValue, color: '#34C759' }}>
+                    {summary.totalWorkHours > 0
+                      ? currencyFormatter.format(Math.round(summary.totalWageAmount / summary.totalWorkHours))
+                      : '—'}
+                  </div>
+                </div>
+                <div style={styles.modalSummaryItem}>
+                  <div style={styles.modalSummaryLabel}>時給収入</div>
+                  <div style={styles.modalSummaryValue}>
+                    {currencyFormatter.format(summary.totalWageAmount)}
+                  </div>
+                </div>
+              </div>
+
+              {/* 日別一覧 */}
+              <div style={styles.modalSection}>
+                <div style={styles.tableWrapper}>
+                  <table style={styles.table}>
+                    <thead>
+                      <tr style={styles.tableHeader}>
+                        <th style={styles.th}>日付</th>
+                        <th style={styles.th}>出勤時間</th>
+                        <th style={styles.th}>ステータス</th>
+                        <th style={{ ...styles.th, textAlign: 'right' }}>休憩</th>
+                        <th style={{ ...styles.th, textAlign: 'right' }}>遅刻</th>
+                        <th style={{ ...styles.th, textAlign: 'right' }}>時間</th>
+                        <th style={{ ...styles.th, textAlign: 'right' }}>時給額</th>
+                        <th style={{ ...styles.th, textAlign: 'right' }}>時給</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dailyDetails
+                        .filter(d => d.workHours > 0)
+                        .map((day, i) => {
+                          const attendance = attendanceData.find(a => a.date === day.date)
+                          const hourlyRate = day.workHours > 0
+                            ? Math.round(day.wageAmount / day.workHours)
+                            : 0
+
+                          // 出勤時間のフォーマット
+                          let timeRange = '—'
+                          if (attendance?.check_in_datetime && attendance?.check_out_datetime) {
+                            const checkIn = new Date(attendance.check_in_datetime)
+                            const checkOut = new Date(attendance.check_out_datetime)
+                            timeRange = `${format(checkIn, 'HH:mm')}〜${format(checkOut, 'HH:mm')}`
+                          }
+
+                          return (
+                            <tr
+                              key={day.date}
+                              style={i % 2 === 0 ? styles.tableRowEven : styles.tableRow}
+                            >
+                              <td style={styles.td}>
+                                {format(new Date(day.date), 'M/d(E)', { locale: ja })}
+                              </td>
+                              <td style={{ ...styles.td, fontSize: '12px' }}>{timeRange}</td>
+                              <td style={styles.td}>
+                                <span style={{
+                                  padding: '2px 6px',
+                                  borderRadius: '4px',
+                                  fontSize: '11px',
+                                  backgroundColor: attendance?.status === '遅刻' ? '#FFE5E5' :
+                                                   attendance?.status === '早退' ? '#FFF3E5' :
+                                                   attendance?.status === '欠勤' ? '#FFE5E5' : '#E5F6E5',
+                                  color: attendance?.status === '遅刻' ? '#D32F2F' :
+                                         attendance?.status === '早退' ? '#F57C00' :
+                                         attendance?.status === '欠勤' ? '#D32F2F' : '#388E3C'
+                                }}>
+                                  {attendance?.status || '出勤'}
+                                </span>
+                              </td>
+                              <td style={{ ...styles.td, textAlign: 'right', fontSize: '12px' }}>
+                                {attendance?.break_minutes ? `${attendance.break_minutes}分` : '—'}
+                              </td>
+                              <td style={{ ...styles.td, textAlign: 'right', fontSize: '12px', color: attendance?.late_minutes ? '#D32F2F' : undefined }}>
+                                {attendance?.late_minutes ? `${attendance.late_minutes}分` : '—'}
+                              </td>
+                              <td style={{ ...styles.td, textAlign: 'right' }}>{day.workHours}h</td>
+                              <td style={{ ...styles.td, textAlign: 'right' }}>
+                                {currencyFormatter.format(day.wageAmount)}
+                              </td>
+                              <td style={{ ...styles.td, textAlign: 'right', color: '#34C759', fontWeight: '600' }}>
+                                {currencyFormatter.format(hourlyRate)}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <div style={styles.modalFooter}>
+              <button
+                onClick={() => setShowDailyWageModal(false)}
+                style={{ ...styles.modalButton, backgroundColor: '#34C759' }}
               >
                 閉じる
               </button>
