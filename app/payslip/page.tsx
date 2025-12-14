@@ -5,8 +5,9 @@ import { supabase } from '@/lib/supabase'
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns'
 import { ja } from 'date-fns/locale'
 import { useStore } from '@/contexts/StoreContext'
+import { SalesSettings, CompensationType } from '@/types'
+import { calculateCastSalesByPublishedMethod, getDefaultSalesSettings } from '@/lib/salesCalculation'
 import LoadingSpinner from '@/components/LoadingSpinner'
-import Button from '@/components/Button'
 
 interface Cast {
   id: number
@@ -20,8 +21,8 @@ interface DailyStats {
   wage_amount: number
   total_sales_item_based: number
   product_back_item_based: number
-  base_hourly_wage: number
-  total_hourly_wage: number
+  self_sales_item_based: number
+  help_sales_item_based: number
 }
 
 interface AttendanceData {
@@ -54,8 +55,29 @@ interface LatePenaltyRule {
 
 interface CompensationSettings {
   enabled_deduction_ids: number[]
-  back_rate_self: number
-  back_rate_help: number
+  compensation_types: CompensationType[] | null
+  payment_selection_method: 'highest' | 'specific'
+  selected_compensation_type_id: string | null
+}
+
+interface OrderItemWithTax {
+  id: number
+  order_id: string
+  product_name: string
+  category: string | null
+  cast_name: string | null
+  quantity: number
+  unit_price: number
+  unit_price_excl_tax: number
+  subtotal: number
+  tax_amount: number
+}
+
+interface Order {
+  id: string
+  staff_name: string | null
+  order_date: string
+  order_items: OrderItemWithTax[]
 }
 
 interface DeductionResult {
@@ -63,6 +85,14 @@ interface DeductionResult {
   amount: number
   count?: number
   detail?: string
+}
+
+interface DailySalesData {
+  date: string
+  selfSales: number
+  helpSales: number
+  totalSales: number
+  productBack: number
 }
 
 export default function PayslipPage() {
@@ -78,6 +108,8 @@ export default function PayslipPage() {
   const [deductionTypes, setDeductionTypes] = useState<DeductionType[]>([])
   const [latePenaltyRules, setLatePenaltyRules] = useState<Map<number, LatePenaltyRule>>(new Map())
   const [compensationSettings, setCompensationSettings] = useState<CompensationSettings | null>(null)
+  const [salesSettings, setSalesSettings] = useState<SalesSettings | null>(null)
+  const [dailySalesData, setDailySalesData] = useState<Map<string, DailySalesData>>(new Map())
 
   const currencyFormatter = useMemo(() => {
     return new Intl.NumberFormat('ja-JP', {
@@ -109,7 +141,6 @@ export default function PayslipPage() {
 
   // 控除設定を取得
   const loadDeductionSettings = useCallback(async () => {
-    // 控除タイプ
     const { data: types } = await supabase
       .from('deduction_types')
       .select('*')
@@ -119,7 +150,6 @@ export default function PayslipPage() {
 
     setDeductionTypes(types || [])
 
-    // 遅刻罰金ルール
     if (types && types.length > 0) {
       const lateDeductionIds = types
         .filter(t => t.type === 'penalty_late')
@@ -140,11 +170,32 @@ export default function PayslipPage() {
     }
   }, [storeId])
 
+  // 売上設定を取得
+  const loadSalesSettings = useCallback(async () => {
+    const { data } = await supabase
+      .from('sales_settings')
+      .select('*')
+      .eq('store_id', storeId)
+      .single()
+
+    if (data) {
+      setSalesSettings(data as SalesSettings)
+    } else {
+      const defaults = getDefaultSalesSettings(storeId)
+      setSalesSettings({
+        id: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        ...defaults,
+      } as SalesSettings)
+    }
+  }, [storeId])
+
   // キャストの報酬設定を取得
   const loadCompensationSettings = useCallback(async (castId: number) => {
     const { data } = await supabase
       .from('compensation_settings')
-      .select('enabled_deduction_ids, back_rate_self, back_rate_help')
+      .select('enabled_deduction_ids, compensation_types, payment_selection_method, selected_compensation_type_id')
       .eq('cast_id', castId)
       .eq('store_id', storeId)
       .single()
@@ -165,8 +216,8 @@ export default function PayslipPage() {
         wage_amount,
         total_sales_item_based,
         product_back_item_based,
-        base_hourly_wage,
-        total_hourly_wage
+        self_sales_item_based,
+        help_sales_item_based
       `)
       .eq('cast_id', castId)
       .eq('store_id', storeId)
@@ -182,7 +233,6 @@ export default function PayslipPage() {
     const startDate = format(startOfMonth(month), 'yyyy-MM-dd')
     const endDate = format(endOfMonth(month), 'yyyy-MM-dd')
 
-    // キャスト名を取得
     const cast = casts.find(c => c.id === castId)
     if (!cast) return
 
@@ -197,41 +247,158 @@ export default function PayslipPage() {
     setAttendanceData(data || [])
   }, [storeId, casts])
 
+  // 注文データから売上を計算
+  const calculateSalesFromOrders = useCallback(async (castId: number, month: Date) => {
+    if (!salesSettings) return
+
+    const startDate = format(startOfMonth(month), 'yyyy-MM-dd')
+    const endDate = format(endOfMonth(month), 'yyyy-MM-dd')
+
+    const cast = casts.find(c => c.id === castId)
+    if (!cast) return
+
+    // 注文データを取得
+    const { data: orders } = await supabase
+      .from('orders')
+      .select(`
+        id,
+        staff_name,
+        order_date,
+        order_items (
+          id,
+          product_name,
+          category,
+          cast_name,
+          quantity,
+          unit_price,
+          unit_price_excl_tax,
+          subtotal,
+          tax_amount
+        )
+      `)
+      .eq('store_id', storeId)
+      .gte('order_date', startDate)
+      .lte('order_date', endDate + 'T23:59:59')
+      .is('deleted_at', null)
+
+    if (!orders || orders.length === 0) {
+      setDailySalesData(new Map())
+      return
+    }
+
+    // 日別に分解（order_dateベースで集計）
+    const ordersByDate = new Map<string, Order[]>()
+    orders.forEach(order => {
+      const dateStr = order.order_date?.split('T')[0]
+      if (dateStr) {
+        const existing = ordersByDate.get(dateStr) || []
+        existing.push(order as Order)
+        ordersByDate.set(dateStr, existing)
+      }
+    })
+
+    // 日別に集計
+    const dailyMap = new Map<string, DailySalesData>()
+    const taxRate = 0.1
+    const serviceRate = 0
+
+    // 各日の売上を計算
+    ordersByDate.forEach((dayOrders, dateStr) => {
+      const daySalesResult = calculateCastSalesByPublishedMethod(
+        dayOrders,
+        casts.map(c => ({ id: c.id, name: c.name })),
+        salesSettings,
+        taxRate,
+        serviceRate
+      )
+
+      const dayCastResult = daySalesResult.find(r => r.cast_id === castId)
+      if (dayCastResult) {
+        dailyMap.set(dateStr, {
+          date: dateStr,
+          selfSales: dayCastResult.self_sales,
+          helpSales: dayCastResult.help_sales,
+          totalSales: dayCastResult.total_sales,
+          productBack: dayCastResult.total_back
+        })
+      }
+    })
+
+    setDailySalesData(dailyMap)
+  }, [storeId, casts, salesSettings])
+
   // 初期ロード
   useEffect(() => {
     const init = async () => {
       setLoading(true)
       await loadCasts()
       await loadDeductionSettings()
+      await loadSalesSettings()
       setLoading(false)
     }
     init()
-  }, [loadCasts, loadDeductionSettings])
+  }, [loadCasts, loadDeductionSettings, loadSalesSettings])
 
   // キャストまたは月が変わったらデータを再取得
   useEffect(() => {
-    if (selectedCastId && casts.length > 0) {
+    if (selectedCastId && casts.length > 0 && salesSettings) {
       const loadData = async () => {
         setLoading(true)
         await loadDailyStats(selectedCastId, selectedMonth)
         await loadAttendanceData(selectedCastId, selectedMonth)
         await loadCompensationSettings(selectedCastId)
+        await calculateSalesFromOrders(selectedCastId, selectedMonth)
         setLoading(false)
       }
       loadData()
     }
-  }, [selectedCastId, selectedMonth, casts, loadDailyStats, loadAttendanceData, loadCompensationSettings])
+  }, [selectedCastId, selectedMonth, casts, salesSettings, loadDailyStats, loadAttendanceData, loadCompensationSettings, calculateSalesFromOrders])
+
+  // アクティブな報酬形態を取得
+  const activeCompensationType = useMemo((): CompensationType | null => {
+    if (!compensationSettings?.compensation_types) return null
+
+    const types = compensationSettings.compensation_types.filter(t => t.is_enabled)
+    if (types.length === 0) return null
+
+    if (compensationSettings.payment_selection_method === 'specific' && compensationSettings.selected_compensation_type_id) {
+      return types.find(t => t.id === compensationSettings.selected_compensation_type_id) || types[0]
+    }
+
+    // highest: とりあえず最初の有効なものを返す（実際は売上に応じて計算が必要）
+    return types[0]
+  }, [compensationSettings])
 
   // 集計値を計算
   const summary = useMemo(() => {
+    // 時給関連はcast_daily_statsから
     const totalWorkHours = dailyStats.reduce((sum, d) => sum + (d.work_hours || 0), 0)
     const totalWageAmount = dailyStats.reduce((sum, d) => sum + (d.wage_amount || 0), 0)
-    const totalSales = dailyStats.reduce((sum, d) => sum + (d.total_sales_item_based || 0), 0)
-    const totalProductBack = dailyStats.reduce((sum, d) => sum + (d.product_back_item_based || 0), 0)
 
-    // 売上バック計算
-    const backRateSelf = compensationSettings?.back_rate_self || 0
-    const salesBack = Math.round(totalSales * backRateSelf / 100)
+    // 売上は注文データから計算したものを使用
+    let totalSales = 0
+    let totalProductBack = 0
+    dailySalesData.forEach(day => {
+      totalSales += day.totalSales
+      totalProductBack += day.productBack
+    })
+
+    // 売上バック計算（compensation_typesのcommission_rateを使用）
+    let salesBack = 0
+    if (activeCompensationType) {
+      if (activeCompensationType.use_sliding_rate && activeCompensationType.sliding_rates) {
+        // スライド式
+        const rate = activeCompensationType.sliding_rates.find(
+          r => totalSales >= r.min && (r.max === 0 || totalSales <= r.max)
+        )
+        if (rate) {
+          salesBack = Math.round(totalSales * rate.rate / 100)
+        }
+      } else {
+        // 固定率
+        salesBack = Math.round(totalSales * activeCompensationType.commission_rate / 100)
+      }
+    }
 
     // 総支給額
     const grossEarnings = totalWageAmount + salesBack + totalProductBack
@@ -244,7 +411,7 @@ export default function PayslipPage() {
       totalProductBack,
       grossEarnings
     }
-  }, [dailyStats, compensationSettings])
+  }, [dailyStats, dailySalesData, activeCompensationType])
 
   // 遅刻罰金を計算
   const calculateLatePenalty = useCallback((lateMinutes: number, rule: LatePenaltyRule): number => {
@@ -329,7 +496,7 @@ export default function PayslipPage() {
         }
       })
 
-    // 源泉徴収（%計算）- 最後に計算
+    // 源泉徴収（%計算）
     const percentageDeductions = deductionTypes.filter(d => d.type === 'percentage' && d.percentage && (enabledIds.length === 0 || enabledIds.includes(d.id)))
     percentageDeductions.forEach(d => {
       const currentDeductionTotal = results.reduce((sum, r) => sum + r.amount, 0)
@@ -351,7 +518,7 @@ export default function PayslipPage() {
   const totalDeduction = deductions.reduce((sum, d) => sum + d.amount, 0)
   const netEarnings = summary.grossEarnings - totalDeduction
 
-  // 日別明細データ（勤怠と統計を結合）
+  // 日別明細データ
   const dailyDetails = useMemo(() => {
     const days = eachDayOfInterval({
       start: startOfMonth(selectedMonth),
@@ -362,6 +529,7 @@ export default function PayslipPage() {
       const dateStr = format(day, 'yyyy-MM-dd')
       const stats = dailyStats.find(s => s.date === dateStr)
       const attendance = attendanceData.find(a => a.date === dateStr)
+      const sales = dailySalesData.get(dateStr)
 
       return {
         date: dateStr,
@@ -369,13 +537,13 @@ export default function PayslipPage() {
         dayOfWeek: format(day, 'E', { locale: ja }),
         workHours: stats?.work_hours || 0,
         wageAmount: stats?.wage_amount || 0,
-        sales: stats?.total_sales_item_based || 0,
-        productBack: stats?.product_back_item_based || 0,
+        sales: sales?.totalSales || 0,
+        productBack: sales?.productBack || 0,
         dailyPayment: attendance?.daily_payment || 0,
         lateMinutes: attendance?.late_minutes || 0
       }
-    }).filter(d => d.workHours > 0 || d.dailyPayment > 0 || d.lateMinutes > 0)
-  }, [selectedMonth, dailyStats, attendanceData])
+    }).filter(d => d.workHours > 0 || d.dailyPayment > 0 || d.lateMinutes > 0 || d.sales > 0)
+  }, [selectedMonth, dailyStats, attendanceData, dailySalesData])
 
   const selectedCast = casts.find(c => c.id === selectedCastId)
 
@@ -393,7 +561,6 @@ export default function PayslipPage() {
       <div style={styles.header}>
         <h1 style={styles.title}>報酬明細</h1>
         <div style={styles.controls}>
-          {/* キャスト選択 */}
           <select
             value={selectedCastId || ''}
             onChange={(e) => setSelectedCastId(Number(e.target.value))}
@@ -404,7 +571,6 @@ export default function PayslipPage() {
             ))}
           </select>
 
-          {/* 月選択 */}
           <div style={styles.monthSelector}>
             <button
               onClick={() => setSelectedMonth(prev => subMonths(prev, 1))}
@@ -429,6 +595,16 @@ export default function PayslipPage() {
         <LoadingSpinner />
       ) : (
         <>
+          {/* 報酬形態表示 */}
+          {activeCompensationType && (
+            <div style={styles.compensationTypeLabel}>
+              適用報酬形態: {activeCompensationType.name}
+              {activeCompensationType.commission_rate > 0 && ` (売上${activeCompensationType.commission_rate}%)`}
+              {activeCompensationType.use_sliding_rate && ' (スライド式)'}
+              {activeCompensationType.use_product_back && ' + 商品バック'}
+            </div>
+          )}
+
           {/* サマリーカード */}
           <div style={styles.summarySection}>
             <div style={styles.summaryGrid}>
@@ -441,12 +617,18 @@ export default function PayslipPage() {
                 <div style={styles.summaryValue}>{currencyFormatter.format(summary.totalWageAmount)}</div>
               </div>
               <div style={styles.summaryCard}>
+                <div style={styles.summaryLabel}>売上</div>
+                <div style={styles.summaryValue}>{currencyFormatter.format(summary.totalSales)}</div>
+              </div>
+            </div>
+            <div style={styles.summaryGrid}>
+              <div style={styles.summaryCard}>
                 <div style={styles.summaryLabel}>売上バック</div>
-                <div style={styles.summaryValue}>{currencyFormatter.format(summary.salesBack)}</div>
+                <div style={{ ...styles.summaryValue, color: '#007AFF' }}>{currencyFormatter.format(summary.salesBack)}</div>
               </div>
               <div style={styles.summaryCard}>
                 <div style={styles.summaryLabel}>商品バック</div>
-                <div style={styles.summaryValue}>{currencyFormatter.format(summary.totalProductBack)}</div>
+                <div style={{ ...styles.summaryValue, color: '#FF9500' }}>{currencyFormatter.format(summary.totalProductBack)}</div>
               </div>
             </div>
             <div style={styles.grossEarningsCard}>
@@ -467,9 +649,8 @@ export default function PayslipPage() {
                       <th style={{ ...styles.th, textAlign: 'right' }}>時間</th>
                       <th style={{ ...styles.th, textAlign: 'right' }}>時給額</th>
                       <th style={{ ...styles.th, textAlign: 'right' }}>売上</th>
-                      <th style={{ ...styles.th, textAlign: 'right' }}>バック</th>
+                      <th style={{ ...styles.th, textAlign: 'right' }}>商品バック</th>
                       <th style={{ ...styles.th, textAlign: 'right' }}>日払い</th>
-                      <th style={{ ...styles.th, textAlign: 'right' }}>遅刻</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -479,15 +660,23 @@ export default function PayslipPage() {
                         <td style={{ ...styles.td, textAlign: 'right' }}>{day.workHours > 0 ? `${day.workHours}h` : '-'}</td>
                         <td style={{ ...styles.td, textAlign: 'right' }}>{day.wageAmount > 0 ? currencyFormatter.format(day.wageAmount) : '-'}</td>
                         <td style={{ ...styles.td, textAlign: 'right' }}>{day.sales > 0 ? currencyFormatter.format(day.sales) : '-'}</td>
-                        <td style={{ ...styles.td, textAlign: 'right' }}>{day.productBack > 0 ? currencyFormatter.format(day.productBack) : '-'}</td>
+                        <td style={{ ...styles.td, textAlign: 'right', color: '#FF9500' }}>{day.productBack > 0 ? currencyFormatter.format(day.productBack) : '-'}</td>
                         <td style={{ ...styles.td, textAlign: 'right', color: day.dailyPayment > 0 ? '#e74c3c' : undefined }}>
                           {day.dailyPayment > 0 ? currencyFormatter.format(day.dailyPayment) : '-'}
                         </td>
-                        <td style={{ ...styles.td, textAlign: 'right', color: day.lateMinutes > 0 ? '#e74c3c' : undefined }}>
-                          {day.lateMinutes > 0 ? `${day.lateMinutes}分` : '-'}
-                        </td>
                       </tr>
                     ))}
+                    {/* 合計行 */}
+                    <tr style={styles.tableTotal}>
+                      <td style={{ ...styles.td, fontWeight: 'bold' }}>合計</td>
+                      <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold' }}>{summary.totalWorkHours}h</td>
+                      <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold' }}>{currencyFormatter.format(summary.totalWageAmount)}</td>
+                      <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold' }}>{currencyFormatter.format(summary.totalSales)}</td>
+                      <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold', color: '#FF9500' }}>{currencyFormatter.format(summary.totalProductBack)}</td>
+                      <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold', color: '#e74c3c' }}>
+                        {currencyFormatter.format(attendanceData.reduce((sum, a) => sum + (a.daily_payment || 0), 0))}
+                      </td>
+                    </tr>
                   </tbody>
                 </table>
               </div>
@@ -585,12 +774,20 @@ const styles: { [key: string]: React.CSSProperties } = {
     minWidth: '100px',
     textAlign: 'center'
   },
+  compensationTypeLabel: {
+    backgroundColor: '#f0f7ff',
+    padding: '10px 16px',
+    borderRadius: '8px',
+    fontSize: '13px',
+    color: '#007AFF',
+    marginBottom: '16px'
+  },
   summarySection: {
     marginBottom: '24px'
   },
   summaryGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
     gap: '12px',
     marginBottom: '12px'
   },
@@ -666,6 +863,10 @@ const styles: { [key: string]: React.CSSProperties } = {
   tableRowEven: {
     borderBottom: '1px solid #f0f0f0',
     backgroundColor: '#fafafa'
+  },
+  tableTotal: {
+    borderTop: '2px solid #333',
+    backgroundColor: '#f0f0f0'
   },
   td: {
     padding: '10px 8px',
