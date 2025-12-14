@@ -27,8 +27,14 @@ interface DashboardData {
 
 interface DailySalesData {
   day: string
+  date: string
   sales: number
   cumulative: number
+  cashSales: number
+  cardSales: number
+  otherSales: number
+  orderCount: number
+  groups: number
 }
 
 interface OrderItemExport {
@@ -365,16 +371,35 @@ export default function Home() {
         const dateStr = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-${dayStr}`
 
         // order_date（営業日）でフィルタリング
-        const daySales = typedMonthlyOrders.filter(order => {
-          return order.order_date?.startsWith(dateStr)
-        }).reduce((sum, order) => sum + (Number(order.total_incl_tax) || 0), 0)
+        const dayOrders = typedMonthlyOrders.filter(order => order.order_date?.startsWith(dateStr))
+
+        const daySales = dayOrders.reduce((sum, order) => sum + (Number(order.total_incl_tax) || 0), 0)
+        const dayCashSales = dayOrders.reduce((sum, order) => {
+          const payment = Array.isArray(order.payments) ? order.payments[0] : order.payments
+          return sum + (Number(payment?.cash_amount) || 0) - (Number(payment?.change_amount) || 0)
+        }, 0)
+        const dayCardSales = dayOrders.reduce((sum, order) => {
+          const payment = Array.isArray(order.payments) ? order.payments[0] : order.payments
+          return sum + (Number(payment?.credit_card_amount) || 0)
+        }, 0)
+        const dayOtherSales = dayOrders.reduce((sum, order) => {
+          const payment = Array.isArray(order.payments) ? order.payments[0] : order.payments
+          return sum + (Number(payment?.other_payment_amount) || 0)
+        }, 0)
+        const dayUniqueTables = new Set(dayOrders.map(o => o.table_number).filter(Boolean))
 
         cumulative += daySales
 
         dailyData.push({
           day: `${day}日`,
+          date: dateStr,
           sales: daySales,
           cumulative: cumulative,
+          cashSales: dayCashSales,
+          cardSales: dayCardSales,
+          otherSales: dayOtherSales,
+          orderCount: dayOrders.length,
+          groups: dayUniqueTables.size,
         })
       }
 
@@ -495,6 +520,86 @@ export default function Home() {
             <Line yAxisId="right" type="monotone" dataKey="cumulative" stroke="#2ecc71" strokeWidth={2} name="累計(累積)" />
           </ComposedChart>
         </ResponsiveContainer>
+      </div>
+
+      {/* 日別データテーブル */}
+      <div style={styles.chartContainer}>
+        <h3 style={styles.chartTitle}>日別データ</h3>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={styles.dailyTable}>
+            <thead>
+              <tr style={styles.dailyTableHeader}>
+                <th style={styles.dailyTableTh}>日付</th>
+                <th style={{ ...styles.dailyTableTh, textAlign: 'right' }}>総売上</th>
+                <th style={{ ...styles.dailyTableTh, textAlign: 'right' }}>会計数</th>
+                <th style={{ ...styles.dailyTableTh, textAlign: 'right' }}>組数</th>
+                <th style={{ ...styles.dailyTableTh, textAlign: 'right' }}>現金</th>
+                <th style={{ ...styles.dailyTableTh, textAlign: 'right' }}>カード</th>
+                <th style={{ ...styles.dailyTableTh, textAlign: 'right' }}>売掛</th>
+                <th style={{ ...styles.dailyTableTh, textAlign: 'right' }}>客単価</th>
+              </tr>
+            </thead>
+            <tbody>
+              {dailySales.map((day, index) => (
+                <tr
+                  key={index}
+                  style={{
+                    ...styles.dailyTableRow,
+                    backgroundColor: day.orderCount === 0 ? '#f9f9f9' : 'white'
+                  }}
+                >
+                  <td style={styles.dailyTableTd}>{day.day}</td>
+                  <td style={{ ...styles.dailyTableTd, textAlign: 'right' }}>
+                    ¥{day.sales.toLocaleString()}
+                  </td>
+                  <td style={{ ...styles.dailyTableTd, textAlign: 'right' }}>
+                    {day.orderCount}
+                  </td>
+                  <td style={{ ...styles.dailyTableTd, textAlign: 'right' }}>
+                    {day.groups}
+                  </td>
+                  <td style={{ ...styles.dailyTableTd, textAlign: 'right' }}>
+                    ¥{day.cashSales.toLocaleString()}
+                  </td>
+                  <td style={{ ...styles.dailyTableTd, textAlign: 'right' }}>
+                    ¥{day.cardSales.toLocaleString()}
+                  </td>
+                  <td style={{ ...styles.dailyTableTd, textAlign: 'right' }}>
+                    ¥{day.otherSales.toLocaleString()}
+                  </td>
+                  <td style={{ ...styles.dailyTableTd, textAlign: 'right' }}>
+                    {day.orderCount > 0 ? `¥${Math.floor(day.sales / day.orderCount).toLocaleString()}` : '-'}
+                  </td>
+                </tr>
+              ))}
+              {/* 合計行 */}
+              <tr style={styles.dailyTableTotal}>
+                <td style={{ ...styles.dailyTableTd, fontWeight: 'bold' }}>合計</td>
+                <td style={{ ...styles.dailyTableTd, textAlign: 'right', fontWeight: 'bold' }}>
+                  ¥{data.monthlySales.toLocaleString()}
+                </td>
+                <td style={{ ...styles.dailyTableTd, textAlign: 'right', fontWeight: 'bold' }}>
+                  {data.monthlyCustomers}
+                </td>
+                <td style={{ ...styles.dailyTableTd, textAlign: 'right', fontWeight: 'bold' }}>
+                  {data.monthlyGroups}
+                </td>
+                <td style={{ ...styles.dailyTableTd, textAlign: 'right', fontWeight: 'bold' }}>
+                  ¥{data.monthlyCashSales.toLocaleString()}
+                </td>
+                <td style={{ ...styles.dailyTableTd, textAlign: 'right', fontWeight: 'bold' }}>
+                  ¥{data.monthlyCardSales.toLocaleString()}
+                </td>
+                <td style={{ ...styles.dailyTableTd, textAlign: 'right', fontWeight: 'bold' }}>
+                  ¥{data.monthlyCredit.toLocaleString()}
+                </td>
+                <td style={{ ...styles.dailyTableTd, textAlign: 'right', fontWeight: 'bold' }}>
+                  ¥{avgMonthly.toLocaleString()}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* エクスポートモーダル */}
@@ -681,5 +786,31 @@ const styles: { [key: string]: React.CSSProperties } = {
     border: 'none',
     borderRadius: '8px',
     cursor: 'pointer',
+  },
+  dailyTable: {
+    width: '100%',
+    borderCollapse: 'collapse',
+    fontSize: '14px',
+  },
+  dailyTableHeader: {
+    borderBottom: '2px solid #ddd',
+  },
+  dailyTableTh: {
+    padding: '12px 10px',
+    textAlign: 'left',
+    fontWeight: '600',
+    color: '#2c3e50',
+    whiteSpace: 'nowrap',
+  },
+  dailyTableRow: {
+    borderBottom: '1px solid #eee',
+  },
+  dailyTableTd: {
+    padding: '10px',
+    whiteSpace: 'nowrap',
+  },
+  dailyTableTotal: {
+    borderTop: '2px solid #333',
+    backgroundColor: '#f0f0f0',
   },
 }
