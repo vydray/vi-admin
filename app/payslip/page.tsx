@@ -914,21 +914,34 @@ export default function PayslipPage() {
   }
 
   return (
-    <div style={styles.container}>
-      {/* Header */}
-      <div style={styles.header}>
-        <h1 style={styles.title}>報酬明細</h1>
-        <div style={styles.controls}>
-          <select
-            value={selectedCastId || ''}
-            onChange={(e) => setSelectedCastId(Number(e.target.value))}
-            style={styles.select}
-          >
-            {casts.map(cast => (
-              <option key={cast.id} value={cast.id}>{cast.name}</option>
-            ))}
-          </select>
+    <div style={styles.pageWrapper}>
+      {/* 左側：キャスト一覧 */}
+      <div style={styles.castListPanel}>
+        <div style={styles.castListHeader}>キャスト</div>
+        <div style={styles.castList}>
+          {casts.map(cast => (
+            <div
+              key={cast.id}
+              onClick={() => setSelectedCastId(cast.id)}
+              style={{
+                ...styles.castListItem,
+                ...(selectedCastId === cast.id ? styles.castListItemActive : {})
+              }}
+            >
+              {cast.name}
+            </div>
+          ))}
+        </div>
+      </div>
 
+      {/* 右側：コンテンツ */}
+      <div style={styles.container}>
+        {/* Header */}
+        <div style={styles.header}>
+          <div>
+            <h1 style={styles.title}>{selectedCast?.name || ''}</h1>
+            <div style={styles.subtitle}>報酬明細</div>
+          </div>
           <div style={styles.monthSelector}>
             <button
               onClick={() => setSelectedMonth(prev => subMonths(prev, 1))}
@@ -947,7 +960,6 @@ export default function PayslipPage() {
             </button>
           </div>
         </div>
-      </div>
 
       {loading ? (
         <LoadingSpinner />
@@ -1332,15 +1344,55 @@ export default function PayslipPage() {
           </>
         )
       })()}
+      </div>
     </div>
   )
 }
 
 const styles: { [key: string]: React.CSSProperties } = {
+  pageWrapper: {
+    display: 'flex',
+    minHeight: '100vh'
+  },
+  castListPanel: {
+    width: '180px',
+    backgroundColor: '#f8f9fa',
+    borderRight: '1px solid #e5e5e7',
+    padding: '16px 0',
+    flexShrink: 0
+  },
+  castListHeader: {
+    padding: '8px 16px',
+    fontSize: '12px',
+    fontWeight: '600',
+    color: '#86868b',
+    textTransform: 'uppercase' as const
+  },
+  castList: {
+    display: 'flex',
+    flexDirection: 'column' as const
+  },
+  castListItem: {
+    padding: '10px 16px',
+    fontSize: '14px',
+    color: '#1d1d1f',
+    cursor: 'pointer',
+    transition: 'background-color 0.2s'
+  },
+  castListItemActive: {
+    backgroundColor: '#007AFF',
+    color: 'white',
+    fontWeight: '500'
+  },
   container: {
     padding: '20px',
-    maxWidth: '900px',
-    margin: '0 auto'
+    flex: 1,
+    maxWidth: '900px'
+  },
+  subtitle: {
+    fontSize: '14px',
+    color: '#86868b',
+    marginTop: '4px'
   },
   header: {
     display: 'flex',
