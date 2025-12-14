@@ -1,5 +1,6 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useStore } from '@/contexts/StoreContext'
@@ -9,43 +10,98 @@ interface MenuItem {
   name: string
   path: string
   icon: string
-  superAdminOnly?: boolean
-  isAction?: boolean
-  isSectionHeader?: boolean
 }
 
-const menuItems: MenuItem[] = [
-  // メイン機能
+interface MenuGroup {
+  name: string
+  icon: string
+  items: MenuItem[]
+  superAdminOnly?: boolean
+}
+
+// メイン項目（常に表示）
+const mainItems: MenuItem[] = [
   { name: 'ホーム', path: '/', icon: '🏠' },
   { name: 'キャスト売上', path: '/cast-sales', icon: '💰' },
   { name: '勤怠管理', path: '/attendance', icon: '⏰' },
   { name: 'シフト管理', path: '/shifts/manage', icon: '📅' },
   { name: '伝票管理', path: '/receipts', icon: '🧾' },
-  { name: 'カテゴリー管理', path: '/categories', icon: '📁' },
-  { name: '商品管理', path: '/products', icon: '🛍️' },
-  // 管理・設定
-  { name: 'キャスト管理', path: '/casts', icon: '👥' },
-  { name: '売上設定', path: '/sales-settings', icon: '📊' },
-  { name: 'バック率設定', path: '/cast-back-rates', icon: '💵' },
-  { name: '報酬計算設定', path: '/compensation-settings', icon: '💳' },
-  { name: '時給設定', path: '/wage-settings', icon: '⏱️' },
-  { name: 'キャスト別時給', path: '/cast-wage-settings', icon: '👤' },
-  { name: '店舗設定', path: '/store-settings', icon: '🏪' },
-  { name: '設定', path: '/settings', icon: '⚙️' },
-  // スーパーアドミン専用
-  { name: '管理者専用', path: '', icon: '🔐', isSectionHeader: true, superAdminOnly: true },
-  { name: '店舗管理', path: '/stores', icon: '🏢', superAdminOnly: true },
-  { name: 'LINE設定', path: '/line-settings', icon: '💬', superAdminOnly: true },
-  // ログアウト
-  { name: 'ログアウト', path: '/logout', icon: '🚪', isAction: true },
+]
+
+// グループ化されたメニュー
+const menuGroups: MenuGroup[] = [
+  {
+    name: '商品',
+    icon: '🛍️',
+    items: [
+      { name: 'カテゴリー管理', path: '/categories', icon: '📁' },
+      { name: '商品管理', path: '/products', icon: '🛍️' },
+    ]
+  },
+  {
+    name: 'キャスト',
+    icon: '👥',
+    items: [
+      { name: 'キャスト管理', path: '/casts', icon: '👥' },
+      { name: '報酬計算設定', path: '/compensation-settings', icon: '💳' },
+      { name: 'バック率設定', path: '/cast-back-rates', icon: '💵' },
+      { name: 'キャスト別時給', path: '/cast-wage-settings', icon: '👤' },
+    ]
+  },
+  {
+    name: '設定',
+    icon: '⚙️',
+    items: [
+      { name: '時給設定', path: '/wage-settings', icon: '⏱️' },
+      { name: '控除設定', path: '/deduction-settings', icon: '➖' },
+      { name: '売上設定', path: '/sales-settings', icon: '📊' },
+      { name: '店舗設定', path: '/store-settings', icon: '🏪' },
+      { name: '設定', path: '/settings', icon: '⚙️' },
+    ]
+  },
+  {
+    name: '管理者専用',
+    icon: '🔐',
+    superAdminOnly: true,
+    items: [
+      { name: '店舗管理', path: '/stores', icon: '🏢' },
+      { name: 'LINE設定', path: '/line-settings', icon: '💬' },
+    ]
+  },
 ]
 
 export default function Sidebar() {
   const pathname = usePathname()
   const { storeId, setStoreId, stores } = useStore()
   const { user, logout } = useAuth()
+  const [openGroups, setOpenGroups] = useState<Set<string>>(new Set())
 
   const isSuperAdmin = user?.role === 'super_admin'
+
+  // 現在のパスに応じてグループを自動展開
+  useEffect(() => {
+    menuGroups.forEach(group => {
+      if (group.items.some(item => pathname === item.path)) {
+        setOpenGroups(prev => new Set([...prev, group.name]))
+      }
+    })
+  }, [pathname])
+
+  const toggleGroup = (groupName: string) => {
+    setOpenGroups(prev => {
+      const next = new Set(prev)
+      if (next.has(groupName)) {
+        next.delete(groupName)
+      } else {
+        next.add(groupName)
+      }
+      return next
+    })
+  }
+
+  const isGroupActive = (group: MenuGroup) => {
+    return group.items.some(item => pathname === item.path)
+  }
 
   return (
     <div style={styles.sidebar}>
@@ -81,43 +137,9 @@ export default function Sidebar() {
       </div>
 
       <nav style={styles.nav}>
-        {menuItems
-          .filter((item) => !item.superAdminOnly || isSuperAdmin)
-          .map((item) => {
+        {/* メイン項目 */}
+        {mainItems.map((item) => {
           const isActive = pathname === item.path
-
-          // セクションヘッダーの場合
-          if (item.isSectionHeader) {
-            return (
-              <div key={item.name} style={styles.sectionHeader}>
-                <span style={styles.sectionIcon}>{item.icon}</span>
-                <span>{item.name}</span>
-              </div>
-            )
-          }
-
-          // ログアウトの場合はボタンとして表示
-          if (item.isAction && item.path === '/logout') {
-            return (
-              <button
-                key={item.path}
-                onClick={logout}
-                style={{
-                  ...styles.navItem,
-                  ...styles.logoutNavItem,
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  width: '100%',
-                  textAlign: 'left',
-                }}
-              >
-                <span style={styles.icon}>{item.icon}</span>
-                <span>{item.name}</span>
-              </button>
-            )
-          }
-
           return (
             <Link
               key={item.path}
@@ -132,6 +154,67 @@ export default function Sidebar() {
             </Link>
           )
         })}
+
+        {/* グループ化されたメニュー */}
+        {menuGroups
+          .filter(group => !group.superAdminOnly || isSuperAdmin)
+          .map((group) => {
+            const isOpen = openGroups.has(group.name)
+            const isActive = isGroupActive(group)
+
+            return (
+              <div key={group.name}>
+                <button
+                  onClick={() => toggleGroup(group.name)}
+                  style={{
+                    ...styles.groupHeader,
+                    ...(isActive ? styles.groupHeaderActive : {}),
+                  }}
+                >
+                  <div style={styles.groupHeaderLeft}>
+                    <span style={styles.icon}>{group.icon}</span>
+                    <span>{group.name}</span>
+                  </div>
+                  <span style={{
+                    ...styles.chevron,
+                    transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                  }}>
+                    ▼
+                  </span>
+                </button>
+
+                {isOpen && (
+                  <div style={styles.groupItems}>
+                    {group.items.map((item) => {
+                      const isItemActive = pathname === item.path
+                      return (
+                        <Link
+                          key={item.path}
+                          href={item.path}
+                          style={{
+                            ...styles.subNavItem,
+                            ...(isItemActive ? styles.subNavItemActive : {}),
+                          }}
+                        >
+                          <span style={styles.subIcon}>{item.icon}</span>
+                          <span>{item.name}</span>
+                        </Link>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+
+        {/* ログアウト */}
+        <button
+          onClick={logout}
+          style={styles.logoutButton}
+        >
+          <span style={styles.icon}>🚪</span>
+          <span>ログアウト</span>
+        </button>
       </nav>
     </div>
   )
@@ -193,49 +276,93 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   nav: {
     flex: 1,
-    padding: '20px 0',
+    padding: '15px 0',
     paddingBottom: '30px',
     display: 'flex',
     flexDirection: 'column',
-    gap: '5px',
+    gap: '2px',
     overflowY: 'auto',
   },
   navItem: {
     display: 'flex',
     alignItems: 'center',
-    padding: '15px 25px',
+    padding: '12px 20px',
     color: 'white',
     textDecoration: 'none',
-    transition: 'all 0.3s ease',
-    borderLeft: '4px solid transparent',
+    transition: 'all 0.2s ease',
+    borderLeft: '3px solid transparent',
   },
   navItemActive: {
     backgroundColor: 'rgba(255,255,255,0.1)',
-    borderLeft: '4px solid #3498db',
-  },
-  logoutNavItem: {
-    marginTop: '10px',
-    borderTop: '1px solid rgba(255,255,255,0.1)',
-    paddingTop: '20px',
+    borderLeft: '3px solid #3498db',
   },
   icon: {
-    marginRight: '12px',
-    fontSize: '20px',
+    marginRight: '10px',
+    fontSize: '18px',
   },
-  sectionHeader: {
+  groupHeader: {
     display: 'flex',
     alignItems: 'center',
-    padding: '12px 25px',
-    marginTop: '15px',
-    borderTop: '1px solid rgba(255,255,255,0.1)',
-    color: 'rgba(255,255,255,0.6)',
-    fontSize: '12px',
-    fontWeight: '600',
-    textTransform: 'uppercase' as const,
-    letterSpacing: '0.5px',
+    justifyContent: 'space-between',
+    width: '100%',
+    padding: '12px 20px',
+    marginTop: '8px',
+    color: 'rgba(255,255,255,0.8)',
+    backgroundColor: 'transparent',
+    border: 'none',
+    borderLeft: '3px solid transparent',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    textAlign: 'left',
+    fontSize: '14px',
   },
-  sectionIcon: {
+  groupHeaderActive: {
+    color: 'white',
+    borderLeft: '3px solid #3498db',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+  },
+  groupHeaderLeft: {
+    display: 'flex',
+    alignItems: 'center',
+  },
+  chevron: {
+    fontSize: '10px',
+    transition: 'transform 0.2s ease',
+    color: 'rgba(255,255,255,0.5)',
+  },
+  groupItems: {
+    backgroundColor: 'rgba(0,0,0,0.15)',
+  },
+  subNavItem: {
+    display: 'flex',
+    alignItems: 'center',
+    padding: '10px 20px 10px 35px',
+    color: 'rgba(255,255,255,0.8)',
+    textDecoration: 'none',
+    transition: 'all 0.2s ease',
+    fontSize: '13px',
+  },
+  subNavItemActive: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    color: 'white',
+  },
+  subIcon: {
     marginRight: '10px',
     fontSize: '14px',
+  },
+  logoutButton: {
+    display: 'flex',
+    alignItems: 'center',
+    padding: '12px 20px',
+    marginTop: 'auto',
+    color: 'rgba(255,255,255,0.7)',
+    backgroundColor: 'transparent',
+    border: 'none',
+    borderTop: '1px solid rgba(255,255,255,0.1)',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    textAlign: 'left',
+    fontSize: '14px',
+    width: '100%',
   },
 }
