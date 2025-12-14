@@ -5,8 +5,8 @@ import { supabase } from '@/lib/supabase'
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns'
 import { ja } from 'date-fns/locale'
 import { useStore } from '@/contexts/StoreContext'
-import { SalesSettings, CompensationType } from '@/types'
-import { calculateCastSalesByPublishedMethod, getDefaultSalesSettings } from '@/lib/salesCalculation'
+import { SalesSettings, CompensationType, CastBackRate } from '@/types'
+import { calculateCastSales, getDefaultSalesSettings } from '@/lib/salesCalculation'
 import LoadingSpinner from '@/components/LoadingSpinner'
 
 interface Cast {
@@ -109,6 +109,7 @@ export default function PayslipPage() {
   const [latePenaltyRules, setLatePenaltyRules] = useState<Map<number, LatePenaltyRule>>(new Map())
   const [compensationSettings, setCompensationSettings] = useState<CompensationSettings | null>(null)
   const [salesSettings, setSalesSettings] = useState<SalesSettings | null>(null)
+  const [backRates, setBackRates] = useState<CastBackRate[]>([])
   const [dailySalesData, setDailySalesData] = useState<Map<string, DailySalesData>>(new Map())
 
   const currencyFormatter = useMemo(() => {
@@ -191,6 +192,17 @@ export default function PayslipPage() {
     }
   }, [storeId])
 
+  // バック率設定を取得
+  const loadBackRates = useCallback(async () => {
+    const { data } = await supabase
+      .from('cast_back_rates')
+      .select('*')
+      .eq('store_id', storeId)
+      .eq('is_active', true)
+
+    setBackRates((data || []) as CastBackRate[])
+  }, [storeId])
+
   // キャストの報酬設定を取得
   const loadCompensationSettings = useCallback(async (castId: number) => {
     const { data } = await supabase
@@ -249,7 +261,7 @@ export default function PayslipPage() {
 
   // 注文データから売上を計算
   const calculateSalesFromOrders = useCallback(async (castId: number, month: Date) => {
-    if (!salesSettings) return
+    if (!salesSettings || backRates.length === 0) return
 
     const startDate = format(startOfMonth(month), 'yyyy-MM-dd')
     const endDate = format(endOfMonth(month), 'yyyy-MM-dd')
@@ -299,17 +311,14 @@ export default function PayslipPage() {
 
     // 日別に集計
     const dailyMap = new Map<string, DailySalesData>()
-    const taxRate = 0.1
-    const serviceRate = 0
 
-    // 各日の売上を計算
+    // 各日の売上を計算（backRatesを使用して商品バックも計算）
     ordersByDate.forEach((dayOrders, dateStr) => {
-      const daySalesResult = calculateCastSalesByPublishedMethod(
+      const daySalesResult = calculateCastSales(
         dayOrders,
         casts.map(c => ({ id: c.id, name: c.name })),
         salesSettings,
-        taxRate,
-        serviceRate
+        backRates
       )
 
       const dayCastResult = daySalesResult.find(r => r.cast_id === castId)
@@ -325,7 +334,7 @@ export default function PayslipPage() {
     })
 
     setDailySalesData(dailyMap)
-  }, [storeId, casts, salesSettings])
+  }, [storeId, casts, salesSettings, backRates])
 
   // 初期ロード
   useEffect(() => {
@@ -334,14 +343,15 @@ export default function PayslipPage() {
       await loadCasts()
       await loadDeductionSettings()
       await loadSalesSettings()
+      await loadBackRates()
       setLoading(false)
     }
     init()
-  }, [loadCasts, loadDeductionSettings, loadSalesSettings])
+  }, [loadCasts, loadDeductionSettings, loadSalesSettings, loadBackRates])
 
   // キャストまたは月が変わったらデータを再取得
   useEffect(() => {
-    if (selectedCastId && casts.length > 0 && salesSettings) {
+    if (selectedCastId && casts.length > 0 && salesSettings && backRates.length > 0) {
       const loadData = async () => {
         setLoading(true)
         await loadDailyStats(selectedCastId, selectedMonth)
@@ -352,7 +362,7 @@ export default function PayslipPage() {
       }
       loadData()
     }
-  }, [selectedCastId, selectedMonth, casts, salesSettings, loadDailyStats, loadAttendanceData, loadCompensationSettings, calculateSalesFromOrders])
+  }, [selectedCastId, selectedMonth, casts, salesSettings, backRates, loadDailyStats, loadAttendanceData, loadCompensationSettings, calculateSalesFromOrders])
 
   // アクティブな報酬形態を取得
   const activeCompensationType = useMemo((): CompensationType | null => {
