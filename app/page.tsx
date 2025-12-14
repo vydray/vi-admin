@@ -102,19 +102,41 @@ export default function Home() {
   const [selectedDayData, setSelectedDayData] = useState<DailySalesData | null>(null)
 
   // レジ金チェック
-  const [showCashCountModal, setShowCashCountModal] = useState(false)
-  const [cashCount, setCashCount] = useState({
-    yen10000: 0,
-    yen5000: 0,
-    yen1000: 0,
-    yen500: 0,
-    yen100: 0,
-    yen50: 0,
-    yen10: 0,
-    yen5: 0,
-    yen1: 0,
-  })
-  const [registerStartAmount, setRegisterStartAmount] = useState(50000) // レジ開始金額
+  const [cashCountData, setCashCountData] = useState<{
+    bill_10000: number
+    bill_5000: number
+    bill_2000: number
+    bill_1000: number
+    coin_500: number
+    coin_100: number
+    coin_50: number
+    coin_10: number
+    coin_5: number
+    coin_1: number
+    total_amount: number
+    register_amount: number
+    cash_collection: number
+  } | null>(null)
+  const [cashCountLoading, setCashCountLoading] = useState(false)
+
+  // レジ金データを取得
+  const fetchCashCount = async (date: string) => {
+    setCashCountLoading(true)
+    try {
+      const { data } = await supabase
+        .from('cash_counts')
+        .select('*')
+        .eq('store_id', storeId)
+        .eq('business_date', date)
+        .single()
+
+      setCashCountData(data)
+    } catch {
+      setCashCountData(null)
+    } finally {
+      setCashCountLoading(false)
+    }
+  }
 
   useEffect(() => {
     fetchDashboardData()
@@ -564,6 +586,7 @@ export default function Home() {
                   key={index}
                   onClick={() => {
                     setSelectedDayData(day)
+                    fetchCashCount(day.date)
                     setShowDailyReportModal(true)
                   }}
                   style={{
@@ -745,15 +768,61 @@ export default function Home() {
               </div>
 
               {/* レジ金チェック */}
-              <button
-                onClick={() => setShowCashCountModal(true)}
-                style={styles.cashCheckButton}
-              >
-                <div style={{ fontWeight: '600' }}>レジ金チェック</div>
-                <div style={{ fontSize: '12px', opacity: 0.7 }}>
-                  理論値: ¥{(selectedDayData.cashSales + registerStartAmount).toLocaleString()}
-                </div>
-              </button>
+              <div style={styles.dailyReportCard}>
+                <div style={styles.dailyReportCardHeader}>レジ金チェック</div>
+                {cashCountLoading ? (
+                  <div style={{ padding: '20px', textAlign: 'center', color: '#999' }}>読み込み中...</div>
+                ) : cashCountData ? (
+                  <>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
+                      <div style={{ fontSize: '12px', color: '#666' }}>
+                        <div>1万円: {cashCountData.bill_10000}枚</div>
+                        <div>5千円: {cashCountData.bill_5000}枚</div>
+                        <div>2千円: {cashCountData.bill_2000}枚</div>
+                        <div>千円: {cashCountData.bill_1000}枚</div>
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#666' }}>
+                        <div>500円: {cashCountData.coin_500}枚</div>
+                        <div>100円: {cashCountData.coin_100}枚</div>
+                        <div>50円: {cashCountData.coin_50}枚</div>
+                        <div>10円: {cashCountData.coin_10}枚</div>
+                        <div>5円: {cashCountData.coin_5}枚</div>
+                        <div>1円: {cashCountData.coin_1}枚</div>
+                      </div>
+                    </div>
+                    <div style={{ borderTop: '1px solid #eee', paddingTop: '12px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                        <span style={{ color: '#666', fontSize: '13px' }}>実際の現金</span>
+                        <span style={{ fontWeight: '600' }}>¥{cashCountData.total_amount.toLocaleString()}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                        <span style={{ color: '#666', fontSize: '13px' }}>釣銭準備金</span>
+                        <span style={{ fontWeight: '600' }}>¥{cashCountData.register_amount.toLocaleString()}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                        <span style={{ color: '#666', fontSize: '13px' }}>現金売上（理論値）</span>
+                        <span style={{ fontWeight: '600' }}>¥{selectedDayData.cashSales.toLocaleString()}</span>
+                      </div>
+                      <div style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        paddingTop: '8px',
+                        borderTop: '1px solid #eee',
+                        marginTop: '8px'
+                      }}>
+                        <span style={{ fontWeight: '600' }}>回収金</span>
+                        <span style={{ fontWeight: '700', fontSize: '18px', color: '#007AFF' }}>
+                          ¥{cashCountData.cash_collection.toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ padding: '20px', textAlign: 'center', color: '#999', fontSize: '13px' }}>
+                    レジ金データがありません
+                  </div>
+                )}
+              </div>
 
               {/* 月間累計 */}
               <div style={{ ...styles.dailyReportCard, backgroundColor: '#f0f7ff' }}>
@@ -780,150 +849,6 @@ export default function Home() {
         </>
       )}
 
-      {/* レジ金チェックモーダル */}
-      {showCashCountModal && selectedDayData && (
-        <>
-          <div
-            style={{ ...styles.modalOverlay, zIndex: 1002 }}
-            onClick={() => setShowCashCountModal(false)}
-          />
-          <div style={styles.cashCountModal}>
-            <div style={styles.cashCountHeader}>
-              <h3 style={styles.dailyReportTitle}>レジ金チェック</h3>
-              <button
-                onClick={() => setShowCashCountModal(false)}
-                style={styles.dailyReportCloseBtn}
-              >
-                ✕
-              </button>
-            </div>
-
-            <div style={styles.cashCountContent}>
-              {/* 理論値 */}
-              <div style={styles.cashCountSummary}>
-                <div style={styles.cashCountSummaryItem}>
-                  <div style={styles.dailyReportLabel}>理論値（レジ金あるべき額）</div>
-                  <div style={{ fontSize: '24px', fontWeight: '700', color: '#007AFF' }}>
-                    ¥{(selectedDayData.cashSales + registerStartAmount).toLocaleString()}
-                  </div>
-                  <div style={{ fontSize: '11px', color: '#86868b', marginTop: '4px' }}>
-                    現金売上 ¥{selectedDayData.cashSales.toLocaleString()} + 釣銭準備金 ¥{registerStartAmount.toLocaleString()}
-                  </div>
-                </div>
-              </div>
-
-              {/* 釣銭準備金設定 */}
-              <div style={styles.registerStartRow}>
-                <span>釣銭準備金</span>
-                <input
-                  type="number"
-                  value={registerStartAmount}
-                  onChange={(e) => setRegisterStartAmount(parseInt(e.target.value) || 0)}
-                  style={styles.registerStartInput}
-                />
-              </div>
-
-              {/* 金種入力 */}
-              <div style={styles.cashCountGrid}>
-                {[
-                  { key: 'yen10000', label: '1万円', value: 10000 },
-                  { key: 'yen5000', label: '5千円', value: 5000 },
-                  { key: 'yen1000', label: '千円', value: 1000 },
-                  { key: 'yen500', label: '500円', value: 500 },
-                  { key: 'yen100', label: '100円', value: 100 },
-                  { key: 'yen50', label: '50円', value: 50 },
-                  { key: 'yen10', label: '10円', value: 10 },
-                  { key: 'yen5', label: '5円', value: 5 },
-                  { key: 'yen1', label: '1円', value: 1 },
-                ].map((denom) => (
-                  <div key={denom.key} style={styles.cashCountRow}>
-                    <span style={styles.cashCountLabel}>{denom.label}</span>
-                    <input
-                      type="number"
-                      min="0"
-                      value={cashCount[denom.key as keyof typeof cashCount]}
-                      onChange={(e) => setCashCount({
-                        ...cashCount,
-                        [denom.key]: parseInt(e.target.value) || 0
-                      })}
-                      style={styles.cashCountInput}
-                    />
-                    <span style={styles.cashCountAmount}>
-                      ¥{(cashCount[denom.key as keyof typeof cashCount] * denom.value).toLocaleString()}
-                    </span>
-                  </div>
-                ))}
-              </div>
-
-              {/* 実際の現金合計 */}
-              <div style={styles.cashCountSummary}>
-                <div style={styles.cashCountSummaryItem}>
-                  <div style={styles.dailyReportLabel}>実際の現金合計</div>
-                  <div style={{ fontSize: '24px', fontWeight: '700', color: '#34C759' }}>
-                    ¥{(
-                      cashCount.yen10000 * 10000 +
-                      cashCount.yen5000 * 5000 +
-                      cashCount.yen1000 * 1000 +
-                      cashCount.yen500 * 500 +
-                      cashCount.yen100 * 100 +
-                      cashCount.yen50 * 50 +
-                      cashCount.yen10 * 10 +
-                      cashCount.yen5 * 5 +
-                      cashCount.yen1
-                    ).toLocaleString()}
-                  </div>
-                </div>
-              </div>
-
-              {/* 差額 */}
-              {(() => {
-                const actualTotal =
-                  cashCount.yen10000 * 10000 +
-                  cashCount.yen5000 * 5000 +
-                  cashCount.yen1000 * 1000 +
-                  cashCount.yen500 * 500 +
-                  cashCount.yen100 * 100 +
-                  cashCount.yen50 * 50 +
-                  cashCount.yen10 * 10 +
-                  cashCount.yen5 * 5 +
-                  cashCount.yen1
-                const expectedTotal = selectedDayData.cashSales + registerStartAmount
-                const diff = actualTotal - expectedTotal
-                return (
-                  <div style={{
-                    ...styles.cashCountSummary,
-                    backgroundColor: diff === 0 ? '#d4edda' : diff > 0 ? '#fff3cd' : '#f8d7da'
-                  }}>
-                    <div style={styles.cashCountSummaryItem}>
-                      <div style={styles.dailyReportLabel}>差額</div>
-                      <div style={{
-                        fontSize: '28px',
-                        fontWeight: '700',
-                        color: diff === 0 ? '#28a745' : diff > 0 ? '#856404' : '#dc3545'
-                      }}>
-                        {diff >= 0 ? '+' : ''}¥{diff.toLocaleString()}
-                      </div>
-                      <div style={{ fontSize: '12px', marginTop: '4px', color: '#666' }}>
-                        {diff === 0 ? '一致しています' : diff > 0 ? '過剰です' : '不足しています'}
-                      </div>
-                    </div>
-                  </div>
-                )
-              })()}
-            </div>
-
-            <div style={styles.dailyReportFooter}>
-              <Button
-                onClick={() => setShowCashCountModal(false)}
-                variant="secondary"
-                fullWidth
-              >
-                閉じる
-              </Button>
-            </div>
-          </div>
-        </>
-      )}
     </div>
   )
 }
@@ -1185,102 +1110,5 @@ const styles: { [key: string]: React.CSSProperties } = {
   dailyReportFooter: {
     padding: '16px 20px',
     borderTop: '1px solid #e5e5e5',
-  },
-  cashCheckButton: {
-    width: '100%',
-    padding: '14px 16px',
-    background: '#f8f9fa',
-    border: '1px solid #e0e0e0',
-    borderRadius: '12px',
-    cursor: 'pointer',
-    color: '#333',
-    textAlign: 'left',
-  },
-  cashCountModal: {
-    position: 'fixed',
-    top: '50%',
-    left: '50%',
-    transform: 'translate(-50%, -50%)',
-    backgroundColor: '#f5f5f7',
-    borderRadius: '16px',
-    boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
-    zIndex: 1003,
-    width: '90%',
-    maxWidth: '450px',
-    maxHeight: '90vh',
-    display: 'flex',
-    flexDirection: 'column',
-  },
-  cashCountHeader: {
-    padding: '16px 20px',
-    background: '#5c6bc0',
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  cashCountContent: {
-    padding: '16px',
-    overflowY: 'auto',
-    flex: 1,
-  },
-  cashCountSummary: {
-    background: 'white',
-    borderRadius: '12px',
-    padding: '16px',
-    marginBottom: '12px',
-    textAlign: 'center',
-  },
-  cashCountSummaryItem: {
-    padding: '8px 0',
-  },
-  registerStartRow: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    background: 'white',
-    borderRadius: '12px',
-    padding: '12px 16px',
-    marginBottom: '12px',
-    fontSize: '14px',
-  },
-  registerStartInput: {
-    width: '120px',
-    padding: '8px 12px',
-    border: '1px solid #ddd',
-    borderRadius: '8px',
-    fontSize: '14px',
-    textAlign: 'right',
-  },
-  cashCountGrid: {
-    background: 'white',
-    borderRadius: '12px',
-    padding: '12px',
-    marginBottom: '12px',
-  },
-  cashCountRow: {
-    display: 'flex',
-    alignItems: 'center',
-    padding: '8px 4px',
-    borderBottom: '1px solid #f0f0f0',
-  },
-  cashCountLabel: {
-    width: '60px',
-    fontSize: '14px',
-    fontWeight: '500',
-  },
-  cashCountInput: {
-    width: '80px',
-    padding: '6px 10px',
-    border: '1px solid #ddd',
-    borderRadius: '6px',
-    fontSize: '14px',
-    textAlign: 'center',
-    marginRight: '12px',
-  },
-  cashCountAmount: {
-    flex: 1,
-    textAlign: 'right',
-    fontSize: '14px',
-    color: '#666',
   },
 }
