@@ -97,6 +97,10 @@ export default function Home() {
   const [showExportModal, setShowExportModal] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
 
+  // 業務日報モーダル
+  const [showDailyReportModal, setShowDailyReportModal] = useState(false)
+  const [selectedDayData, setSelectedDayData] = useState<DailySalesData | null>(null)
+
   useEffect(() => {
     fetchDashboardData()
   }, [storeId, selectedYear, selectedMonth])
@@ -543,10 +547,18 @@ export default function Home() {
               {dailySales.map((day, index) => (
                 <tr
                   key={index}
+                  onClick={() => {
+                    setSelectedDayData(day)
+                    setShowDailyReportModal(true)
+                  }}
                   style={{
                     ...styles.dailyTableRow,
-                    backgroundColor: day.orderCount === 0 ? '#f9f9f9' : 'white'
+                    backgroundColor: day.orderCount === 0 ? '#f9f9f9' : 'white',
+                    cursor: 'pointer',
+                    transition: 'background-color 0.2s'
                   }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f0f7ff'}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = day.orderCount === 0 ? '#f9f9f9' : 'white'}
                 >
                   <td style={styles.dailyTableTd}>{day.day}</td>
                   <td style={{ ...styles.dailyTableTd, textAlign: 'right' }}>
@@ -637,6 +649,107 @@ export default function Home() {
             >
               キャンセル
             </Button>
+          </div>
+        </>
+      )}
+
+      {/* 業務日報モーダル */}
+      {showDailyReportModal && selectedDayData && (
+        <>
+          <div
+            style={styles.modalOverlay}
+            onClick={() => setShowDailyReportModal(false)}
+          />
+          <div style={styles.dailyReportModal}>
+            <div style={styles.dailyReportHeader}>
+              <h3 style={styles.dailyReportTitle}>
+                {selectedYear}年{selectedMonth}月{selectedDayData.day} 業務日報
+              </h3>
+              <button
+                onClick={() => setShowDailyReportModal(false)}
+                style={styles.dailyReportCloseBtn}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={styles.dailyReportContent}>
+              {/* 売上サマリー */}
+              <div style={styles.dailyReportCard}>
+                <div style={styles.dailyReportCardHeader}>総売上</div>
+                <div style={styles.dailyReportBigValue}>
+                  ¥{selectedDayData.sales.toLocaleString()}
+                </div>
+                <div style={styles.dailyReportGrid3}>
+                  <div style={styles.dailyReportGridItem}>
+                    <div style={styles.dailyReportLabel}>現金</div>
+                    <div style={{ ...styles.dailyReportValue, color: '#34C759' }}>
+                      ¥{selectedDayData.cashSales.toLocaleString()}
+                    </div>
+                  </div>
+                  <div style={styles.dailyReportGridItem}>
+                    <div style={styles.dailyReportLabel}>カード</div>
+                    <div style={{ ...styles.dailyReportValue, color: '#007AFF' }}>
+                      ¥{selectedDayData.cardSales.toLocaleString()}
+                    </div>
+                  </div>
+                  <div style={styles.dailyReportGridItem}>
+                    <div style={styles.dailyReportLabel}>売掛</div>
+                    <div style={{ ...styles.dailyReportValue, color: '#FF9500' }}>
+                      ¥{selectedDayData.otherSales.toLocaleString()}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 来店情報 */}
+              <div style={styles.dailyReportGrid2}>
+                <div style={styles.dailyReportCard}>
+                  <div style={styles.dailyReportLabel}>会計数</div>
+                  <div style={styles.dailyReportBigValue}>
+                    {selectedDayData.orderCount}<span style={{ fontSize: '16px' }}>件</span>
+                  </div>
+                </div>
+                <div style={styles.dailyReportCard}>
+                  <div style={styles.dailyReportLabel}>組数</div>
+                  <div style={styles.dailyReportBigValue}>
+                    {selectedDayData.groups}<span style={{ fontSize: '16px' }}>組</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* 客単価 */}
+              <div style={styles.dailyReportCard}>
+                <div style={styles.dailyReportLabel}>客単価</div>
+                <div style={styles.dailyReportBigValue}>
+                  {selectedDayData.orderCount > 0
+                    ? `¥${Math.floor(selectedDayData.sales / selectedDayData.orderCount).toLocaleString()}`
+                    : '-'
+                  }
+                </div>
+              </div>
+
+              {/* 月間累計 */}
+              <div style={{ ...styles.dailyReportCard, backgroundColor: '#f0f7ff' }}>
+                <div style={styles.dailyReportLabel}>月間累計売上</div>
+                <div style={{ ...styles.dailyReportBigValue, color: '#3498db' }}>
+                  ¥{selectedDayData.cumulative.toLocaleString()}
+                </div>
+                <div style={{ fontSize: '12px', color: '#666', marginTop: '8px' }}>
+                  月間目標達成率: {data.monthlySales > 0 ? ((selectedDayData.cumulative / data.monthlySales) * 100).toFixed(1) : 0}%（当日時点）
+                </div>
+              </div>
+            </div>
+
+            <div style={styles.dailyReportFooter}>
+              <Button
+                onClick={() => setShowDailyReportModal(false)}
+                variant="secondary"
+                fullWidth
+              >
+                閉じる
+              </Button>
+            </div>
           </div>
         </>
       )}
@@ -812,5 +925,94 @@ const styles: { [key: string]: React.CSSProperties } = {
   dailyTableTotal: {
     borderTop: '2px solid #333',
     backgroundColor: '#f0f0f0',
+  },
+  dailyReportModal: {
+    position: 'fixed',
+    top: '50%',
+    left: '50%',
+    transform: 'translate(-50%, -50%)',
+    backgroundColor: '#f5f5f7',
+    borderRadius: '16px',
+    boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
+    zIndex: 1001,
+    width: '90%',
+    maxWidth: '500px',
+    maxHeight: '90vh',
+    overflow: 'hidden',
+  },
+  dailyReportHeader: {
+    padding: '20px 24px',
+    background: '#007AFF',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  dailyReportTitle: {
+    margin: 0,
+    fontSize: '18px',
+    fontWeight: '600',
+    color: 'white',
+  },
+  dailyReportCloseBtn: {
+    background: 'rgba(255,255,255,0.2)',
+    border: 'none',
+    fontSize: '16px',
+    cursor: 'pointer',
+    padding: '8px 12px',
+    borderRadius: '8px',
+    color: 'white',
+  },
+  dailyReportContent: {
+    padding: '20px',
+    overflowY: 'auto',
+    maxHeight: 'calc(90vh - 160px)',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '16px',
+  },
+  dailyReportCard: {
+    background: 'white',
+    borderRadius: '12px',
+    padding: '16px',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+  },
+  dailyReportCardHeader: {
+    fontSize: '13px',
+    color: '#86868b',
+    marginBottom: '4px',
+  },
+  dailyReportBigValue: {
+    fontSize: '28px',
+    fontWeight: '700',
+    color: '#1d1d1f',
+  },
+  dailyReportGrid3: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr 1fr',
+    gap: '12px',
+    marginTop: '12px',
+    borderTop: '1px solid #f0f0f0',
+    paddingTop: '12px',
+  },
+  dailyReportGrid2: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: '16px',
+  },
+  dailyReportGridItem: {
+    textAlign: 'center',
+  },
+  dailyReportLabel: {
+    fontSize: '12px',
+    color: '#86868b',
+    marginBottom: '4px',
+  },
+  dailyReportValue: {
+    fontSize: '17px',
+    fontWeight: '600',
+  },
+  dailyReportFooter: {
+    padding: '16px 20px',
+    borderTop: '1px solid #e5e5e5',
   },
 }
