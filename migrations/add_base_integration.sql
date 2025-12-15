@@ -236,16 +236,20 @@ ALTER TABLE base_products ENABLE ROW LEVEL SECURITY;
 ALTER TABLE base_variations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE base_orders ENABLE ROW LEVEL SECURITY;
 
--- 認証済みユーザーに全操作を許可
+-- 認証済みユーザーに全操作を許可（既存ポリシーがあれば削除してから作成）
+DROP POLICY IF EXISTS "Allow all for authenticated users" ON base_settings;
 CREATE POLICY "Allow all for authenticated users" ON base_settings
     FOR ALL TO authenticated USING (true) WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Allow all for authenticated users" ON base_products;
 CREATE POLICY "Allow all for authenticated users" ON base_products
     FOR ALL TO authenticated USING (true) WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Allow all for authenticated users" ON base_variations;
 CREATE POLICY "Allow all for authenticated users" ON base_variations
     FOR ALL TO authenticated USING (true) WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Allow all for authenticated users" ON base_orders;
 CREATE POLICY "Allow all for authenticated users" ON base_orders
     FOR ALL TO authenticated USING (true) WITH CHECK (true);
 
