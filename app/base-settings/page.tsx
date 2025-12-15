@@ -12,6 +12,7 @@ interface CastBasic {
   id: number
   name: string
   is_active: boolean
+  show_in_pos: boolean
 }
 
 // CSVパース結果
@@ -70,6 +71,7 @@ export default function BaseSettingsPage() {
   const [tokenExpiresAt, setTokenExpiresAt] = useState<string | null>(null)
   const [savingCredentials, setSavingCredentials] = useState(false)
   const [fetchingOrders, setFetchingOrders] = useState(false)
+  const [syncingProductId, setSyncingProductId] = useState<number | null>(null)
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -119,12 +121,13 @@ export default function BaseSettingsPage() {
       if (localError) throw localError
       setLocalProducts(localData || [])
 
-      // キャスト一覧
+      // キャスト一覧（POS表示ONのみ）
       const { data: castsData, error: castsError } = await supabase
         .from('casts')
-        .select('id, name, is_active')
+        .select('id, name, is_active, show_in_pos')
         .eq('store_id', storeId)
         .eq('is_active', true)
+        .eq('show_in_pos', true)
         .order('display_order', { ascending: true, nullsFirst: false })
         .order('name')
 
@@ -627,6 +630,46 @@ export default function BaseSettingsPage() {
     }
   }
 
+  // バリエーションをBASEに同期
+  const handleSyncVariations = async (productId: number) => {
+    if (!isConnected) {
+      toast.error('BASEとの連携が必要です')
+      return
+    }
+
+    setSyncingProductId(productId)
+    try {
+      const response = await fetch('/api/base/sync-variations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ store_id: storeId, base_product_id: productId }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to sync variations')
+      }
+
+      if (data.errors > 0) {
+        toast.error(`追加${data.added}件、削除${data.deleted}件、エラー${data.errors}件`)
+      } else if (data.added === 0 && data.deleted === 0) {
+        toast.success('同期するバリエーションがありません')
+      } else {
+        const messages: string[] = []
+        if (data.added > 0) messages.push(`${data.added}件追加`)
+        if (data.deleted > 0) messages.push(`${data.deleted}件削除`)
+        toast.success(`BASEに同期しました（${messages.join('、')}）`)
+      }
+      loadData()
+    } catch (err) {
+      console.error('同期エラー:', err)
+      toast.error(err instanceof Error ? err.message : 'BASEへの同期に失敗しました')
+    } finally {
+      setSyncingProductId(null)
+    }
+  }
+
   // バリエーション追加モーダル内のキャスト一覧
   const availableCasts = selectedProductId
     ? casts.filter(cast => {
@@ -704,6 +747,9 @@ export default function BaseSettingsPage() {
           <p style={styles.hint}>
             BASEで販売する商品を登録し、キャストをバリエーションとして追加してください。
             商品名は「商品管理」に登録されている商品名と完全一致させてください。
+            <br />
+            <strong>POS表示がONのキャストのみ</strong>がバリエーションとして追加されます。
+            POS表示をOFFにすると、同期時にBASEからも削除されます。
           </p>
 
           {baseProducts.length === 0 ? (
@@ -736,6 +782,18 @@ export default function BaseSettingsPage() {
                       >
                         + キャスト追加
                       </button>
+                      {isConnected && product.variations.length > 0 && (
+                        <button
+                          onClick={() => handleSyncVariations(product.id)}
+                          style={{
+                            ...styles.syncBtn,
+                            ...(product.variations.some(v => !v.is_synced) ? {} : styles.syncBtnSecondary),
+                          }}
+                          disabled={syncingProductId === product.id}
+                        >
+                          {syncingProductId === product.id ? '同期中...' : 'BASEに同期'}
+                        </button>
+                      )}
                       <button
                         onClick={() => handleDeleteProduct(product.id)}
                         style={styles.deleteBtn}
@@ -985,6 +1043,7 @@ export default function BaseSettingsPage() {
                 <ul style={styles.helpList}>
                   <li>✓ ショップ情報を見る</li>
                   <li>✓ 商品情報を見る</li>
+                  <li>✓ 商品情報を書き込む（バリエーション同期用）</li>
                   <li>✓ 注文情報を見る</li>
                 </ul>
                 <p style={{ fontSize: '12px', color: '#64748b', marginTop: '8px' }}>
@@ -1405,6 +1464,20 @@ const styles: { [key: string]: React.CSSProperties } = {
     cursor: 'pointer',
     fontSize: '12px',
     fontWeight: '500',
+  },
+  syncBtn: {
+    padding: '6px 12px',
+    border: '1px solid #10b981',
+    borderRadius: '6px',
+    backgroundColor: '#10b981',
+    color: 'white',
+    cursor: 'pointer',
+    fontSize: '12px',
+    fontWeight: '500',
+  },
+  syncBtnSecondary: {
+    backgroundColor: 'white',
+    color: '#10b981',
   },
   deleteBtn: {
     padding: '6px 12px',

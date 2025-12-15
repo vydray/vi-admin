@@ -75,7 +75,7 @@ export function getAuthorizationUrl(
     response_type: 'code',
     client_id: clientId,
     redirect_uri: redirectUri,
-    scope: 'read_users read_items read_orders',
+    scope: 'read_users read_items read_orders write_items',
     state,
   })
   return `${BASE_API_URL}/1/oauth/authorize?${params.toString()}`
@@ -189,6 +189,92 @@ export async function fetchItems(
   if (!response.ok) {
     const error = await response.text()
     throw new Error(`Fetch items failed: ${error}`)
+  }
+
+  return response.json()
+}
+
+/**
+ * 商品詳細を取得
+ */
+export async function fetchItem(
+  accessToken: string,
+  itemId: number
+): Promise<{ item: BaseItem }> {
+  const response = await fetch(`${BASE_API_URL}/1/items/detail/${itemId}`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  })
+
+  if (!response.ok) {
+    const error = await response.text()
+    throw new Error(`Fetch item failed: ${error}`)
+  }
+
+  return response.json()
+}
+
+/**
+ * 商品にバリエーションを追加
+ * https://docs.thebase.in/api/items/add_variation
+ */
+export async function addItemVariation(
+  accessToken: string,
+  itemId: number,
+  variationName: string,
+  stock?: number
+): Promise<{ item: BaseItem }> {
+  const params = new URLSearchParams({
+    item_id: itemId.toString(),
+    variation: variationName,
+  })
+  if (stock !== undefined) {
+    params.set('variation_stock', stock.toString())
+  }
+
+  const response = await fetch(`${BASE_API_URL}/1/items/add_variation`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: params,
+  })
+
+  if (!response.ok) {
+    const error = await response.text()
+    throw new Error(`Add variation failed: ${error}`)
+  }
+
+  return response.json()
+}
+
+/**
+ * 商品のバリエーションを削除
+ */
+export async function deleteItemVariation(
+  accessToken: string,
+  itemId: number,
+  variationId: number
+): Promise<{ item: BaseItem }> {
+  const params = new URLSearchParams({
+    item_id: itemId.toString(),
+    variation_id: variationId.toString(),
+  })
+
+  const response = await fetch(`${BASE_API_URL}/1/items/delete_variation`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: params,
+  })
+
+  if (!response.ok) {
+    const error = await response.text()
+    throw new Error(`Delete variation failed: ${error}`)
   }
 
   return response.json()
