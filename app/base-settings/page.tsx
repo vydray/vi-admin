@@ -136,7 +136,7 @@ export default function BaseSettingsPage() {
         .from('sales_settings')
         .select('base_cutoff_hour, base_cutoff_enabled, include_base_in_item_sales, include_base_in_receipt_sales')
         .eq('store_id', storeId)
-        .single()
+        .maybeSingle()
 
       if (salesSettingsData) {
         setCutoffHour(salesSettingsData.base_cutoff_hour ?? 6)
@@ -150,7 +150,7 @@ export default function BaseSettingsPage() {
         .from('base_settings')
         .select('client_id, client_secret, access_token, token_expires_at')
         .eq('store_id', storeId)
-        .single()
+        .maybeSingle()
 
       if (baseSettingsData) {
         setClientId(baseSettingsData.client_id || '')
@@ -564,7 +564,7 @@ export default function BaseSettingsPage() {
         .from('base_settings')
         .select('id')
         .eq('store_id', storeId)
-        .single()
+        .maybeSingle()
 
       if (existing) {
         // 更新
