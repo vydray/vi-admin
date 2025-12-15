@@ -268,16 +268,24 @@ export default function PayslipPage() {
   }, [storeId])
 
   // キャストの報酬設定を取得
-  const loadCompensationSettings = useCallback(async (castId: number) => {
-    const { data } = await supabase
+  const loadCompensationSettings = useCallback(async (castId: number): Promise<CompensationSettings | null> => {
+    const { data, error } = await supabase
       .from('compensation_settings')
       .select('enabled_deduction_ids, compensation_types, payment_selection_method, selected_compensation_type_id')
       .eq('cast_id', castId)
       .eq('store_id', storeId)
+      .limit(1)
       .single()
 
-    setCompensationSettings(data || null)
-    compensationSettingsRef.current = data || null
+    // PGRST116 = 行が見つからない場合のエラーは無視
+    if (error && error.code !== 'PGRST116') {
+      console.error('報酬設定取得エラー:', error.message, error.code)
+    }
+
+    const settings = error ? null : data
+    setCompensationSettings(settings)
+    compensationSettingsRef.current = settings
+    return settings
   }, [storeId])
 
   // 日別統計データを取得
@@ -391,11 +399,11 @@ export default function PayslipPage() {
   }, [backRates])
 
   // 注文データから売上を計算
-  const calculateSalesFromOrders = useCallback(async (castId: number, month: Date) => {
+  const calculateSalesFromOrders = useCallback(async (castId: number, month: Date, compSettings: CompensationSettings | null) => {
     if (!salesSettings) return
 
-    // refから最新のcompensationSettingsを取得（依存配列に含めないため）
-    const currentCompSettings = compensationSettingsRef.current
+    // 引数から報酬設定を使用（確実に最新の設定を使う）
+    const currentCompSettings = compSettings
 
     // 有効な報酬形態を取得
     const types = (currentCompSettings?.compensation_types || []).filter(t => t.is_enabled)
@@ -752,8 +760,9 @@ export default function PayslipPage() {
       const loadData = async () => {
         await loadDailyStats(selectedCastId, selectedMonth)
         await loadAttendanceData(selectedCastId, selectedMonth)
-        await loadCompensationSettings(selectedCastId)
-        await calculateSalesFromOrders(selectedCastId, selectedMonth)
+        // 報酬設定をロードし、その結果を直接売上計算に渡す
+        const compSettings = await loadCompensationSettings(selectedCastId)
+        await calculateSalesFromOrders(selectedCastId, selectedMonth, compSettings)
       }
       loadData()
     }
