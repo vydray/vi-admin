@@ -744,25 +744,28 @@ export default function ShiftManage() {
   // 時間選択肢をメモ化
   const timeOptions = useMemo(() => generateTimeOptions(), [])
 
-  // CSVエクスポート
+  // CSVエクスポート（横持ちフォーマット）
   const exportCSV = () => {
     const days = getDaysInPeriod()
     const rows: string[] = []
 
-    // ヘッダー
-    rows.push('日付,キャスト名,開始時間,終了時間')
+    // ヘッダー: 名前, 12月1日, 12月2日, ...
+    const headerRow = ['名前', ...days.map(date => format(date, 'M月d日'))]
+    rows.push(headerRow.join(','))
 
-    // データ行
-    days.forEach(date => {
-      const dateStr = format(date, 'yyyy-MM-dd')
-      const dayShifts = shifts.filter(s => s.date === dateStr)
-
-      dayShifts.forEach(shift => {
-        const cast = casts.find(c => c.id === shift.cast_id)
-        if (cast) {
-          rows.push(`${dateStr},${cast.name},${shift.start_time.slice(0, 5)},${shift.end_time.slice(0, 5)}`)
+    // 各キャストの行
+    casts.forEach(cast => {
+      const cells = [cast.name]
+      days.forEach(date => {
+        const dateStr = format(date, 'yyyy-MM-dd')
+        const shift = shifts.find(s => s.cast_id === cast.id && s.date === dateStr)
+        if (shift) {
+          cells.push(`${shift.start_time.slice(0, 5)}~${shift.end_time.slice(0, 5)}`)
+        } else {
+          cells.push('')
         }
       })
+      rows.push(cells.join(','))
     })
 
     // BOMを追加してExcelでの文字化けを防ぐ
@@ -780,7 +783,7 @@ export default function ShiftManage() {
     toast.success('CSVをエクスポートしました')
   }
 
-  // CSVインポート
+  // CSVインポート（横持ちフォーマット）
   const importCSV = async (file: File) => {
     const text = await file.text()
     const lines = text.split('\n').filter(line => line.trim())
@@ -790,20 +793,36 @@ export default function ShiftManage() {
       return
     }
 
-    // ヘッダーをスキップ
-    const dataLines = lines.slice(1)
+    // ヘッダーから日付を取得
+    const headerCells = lines[0].split(',').map(h => h.trim())
+    const days = getDaysInPeriod()
+
+    // ヘッダーの日付とマッチング（M月d日 → yyyy-MM-dd）
+    const dateMap: Map<number, string> = new Map()
+    headerCells.forEach((header, index) => {
+      if (index === 0) return // 「名前」列をスキップ
+      const match = header.match(/(\d+)月(\d+)日/)
+      if (match) {
+        const month = parseInt(match[1])
+        const day = parseInt(match[2])
+        // 現在選択中の年月から日付を特定
+        const targetDate = days.find(d => d.getMonth() + 1 === month && d.getDate() === day)
+        if (targetDate) {
+          dateMap.set(index, format(targetDate, 'yyyy-MM-dd'))
+        }
+      }
+    })
 
     let successCount = 0
     let errorCount = 0
     const errors: string[] = []
 
-    for (const line of dataLines) {
-      const parts = line.split(',').map(p => p.trim())
-      if (parts.length < 4) continue
+    // データ行を処理
+    for (let i = 1; i < lines.length; i++) {
+      const cells = lines[i].split(',').map(c => c.trim())
+      if (cells.length < 2) continue
 
-      const [dateStr, castName, startTime, endTime] = parts
-
-      // キャストを検索
+      const castName = cells[0]
       const cast = casts.find(c => c.name === castName)
       if (!cast) {
         errors.push(`キャスト「${castName}」が見つかりません`)
@@ -811,53 +830,73 @@ export default function ShiftManage() {
         continue
       }
 
-      // 日付の検証
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-        errors.push(`日付形式が不正: ${dateStr}`)
-        errorCount++
-        continue
-      }
+      // 各日付のシフトを処理
+      for (let j = 1; j < cells.length; j++) {
+        const dateStr = dateMap.get(j)
+        if (!dateStr) continue
 
-      // 時間を正規化（24:00 → 00:00:00）
-      const normalizeTime = (time: string) => {
-        const [hours, minutes] = time.split(':').map(Number)
-        const normalizedHours = hours >= 24 ? hours - 24 : hours
-        return `${normalizedHours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`
-      }
+        const timeValue = cells[j]
 
-      try {
-        // 既存シフトを確認
-        const existingShift = shifts.find(s => s.cast_id === cast.id && s.date === dateStr)
-
-        if (existingShift) {
-          // 更新
-          const { error } = await supabase
-            .from('shifts')
-            .update({
-              start_time: normalizeTime(startTime),
-              end_time: normalizeTime(endTime)
-            })
-            .eq('id', existingShift.id)
-
-          if (error) throw error
-        } else {
-          // 新規作成
-          const { error } = await supabase
-            .from('shifts')
-            .insert({
-              cast_id: cast.id,
-              date: dateStr,
-              start_time: normalizeTime(startTime),
-              end_time: normalizeTime(endTime),
-              store_id: storeId
-            })
-
-          if (error) throw error
+        // 時間を正規化（24:00 → 00:00:00）
+        const normalizeTime = (time: string) => {
+          const [hours, minutes] = time.split(':').map(Number)
+          const normalizedHours = hours >= 24 ? hours - 24 : hours
+          return `${normalizedHours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`
         }
-        successCount++
-      } catch (err) {
-        errors.push(`${dateStr} ${castName}: 保存エラー`)
-        errorCount++
+
+        try {
+          const existingShift = shifts.find(s => s.cast_id === cast.id && s.date === dateStr)
+
+          if (!timeValue) {
+            // 空欄の場合、既存シフトがあれば削除
+            if (existingShift) {
+              const { error } = await supabase
+                .from('shifts')
+                .delete()
+                .eq('id', existingShift.id)
+              if (error) throw error
+              successCount++
+            }
+          } else {
+            // 時間形式をパース（18:00~24:00 または 18:00-24:00）
+            const timeMatch = timeValue.match(/(\d{1,2}:\d{2})[~\-](\d{1,2}:\d{2})/)
+            if (!timeMatch) {
+              errors.push(`${castName} ${dateStr}: 時間形式が不正`)
+              errorCount++
+              continue
+            }
+
+            const [, startTime, endTime] = timeMatch
+
+            if (existingShift) {
+              // 更新
+              const { error } = await supabase
+                .from('shifts')
+                .update({
+                  start_time: normalizeTime(startTime),
+                  end_time: normalizeTime(endTime)
+                })
+                .eq('id', existingShift.id)
+              if (error) throw error
+            } else {
+              // 新規作成
+              const { error } = await supabase
+                .from('shifts')
+                .insert({
+                  cast_id: cast.id,
+                  date: dateStr,
+                  start_time: normalizeTime(startTime),
+                  end_time: normalizeTime(endTime),
+                  store_id: storeId
+                })
+              if (error) throw error
+            }
+            successCount++
+          }
+        } catch (err) {
+          errors.push(`${castName} ${dateStr}: 保存エラー`)
+          errorCount++
+        }
       }
     }
 
