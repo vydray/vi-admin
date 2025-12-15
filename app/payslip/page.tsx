@@ -92,6 +92,51 @@ interface DeductionResult {
   detail?: string
 }
 
+interface SavedPayslip {
+  id: number
+  cast_id: number
+  store_id: number
+  year_month: string
+  status: 'draft' | 'finalized'
+  work_days: number
+  total_hours: number
+  average_hourly_wage: number
+  hourly_income: number
+  sales_back: number
+  product_back: number
+  gross_total: number
+  total_deduction: number
+  net_payment: number
+  daily_details: Array<{
+    date: string
+    hours: number
+    hourly_wage: number
+    hourly_income: number
+    sales: number
+    back: number
+    daily_payment: number
+  }>
+  product_back_details: Array<{
+    product_name: string
+    category: string | null
+    sales_type: 'self' | 'help'
+    quantity: number
+    subtotal: number
+    back_ratio: number
+    back_amount: number
+  }>
+  deduction_details: Array<{
+    name: string
+    type: string
+    count?: number
+    percentage?: number
+    amount: number
+  }>
+  finalized_at: string | null
+  created_at: string
+  updated_at: string
+}
+
 interface DailySalesData {
   date: string
   selfSales: number
@@ -142,6 +187,9 @@ export default function PayslipPage() {
   const [salesSettings, setSalesSettings] = useState<SalesSettings | null>(null)
   const [backRates, setBackRates] = useState<CastBackRate[]>([])
   const [dailySalesData, setDailySalesData] = useState<Map<string, DailySalesData>>(new Map())
+  const [savedPayslip, setSavedPayslip] = useState<SavedPayslip | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [recalculating, setRecalculating] = useState(false)
   const [selectedDayDetail, setSelectedDayDetail] = useState<string | null>(null) // 日別詳細モーダル用
   const [showDailyWageModal, setShowDailyWageModal] = useState(false) // 日別時給モーダル用
   const [selectedProductDetail, setSelectedProductDetail] = useState<{
@@ -331,6 +379,26 @@ export default function PayslipPage() {
 
     setAttendanceData(data || [])
   }, [storeId, casts])
+
+  // 保存済み報酬明細を取得
+  const loadPayslip = useCallback(async (castId: number, month: Date) => {
+    const yearMonth = format(month, 'yyyy-MM')
+
+    const { data, error } = await supabase
+      .from('payslips')
+      .select('*')
+      .eq('cast_id', castId)
+      .eq('store_id', storeId)
+      .eq('year_month', yearMonth)
+      .limit(1)
+      .single()
+
+    if (error && error.code !== 'PGRST116') {
+      console.error('報酬明細取得エラー:', error)
+    }
+
+    setSavedPayslip(error ? null : data as SavedPayslip)
+  }, [storeId])
 
   // RoundingMethodをposition+typeに変換
   const parseRoundingMethod = useCallback((method: string): { position: number; type: 'floor' | 'ceil' | 'round' | 'none' } => {
@@ -763,10 +831,12 @@ export default function PayslipPage() {
         // 報酬設定をロードし、その結果を直接売上計算に渡す
         const compSettings = await loadCompensationSettings(selectedCastId)
         await calculateSalesFromOrders(selectedCastId, selectedMonth, compSettings)
+        // 保存済み報酬明細を取得
+        await loadPayslip(selectedCastId, selectedMonth)
       }
       loadData()
     }
-  }, [initialized, selectedCastId, selectedMonth, casts, salesSettings, loadDailyStats, loadAttendanceData, loadCompensationSettings, calculateSalesFromOrders])
+  }, [initialized, selectedCastId, selectedMonth, casts, salesSettings, loadDailyStats, loadAttendanceData, loadCompensationSettings, calculateSalesFromOrders, loadPayslip])
 
   // 伝票詳細を取得
   useEffect(() => {
@@ -1006,6 +1076,185 @@ export default function PayslipPage() {
 
   const selectedCast = casts.find(c => c.id === selectedCastId)
 
+  // 商品バック詳細データを生成
+  const productBackDetailsData = useMemo(() => {
+    const allItems: ProductBackItem[] = []
+    dailySalesData.forEach(day => {
+      allItems.push(...day.items)
+    })
+
+    // 商品名+カテゴリ+売上タイプでグループ化
+    const grouped = new Map<string, {
+      product_name: string
+      category: string | null
+      sales_type: 'self' | 'help'
+      quantity: number
+      subtotal: number
+      back_ratio: number
+      back_amount: number
+    }>()
+
+    allItems.forEach(item => {
+      const key = `${item.category || ''}:${item.productName}:${item.salesType}`
+      const existing = grouped.get(key)
+      if (existing) {
+        existing.quantity += item.quantity
+        existing.subtotal += item.subtotal
+        existing.back_amount += item.backAmount
+      } else {
+        grouped.set(key, {
+          product_name: item.productName,
+          category: item.category,
+          sales_type: item.salesType,
+          quantity: item.quantity,
+          subtotal: item.subtotal,
+          back_ratio: item.backRatio,
+          back_amount: item.backAmount,
+        })
+      }
+    })
+
+    return Array.from(grouped.values()).sort((a, b) => b.back_amount - a.back_amount)
+  }, [dailySalesData])
+
+  // 報酬明細を保存
+  const savePayslip = useCallback(async (finalize: boolean = false) => {
+    if (!selectedCastId) return
+
+    setSaving(true)
+    try {
+      const yearMonth = format(selectedMonth, 'yyyy-MM')
+      const workDays = dailyDetails.filter(d => d.workHours > 0).length
+      const averageHourlyWage = summary.totalWorkHours > 0
+        ? Math.round(summary.totalWageAmount / summary.totalWorkHours)
+        : 0
+
+      // 日別詳細データ
+      const dailyDetailsData = dailyDetails
+        .filter(d => d.workHours > 0)
+        .map(d => ({
+          date: d.date,
+          hours: d.workHours,
+          hourly_wage: d.workHours > 0 ? Math.round(d.wageAmount / d.workHours) : 0,
+          hourly_income: d.wageAmount,
+          sales: d.sales,
+          back: d.productBack,
+          daily_payment: d.dailyPayment
+        }))
+
+      // 控除詳細データ
+      const deductionDetailsData = deductions.map(d => ({
+        name: d.name,
+        type: d.detail?.includes('%') ? 'percentage' : 'other',
+        count: d.count,
+        percentage: d.detail?.includes('%') ? parseFloat(d.detail) : undefined,
+        amount: d.amount
+      }))
+
+      const payslipData = {
+        cast_id: selectedCastId,
+        store_id: storeId,
+        year_month: yearMonth,
+        status: finalize ? 'finalized' : 'draft',
+        work_days: workDays,
+        total_hours: summary.totalWorkHours,
+        average_hourly_wage: averageHourlyWage,
+        hourly_income: summary.totalWageAmount,
+        sales_back: summary.salesBack,
+        product_back: summary.totalProductBack,
+        gross_total: summary.grossEarnings,
+        total_deduction: totalDeduction,
+        net_payment: netEarnings,
+        daily_details: dailyDetailsData,
+        product_back_details: productBackDetailsData,
+        deduction_details: deductionDetailsData,
+        finalized_at: finalize ? new Date().toISOString() : null
+      }
+
+      const { data, error } = await supabase
+        .from('payslips')
+        .upsert(payslipData, {
+          onConflict: 'cast_id,store_id,year_month'
+        })
+        .select()
+        .single()
+
+      if (error) {
+        console.error('報酬明細保存エラー:', error)
+        alert('保存に失敗しました')
+      } else {
+        setSavedPayslip(data as SavedPayslip)
+        alert(finalize ? '月次確定しました' : '保存しました')
+      }
+    } finally {
+      setSaving(false)
+    }
+  }, [selectedCastId, selectedMonth, storeId, summary, dailyDetails, deductions, totalDeduction, netEarnings, productBackDetailsData])
+
+  // 確定解除
+  const unfinalizePayslip = useCallback(async () => {
+    if (!savedPayslip) return
+
+    setSaving(true)
+    try {
+      const { data, error } = await supabase
+        .from('payslips')
+        .update({
+          status: 'draft',
+          finalized_at: null
+        })
+        .eq('id', savedPayslip.id)
+        .select()
+        .single()
+
+      if (error) {
+        console.error('確定解除エラー:', error)
+        alert('確定解除に失敗しました')
+      } else {
+        setSavedPayslip(data as SavedPayslip)
+        alert('確定解除しました')
+      }
+    } finally {
+      setSaving(false)
+    }
+  }, [savedPayslip])
+
+  // 全キャスト再計算（当月のみ）
+  const recalculateAll = useCallback(async () => {
+    // 当月以外は再計算不可
+    const now = new Date()
+    const isCurrentMonth = selectedMonth.getFullYear() === now.getFullYear() && selectedMonth.getMonth() === now.getMonth()
+    if (!isCurrentMonth) {
+      alert('過去の月は再計算できません')
+      return
+    }
+
+    setRecalculating(true)
+    try {
+      const res = await fetch('/api/payslips/recalculate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ store_id: storeId })
+      })
+
+      const result = await res.json()
+      if (result.success) {
+        alert(`${result.processed}件の報酬明細を保存しました`)
+        // 現在のキャストのデータを再読み込み
+        if (selectedCastId) {
+          await loadPayslip(selectedCastId, selectedMonth)
+        }
+      } else {
+        alert('再計算に失敗しました: ' + (result.error || ''))
+      }
+    } catch (err) {
+      console.error('再計算エラー:', err)
+      alert('再計算に失敗しました')
+    } finally {
+      setRecalculating(false)
+    }
+  }, [storeId, selectedCastId, selectedMonth, loadPayslip])
+
   if (loading && casts.length === 0) {
     return (
       <div style={styles.container}>
@@ -1092,6 +1341,96 @@ export default function PayslipPage() {
             >
               ▶
             </button>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            {/* ステータス表示 */}
+            {savedPayslip ? (
+              <span style={{
+                padding: '6px 12px',
+                borderRadius: '20px',
+                fontSize: '12px',
+                fontWeight: '600',
+                backgroundColor: savedPayslip.status === 'finalized' ? '#dcfce7' : '#dbeafe',
+                color: savedPayslip.status === 'finalized' ? '#166534' : '#1d4ed8'
+              }}>
+                {savedPayslip.status === 'finalized' ? '確定済み' : '自動保存済み'}
+              </span>
+            ) : (
+              <span style={{
+                padding: '6px 12px',
+                borderRadius: '20px',
+                fontSize: '12px',
+                fontWeight: '500',
+                backgroundColor: '#f3f4f6',
+                color: '#6b7280'
+              }}>
+                10分ごとに自動保存
+              </span>
+            )}
+            {/* 全キャスト再計算ボタン */}
+            <button
+              onClick={recalculateAll}
+              disabled={recalculating}
+              style={{
+                padding: '8px 16px',
+                backgroundColor: '#3b82f6',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '8px',
+                fontSize: '14px',
+                fontWeight: '500',
+                cursor: recalculating ? 'wait' : 'pointer',
+                opacity: recalculating ? 0.7 : 1
+              }}
+            >
+              {recalculating ? '計算中...' : '全キャスト再計算'}
+            </button>
+            {/* 月次確定 / 確定解除ボタン */}
+            {savedPayslip?.status === 'finalized' ? (
+              <button
+                onClick={() => {
+                  if (confirm('確定解除すると再編集可能になります。よろしいですか？')) {
+                    unfinalizePayslip()
+                  }
+                }}
+                disabled={saving}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#dc2626',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  cursor: 'pointer',
+                  opacity: saving ? 0.7 : 1
+                }}
+              >
+                確定解除
+              </button>
+            ) : (
+              <button
+                onClick={() => {
+                  if (confirm('月次確定すると編集できなくなります。よろしいですか？')) {
+                    savePayslip(true)
+                  }
+                }}
+                disabled={saving}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#059669',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  cursor: 'pointer',
+                  opacity: saving ? 0.7 : 1
+                }}
+              >
+                月次確定
+              </button>
+            )}
           </div>
         </div>
 

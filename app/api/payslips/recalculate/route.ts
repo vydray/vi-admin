@@ -1,0 +1,495 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
+import { format, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns'
+
+// Service Role Key でRLSをバイパス
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
+
+// Cron認証（Vercel Cron用）
+function validateCronAuth(request: NextRequest): boolean {
+  const authHeader = request.headers.get('authorization')
+  if (authHeader === `Bearer ${process.env.CRON_SECRET}`) {
+    return true
+  }
+  return false
+}
+
+interface Cast {
+  id: number
+  name: string
+}
+
+interface DailyStats {
+  date: string
+  work_hours: number
+  wage_amount: number
+}
+
+interface AttendanceData {
+  date: string
+  daily_payment: number
+  late_minutes: number
+  status_id: string | null
+}
+
+interface DeductionType {
+  id: number
+  name: string
+  type: string
+  percentage: number | null
+  default_amount: number
+  attendance_status_id: string | null
+  penalty_amount: number
+}
+
+interface LatePenaltyRule {
+  deduction_type_id: number
+  calculation_type: 'fixed' | 'tiered' | 'cumulative'
+  fixed_amount: number
+  interval_minutes: number
+  amount_per_interval: number
+  max_amount: number
+}
+
+interface CompensationSettings {
+  enabled_deduction_ids: number[]
+  compensation_types: {
+    id: string
+    name: string
+    commission_rate: number
+    use_sliding_rate: boolean
+    sliding_rates: { min: number; max: number; rate: number }[] | null
+  }[] | null
+  payment_selection_method: 'highest' | 'specific'
+  selected_compensation_type_id: string | null
+}
+
+interface DailySalesData {
+  date: string
+  totalSales: number
+  productBack: number
+  items: Array<{
+    product_name: string
+    category: string | null
+    sales_type: 'self' | 'help'
+    quantity: number
+    subtotal: number
+    back_ratio: number
+    back_amount: number
+  }>
+}
+
+// 遅刻罰金を計算
+function calculateLatePenalty(lateMinutes: number, rule: LatePenaltyRule): number {
+  if (lateMinutes <= 0) return 0
+
+  switch (rule.calculation_type) {
+    case 'fixed':
+      return rule.fixed_amount
+    case 'cumulative':
+      const intervals = Math.ceil(lateMinutes / rule.interval_minutes)
+      const penalty = intervals * rule.amount_per_interval
+      return rule.max_amount > 0 ? Math.min(penalty, rule.max_amount) : penalty
+    default:
+      return 0
+  }
+}
+
+// 単一キャストの報酬明細を計算・保存
+async function calculatePayslipForCast(
+  storeId: number,
+  cast: Cast,
+  month: Date
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const yearMonth = format(month, 'yyyy-MM')
+    const startDate = format(startOfMonth(month), 'yyyy-MM-dd')
+    const endDate = format(endOfMonth(month), 'yyyy-MM-dd')
+
+    // 確定済みかチェック
+    const { data: existingPayslip } = await supabaseAdmin
+      .from('payslips')
+      .select('id, status')
+      .eq('cast_id', cast.id)
+      .eq('store_id', storeId)
+      .eq('year_month', yearMonth)
+      .single()
+
+    if (existingPayslip?.status === 'finalized') {
+      return { success: true } // 確定済みはスキップ
+    }
+
+    // 日別統計データを取得
+    const { data: dailyStats } = await supabaseAdmin
+      .from('cast_daily_stats')
+      .select('date, work_hours, wage_amount')
+      .eq('cast_id', cast.id)
+      .eq('store_id', storeId)
+      .gte('date', startDate)
+      .lte('date', endDate)
+
+    // 勤怠データを取得
+    const { data: attendanceData } = await supabaseAdmin
+      .from('attendance')
+      .select('date, daily_payment, late_minutes, status_id')
+      .eq('store_id', storeId)
+      .eq('cast_name', cast.name)
+      .gte('date', startDate)
+      .lte('date', endDate)
+
+    // 控除設定を取得
+    const { data: deductionTypes } = await supabaseAdmin
+      .from('deduction_types')
+      .select('*')
+      .eq('store_id', storeId)
+      .eq('is_active', true)
+
+    // 遅刻罰金ルールを取得
+    const lateDeductionIds = (deductionTypes || [])
+      .filter(d => d.type === 'penalty_late')
+      .map(d => d.id)
+
+    let latePenaltyRules: LatePenaltyRule[] = []
+    if (lateDeductionIds.length > 0) {
+      const { data: rules } = await supabaseAdmin
+        .from('late_penalty_rules')
+        .select('*')
+        .in('deduction_type_id', lateDeductionIds)
+      latePenaltyRules = rules || []
+    }
+
+    // 報酬設定を取得
+    const { data: compensationSettings } = await supabaseAdmin
+      .from('compensation_settings')
+      .select('enabled_deduction_ids, compensation_types, payment_selection_method, selected_compensation_type_id')
+      .eq('cast_id', cast.id)
+      .eq('store_id', storeId)
+      .single()
+
+    // 日別売上データを取得（cast_daily_itemsから）
+    const { data: dailyItems } = await supabaseAdmin
+      .from('cast_daily_items')
+      .select('date, category, product_name, quantity, subtotal, back_amount, is_self')
+      .eq('cast_id', cast.id)
+      .eq('store_id', storeId)
+      .gte('date', startDate)
+      .lte('date', endDate)
+
+    // 日別売上を集計
+    const dailySalesMap = new Map<string, DailySalesData>()
+    for (const item of dailyItems || []) {
+      if (!dailySalesMap.has(item.date)) {
+        dailySalesMap.set(item.date, {
+          date: item.date,
+          totalSales: 0,
+          productBack: 0,
+          items: []
+        })
+      }
+      const dayData = dailySalesMap.get(item.date)!
+      dayData.totalSales += item.subtotal
+      dayData.productBack += item.back_amount
+      dayData.items.push({
+        product_name: item.product_name,
+        category: item.category,
+        sales_type: item.is_self ? 'self' : 'help',
+        quantity: item.quantity,
+        subtotal: item.subtotal,
+        back_ratio: item.subtotal > 0 ? Math.round(item.back_amount / item.subtotal * 100) : 0,
+        back_amount: item.back_amount
+      })
+    }
+
+    // ===== 集計計算 =====
+    const totalWorkHours = (dailyStats || []).reduce((sum, d) => sum + (d.work_hours || 0), 0)
+    const totalWageAmount = (dailyStats || []).reduce((sum, d) => sum + (d.wage_amount || 0), 0)
+
+    let totalSales = 0
+    let totalProductBack = 0
+    dailySalesMap.forEach(day => {
+      totalSales += day.totalSales
+      totalProductBack += day.productBack
+    })
+
+    // 売上バック計算
+    let salesBack = 0
+    const enabledDeductionIds = compensationSettings?.enabled_deduction_ids || []
+    const compensationTypes = compensationSettings?.compensation_types || []
+
+    // アクティブな報酬タイプを取得
+    type CompType = {
+      id: string
+      name: string
+      commission_rate: number
+      use_sliding_rate: boolean
+      sliding_rates: { min: number; max: number; rate: number }[] | null
+    }
+    let activeCompType: CompType | undefined = undefined
+    if (compensationSettings?.payment_selection_method === 'specific' && compensationSettings?.selected_compensation_type_id) {
+      activeCompType = compensationTypes.find(t => t.id === compensationSettings.selected_compensation_type_id)
+    } else if (compensationTypes.length > 0) {
+      // highest: 最高額を計算して選択（簡易版：最初のタイプを使用）
+      activeCompType = compensationTypes[0]
+    }
+
+    if (activeCompType) {
+      if (activeCompType.use_sliding_rate && activeCompType.sliding_rates) {
+        const rate = activeCompType.sliding_rates.find(
+          r => totalSales >= r.min && (r.max === 0 || totalSales <= r.max)
+        )
+        if (rate) {
+          salesBack = Math.round(totalSales * rate.rate / 100)
+        }
+      } else {
+        salesBack = Math.round(totalSales * activeCompType.commission_rate / 100)
+      }
+    }
+
+    const grossEarnings = totalWageAmount + salesBack + totalProductBack
+
+    // ===== 控除計算 =====
+    const deductions: Array<{ name: string; type: string; count?: number; percentage?: number; amount: number }> = []
+
+    // 日払い合計
+    const totalDailyPayment = (attendanceData || []).reduce((sum, a) => sum + (a.daily_payment || 0), 0)
+    if (totalDailyPayment > 0) {
+      deductions.push({
+        name: '日払い',
+        type: 'daily_payment',
+        count: (attendanceData || []).filter(a => (a.daily_payment || 0) > 0).length,
+        amount: totalDailyPayment
+      })
+    }
+
+    // 遅刻罰金
+    const lateDeduction = (deductionTypes || []).find(
+      d => d.type === 'penalty_late' && (enabledDeductionIds.length === 0 || enabledDeductionIds.includes(d.id))
+    )
+    if (lateDeduction) {
+      const rule = latePenaltyRules.find(r => r.deduction_type_id === lateDeduction.id)
+      if (rule) {
+        let totalLatePenalty = 0
+        let lateCount = 0
+        for (const a of attendanceData || []) {
+          if (a.late_minutes > 0) {
+            totalLatePenalty += calculateLatePenalty(a.late_minutes, rule)
+            lateCount++
+          }
+        }
+        if (totalLatePenalty > 0) {
+          deductions.push({
+            name: lateDeduction.name || '遅刻罰金',
+            type: 'penalty_late',
+            count: lateCount,
+            amount: totalLatePenalty
+          })
+        }
+      }
+    }
+
+    // ステータス連動罰金
+    for (const d of (deductionTypes || []).filter(d => d.type === 'penalty_status' && d.attendance_status_id)) {
+      if (enabledDeductionIds.length > 0 && !enabledDeductionIds.includes(d.id)) continue
+      const count = (attendanceData || []).filter(a => a.status_id === d.attendance_status_id).length
+      if (count > 0) {
+        deductions.push({
+          name: d.name,
+          type: 'penalty_status',
+          count,
+          amount: d.penalty_amount * count
+        })
+      }
+    }
+
+    // 固定控除
+    for (const d of (deductionTypes || []).filter(d => d.type === 'fixed')) {
+      if (enabledDeductionIds.length > 0 && !enabledDeductionIds.includes(d.id)) continue
+      if (d.default_amount > 0) {
+        deductions.push({
+          name: d.name,
+          type: 'fixed',
+          amount: d.default_amount
+        })
+      }
+    }
+
+    // 源泉徴収
+    for (const d of (deductionTypes || []).filter(d => d.type === 'percentage' && d.percentage)) {
+      if (enabledDeductionIds.length > 0 && !enabledDeductionIds.includes(d.id)) continue
+      const amount = Math.round(grossEarnings * (d.percentage || 0) / 100)
+      if (amount > 0) {
+        deductions.push({
+          name: d.name,
+          type: 'percentage',
+          percentage: d.percentage || 0,
+          amount
+        })
+      }
+    }
+
+    const totalDeduction = deductions.reduce((sum, d) => sum + d.amount, 0)
+    const netEarnings = grossEarnings - totalDeduction
+
+    // 日別詳細
+    const days = eachDayOfInterval({ start: startOfMonth(month), end: endOfMonth(month) })
+    const dailyDetails = days
+      .map(day => {
+        const dateStr = format(day, 'yyyy-MM-dd')
+        const stats = (dailyStats || []).find(s => s.date === dateStr)
+        const attendance = (attendanceData || []).find(a => a.date === dateStr)
+        const sales = dailySalesMap.get(dateStr)
+        return {
+          date: dateStr,
+          hours: stats?.work_hours || 0,
+          hourly_wage: stats?.work_hours ? Math.round((stats?.wage_amount || 0) / stats.work_hours) : 0,
+          hourly_income: stats?.wage_amount || 0,
+          sales: sales?.totalSales || 0,
+          back: sales?.productBack || 0,
+          daily_payment: attendance?.daily_payment || 0
+        }
+      })
+      .filter(d => d.hours > 0)
+
+    // 商品バック詳細
+    const productBackDetails: Array<{
+      product_name: string
+      category: string | null
+      sales_type: 'self' | 'help'
+      quantity: number
+      subtotal: number
+      back_ratio: number
+      back_amount: number
+    }> = []
+
+    const grouped = new Map<string, typeof productBackDetails[0]>()
+    dailySalesMap.forEach(day => {
+      for (const item of day.items) {
+        const key = `${item.category || ''}:${item.product_name}:${item.sales_type}`
+        const existing = grouped.get(key)
+        if (existing) {
+          existing.quantity += item.quantity
+          existing.subtotal += item.subtotal
+          existing.back_amount += item.back_amount
+        } else {
+          grouped.set(key, { ...item })
+        }
+      }
+    })
+    grouped.forEach(item => productBackDetails.push(item))
+
+    const workDays = dailyDetails.filter(d => d.hours > 0).length
+    const averageHourlyWage = totalWorkHours > 0 ? Math.round(totalWageAmount / totalWorkHours) : 0
+
+    // 保存
+    const payslipData = {
+      cast_id: cast.id,
+      store_id: storeId,
+      year_month: yearMonth,
+      status: 'draft',
+      work_days: workDays,
+      total_hours: Math.round(totalWorkHours * 100) / 100,
+      average_hourly_wage: averageHourlyWage,
+      hourly_income: totalWageAmount,
+      sales_back: salesBack,
+      product_back: totalProductBack,
+      gross_total: grossEarnings,
+      total_deduction: totalDeduction,
+      net_payment: netEarnings,
+      daily_details: dailyDetails,
+      product_back_details: productBackDetails,
+      deduction_details: deductions
+    }
+
+    const { error } = await supabaseAdmin
+      .from('payslips')
+      .upsert(payslipData, { onConflict: 'cast_id,store_id,year_month' })
+
+    if (error) {
+      return { success: false, error: error.message }
+    }
+
+    return { success: true }
+  } catch (err) {
+    return { success: false, error: String(err) }
+  }
+}
+
+// POST: 報酬明細を再計算（当月のみ）
+export async function POST(request: NextRequest) {
+  // Cron認証またはセッション認証
+  const isCron = validateCronAuth(request)
+
+  try {
+    // 当月のみ計算（過去月は再計算しない）
+    const month = new Date()
+
+    // リクエストボディから store_id を取得（手動実行時）
+    let targetStoreId: number | null = null
+    try {
+      const body = await request.json()
+      targetStoreId = body.store_id || null
+    } catch {
+      // bodyがない場合（Cronからの呼び出し）
+    }
+
+    let totalProcessed = 0
+    let totalErrors = 0
+
+    if (targetStoreId) {
+      // 特定店舗のみ計算（手動実行）
+      const { data: casts } = await supabaseAdmin
+        .from('casts')
+        .select('id, name')
+        .eq('store_id', targetStoreId)
+        .eq('is_active', true)
+
+      for (const cast of casts || []) {
+        const result = await calculatePayslipForCast(targetStoreId, cast, month)
+        if (result.success) {
+          totalProcessed++
+        } else {
+          totalErrors++
+          console.error(`Payslip error for cast ${cast.id}:`, result.error)
+        }
+      }
+    } else if (isCron) {
+      // 全店舗計算（Cron実行時のみ）
+      const { data: stores } = await supabaseAdmin
+        .from('stores')
+        .select('id')
+
+      for (const store of stores || []) {
+        const { data: casts } = await supabaseAdmin
+          .from('casts')
+          .select('id, name')
+          .eq('store_id', store.id)
+          .eq('is_active', true)
+
+        for (const cast of casts || []) {
+          const result = await calculatePayslipForCast(store.id, cast, month)
+          if (result.success) {
+            totalProcessed++
+          } else {
+            totalErrors++
+            console.error(`Payslip error for cast ${cast.id}:`, result.error)
+          }
+        }
+      }
+    } else {
+      return NextResponse.json({ error: 'store_id is required' }, { status: 400 })
+    }
+
+    return NextResponse.json({
+      success: true,
+      processed: totalProcessed,
+      errors: totalErrors,
+      timestamp: new Date().toISOString()
+    })
+  } catch (error) {
+    console.error('Payslip recalculate error:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
