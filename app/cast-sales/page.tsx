@@ -53,6 +53,25 @@ interface Order {
   order_items: OrderItemWithTax[]
 }
 
+interface ProductCastSales {
+  castName: string
+  dailyQuantity: { [date: string]: number }
+  total: number
+}
+
+interface ProductSalesData {
+  productName: string
+  category: string | null
+  castSales: ProductCastSales[]
+}
+
+interface RegisteredProduct {
+  name: string
+  category_id: number | null
+  needs_cast: boolean
+  categoryName: string | null
+}
+
 export default function CastSalesPage() {
   const { storeId, storeName } = useStore()
   const { confirm } = useConfirm()
@@ -64,6 +83,9 @@ export default function CastSalesPage() {
   const [recalculating, setRecalculating] = useState(false)
   const [finalizing, setFinalizing] = useState(false)
   const [isFinalized, setIsFinalized] = useState(false)
+  const [productSalesData, setProductSalesData] = useState<Map<string, ProductSalesData>>(new Map())
+  const [selectedProduct, setSelectedProduct] = useState<string | null>(null)
+  const [registeredProducts, setRegisteredProducts] = useState<RegisteredProduct[]>([])
 
   const currencyFormatter = useMemo(() => {
     return new Intl.NumberFormat('ja-JP', {
@@ -157,6 +179,36 @@ export default function CastSalesPage() {
     }
 
     return settings
+  }, [storeId])
+
+  // 登録済み商品（needs_cast=true）を取得
+  const loadRegisteredProducts = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('products')
+      .select(`
+        name,
+        category_id,
+        needs_cast,
+        product_categories!inner (name)
+      `)
+      .eq('store_id', storeId)
+      .eq('needs_cast', true)
+      .eq('is_active', true)
+
+    if (error) {
+      console.warn('商品の取得に失敗:', error)
+      return []
+    }
+
+    return (data || []).map(p => {
+      const category = p.product_categories as unknown as { name: string } | null
+      return {
+        name: p.name,
+        category_id: p.category_id,
+        needs_cast: p.needs_cast,
+        categoryName: category?.name || null
+      }
+    })
   }, [storeId])
 
   const loadSalesData = useCallback(async (
@@ -270,21 +322,96 @@ export default function CastSalesPage() {
     setLoading(true)
     setError(null)
     try {
-      const [loadedCasts, settings, backRates, systemSettings] = await Promise.all([
+      const [loadedCasts, settings, backRates, systemSettings, products] = await Promise.all([
         loadCasts(),
         loadSalesSettings(),
         loadBackRates(),
         loadSystemSettings(),
+        loadRegisteredProducts(),
       ])
       setSalesSettings(settings)
+      setRegisteredProducts(products)
       await loadSalesData(loadedCasts, settings, backRates, systemSettings)
+
+      // 商品別キャスト売上を計算
+      const start = startOfMonth(selectedMonth)
+      const end = endOfMonth(selectedMonth)
+      const startDate = format(start, 'yyyy-MM-dd')
+      const endDate = format(end, 'yyyy-MM-dd')
+
+      // 注文データから商品の個数を集計（キャスト名と日付も取得）
+      const { data: productOrders } = await supabase
+        .from('orders')
+        .select(`
+          order_date,
+          order_items (
+            product_name,
+            category,
+            cast_name,
+            quantity
+          )
+        `)
+        .eq('store_id', storeId)
+        .gte('order_date', startDate)
+        .lte('order_date', endDate + 'T23:59:59')
+        .is('deleted_at', null)
+
+      // 登録済み商品名のセット
+      const registeredProductNames = new Set(products.map(p => p.name))
+
+      // 商品別 → キャスト別 → 日別 の集計
+      const productMap = new Map<string, ProductSalesData>()
+      productOrders?.forEach(order => {
+        const orderDate = format(new Date(order.order_date), 'yyyy-MM-dd')
+        const items = order.order_items as { product_name: string; category: string | null; cast_name: string[] | null; quantity: number }[]
+        items?.forEach(item => {
+          // 登録済み商品かつneeds_castがtrueの商品のみ対象
+          if (!registeredProductNames.has(item.product_name)) return
+          if (!item.cast_name || item.cast_name.length === 0) return
+
+          const productKey = item.product_name
+          let productData = productMap.get(productKey)
+          if (!productData) {
+            const productInfo = products.find(p => p.name === item.product_name)
+            productData = {
+              productName: item.product_name,
+              category: productInfo?.categoryName || item.category,
+              castSales: []
+            }
+            productMap.set(productKey, productData)
+          }
+
+          // 各キャストに個数を分配
+          item.cast_name.forEach(castName => {
+            let castSales = productData!.castSales.find(cs => cs.castName === castName)
+            if (!castSales) {
+              castSales = { castName, dailyQuantity: {}, total: 0 }
+              productData!.castSales.push(castSales)
+            }
+            castSales.dailyQuantity[orderDate] = (castSales.dailyQuantity[orderDate] || 0) + item.quantity
+            castSales.total += item.quantity
+          })
+        })
+      })
+
+      // 各商品内でキャストを合計個数順にソート
+      productMap.forEach(productData => {
+        productData.castSales.sort((a, b) => b.total - a.total)
+      })
+
+      setProductSalesData(productMap)
+      // 最初の商品を選択
+      if (productMap.size > 0 && !selectedProduct) {
+        setSelectedProduct(Array.from(productMap.keys())[0])
+      }
+
     } catch (err) {
       console.error('データ読み込みエラー:', err)
       setError('データの読み込みに失敗しました。再度お試しください。')
     } finally {
       setLoading(false)
     }
-  }, [loadCasts, loadSalesSettings, loadBackRates, loadSystemSettings, loadSalesData])
+  }, [loadCasts, loadSalesSettings, loadBackRates, loadSystemSettings, loadSalesData, loadRegisteredProducts, selectedMonth, storeId])
 
   useEffect(() => {
     loadData()
@@ -751,6 +878,182 @@ export default function CastSalesPage() {
           </table>
         </div>
       </div>
+
+      {/* 商品別キャスト売上 */}
+      {productSalesData.size > 0 && (
+        <div style={{
+          backgroundColor: '#fff',
+          borderRadius: '12px',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+          marginTop: '20px',
+          overflow: 'hidden'
+        }}>
+          {/* ヘッダー */}
+          <div style={{
+            padding: '20px',
+            borderBottom: '1px solid #e2e8f0',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '16px'
+          }}>
+            <h2 style={{
+              margin: 0,
+              fontSize: '18px',
+              fontWeight: '600',
+              color: '#1a1a1a'
+            }}>
+              商品別売上
+            </h2>
+            <select
+              value={selectedProduct || ''}
+              onChange={(e) => setSelectedProduct(e.target.value)}
+              style={{
+                padding: '8px 12px',
+                fontSize: '14px',
+                border: '1px solid #e2e8f0',
+                borderRadius: '6px',
+                backgroundColor: '#fff',
+                cursor: 'pointer',
+                minWidth: '200px'
+              }}
+            >
+              {Array.from(productSalesData.entries())
+                .sort((a, b) => {
+                  const totalA = a[1].castSales.reduce((sum, cs) => sum + cs.total, 0)
+                  const totalB = b[1].castSales.reduce((sum, cs) => sum + cs.total, 0)
+                  return totalB - totalA
+                })
+                .map(([productName]) => (
+                    <option key={productName} value={productName}>
+                      {productName}
+                    </option>
+                  ))}
+            </select>
+          </div>
+
+          {/* テーブル */}
+          {selectedProduct && productSalesData.get(selectedProduct) && (
+            <div style={{
+              maxHeight: '400px',
+              overflow: 'auto'
+            }}>
+              <table style={{
+                width: '100%',
+                borderCollapse: 'collapse',
+                fontSize: '14px'
+              }}>
+                <thead>
+                  <tr>
+                    <th style={{
+                      position: 'sticky',
+                      top: 0,
+                      left: 0,
+                      backgroundColor: '#f8fafc',
+                      padding: '12px',
+                      borderBottom: '2px solid #e2e8f0',
+                      borderRight: '1px solid #e2e8f0',
+                      fontWeight: '600',
+                      color: '#475569',
+                      minWidth: '120px',
+                      zIndex: 20
+                    }}>
+                      キャスト名
+                    </th>
+                    {days.map(day => (
+                      <th key={format(day, 'yyyy-MM-dd')} style={{
+                        position: 'sticky',
+                        top: 0,
+                        backgroundColor: '#f8fafc',
+                        padding: '8px',
+                        borderBottom: '2px solid #e2e8f0',
+                        borderRight: '1px solid #e2e8f0',
+                        fontWeight: '600',
+                        color: day.getDay() === 0 ? '#dc2626' : day.getDay() === 6 ? '#2563eb' : '#475569',
+                        fontSize: '12px',
+                        minWidth: '80px',
+                        textAlign: 'center',
+                        zIndex: 10,
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+                      }}>
+                        {format(day, 'M/d', { locale: ja })}
+                      </th>
+                    ))}
+                    <th style={{
+                      position: 'sticky',
+                      top: 0,
+                      right: 0,
+                      backgroundColor: '#fef3c7',
+                      padding: '12px',
+                      borderBottom: '2px solid #e2e8f0',
+                      fontWeight: '600',
+                      color: '#92400e',
+                      minWidth: '80px',
+                      textAlign: 'center',
+                      zIndex: 20
+                    }}>
+                      合計
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {productSalesData.get(selectedProduct)!.castSales.map((castSales, index) => (
+                    <tr key={castSales.castName}>
+                      <td style={{
+                        position: 'sticky',
+                        left: 0,
+                        backgroundColor: '#fff',
+                        padding: '12px',
+                        borderBottom: '1px solid #e2e8f0',
+                        borderRight: '1px solid #e2e8f0',
+                        fontWeight: '500',
+                        color: '#1a1a1a',
+                        zIndex: 5
+                      }}>
+                        {index < 3 && (
+                          <span style={{ marginRight: '4px' }}>
+                            {index === 0 ? '🥇' : index === 1 ? '🥈' : '🥉'}
+                          </span>
+                        )}
+                        {castSales.castName}
+                      </td>
+                      {days.map(day => {
+                        const dateStr = format(day, 'yyyy-MM-dd')
+                        const quantity = castSales.dailyQuantity[dateStr] || 0
+                        return (
+                          <td key={dateStr} style={{
+                            padding: '8px 4px',
+                            borderBottom: '1px solid #e2e8f0',
+                            borderRight: '1px solid #e2e8f0',
+                            textAlign: 'center',
+                            backgroundColor: quantity > 0 ? '#f0fdf4' : '#fff',
+                            color: quantity > 0 ? '#166534' : '#94a3b8',
+                            fontSize: '13px'
+                          }}>
+                            {quantity > 0 ? quantity : '-'}
+                          </td>
+                        )
+                      })}
+                      <td style={{
+                        position: 'sticky',
+                        right: 0,
+                        backgroundColor: '#fef3c7',
+                        padding: '12px',
+                        borderBottom: '1px solid #e2e8f0',
+                        textAlign: 'center',
+                        fontWeight: '600',
+                        color: '#92400e',
+                        zIndex: 5
+                      }}>
+                        {castSales.total}個
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
     </div>
   )
