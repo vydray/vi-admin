@@ -972,6 +972,27 @@ export default function BaseSettingsPage() {
               </a>
             </p>
 
+            {/* 申請方法の説明 */}
+            <details style={styles.helpDetails}>
+              <summary style={styles.helpSummary}>BASE Developers 申請方法</summary>
+              <div style={styles.helpContent}>
+                <p><strong>申請時の入力内容:</strong></p>
+                <ul style={styles.helpList}>
+                  <li><strong>アプリURL:</strong> {typeof window !== 'undefined' ? window.location.origin : 'https://あなたのドメイン'}</li>
+                  <li><strong>コールバックURL:</strong> {typeof window !== 'undefined' ? `${window.location.origin}/api/base/callback` : 'https://あなたのドメイン/api/base/callback'}</li>
+                </ul>
+                <p><strong>必要な利用権限:</strong></p>
+                <ul style={styles.helpList}>
+                  <li>✓ ショップ情報を見る</li>
+                  <li>✓ 商品情報を見る</li>
+                  <li>✓ 注文情報を見る</li>
+                </ul>
+                <p style={{ fontSize: '12px', color: '#64748b', marginTop: '8px' }}>
+                  ※ 申請から承認まで1〜2週間程度かかります
+                </p>
+              </div>
+            </details>
+
             {/* 接続状態 */}
             <div style={{ marginBottom: '16px' }}>
               {isConnected ? (
@@ -1713,5 +1734,28 @@ const styles: { [key: string]: React.CSSProperties } = {
     borderRadius: '20px',
     fontSize: '14px',
     fontWeight: '500',
+  },
+  helpDetails: {
+    backgroundColor: '#f0f9ff',
+    border: '1px solid #bae6fd',
+    borderRadius: '8px',
+    padding: '12px 16px',
+    marginBottom: '16px',
+  },
+  helpSummary: {
+    cursor: 'pointer',
+    fontWeight: '500',
+    color: '#0369a1',
+    fontSize: '14px',
+  },
+  helpContent: {
+    marginTop: '12px',
+    fontSize: '13px',
+    color: '#374151',
+    lineHeight: '1.6',
+  },
+  helpList: {
+    margin: '8px 0',
+    paddingLeft: '20px',
   },
 }
