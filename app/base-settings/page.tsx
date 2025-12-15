@@ -63,6 +63,14 @@ export default function BaseSettingsPage() {
   const [includeInReceiptSales, setIncludeInReceiptSales] = useState(true)
   const [savingSettings, setSavingSettings] = useState(false)
 
+  // API認証
+  const [clientId, setClientId] = useState('')
+  const [clientSecret, setClientSecret] = useState('')
+  const [isConnected, setIsConnected] = useState(false)
+  const [tokenExpiresAt, setTokenExpiresAt] = useState<string | null>(null)
+  const [savingCredentials, setSavingCredentials] = useState(false)
+  const [fetchingOrders, setFetchingOrders] = useState(false)
+
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
@@ -132,6 +140,20 @@ export default function BaseSettingsPage() {
         setCutoffEnabled(salesSettingsData.base_cutoff_enabled ?? true)
         setIncludeInItemSales(salesSettingsData.include_base_in_item_sales ?? true)
         setIncludeInReceiptSales(salesSettingsData.include_base_in_receipt_sales ?? true)
+      }
+
+      // BASE API設定を取得
+      const { data: baseSettingsData } = await supabase
+        .from('base_settings')
+        .select('client_id, client_secret, access_token, token_expires_at')
+        .eq('store_id', storeId)
+        .single()
+
+      if (baseSettingsData) {
+        setClientId(baseSettingsData.client_id || '')
+        setClientSecret(baseSettingsData.client_secret || '')
+        setIsConnected(!!baseSettingsData.access_token)
+        setTokenExpiresAt(baseSettingsData.token_expires_at)
       }
 
       if (castsError) throw castsError
@@ -525,6 +547,86 @@ export default function BaseSettingsPage() {
     }
   }
 
+  // API認証情報を保存
+  const handleSaveCredentials = async () => {
+    if (!clientId.trim() || !clientSecret.trim()) {
+      toast.error('Client IDとClient Secretを入力してください')
+      return
+    }
+
+    setSavingCredentials(true)
+    try {
+      // まず既存のレコードがあるか確認
+      const { data: existing } = await supabase
+        .from('base_settings')
+        .select('id')
+        .eq('store_id', storeId)
+        .single()
+
+      if (existing) {
+        // 更新
+        const { error } = await supabase
+          .from('base_settings')
+          .update({
+            client_id: clientId.trim(),
+            client_secret: clientSecret.trim(),
+          })
+          .eq('store_id', storeId)
+
+        if (error) throw error
+      } else {
+        // 新規作成
+        const { error } = await supabase
+          .from('base_settings')
+          .insert({
+            store_id: storeId,
+            client_id: clientId.trim(),
+            client_secret: clientSecret.trim(),
+          })
+
+        if (error) throw error
+      }
+
+      toast.success('API認証情報を保存しました')
+    } catch (err) {
+      console.error('認証情報保存エラー:', err)
+      toast.error('保存に失敗しました')
+    } finally {
+      setSavingCredentials(false)
+    }
+  }
+
+  // BASE認証を開始
+  const startBaseAuth = () => {
+    window.location.href = `/api/base/auth?store_id=${storeId}`
+  }
+
+  // APIから注文を取得
+  const handleFetchOrdersFromApi = async () => {
+    setFetchingOrders(true)
+    try {
+      const response = await fetch('/api/base/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ store_id: storeId }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to fetch orders')
+      }
+
+      toast.success(`${data.imported}件の注文をインポートしました`)
+      loadOrders()
+    } catch (err) {
+      console.error('注文取得エラー:', err)
+      toast.error(err instanceof Error ? err.message : '注文の取得に失敗しました')
+    } finally {
+      setFetchingOrders(false)
+    }
+  }
+
   // バリエーション追加モーダル内のキャスト一覧
   const availableCasts = selectedProductId
     ? casts.filter(cast => {
@@ -858,6 +960,92 @@ export default function BaseSettingsPage() {
         <div style={styles.content}>
           <div style={styles.sectionHeader}>
             <h2 style={styles.sectionTitle}>BASE連携設定</h2>
+          </div>
+
+          {/* API認証 */}
+          <div style={styles.settingsSection}>
+            <h3 style={styles.settingsSectionTitle}>API認証</h3>
+            <p style={styles.settingsHint}>
+              BASE Developersで取得したClient IDとClient Secretを入力してください。
+              <a href="https://developers.thebase.com/" target="_blank" rel="noopener noreferrer" style={{ color: '#3b82f6', marginLeft: '4px' }}>
+                BASE Developers →
+              </a>
+            </p>
+
+            {/* 接続状態 */}
+            <div style={{ marginBottom: '16px' }}>
+              {isConnected ? (
+                <div style={styles.connectedBadge}>
+                  ✓ BASE連携済み
+                  {tokenExpiresAt && (
+                    <span style={{ marginLeft: '8px', fontSize: '12px', opacity: 0.8 }}>
+                      (有効期限: {new Date(tokenExpiresAt).toLocaleString('ja-JP')})
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <div style={styles.disconnectedBadge}>
+                  未接続
+                </div>
+              )}
+            </div>
+
+            <div style={styles.settingRow}>
+              <label style={styles.label}>Client ID</label>
+              <input
+                type="text"
+                value={clientId}
+                onChange={e => setClientId(e.target.value)}
+                placeholder="BASE APIのClient ID"
+                style={styles.textInput}
+              />
+            </div>
+
+            <div style={styles.settingRow}>
+              <label style={styles.label}>Client Secret</label>
+              <input
+                type="password"
+                value={clientSecret}
+                onChange={e => setClientSecret(e.target.value)}
+                placeholder="BASE APIのClient Secret"
+                style={styles.textInput}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
+              <Button
+                onClick={handleSaveCredentials}
+                variant="secondary"
+                size="medium"
+                disabled={savingCredentials}
+              >
+                {savingCredentials ? '保存中...' : '認証情報を保存'}
+              </Button>
+              {clientId && clientSecret && (
+                <Button
+                  onClick={startBaseAuth}
+                  variant="primary"
+                  size="medium"
+                  disabled={!clientId || !clientSecret}
+                >
+                  {isConnected ? '再認証' : 'BASEと連携する'}
+                </Button>
+              )}
+            </div>
+
+            {isConnected && (
+              <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid #e5e7eb' }}>
+                <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', fontWeight: '600' }}>注文データ取得</h4>
+                <Button
+                  onClick={handleFetchOrdersFromApi}
+                  variant="outline"
+                  size="medium"
+                  disabled={fetchingOrders}
+                >
+                  {fetchingOrders ? '取得中...' : 'BASEから注文を取得'}
+                </Button>
+              </div>
+            )}
           </div>
 
           {/* 営業日締め時間 */}
@@ -1496,5 +1684,34 @@ const styles: { [key: string]: React.CSSProperties } = {
     width: '16px',
     height: '16px',
     cursor: 'pointer',
+  },
+  textInput: {
+    width: '100%',
+    padding: '10px 12px',
+    fontSize: '14px',
+    border: '1px solid #d1d5db',
+    borderRadius: '6px',
+    backgroundColor: 'white',
+    marginTop: '4px',
+  },
+  connectedBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: '8px 16px',
+    backgroundColor: '#d1fae5',
+    color: '#065f46',
+    borderRadius: '20px',
+    fontSize: '14px',
+    fontWeight: '500',
+  },
+  disconnectedBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: '8px 16px',
+    backgroundColor: '#fee2e2',
+    color: '#991b1b',
+    borderRadius: '20px',
+    fontSize: '14px',
+    fontWeight: '500',
   },
 }
