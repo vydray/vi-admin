@@ -789,7 +789,7 @@ export default function ShiftManage() {
     const lines = text.split('\n').filter(line => line.trim())
 
     if (lines.length < 2) {
-      toast.error('CSVファイルにデータがありません')
+      toast.error('CSVファイルにデータがありません\n\n【必要な形式】\n1行目: 名前,12月1日,12月2日,...\n2行目以降: キャスト名,18:00~24:00,...')
       return
     }
 
@@ -797,8 +797,16 @@ export default function ShiftManage() {
     const headerCells = lines[0].split(',').map(h => h.trim())
     const days = getDaysInPeriod()
 
+    // 1列目が「名前」かチェック
+    if (headerCells[0] !== '名前') {
+      toast.error(`1行目1列目が「名前」ではありません\n\n【読み込んだ値】${headerCells[0]}\n【期待する値】名前\n\n【正しい形式】\n名前,12月1日,12月2日,...`)
+      return
+    }
+
     // ヘッダーの日付とマッチング（M月d日 → yyyy-MM-dd）
     const dateMap: Map<number, string> = new Map()
+    const unmatchedHeaders: string[] = []
+
     headerCells.forEach((header, index) => {
       if (index === 0) return // 「名前」列をスキップ
       const match = header.match(/(\d+)月(\d+)日/)
@@ -809,9 +817,22 @@ export default function ShiftManage() {
         const targetDate = days.find(d => d.getMonth() + 1 === month && d.getDate() === day)
         if (targetDate) {
           dateMap.set(index, format(targetDate, 'yyyy-MM-dd'))
+        } else {
+          unmatchedHeaders.push(`${header}（選択期間外）`)
         }
+      } else if (header) {
+        unmatchedHeaders.push(`${header}（形式不正）`)
       }
     })
+
+    if (dateMap.size === 0) {
+      toast.error(`日付列が見つかりません\n\n【読み込んだヘッダー】\n${headerCells.join(', ')}\n\n【期待する形式】\n名前,12月1日,12月2日,...\n\n※ 日付は「M月d日」の形式で指定してください`)
+      return
+    }
+
+    if (unmatchedHeaders.length > 0) {
+      console.warn('マッチしなかったヘッダー:', unmatchedHeaders)
+    }
 
     let successCount = 0
     let errorCount = 0
@@ -823,9 +844,11 @@ export default function ShiftManage() {
       if (cells.length < 2) continue
 
       const castName = cells[0]
+      if (!castName) continue
+
       const cast = casts.find(c => c.name === castName)
       if (!cast) {
-        errors.push(`キャスト「${castName}」が見つかりません`)
+        errors.push(`${i + 1}行目: キャスト「${castName}」が見つかりません`)
         errorCount++
         continue
       }
@@ -861,7 +884,7 @@ export default function ShiftManage() {
             // 時間形式をパース（18:00~24:00 または 18:00-24:00）
             const timeMatch = timeValue.match(/(\d{1,2}:\d{2})[~\-](\d{1,2}:\d{2})/)
             if (!timeMatch) {
-              errors.push(`${castName} ${dateStr}: 時間形式が不正`)
+              errors.push(`${i + 1}行目 ${headerCells[j]}: 「${timeValue}」は不正な形式です（例: 18:00~24:00）`)
               errorCount++
               continue
             }
@@ -894,7 +917,7 @@ export default function ShiftManage() {
             successCount++
           }
         } catch (err) {
-          errors.push(`${castName} ${dateStr}: 保存エラー`)
+          errors.push(`${i + 1}行目 ${headerCells[j]}: 保存に失敗しました`)
           errorCount++
         }
       }
@@ -903,7 +926,11 @@ export default function ShiftManage() {
     await loadShifts()
 
     if (errorCount > 0) {
-      toast.error(`${successCount}件成功、${errorCount}件失敗\n${errors.slice(0, 3).join('\n')}`)
+      const errorSummary = errors.slice(0, 5).join('\n')
+      const moreErrors = errors.length > 5 ? `\n...他${errors.length - 5}件のエラー` : ''
+      toast.error(`${successCount}件成功、${errorCount}件失敗\n\n${errorSummary}${moreErrors}`, { duration: 8000 })
+    } else if (successCount === 0) {
+      toast.error('インポートするデータがありませんでした')
     } else {
       toast.success(`${successCount}件のシフトをインポートしました`)
     }
