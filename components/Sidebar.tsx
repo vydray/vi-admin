@@ -56,6 +56,7 @@ const menuGroups: MenuGroup[] = [
       { name: '時給設定', path: '/wage-settings', icon: '⏱️' },
       { name: '控除設定', path: '/deduction-settings', icon: '➖' },
       { name: '売上設定', path: '/sales-settings', icon: '📊' },
+      { name: 'BASE連携', path: '/base-settings', icon: '🛒' },
       { name: '店舗設定', path: '/store-settings', icon: '🏪' },
       { name: '設定', path: '/settings', icon: '⚙️' },
     ]

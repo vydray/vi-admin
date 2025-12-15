@@ -437,7 +437,7 @@ export default function SalesSettingsPage() {
   const [newNonHelpName, setNewNonHelpName] = useState('')
 
   // タブ切り替え用state
-  const [settingsTab, setSettingsTab] = useState<'item' | 'receipt' | 'publish' | 'nonHelp'>('item')
+  const [settingsTab, setSettingsTab] = useState<'item' | 'receipt' | 'publish' | 'nonHelp' | 'base'>('item')
   const [simulatorTab, setSimulatorTab] = useState<'item' | 'receipt'>('item')
   const [previewNominations, setPreviewNominations] = useState<string[]>(['A'])
   const [previewItems, setPreviewItems] = useState([
@@ -1571,6 +1571,15 @@ export default function SalesSettingsPage() {
           >
             ヘルプ除外
           </button>
+          <button
+            onClick={() => setSettingsTab('base')}
+            style={{
+              ...styles.simulatorTab,
+              ...(settingsTab === 'base' ? styles.simulatorTabActive : {}),
+            }}
+          >
+            BASE連携
+          </button>
         </div>
 
         {/* タブに接続するカード */}
@@ -1718,6 +1727,78 @@ export default function SalesSettingsPage() {
                 <Button onClick={addNonHelpName} variant="secondary" size="small">
                   追加
                 </Button>
+              </div>
+            </>
+          )}
+
+          {/* BASE連携設定 */}
+          {settingsTab === 'base' && (
+            <>
+              <h2 style={styles.cardTitle}>BASE連携設定</h2>
+              <p style={styles.cardDescription}>
+                BASEからインポートした注文の売上計算設定
+              </p>
+
+              {/* 営業日締め時間 */}
+              <div style={styles.section}>
+                <h3 style={styles.sectionTitle}>営業日締め時間</h3>
+                <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '12px' }}>
+                  指定時刻より前の注文は前日の営業日として計算されます
+                </p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input
+                      type="checkbox"
+                      checked={settings.base_cutoff_enabled ?? true}
+                      onChange={(e) => updateSetting('base_cutoff_enabled', e.target.checked)}
+                    />
+                    <span>締め時間を適用する</span>
+                  </label>
+                </div>
+                {settings.base_cutoff_enabled && (
+                  <div style={{ marginTop: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span>翌</span>
+                    <select
+                      value={settings.base_cutoff_hour ?? 6}
+                      onChange={(e) => updateSetting('base_cutoff_hour', parseInt(e.target.value))}
+                      style={styles.select}
+                    >
+                      {Array.from({ length: 12 }, (_, i) => i + 1).map(hour => (
+                        <option key={hour} value={hour}>{hour}時</option>
+                      ))}
+                    </select>
+                    <span>まで前日扱い</span>
+                  </div>
+                )}
+                <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '8px' }}>
+                  例: 6時設定の場合、1月1日 5:30の注文 → 12月31日の売上として計算
+                </p>
+              </div>
+
+              {/* BASE売上の集計設定 */}
+              <div style={styles.section}>
+                <h3 style={styles.sectionTitle}>BASE売上の集計</h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input
+                      type="checkbox"
+                      checked={settings.include_base_in_item_sales ?? true}
+                      onChange={(e) => updateSetting('include_base_in_item_sales', e.target.checked)}
+                    />
+                    <span>BASE売上を推し小計に含める</span>
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input
+                      type="checkbox"
+                      checked={settings.include_base_in_receipt_sales ?? true}
+                      onChange={(e) => updateSetting('include_base_in_receipt_sales', e.target.checked)}
+                    />
+                    <span>BASE売上を伝票小計に含める</span>
+                  </label>
+                </div>
+                <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '8px' }}>
+                  チェックを外すとキャスト売上ページの集計からBASE売上が除外されます
+                </p>
               </div>
             </>
           )}

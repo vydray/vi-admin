@@ -61,6 +61,13 @@ export type {
   StoreWageSettings,
   CompensationSettingsWageExtension,
   AttendanceWageExtension,
+  // BASE連携
+  BackRateSource,
+  BaseSettings,
+  BaseProduct,
+  BaseVariation,
+  BaseOrder,
+  BaseProductWithVariations,
 } from './database'
 
 // UI Component types

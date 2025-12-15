@@ -451,6 +451,12 @@ export interface SalesSettings {
 
   description?: string | null
 
+  // ========== BASE連携設定 ==========
+  include_base_in_item_sales: boolean      // BASE売上を推し小計に含める
+  include_base_in_receipt_sales: boolean   // BASE売上を伝票小計に含める
+  base_cutoff_hour: number                 // BASE注文の営業日締め時間（0-23）
+  base_cutoff_enabled: boolean             // BASE注文に営業日締め時間を適用するか
+
   created_at: string
   updated_at: string
 }
@@ -756,4 +762,81 @@ export interface CompensationSettingsWageExtension {
 // Attendance への追加フィールド（extend用）
 export interface AttendanceWageExtension {
   costume_id: number | null  // その日着用した衣装
+}
+
+// ============================================================================
+// BASE連携 Types
+// ============================================================================
+
+// バック率の適用対象
+export type BackRateSource = 'pos' | 'base' | 'all'
+
+// BASE API設定
+export interface BaseSettings {
+  id: number
+  store_id: number
+  client_id: string | null
+  client_secret: string | null
+  access_token: string | null
+  refresh_token: string | null
+  token_expires_at: string | null
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+// BASE商品マッピング
+export interface BaseProduct {
+  id: number
+  store_id: number
+  base_item_id: number | null
+  base_product_name: string
+  local_product_name: string
+  base_price: number
+  sync_variations: boolean
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+// BASEバリエーション（キャストマッピング）
+export interface BaseVariation {
+  id: number
+  base_product_id: number
+  store_id: number
+  base_variation_id: number | null
+  variation_name: string
+  cast_id: number | null
+  is_synced: boolean
+  synced_at: string | null
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+// BASE注文履歴
+export interface BaseOrder {
+  id: number
+  store_id: number
+  base_order_id: string
+  order_datetime: string
+  product_name: string
+  variation_name: string | null
+  cast_id: number | null
+  local_product_id: number | null
+  base_price: number
+  actual_price: number | null
+  quantity: number
+  back_amount: number
+  business_date: string | null  // 営業日（締め時間考慮）
+  is_processed: boolean
+  processed_at: string | null
+  error_message: string | null
+  created_at: string
+  updated_at: string
+}
+
+// BASE商品とバリエーション（UI用）
+export interface BaseProductWithVariations extends BaseProduct {
+  variations: BaseVariation[]
 }
