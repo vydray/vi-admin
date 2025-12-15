@@ -740,12 +740,13 @@ export default function BaseSettingsPage() {
               variant="primary"
               size="small"
             >
-              + 商品を追加
+              + マッピング追加
             </Button>
           </div>
 
           <p style={styles.hint}>
-            BASEで販売する商品を登録し、キャストをバリエーションとして追加してください。
+            <strong>※ BASE側で先に商品を作成してください。</strong>このシステムではバリエーション（キャスト名）の同期のみ行います。
+            <br />
             商品名は「商品管理」に登録されている商品名と完全一致させてください。
             <br />
             <strong>POS表示がONのキャストのみ</strong>がバリエーションとして追加されます。
@@ -1215,11 +1216,15 @@ export default function BaseSettingsPage() {
         </div>
       )}
 
-      {/* 商品追加モーダル */}
+      {/* 商品マッピング追加モーダル */}
       {showAddProductModal && (
         <div style={styles.modalOverlay} onClick={() => setShowAddProductModal(false)}>
           <div style={styles.modal} onClick={e => e.stopPropagation()}>
-            <h3 style={styles.modalTitle}>BASE商品を追加</h3>
+            <h3 style={styles.modalTitle}>BASE商品マッピング追加</h3>
+
+            <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '16px' }}>
+              ※ BASE管理画面で先に同じ商品名の商品を作成してください
+            </p>
 
             <div style={styles.formGroup}>
               <label style={styles.label}>商品名</label>
