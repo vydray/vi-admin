@@ -793,5 +793,11 @@ export function getDefaultSalesSettings(storeId: number): Omit<SalesSettings, 'i
     exclude_consumption_tax: true,
     exclude_service_charge: true,
     description: null,
+
+    // BASE連携設定
+    include_base_in_item_sales: true,
+    include_base_in_receipt_sales: true,
+    base_cutoff_hour: 6,
+    base_cutoff_enabled: true,
   }
 }
