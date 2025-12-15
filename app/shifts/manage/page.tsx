@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, addMonths, subMonths, getDate } from 'date-fns'
@@ -74,6 +74,9 @@ export default function ShiftManage() {
   // ドラッグ&ドロップ状態
   const [draggedCastId, setDraggedCastId] = useState<number | null>(null)
   const [dragOverCastId, setDragOverCastId] = useState<number | null>(null)
+
+  // CSVインポート用
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     loadData()
@@ -741,6 +744,140 @@ export default function ShiftManage() {
   // 時間選択肢をメモ化
   const timeOptions = useMemo(() => generateTimeOptions(), [])
 
+  // CSVエクスポート
+  const exportCSV = () => {
+    const days = getDaysInPeriod()
+    const rows: string[] = []
+
+    // ヘッダー
+    rows.push('日付,キャスト名,開始時間,終了時間')
+
+    // データ行
+    days.forEach(date => {
+      const dateStr = format(date, 'yyyy-MM-dd')
+      const dayShifts = shifts.filter(s => s.date === dateStr)
+
+      dayShifts.forEach(shift => {
+        const cast = casts.find(c => c.id === shift.cast_id)
+        if (cast) {
+          rows.push(`${dateStr},${cast.name},${shift.start_time.slice(0, 5)},${shift.end_time.slice(0, 5)}`)
+        }
+      })
+    })
+
+    // BOMを追加してExcelでの文字化けを防ぐ
+    const bom = '\uFEFF'
+    const csvContent = bom + rows.join('\n')
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `シフト_${format(selectedMonth, 'yyyy年MM月')}_${isFirstHalf ? '前半' : '後半'}.csv`
+    link.click()
+
+    URL.revokeObjectURL(url)
+    toast.success('CSVをエクスポートしました')
+  }
+
+  // CSVインポート
+  const importCSV = async (file: File) => {
+    const text = await file.text()
+    const lines = text.split('\n').filter(line => line.trim())
+
+    if (lines.length < 2) {
+      toast.error('CSVファイルにデータがありません')
+      return
+    }
+
+    // ヘッダーをスキップ
+    const dataLines = lines.slice(1)
+
+    let successCount = 0
+    let errorCount = 0
+    const errors: string[] = []
+
+    for (const line of dataLines) {
+      const parts = line.split(',').map(p => p.trim())
+      if (parts.length < 4) continue
+
+      const [dateStr, castName, startTime, endTime] = parts
+
+      // キャストを検索
+      const cast = casts.find(c => c.name === castName)
+      if (!cast) {
+        errors.push(`キャスト「${castName}」が見つかりません`)
+        errorCount++
+        continue
+      }
+
+      // 日付の検証
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+        errors.push(`日付形式が不正: ${dateStr}`)
+        errorCount++
+        continue
+      }
+
+      // 時間を正規化（24:00 → 00:00:00）
+      const normalizeTime = (time: string) => {
+        const [hours, minutes] = time.split(':').map(Number)
+        const normalizedHours = hours >= 24 ? hours - 24 : hours
+        return `${normalizedHours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`
+      }
+
+      try {
+        // 既存シフトを確認
+        const existingShift = shifts.find(s => s.cast_id === cast.id && s.date === dateStr)
+
+        if (existingShift) {
+          // 更新
+          const { error } = await supabase
+            .from('shifts')
+            .update({
+              start_time: normalizeTime(startTime),
+              end_time: normalizeTime(endTime)
+            })
+            .eq('id', existingShift.id)
+
+          if (error) throw error
+        } else {
+          // 新規作成
+          const { error } = await supabase
+            .from('shifts')
+            .insert({
+              cast_id: cast.id,
+              date: dateStr,
+              start_time: normalizeTime(startTime),
+              end_time: normalizeTime(endTime),
+              store_id: storeId
+            })
+
+          if (error) throw error
+        }
+        successCount++
+      } catch (err) {
+        errors.push(`${dateStr} ${castName}: 保存エラー`)
+        errorCount++
+      }
+    }
+
+    await loadShifts()
+
+    if (errorCount > 0) {
+      toast.error(`${successCount}件成功、${errorCount}件失敗\n${errors.slice(0, 3).join('\n')}`)
+    } else {
+      toast.success(`${successCount}件のシフトをインポートしました`)
+    }
+  }
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      importCSV(file)
+      e.target.value = '' // リセット
+    }
+  }
+
   if (loading) {
     return <LoadingSpinner />
   }
@@ -1051,6 +1188,64 @@ export default function ShiftManage() {
             )}
             {isSaving ? '保存中...' : '保存'}
           </button>
+
+          {/* 区切り線 */}
+          <div style={{ width: '1px', height: '24px', backgroundColor: '#e2e8f0', margin: '0 4px' }} />
+
+          {/* CSVエクスポート */}
+          <button
+            onClick={exportCSV}
+            style={{
+              padding: '8px 16px',
+              fontSize: '14px',
+              fontWeight: '500',
+              backgroundColor: '#fff',
+              color: '#475569',
+              border: '1px solid #e2e8f0',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+              <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" fill="currentColor"/>
+            </svg>
+            エクスポート
+          </button>
+
+          {/* CSVインポート */}
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            style={{
+              padding: '8px 16px',
+              fontSize: '14px',
+              fontWeight: '500',
+              backgroundColor: '#fff',
+              color: '#475569',
+              border: '1px solid #e2e8f0',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+              <path d="M9 16h6v-6h4l-7-7-7 7h4v6zm-4 2h14v2H5v-2z" fill="currentColor"/>
+            </svg>
+            インポート
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv"
+            onChange={handleFileChange}
+            style={{ display: 'none' }}
+          />
         </div>
       </div>
 
