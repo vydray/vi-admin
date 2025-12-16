@@ -14,6 +14,7 @@ import { getDefaultSalesSettings } from '@/lib/salesCalculation'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
 import HelpTooltip from '@/components/HelpTooltip'
+import ProtectedPage from '@/components/ProtectedPage'
 import toast from 'react-hot-toast'
 
 // 端数処理の方法
@@ -419,6 +420,14 @@ function AggregationSection({
 }
 
 export default function SalesSettingsPage() {
+  return (
+    <ProtectedPage permissionKey="sales_settings">
+      <SalesSettingsPageContent />
+    </ProtectedPage>
+  )
+}
+
+function SalesSettingsPageContent() {
   const { storeId } = useStore()
   const [settings, setSettings] = useState<SalesSettings | null>(null)
   const latestStoreIdRef = useRef(storeId)

@@ -7,6 +7,7 @@ import { useConfirm } from '@/contexts/ConfirmContext'
 import { toast } from 'react-hot-toast'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
+import ProtectedPage from '@/components/ProtectedPage'
 
 interface DeductionType {
   id: number
@@ -94,6 +95,14 @@ const DEFAULT_DEDUCTIONS: DefaultDeduction[] = [
 ]
 
 export default function DeductionSettingsPage() {
+  return (
+    <ProtectedPage permissionKey="deduction_settings">
+      <DeductionSettingsPageContent />
+    </ProtectedPage>
+  )
+}
+
+function DeductionSettingsPageContent() {
   const { storeId } = useStore()
   const { confirm } = useConfirm()
   const [loading, setLoading] = useState(true)

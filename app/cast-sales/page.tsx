@@ -11,6 +11,7 @@ import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
 import Link from 'next/link'
 import { useConfirm } from '@/contexts/ConfirmContext'
+import ProtectedPage from '@/components/ProtectedPage'
 
 interface DailySalesData {
   selfSales: number
@@ -70,6 +71,14 @@ interface ProductSalesData {
 
 
 export default function CastSalesPage() {
+  return (
+    <ProtectedPage permissionKey="cast_sales">
+      <CastSalesPageContent />
+    </ProtectedPage>
+  )
+}
+
+function CastSalesPageContent() {
   const { storeId, storeName } = useStore()
   const { confirm } = useConfirm()
   const [selectedMonth, setSelectedMonth] = useState(new Date())

@@ -5,9 +5,18 @@ import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
 import Button from '@/components/Button'
+import ProtectedPage from '@/components/ProtectedPage'
 import type { StoreSettings, SystemSettings } from '@/types'
 
 export default function StoreSettingsPage() {
+  return (
+    <ProtectedPage permissionKey="store_settings">
+      <StoreSettingsPageContent />
+    </ProtectedPage>
+  )
+}
+
+function StoreSettingsPageContent() {
   const { storeId } = useStore()
   const latestStoreIdRef = useRef(storeId)
   const [loading, setLoading] = useState(true)

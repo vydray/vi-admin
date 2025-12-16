@@ -5,6 +5,8 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useStore } from '@/contexts/StoreContext'
 import { useAuth } from '@/contexts/AuthContext'
+import { usePermissions } from '@/hooks/usePermissions'
+import { getPermissionKeyFromPath } from '@/lib/permissions'
 
 interface MenuItem {
   name: string
@@ -76,9 +78,18 @@ export default function Sidebar() {
   const pathname = usePathname()
   const { storeId, setStoreId, stores } = useStore()
   const { user, logout } = useAuth()
+  const { canAccessPath, isSuperAdmin } = usePermissions()
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set())
 
-  const isSuperAdmin = user?.role === 'super_admin'
+  // 権限チェック: パスに対する権限があるかどうか
+  const canAccessItem = (path: string): boolean => {
+    // super_adminは全てアクセス可能
+    if (isSuperAdmin) return true
+    // 権限マッピングがないパスは許可（ホームなど）
+    const permissionKey = getPermissionKeyFromPath(path)
+    if (!permissionKey) return true
+    return canAccessPath(path)
+  }
 
   // 現在のパスに応じてグループを自動展開
   useEffect(() => {
@@ -140,7 +151,7 @@ export default function Sidebar() {
 
       <nav style={styles.nav}>
         {/* メイン項目 */}
-        {mainItems.map((item) => {
+        {mainItems.filter(item => canAccessItem(item.path)).map((item) => {
           const isActive = pathname === item.path
           return (
             <Link
@@ -161,6 +172,11 @@ export default function Sidebar() {
         {menuGroups
           .filter(group => !group.superAdminOnly || isSuperAdmin)
           .map((group) => {
+            // グループ内のアクセス可能な項目のみをフィルタリング
+            const accessibleItems = group.items.filter(item => canAccessItem(item.path))
+            // アクセス可能な項目がない場合はグループ自体を表示しない
+            if (accessibleItems.length === 0) return null
+
             const isOpen = openGroups.has(group.name)
             const isActive = isGroupActive(group)
 
@@ -187,7 +203,7 @@ export default function Sidebar() {
 
                 {isOpen && (
                   <div style={styles.groupItems}>
-                    {group.items.map((item) => {
+                    {accessibleItems.map((item) => {
                       const isItemActive = pathname === item.path
                       return (
                         <Link

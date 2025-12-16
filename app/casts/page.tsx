@@ -10,9 +10,18 @@ import { handleSupabaseError } from '@/lib/errorHandling'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
 import Modal from '@/components/Modal'
+import ProtectedPage from '@/components/ProtectedPage'
 import type { Cast, CastListView, CastPosition } from '@/types'
 
 export default function CastsPage() {
+  return (
+    <ProtectedPage permissionKey="casts">
+      <CastsPageContent />
+    </ProtectedPage>
+  )
+}
+
+function CastsPageContent() {
   const { storeId } = useStore()
   const { confirm } = useConfirm()
   const { user } = useAuth()

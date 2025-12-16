@@ -8,9 +8,18 @@ import { useConfirm } from '@/contexts/ConfirmContext'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
 import Modal from '@/components/Modal'
+import ProtectedPage from '@/components/ProtectedPage'
 import type { Category } from '@/types'
 
 export default function CategoriesPage() {
+  return (
+    <ProtectedPage permissionKey="categories">
+      <CategoriesPageContent />
+    </ProtectedPage>
+  )
+}
+
+function CategoriesPageContent() {
   const { storeId } = useStore()
   const { confirm } = useConfirm()
   const [categories, setCategories] = useState<Category[]>([])

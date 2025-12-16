@@ -21,6 +21,7 @@ import {
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
 import HelpTooltip from '@/components/HelpTooltip'
+import ProtectedPage from '@/components/ProtectedPage'
 import toast from 'react-hot-toast'
 
 // 端数処理メソッドをパース
@@ -385,6 +386,14 @@ const stateToDb = (state: SettingsState, castId: number, storeId: number, existi
 }
 
 export default function CompensationSettingsPage() {
+  return (
+    <ProtectedPage permissionKey="compensation_settings">
+      <CompensationSettingsPageContent />
+    </ProtectedPage>
+  )
+}
+
+function CompensationSettingsPageContent() {
   const { storeId, storeName } = useStore()
   const [casts, setCasts] = useState<CastWithStatus[]>([])
   const [selectedCastId, setSelectedCastId] = useState<number | null>(null)

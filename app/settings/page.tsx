@@ -4,8 +4,17 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useStore } from '@/contexts/StoreContext'
 import { useState } from 'react'
 import toast from 'react-hot-toast'
+import ProtectedPage from '@/components/ProtectedPage'
 
 export default function SettingsPage() {
+  return (
+    <ProtectedPage permissionKey="settings">
+      <SettingsPageContent />
+    </ProtectedPage>
+  )
+}
+
+function SettingsPageContent() {
   const { user } = useAuth()
   const { storeName } = useStore()
 

@@ -8,6 +8,7 @@ import { useStore } from '@/contexts/StoreContext'
 import { SalesSettings, CompensationType, CastBackRate } from '@/types'
 import { calculateCastSalesByPublishedMethod, getDefaultSalesSettings, applyRoundingNew } from '@/lib/salesCalculation'
 import LoadingSpinner from '@/components/LoadingSpinner'
+import ProtectedPage from '@/components/ProtectedPage'
 
 interface Cast {
   id: number
@@ -159,6 +160,14 @@ interface ProductBackItem {
 }
 
 export default function PayslipPage() {
+  return (
+    <ProtectedPage permissionKey="payslip">
+      <PayslipPageContent />
+    </ProtectedPage>
+  )
+}
+
+function PayslipPageContent() {
   const { storeId } = useStore()
   const [loading, setLoading] = useState(true)
   const [selectedMonth, setSelectedMonth] = useState(new Date())

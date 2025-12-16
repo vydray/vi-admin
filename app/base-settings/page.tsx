@@ -6,6 +6,7 @@ import { useStore } from '@/contexts/StoreContext'
 import { BaseProductWithVariations, BaseVariation, Product } from '@/types'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
+import ProtectedPage from '@/components/ProtectedPage'
 import toast from 'react-hot-toast'
 
 interface CastBasic {
@@ -26,6 +27,14 @@ interface ParsedCSVRow {
 }
 
 export default function BaseSettingsPage() {
+  return (
+    <ProtectedPage permissionKey="base_settings">
+      <BaseSettingsPageContent />
+    </ProtectedPage>
+  )
+}
+
+function BaseSettingsPageContent() {
   const { storeId, storeName } = useStore()
   const fileInputRef = useRef<HTMLInputElement>(null)
 

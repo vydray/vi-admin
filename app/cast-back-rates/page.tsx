@@ -20,6 +20,7 @@ interface BaseProduct {
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
 import HelpTooltip from '@/components/HelpTooltip'
+import ProtectedPage from '@/components/ProtectedPage'
 import toast from 'react-hot-toast'
 
 interface BackRateForm {
@@ -45,6 +46,14 @@ interface ProductWithRate {
 }
 
 export default function CastBackRatesPage() {
+  return (
+    <ProtectedPage permissionKey="cast_back_rates">
+      <CastBackRatesPageContent />
+    </ProtectedPage>
+  )
+}
+
+function CastBackRatesPageContent() {
   const { storeId, storeName } = useStore()
   const [casts, setCasts] = useState<CastWithStatus[]>([])
   const [categories, setCategories] = useState<Category[]>([])

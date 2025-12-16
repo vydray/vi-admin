@@ -6,6 +6,7 @@ import { useStore } from '@/contexts/StoreContext'
 import { WageStatus, CompensationSettings } from '@/types'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
+import ProtectedPage from '@/components/ProtectedPage'
 import toast from 'react-hot-toast'
 
 interface CastWithStatus {
@@ -24,6 +25,14 @@ interface CastWageSettings {
 }
 
 export default function CastWageSettingsPage() {
+  return (
+    <ProtectedPage permissionKey="cast_wage_settings">
+      <CastWageSettingsPageContent />
+    </ProtectedPage>
+  )
+}
+
+function CastWageSettingsPageContent() {
   const { storeId, storeName } = useStore()
   const [casts, setCasts] = useState<CastWithStatus[]>([])
   const [wageStatuses, setWageStatuses] = useState<WageStatus[]>([])

@@ -9,9 +9,18 @@ import { handleSupabaseError, handleUnexpectedError } from '@/lib/errorHandling'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
 import Modal from '@/components/Modal'
+import ProtectedPage from '@/components/ProtectedPage'
 import type { Category, Product } from '@/types'
 
 export default function ProductsPage() {
+  return (
+    <ProtectedPage permissionKey="products">
+      <ProductsPageContent />
+    </ProtectedPage>
+  )
+}
+
+function ProductsPageContent() {
   const { storeId } = useStore()
   const { confirm } = useConfirm()
   const [categories, setCategories] = useState<Category[]>([])

@@ -6,11 +6,20 @@ import { useStore } from '@/contexts/StoreContext'
 import { StoreWageSettings, WageStatus, WageStatusCondition, Costume, SpecialWageDay } from '@/types'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
+import ProtectedPage from '@/components/ProtectedPage'
 import toast from 'react-hot-toast'
 
 type TabType = 'basic' | 'statuses' | 'costumes' | 'special-days'
 
 export default function WageSettingsPage() {
+  return (
+    <ProtectedPage permissionKey="wage_settings">
+      <WageSettingsPageContent />
+    </ProtectedPage>
+  )
+}
+
+function WageSettingsPageContent() {
   const { storeId, storeName } = useStore()
   const [activeTab, setActiveTab] = useState<TabType>('basic')
   const [loading, setLoading] = useState(true)

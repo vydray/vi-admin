@@ -11,6 +11,7 @@ import { generateTimeOptions } from '@/lib/timeUtils'
 import { handleUnexpectedError, showErrorToast } from '@/lib/errorHandling'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
+import ProtectedPage from '@/components/ProtectedPage'
 import type { CastBasic, Attendance, AttendanceStatus, AttendanceHistory } from '@/types'
 
 // 再計算API呼び出し
@@ -29,6 +30,14 @@ async function recalculateMonth(storeId: number, year: number, month: number): P
 }
 
 export default function AttendancePage() {
+  return (
+    <ProtectedPage permissionKey="attendance">
+      <AttendancePageContent />
+    </ProtectedPage>
+  )
+}
+
+function AttendancePageContent() {
   const { storeId } = useStore()
   const { confirm } = useConfirm()
   const [selectedMonth, setSelectedMonth] = useState(new Date())

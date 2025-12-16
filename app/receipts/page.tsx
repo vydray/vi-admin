@@ -8,6 +8,7 @@ import toast from 'react-hot-toast'
 import { OrderItem, Receipt, ReceiptWithDetails, Product, Category, CastPOS } from '@/types'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
+import ProtectedPage from '@/components/ProtectedPage'
 
 // cast_nameが配列の場合はカンマ区切りで表示（JSON文字列・カンマ区切り文字列も対応）
 const formatCastName = (castName: string[] | string | null | undefined): string => {
@@ -52,6 +53,14 @@ interface OrderWithPayment {
 }
 
 export default function ReceiptsPage() {
+  return (
+    <ProtectedPage permissionKey="receipts">
+      <ReceiptsPageContent />
+    </ProtectedPage>
+  )
+}
+
+function ReceiptsPageContent() {
   const { storeId } = useStore()
   const { confirm } = useConfirm()
   const [receipts, setReceipts] = useState<ReceiptWithDetails[]>([])
