@@ -166,6 +166,37 @@ export interface Attendance {
   break_minutes?: number
   daily_payment?: number
   costume_id?: number       // 衣装ID
+  is_modified?: boolean     // 締め時刻後に修正されたか
+  last_modified_at?: string // 最終修正日時
+}
+
+// 勤怠修正履歴
+export interface AttendanceHistory {
+  id: number
+  attendance_id: number
+  store_id: number
+  // 修正前の値
+  previous_status_id: string | null
+  previous_check_in_datetime: string | null
+  previous_check_out_datetime: string | null
+  previous_late_minutes: number | null
+  previous_break_minutes: number | null
+  previous_daily_payment: number | null
+  previous_costume_id: number | null
+  // 修正後の値
+  new_status_id: string | null
+  new_check_in_datetime: string | null
+  new_check_out_datetime: string | null
+  new_late_minutes: number | null
+  new_break_minutes: number | null
+  new_daily_payment: number | null
+  new_costume_id: number | null
+  // 修正情報
+  modified_at: string
+  modified_source: 'pos' | 'admin'
+  modified_by: string | null
+  reason: string | null
+  created_at: string
 }
 
 export interface AttendanceStatus {

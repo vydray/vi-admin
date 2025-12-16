@@ -13,6 +13,7 @@ export type {
   Product,
   Category,
   Attendance,
+  AttendanceHistory,
   AttendanceStatus,
   Shift,
   ShiftRequest,

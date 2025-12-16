@@ -11,7 +11,7 @@ import { generateTimeOptions } from '@/lib/timeUtils'
 import { handleUnexpectedError, showErrorToast } from '@/lib/errorHandling'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
-import type { CastBasic, Attendance, AttendanceStatus } from '@/types'
+import type { CastBasic, Attendance, AttendanceStatus, AttendanceHistory } from '@/types'
 
 // 再計算API呼び出し
 async function recalculateMonth(storeId: number, year: number, month: number): Promise<{ success: boolean; results?: { date: string; castsProcessed: number }[]; error?: string }> {
@@ -54,6 +54,9 @@ export default function AttendancePage() {
   const [newStatusName, setNewStatusName] = useState('')
   const [newStatusColor, setNewStatusColor] = useState('#4CAF50')
   const [isRecalculating, setIsRecalculating] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
+  const [historyData, setHistoryData] = useState<AttendanceHistory[]>([])
+  const [loadingHistory, setLoadingHistory] = useState(false)
 
   const loadCasts = useCallback(async () => {
     const { data, error} = await supabase
@@ -76,7 +79,7 @@ export default function AttendancePage() {
 
     const { data, error } = await supabase
       .from('attendance')
-      .select('id, cast_name, date, check_in_datetime, check_out_datetime, status, status_id, store_id, late_minutes, break_minutes, daily_payment, costume_id')
+      .select('id, cast_name, date, check_in_datetime, check_out_datetime, status, status_id, store_id, late_minutes, break_minutes, daily_payment, costume_id, is_modified, last_modified_at')
       .eq('store_id', storeId)
       .gte('date', format(start, 'yyyy-MM-dd'))
       .lte('date', format(end, 'yyyy-MM-dd'))
@@ -110,6 +113,21 @@ export default function AttendancePage() {
       setCostumes(data)
     }
   }, [storeId])
+
+  // 勤怠修正履歴を取得
+  const loadHistory = useCallback(async (attendanceId: string) => {
+    setLoadingHistory(true)
+    const { data, error } = await supabase
+      .from('attendance_history')
+      .select('*')
+      .eq('attendance_id', attendanceId)
+      .order('modified_at', { ascending: false })
+
+    if (!error && data) {
+      setHistoryData(data as AttendanceHistory[])
+    }
+    setLoadingHistory(false)
+  }, [])
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -684,7 +702,11 @@ export default function AttendancePage() {
                           borderBottom: '1px solid #e2e8f0',
                           borderRight: '1px solid #e2e8f0',
                           textAlign: 'center',
-                          backgroundColor: attendance ? '#dcfce7' : '#fff',
+                          backgroundColor: attendance
+                            ? attendance.is_modified
+                              ? '#fef3c7' // 修正済み: オレンジ系
+                              : '#dcfce7' // 通常: 緑系
+                            : '#fff',
                           cursor: 'pointer',
                           position: 'relative',
                           transition: 'background-color 0.2s ease',
@@ -703,6 +725,19 @@ export default function AttendancePage() {
                       >
                         {attendance && (
                           <div style={{ fontSize: '13px', color: '#1a1a1a' }}>
+                            {/* 修正済みマーク */}
+                            {attendance.is_modified && (
+                              <div style={{
+                                position: 'absolute',
+                                top: '2px',
+                                right: '2px',
+                                fontSize: '10px',
+                                color: '#d97706',
+                                fontWeight: '600'
+                              }} title={`修正済み: ${attendance.last_modified_at ? format(new Date(attendance.last_modified_at), 'M/d HH:mm') : ''}`}>
+                                修正
+                              </div>
+                            )}
                             {attendance.status && (
                               <div style={{
                                 fontSize: '11px',
@@ -1034,6 +1069,93 @@ export default function AttendancePage() {
             </div>
           )}
 
+          {/* 修正履歴表示 */}
+          {editingInfo.attendance?.is_modified && (
+            <div style={{ marginBottom: '16px' }}>
+              <button
+                onClick={() => {
+                  if (showHistory) {
+                    setShowHistory(false)
+                  } else {
+                    loadHistory(editingInfo.attendance!.id)
+                    setShowHistory(true)
+                  }
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '8px 12px',
+                  fontSize: '13px',
+                  fontWeight: '500',
+                  backgroundColor: '#fef3c7',
+                  color: '#d97706',
+                  border: '1px solid #fcd34d',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  width: '100%',
+                  justifyContent: 'center'
+                }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10"/>
+                  <polyline points="12 6 12 12 16 14"/>
+                </svg>
+                {showHistory ? '履歴を閉じる' : '修正履歴を表示'}
+              </button>
+
+              {showHistory && (
+                <div style={{
+                  marginTop: '12px',
+                  padding: '12px',
+                  backgroundColor: '#fffbeb',
+                  borderRadius: '8px',
+                  border: '1px solid #fcd34d'
+                }}>
+                  {loadingHistory ? (
+                    <div style={{ textAlign: 'center', color: '#92400e', fontSize: '13px' }}>読み込み中...</div>
+                  ) : historyData.length === 0 ? (
+                    <div style={{ textAlign: 'center', color: '#92400e', fontSize: '13px' }}>履歴がありません</div>
+                  ) : (
+                    <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                      {historyData.map((history, idx) => (
+                        <div key={history.id} style={{
+                          padding: '10px',
+                          borderBottom: idx < historyData.length - 1 ? '1px solid #fcd34d' : 'none',
+                          fontSize: '12px'
+                        }}>
+                          <div style={{ fontWeight: '600', color: '#92400e', marginBottom: '4px' }}>
+                            {format(new Date(history.modified_at), 'yyyy/M/d HH:mm')}
+                            <span style={{ marginLeft: '8px', fontWeight: '400' }}>
+                              ({history.modified_source === 'admin' ? '管理画面' : 'POS'})
+                            </span>
+                          </div>
+                          <div style={{ color: '#78350f' }}>
+                            {history.previous_check_in_datetime && (
+                              <div>
+                                出勤: {format(new Date(history.previous_check_in_datetime), 'HH:mm')} → {history.new_check_in_datetime ? format(new Date(history.new_check_in_datetime), 'HH:mm') : '-'}
+                              </div>
+                            )}
+                            {history.previous_check_out_datetime && (
+                              <div>
+                                退勤: {format(new Date(history.previous_check_out_datetime), 'HH:mm')} → {history.new_check_out_datetime ? format(new Date(history.new_check_out_datetime), 'HH:mm') : '-'}
+                              </div>
+                            )}
+                            {history.reason && (
+                              <div style={{ marginTop: '4px', fontStyle: 'italic' }}>
+                                理由: {history.reason}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* アクションボタン */}
           <div style={{ display: 'flex', gap: '8px' }}>
             {tempTime.statusId && (
@@ -1077,6 +1199,8 @@ export default function AttendancePage() {
             <button
               onClick={() => {
                 setEditingCell(null)
+                setShowHistory(false)
+                setHistoryData([])
               }}
               style={{
                 padding: '10px 16px',
