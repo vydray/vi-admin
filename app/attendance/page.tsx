@@ -115,7 +115,7 @@ export default function AttendancePage() {
   }, [storeId])
 
   // 勤怠修正履歴を取得
-  const loadHistory = useCallback(async (attendanceId: string) => {
+  const loadHistory = useCallback(async (attendanceId: number) => {
     setLoadingHistory(true)
     const { data, error } = await supabase
       .from('attendance_history')

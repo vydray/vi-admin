@@ -154,7 +154,7 @@ export interface Category {
 // Attendance (勤怠)
 // ============================================================================
 export interface Attendance {
-  id: string
+  id: number
   cast_name: string
   date: string
   check_in_datetime: string | null
