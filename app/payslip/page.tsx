@@ -286,7 +286,7 @@ export default function PayslipPage() {
       .from('sales_settings')
       .select('*')
       .eq('store_id', storeId)
-      .single()
+      .maybeSingle()
 
     if (data) {
       setSalesSettings(data as SalesSettings)
@@ -323,10 +323,9 @@ export default function PayslipPage() {
       .eq('cast_id', castId)
       .eq('store_id', storeId)
       .limit(1)
-      .single()
+      .maybeSingle()
 
-    // PGRST116 = 行が見つからない場合のエラーは無視
-    if (error && error.code !== 'PGRST116') {
+    if (error) {
       console.error('報酬設定取得エラー:', error.message, error.code)
     }
 
@@ -391,9 +390,9 @@ export default function PayslipPage() {
       .eq('store_id', storeId)
       .eq('year_month', yearMonth)
       .limit(1)
-      .single()
+      .maybeSingle()
 
-    if (error && error.code !== 'PGRST116') {
+    if (error) {
       console.error('報酬明細取得エラー:', error)
     }
 

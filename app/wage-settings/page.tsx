@@ -38,7 +38,7 @@ export default function WageSettingsPage() {
         .from('store_wage_settings')
         .select('*')
         .eq('store_id', storeId)
-        .single()
+        .maybeSingle()
 
       if (settings) {
         setWageSettings(settings)

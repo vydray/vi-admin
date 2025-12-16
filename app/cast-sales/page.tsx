@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { format, eachDayOfInterval, addMonths, subMonths, startOfMonth, endOfMonth } from 'date-fns'
 import { ja } from 'date-fns/locale'
 import { useStore } from '@/contexts/StoreContext'
-import { CastBasic, SalesSettings, CastBackRate, SystemSettings } from '@/types'
+import { CastBasic, SalesSettings, CastBackRate } from '@/types'
 import { calculateCastSalesByPublishedMethod, getDefaultSalesSettings } from '@/lib/salesCalculation'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
@@ -85,7 +85,6 @@ export default function CastSalesPage() {
   const [isFinalized, setIsFinalized] = useState(false)
   const [productSalesData, setProductSalesData] = useState<Map<string, ProductSalesData>>(new Map())
   const [selectedProduct, setSelectedProduct] = useState<string | null>(null)
-  const [registeredProducts, setRegisteredProducts] = useState<RegisteredProduct[]>([])
 
   const currencyFormatter = useMemo(() => {
     return new Intl.NumberFormat('ja-JP', {
@@ -116,9 +115,9 @@ export default function CastSalesPage() {
       .from('sales_settings')
       .select('*')
       .eq('store_id', storeId)
-      .single()
+      .maybeSingle()
 
-    if (error && error.code !== 'PGRST116') {
+    if (error) {
       console.warn('売上設定の取得に失敗:', error)
     }
 
@@ -214,7 +213,6 @@ export default function CastSalesPage() {
   const loadSalesData = useCallback(async (
     loadedCasts: CastBasic[],
     settings: SalesSettings,
-    backRates: CastBackRate[],
     systemSettings: { tax_rate: number; service_fee_rate: number }
   ) => {
     const start = startOfMonth(selectedMonth)
@@ -322,7 +320,7 @@ export default function CastSalesPage() {
     setLoading(true)
     setError(null)
     try {
-      const [loadedCasts, settings, backRates, systemSettings, products] = await Promise.all([
+      const [loadedCasts, settings, , systemSettings, products] = await Promise.all([
         loadCasts(),
         loadSalesSettings(),
         loadBackRates(),
@@ -330,8 +328,7 @@ export default function CastSalesPage() {
         loadRegisteredProducts(),
       ])
       setSalesSettings(settings)
-      setRegisteredProducts(products)
-      await loadSalesData(loadedCasts, settings, backRates, systemSettings)
+      await loadSalesData(loadedCasts, settings, systemSettings)
 
       // 商品別キャスト売上を計算
       const start = startOfMonth(selectedMonth)

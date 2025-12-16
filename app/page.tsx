@@ -137,7 +137,7 @@ export default function Home() {
         .select('*')
         .eq('store_id', storeId)
         .eq('business_date', date)
-        .single()
+        .maybeSingle()
 
       setCashCountData(cashData)
 
@@ -332,7 +332,7 @@ export default function Home() {
         .select('setting_value')
         .eq('store_id', storeId)
         .eq('setting_key', 'business_day_start_hour')
-        .single()
+        .maybeSingle()
 
       const cutoffHour = settingData?.setting_value ? Number(settingData.setting_value) : 6
 

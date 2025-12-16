@@ -5,10 +5,9 @@ import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
 import { useConfirm } from '@/contexts/ConfirmContext'
 import toast from 'react-hot-toast'
-import { OrderItem, Payment, Receipt, ReceiptWithDetails, Product, Category, CastPOS } from '@/types'
+import { OrderItem, Receipt, ReceiptWithDetails, Product, Category, CastPOS } from '@/types'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
-import Modal from '@/components/Modal'
 
 // cast_nameが配列の場合はカンマ区切りで表示（JSON文字列・カンマ区切り文字列も対応）
 const formatCastName = (castName: string[] | string | null | undefined): string => {
@@ -98,7 +97,7 @@ export default function ReceiptsPage() {
     quantity: 1,
     unit_price: 0
   })
-  const [castSearchTerm, setCastSearchTerm] = useState('')
+  const [, setCastSearchTerm] = useState('')
   const [showCastDropdown, setShowCastDropdown] = useState(false)
 
   // ドロップダウンのref（外側クリックで閉じる用）
@@ -139,7 +138,7 @@ export default function ReceiptsPage() {
   const [allowMultipleCastsPerItem, setAllowMultipleCastsPerItem] = useState(false) // 複数キャスト機能
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false) // 会計処理モーダル
   const [paymentModalMode, setPaymentModalMode] = useState<'edit' | 'create'>('edit') // 編集モードか新規作成モードか
-  const [calculatedTotal, setCalculatedTotal] = useState(0) // 計算された合計金額
+  const [, setCalculatedTotal] = useState(0) // 計算された合計金額
   const [tempPaymentData, setTempPaymentData] = useState({
     cash_amount: 0,
     credit_card_amount: 0,
@@ -332,7 +331,7 @@ export default function ReceiptsPage() {
           .from('payments')
           .select('id, order_id, cash_amount, credit_card_amount, other_payment_amount, change_amount')
           .eq('order_id', receipt.id)
-          .single(),
+          .maybeSingle(),
         supabase
           .from('products')
           .select('id, name, price, category_id, store_id')
@@ -354,7 +353,7 @@ export default function ReceiptsPage() {
 
       if (itemsError) throw itemsError
 
-      if (paymentError && paymentError.code !== 'PGRST116') {
+      if (paymentError) {
         console.error('Payment error:', paymentError)
       }
 
