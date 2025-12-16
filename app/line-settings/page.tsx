@@ -10,7 +10,6 @@ import Button from '@/components/Button'
 interface Store {
   id: number
   store_name: string
-  store_code: string
 }
 
 interface LineConfig {
@@ -70,7 +69,7 @@ export default function LineSettingsPage() {
     // 店舗一覧を取得（全店舗）
     const { data: storesData } = await supabase
       .from('stores')
-      .select('id, store_name, store_code')
+      .select('id, store_name')
       .order('id')
 
     const allStores = storesData || []
@@ -290,7 +289,7 @@ export default function LineSettingsPage() {
               <option value="">店舗を選択</option>
               {getAvailableStores().map(store => (
                 <option key={store.id} value={store.id}>
-                  {store.store_name} ({store.store_code})
+                  {store.store_name}
                 </option>
               ))}
             </select>
@@ -446,7 +445,7 @@ export default function LineSettingsPage() {
                       fontSize: '12px',
                       color: '#475569'
                     }}>
-                      {config.stores?.store_code}
+                      ID: {config.store_id}
                     </code>
                     <span style={{
                       display: 'inline-block',

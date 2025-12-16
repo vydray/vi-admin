@@ -10,14 +10,12 @@ import Button from '@/components/Button'
 interface Store {
   id: number
   store_name: string
-  store_code: string
   is_active: boolean
   created_at: string
 }
 
 interface NewStoreForm {
   store_name: string
-  store_code: string
   pos_username: string
   pos_password: string
   admin_username: string
@@ -65,7 +63,6 @@ export default function StoresPage() {
   const [editingCredentials, setEditingCredentials] = useState<EditingCredentials | null>(null)
   const [newStore, setNewStore] = useState<NewStoreForm>({
     store_name: '',
-    store_code: '',
     pos_username: '',
     pos_password: '',
     admin_username: '',
@@ -134,10 +131,6 @@ export default function StoresPage() {
       toast.error('店舗名を入力してください')
       return
     }
-    if (!newStore.store_code.trim()) {
-      toast.error('店舗コードを入力してください')
-      return
-    }
     if (!newStore.pos_username.trim()) {
       toast.error('POSユーザー名を入力してください')
       return
@@ -154,20 +147,13 @@ export default function StoresPage() {
         .from('stores')
         .insert({
           store_name: newStore.store_name.trim(),
-          store_code: newStore.store_code.trim().toUpperCase(),
           is_active: true
         })
         .select()
         .single()
 
       if (storeError) {
-        if (storeError.code === '23505') {
-          toast.error('店舗コードが既に使用されています')
-        } else {
-          throw storeError
-        }
-        setSaving(false)
-        return
+        throw storeError
       }
 
       const newStoreId = storeData.id
@@ -217,7 +203,7 @@ export default function StoresPage() {
         })
 
       toast.success('店舗を作成しました')
-      setNewStore({ store_name: '', store_code: '', pos_username: '', pos_password: '', admin_username: '', admin_password: '' })
+      setNewStore({ store_name: '', pos_username: '', pos_password: '', admin_username: '', admin_password: '' })
       setShowAddForm(false)
       loadStores()
     } catch (error) {
@@ -235,19 +221,12 @@ export default function StoresPage() {
       const { error } = await supabase
         .from('stores')
         .update({
-          store_name: editingStore.store_name,
-          store_code: editingStore.store_code
+          store_name: editingStore.store_name
         })
         .eq('id', editingStore.id)
 
       if (error) {
-        if (error.code === '23505') {
-          toast.error('店舗コードが既に使用されています')
-        } else {
-          throw error
-        }
-        setSaving(false)
-        return
+        throw error
       }
 
       toast.success('店舗を更新しました')
@@ -368,48 +347,24 @@ export default function StoresPage() {
             新規店舗作成
           </h3>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '20px' }}>
-            <div>
-              <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500', color: '#374151' }}>
-                店舗名 <span style={{ color: '#ef4444' }}>*</span>
-              </label>
-              <input
-                type="text"
-                value={newStore.store_name}
-                onChange={(e) => setNewStore({ ...newStore, store_name: e.target.value })}
-                placeholder="例: Memorable"
-                style={{
-                  width: '100%',
-                  padding: '10px',
-                  fontSize: '14px',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: '6px',
-                  boxSizing: 'border-box'
-                }}
-              />
-            </div>
-            <div>
-              <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500', color: '#374151' }}>
-                店舗コード <span style={{ color: '#ef4444' }}>*</span>
-              </label>
-              <input
-                type="text"
-                value={newStore.store_code}
-                onChange={(e) => setNewStore({ ...newStore, store_code: e.target.value.toUpperCase() })}
-                placeholder="例: MAIN"
-                style={{
-                  width: '100%',
-                  padding: '10px',
-                  fontSize: '14px',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: '6px',
-                  boxSizing: 'border-box'
-                }}
-              />
-              <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
-                英大文字・数字のみ（自動で大文字変換）
-              </div>
-            </div>
+          <div style={{ marginBottom: '20px' }}>
+            <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500', color: '#374151' }}>
+              店舗名 <span style={{ color: '#ef4444' }}>*</span>
+            </label>
+            <input
+              type="text"
+              value={newStore.store_name}
+              onChange={(e) => setNewStore({ ...newStore, store_name: e.target.value })}
+              placeholder="例: Memorable"
+              style={{
+                width: '100%',
+                padding: '10px',
+                fontSize: '14px',
+                border: '1px solid #e2e8f0',
+                borderRadius: '6px',
+                boxSizing: 'border-box'
+              }}
+            />
           </div>
 
           {/* POSユーザー設定 */}
@@ -548,13 +503,23 @@ export default function StoresPage() {
                 {/* 店舗行 */}
                 <div style={{
                   display: 'grid',
-                  gridTemplateColumns: '50px 1fr 120px 80px 120px 200px',
+                  gridTemplateColumns: '80px 1fr 80px 120px 200px',
                   alignItems: 'center',
                   padding: '15px',
                   borderBottom: '1px solid #e2e8f0',
                   backgroundColor: expandedStoreId === store.id ? '#f8fafc' : 'transparent'
                 }}>
-                  <div style={{ color: '#64748b' }}>{store.id}</div>
+                  <div>
+                    <code style={{
+                      backgroundColor: '#f1f5f9',
+                      padding: '4px 8px',
+                      borderRadius: '4px',
+                      fontSize: '13px',
+                      color: '#475569'
+                    }}>
+                      ID: {store.id}
+                    </code>
+                  </div>
                   <div>
                     {editingStore?.id === store.id ? (
                       <input
@@ -571,32 +536,6 @@ export default function StoresPage() {
                       />
                     ) : (
                       <span style={{ fontWeight: '500', color: '#1a1a1a' }}>{store.store_name}</span>
-                    )}
-                  </div>
-                  <div>
-                    {editingStore?.id === store.id ? (
-                      <input
-                        type="text"
-                        value={editingStore.store_code}
-                        onChange={(e) => setEditingStore({ ...editingStore, store_code: e.target.value.toUpperCase() })}
-                        style={{
-                          padding: '8px',
-                          fontSize: '14px',
-                          border: '1px solid #3b82f6',
-                          borderRadius: '4px',
-                          width: '80px'
-                        }}
-                      />
-                    ) : (
-                      <code style={{
-                        backgroundColor: '#f1f5f9',
-                        padding: '4px 8px',
-                        borderRadius: '4px',
-                        fontSize: '13px',
-                        color: '#475569'
-                      }}>
-                        {store.store_code}
-                      </code>
                     )}
                   </div>
                   <div style={{ textAlign: 'center' }}>
