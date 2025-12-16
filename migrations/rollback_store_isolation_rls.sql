@@ -1,0 +1,110 @@
+-- ================================================================
+-- RLS Rollback: Store Isolation (店舗分離RLSポリシーのロールバック)
+-- ================================================================
+-- 目的: store_isolationポリシーを削除し、元のallow_all_accessに戻す
+-- 注意: これは緊急用。セキュリティが低下するため本番では慎重に
+-- ================================================================
+
+-- store_isolationポリシーを削除
+DROP POLICY IF EXISTS "store_isolation" ON casts;
+DROP POLICY IF EXISTS "store_isolation" ON admin_users;
+DROP POLICY IF EXISTS "store_isolation" ON attendance;
+DROP POLICY IF EXISTS "store_isolation" ON attendance_statuses;
+DROP POLICY IF EXISTS "store_isolation" ON attendance_history;
+DROP POLICY IF EXISTS "store_isolation" ON shifts;
+DROP POLICY IF EXISTS "store_isolation" ON shift_requests;
+DROP POLICY IF EXISTS "store_isolation" ON shift_locks;
+DROP POLICY IF EXISTS "store_isolation" ON products;
+DROP POLICY IF EXISTS "store_isolation" ON system_settings;
+DROP POLICY IF EXISTS "store_isolation" ON sales_settings;
+DROP POLICY IF EXISTS "store_isolation" ON compensation_settings;
+DROP POLICY IF EXISTS "store_isolation" ON cast_back_rates;
+DROP POLICY IF EXISTS "store_isolation" ON cast_daily_items;
+DROP POLICY IF EXISTS "store_isolation" ON cast_daily_stats;
+DROP POLICY IF EXISTS "store_isolation" ON wage_statuses;
+DROP POLICY IF EXISTS "store_isolation" ON special_wage_days;
+DROP POLICY IF EXISTS "store_isolation" ON costumes;
+DROP POLICY IF EXISTS "store_isolation" ON store_wage_settings;
+DROP POLICY IF EXISTS "store_isolation" ON deduction_types;
+DROP POLICY IF EXISTS "store_isolation" ON cast_deductions;
+DROP POLICY IF EXISTS "store_isolation" ON payslips;
+DROP POLICY IF EXISTS "store_isolation" ON base_settings;
+DROP POLICY IF EXISTS "store_isolation" ON base_products;
+DROP POLICY IF EXISTS "store_isolation" ON base_variations;
+DROP POLICY IF EXISTS "store_isolation" ON base_orders;
+DROP POLICY IF EXISTS "store_isolation" ON orders;
+DROP POLICY IF EXISTS "store_isolation" ON table_status;
+DROP POLICY IF EXISTS "store_isolation" ON cash_counts;
+DROP POLICY IF EXISTS "store_isolation" ON receipt_sequences;
+DROP POLICY IF EXISTS "store_isolation" ON receipt_settings;
+DROP POLICY IF EXISTS "store_isolation" ON store_line_configs;
+DROP POLICY IF EXISTS "store_isolation" ON line_register_requests;
+DROP POLICY IF EXISTS "store_isolation" ON admin_emergency_logins;
+DROP POLICY IF EXISTS "store_isolation" ON daily_reports;
+DROP POLICY IF EXISTS "store_isolation" ON monthly_targets;
+DROP POLICY IF EXISTS "store_isolation" ON compensation_sample_receipts;
+DROP POLICY IF EXISTS "store_isolation" ON visitor_reservations;
+DROP POLICY IF EXISTS "store_isolation" ON cast_positions;
+DROP POLICY IF EXISTS "store_isolation" ON product_categories;
+DROP POLICY IF EXISTS "store_isolation" ON late_penalty_rules;
+DROP POLICY IF EXISTS "store_isolation" ON late_penalty_tiers;
+DROP POLICY IF EXISTS "store_isolation" ON order_items;
+DROP POLICY IF EXISTS "store_isolation" ON payments;
+DROP POLICY IF EXISTS "store_isolation" ON current_order_items;
+DROP POLICY IF EXISTS "store_isolation" ON wage_status_conditions;
+DROP POLICY IF EXISTS "store_isolation" ON compensation_sample_items;
+DROP POLICY IF EXISTS "store_isolation" ON stores;
+DROP POLICY IF EXISTS "store_isolation" ON users;
+DROP POLICY IF EXISTS "store_isolation" ON casts_backup;
+
+-- 元のallow_all_accessポリシーを復元
+CREATE POLICY "allow_all_access" ON casts FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all_access" ON admin_users FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all_access" ON attendance FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all_access" ON attendance_statuses FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all_access" ON attendance_history FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all_access" ON shifts FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all_access" ON shift_requests FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all_access" ON shift_locks FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all_access" ON products FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all_access" ON system_settings FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all_access" ON sales_settings FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all_access" ON compensation_settings FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all_access" ON cast_back_rates FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all_access" ON cast_daily_items FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all_access" ON cast_daily_stats FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all_access" ON wage_statuses FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all_access" ON special_wage_days FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all_access" ON costumes FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all_access" ON store_wage_settings FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all_access" ON deduction_types FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all_access" ON cast_deductions FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all_access" ON payslips FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all_access" ON base_settings FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all_access" ON base_products FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all_access" ON base_variations FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all_access" ON base_orders FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all_access" ON orders FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all_access" ON table_status FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all_access" ON cash_counts FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all_access" ON receipt_sequences FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all_access" ON receipt_settings FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all_access" ON store_line_configs FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all_access" ON line_register_requests FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all_access" ON admin_emergency_logins FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all_access" ON daily_reports FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all_access" ON monthly_targets FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all_access" ON compensation_sample_receipts FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all_access" ON visitor_reservations FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all_access" ON cast_positions FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all_access" ON product_categories FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all_access" ON late_penalty_rules FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all_access" ON late_penalty_tiers FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all_access" ON order_items FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all_access" ON payments FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all_access" ON current_order_items FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all_access" ON wage_status_conditions FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all_access" ON compensation_sample_items FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all_access" ON stores FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all_access" ON users FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all_access" ON casts_backup FOR ALL TO public USING (true) WITH CHECK (true);

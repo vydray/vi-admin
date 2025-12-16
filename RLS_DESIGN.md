@@ -793,7 +793,7 @@ FOR ALL USING (
 
 ## 関連ドキュメント
 
-- [DATABASE.md](./DATABASE.md) - データベース仕様書
+- [docs/DATABASE_STRUCTURE.md](./docs/DATABASE_STRUCTURE.md) - データベース構造
 - [Supabaseダッシュボード](https://supabase.com/dashboard/project/ivgkberavxekkqgoavmo)
 
 ---
