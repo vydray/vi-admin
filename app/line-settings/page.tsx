@@ -6,6 +6,7 @@ import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import Button from '@/components/Button'
+import ProtectedPage from '@/components/ProtectedPage'
 
 interface Store {
   id: number
@@ -33,6 +34,14 @@ interface EditForm {
 }
 
 export default function LineSettingsPage() {
+  return (
+    <ProtectedPage requireSuperAdmin>
+      <LineSettingsPageContent />
+    </ProtectedPage>
+  )
+}
+
+function LineSettingsPageContent() {
   const router = useRouter()
   const { user } = useAuth()
   const [configs, setConfigs] = useState<LineConfig[]>([])

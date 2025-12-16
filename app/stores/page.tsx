@@ -6,6 +6,7 @@ import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import Button from '@/components/Button'
+import ProtectedPage from '@/components/ProtectedPage'
 import { PERMISSION_CONFIG, PERMISSION_CATEGORIES, ALL_PERMISSION_KEYS } from '@/lib/permissions'
 import type { PermissionKey, Permissions } from '@/types'
 
@@ -45,6 +46,14 @@ interface StoreCredentials {
 }
 
 export default function StoresPage() {
+  return (
+    <ProtectedPage requireSuperAdmin>
+      <StoresPageContent />
+    </ProtectedPage>
+  )
+}
+
+function StoresPageContent() {
   const router = useRouter()
   const { user } = useAuth()
   const [stores, setStores] = useState<Store[]>([])
