@@ -90,4 +90,6 @@ export type {
   StoreContextType,
   ConfirmContextType,
   ProviderProps,
+  PermissionKey,
+  Permissions,
 } from './context'

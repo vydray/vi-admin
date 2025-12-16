@@ -45,7 +45,7 @@ export async function GET(
     // vi-adminユーザーを取得（パスワードハッシュは返さない）
     const { data: adminUsers, error: adminError } = await supabase
       .from('admin_users')
-      .select('id, username, role, is_active')
+      .select('id, username, role, is_active, permissions')
       .eq('store_id', parseInt(storeId))
       .order('id')
 

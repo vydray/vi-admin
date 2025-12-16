@@ -6,6 +6,8 @@ import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import Button from '@/components/Button'
+import { PERMISSION_CONFIG, PERMISSION_CATEGORIES, ALL_PERMISSION_KEYS } from '@/lib/permissions'
+import type { PermissionKey, Permissions } from '@/types'
 
 interface Store {
   id: number
@@ -34,6 +36,7 @@ interface AdminUser {
   username: string
   role: string
   is_active: boolean
+  permissions?: Permissions
 }
 
 interface StoreCredentials {
@@ -61,6 +64,7 @@ export default function StoresPage() {
   const [storeCredentials, setStoreCredentials] = useState<{ [storeId: number]: StoreCredentials }>({})
   const [loadingCredentials, setLoadingCredentials] = useState<number | null>(null)
   const [editingCredentials, setEditingCredentials] = useState<EditingCredentials | null>(null)
+  const [editingPermissions, setEditingPermissions] = useState<{ userId: number; permissions: Permissions } | null>(null)
   const [newStore, setNewStore] = useState<NewStoreForm>({
     store_name: '',
     pos_username: '',
@@ -294,6 +298,49 @@ export default function StoresPage() {
     } catch (error) {
       console.error('Error saving credentials:', error)
       toast.error('更新に失敗しました')
+    }
+    setSaving(false)
+  }
+
+  const startEditingPermissions = (adminUser: AdminUser) => {
+    setEditingPermissions({
+      userId: adminUser.id,
+      permissions: adminUser.permissions || ALL_PERMISSION_KEYS.reduce((acc, key) => {
+        acc[key] = true
+        return acc
+      }, {} as Permissions)
+    })
+  }
+
+  const togglePermission = (key: PermissionKey) => {
+    if (!editingPermissions) return
+    setEditingPermissions({
+      ...editingPermissions,
+      permissions: {
+        ...editingPermissions.permissions,
+        [key]: !editingPermissions.permissions[key]
+      }
+    })
+  }
+
+  const savePermissions = async (storeId: number) => {
+    if (!editingPermissions) return
+
+    setSaving(true)
+    try {
+      const { error } = await supabase
+        .from('admin_users')
+        .update({ permissions: editingPermissions.permissions })
+        .eq('id', editingPermissions.userId)
+
+      if (error) throw error
+
+      toast.success('権限を更新しました')
+      setEditingPermissions(null)
+      await loadCredentials(storeId)
+    } catch (error) {
+      console.error('Error saving permissions:', error)
+      toast.error('権限の更新に失敗しました')
     }
     setSaving(false)
   }
@@ -719,20 +766,78 @@ export default function StoresPage() {
                                     </div>
                                   </div>
                                 ) : (
-                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        <span style={{ fontSize: '12px', fontWeight: '600', color: '#7c3aed', minWidth: '36px' }}>ID:</span>
-                                        <code style={{ backgroundColor: '#f3e8ff', padding: '4px 10px', borderRadius: '4px', fontSize: '14px', fontWeight: '500' }}>{adminUser.username}</code>
+                                  <div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                          <span style={{ fontSize: '12px', fontWeight: '600', color: '#7c3aed', minWidth: '36px' }}>ID:</span>
+                                          <code style={{ backgroundColor: '#f3e8ff', padding: '4px 10px', borderRadius: '4px', fontSize: '14px', fontWeight: '500' }}>{adminUser.username}</code>
+                                        </div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                          <span style={{ fontSize: '12px', fontWeight: '600', color: '#7c3aed', minWidth: '36px' }}>PASS:</span>
+                                          <span style={{ fontSize: '12px', color: '#94a3b8', fontStyle: 'italic' }}>ハッシュ化済み</span>
+                                        </div>
                                       </div>
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        <span style={{ fontSize: '12px', fontWeight: '600', color: '#7c3aed', minWidth: '36px' }}>PASS:</span>
-                                        <span style={{ fontSize: '12px', color: '#94a3b8', fontStyle: 'italic' }}>ハッシュ化済み</span>
+                                      <div style={{ display: 'flex', gap: '8px' }}>
+                                        <Button onClick={() => startEditingPermissions(adminUser)} variant="secondary">
+                                          権限
+                                        </Button>
+                                        <Button onClick={() => startEditingCredentials(store.id, 'admin', adminUser.id, adminUser.username)} variant="primary">
+                                          編集
+                                        </Button>
                                       </div>
                                     </div>
-                                    <Button onClick={() => startEditingCredentials(store.id, 'admin', adminUser.id, adminUser.username)} variant="primary">
-                                      編集
-                                    </Button>
+                                    {/* 権限編集パネル */}
+                                    {editingPermissions?.userId === adminUser.id && (
+                                      <div style={{
+                                        marginTop: '12px',
+                                        padding: '12px',
+                                        backgroundColor: '#faf5ff',
+                                        borderRadius: '6px',
+                                        border: '1px solid #e9d5ff'
+                                      }}>
+                                        <div style={{ fontSize: '13px', fontWeight: '600', color: '#7c3aed', marginBottom: '10px' }}>
+                                          アクセス権限設定
+                                        </div>
+                                        {PERMISSION_CATEGORIES.map(category => (
+                                          <div key={category} style={{ marginBottom: '10px' }}>
+                                            <div style={{ fontSize: '11px', fontWeight: '600', color: '#6b7280', marginBottom: '6px' }}>
+                                              {category}
+                                            </div>
+                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                                              {ALL_PERMISSION_KEYS
+                                                .filter(key => PERMISSION_CONFIG[key].category === category)
+                                                .map(key => (
+                                                  <button
+                                                    key={key}
+                                                    onClick={() => togglePermission(key)}
+                                                    style={{
+                                                      padding: '4px 10px',
+                                                      fontSize: '12px',
+                                                      borderRadius: '4px',
+                                                      border: 'none',
+                                                      cursor: 'pointer',
+                                                      backgroundColor: editingPermissions.permissions[key] ? '#dcfce7' : '#fee2e2',
+                                                      color: editingPermissions.permissions[key] ? '#166534' : '#991b1b',
+                                                      fontWeight: '500'
+                                                    }}
+                                                  >
+                                                    {PERMISSION_CONFIG[key].label}
+                                                  </button>
+                                                ))}
+                                            </div>
+                                          </div>
+                                        ))}
+                                        <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                                          <Button onClick={() => savePermissions(store.id)} disabled={saving} variant="success">
+                                            保存
+                                          </Button>
+                                          <Button onClick={() => setEditingPermissions(null)} variant="secondary">
+                                            取消
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    )}
                                   </div>
                                 )}
                               </div>

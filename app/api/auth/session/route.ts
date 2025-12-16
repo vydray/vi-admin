@@ -25,11 +25,11 @@ export async function GET() {
         return NextResponse.json({ user: null, reason: 'session_expired' }, { status: 401 })
       }
 
-      // パスワード変更後のセッション無効化チェック
+      // パスワード変更後のセッション無効化チェック & 最新権限取得
       const supabase = getSupabaseServerClient()
       const { data: user } = await supabase
         .from('admin_users')
-        .select('updated_at')
+        .select('updated_at, permissions')
         .eq('id', session.id)
         .single()
 
@@ -42,6 +42,9 @@ export async function GET() {
           return NextResponse.json({ user: null, reason: 'password_changed' }, { status: 401 })
         }
       }
+
+      // 最新の権限を返す（DBから取得した値を優先）
+      session.permissions = user?.permissions || session.permissions || {}
     }
 
     return NextResponse.json({ user: session })
