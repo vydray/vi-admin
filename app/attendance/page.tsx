@@ -376,21 +376,29 @@ export default function AttendancePage() {
     const existingAttendance = attendances.find(a => a.cast_name === cast.name && a.date === dateStr)
 
     // 24時間超えの時間を正規化してdatetime形式に変換（25:00 → 翌日01:00）
+    // タイムゾーン変換は行わず、入力された時刻をそのまま保存
     const normalizeTime = (time: string, baseDate: string) => {
       if (!time) return null
       const [hours, minutes] = time.split(':').map(Number)
       const normalizedHours = hours >= 24 ? hours - 24 : hours
 
-      // 日付オブジェクトを作成
-      const date = new Date(baseDate)
-      if (hours >= 24) {
-        // 24時間を超えている場合は翌日
-        date.setDate(date.getDate() + 1)
-      }
-      date.setHours(normalizedHours, minutes, 0, 0)
+      // 日付を計算（24時超えの場合は翌日）
+      const [year, month, day] = baseDate.split('-').map(Number)
+      let targetDay = day
+      let targetMonth = month
+      let targetYear = year
 
-      // ISO形式で返す（タイムゾーンなし）
-      return date.toISOString().slice(0, 19)
+      if (hours >= 24) {
+        // 翌日に繰り越し
+        const nextDate = new Date(year, month - 1, day + 1)
+        targetYear = nextDate.getFullYear()
+        targetMonth = nextDate.getMonth() + 1
+        targetDay = nextDate.getDate()
+      }
+
+      // タイムゾーン変換なしで直接文字列を構築
+      const pad = (n: number) => n.toString().padStart(2, '0')
+      return `${targetYear}-${pad(targetMonth)}-${pad(targetDay)}T${pad(normalizedHours)}:${pad(minutes)}:00`
     }
 
     const normalizedClockIn = tempTime.clockIn ? normalizeTime(tempTime.clockIn, dateStr) : null
