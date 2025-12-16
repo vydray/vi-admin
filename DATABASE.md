@@ -5,7 +5,7 @@
 ## 概要
 このドキュメントは、3つのプロジェクト（vi-admin, table-management-system, shift-management-app）で共有されるSupabaseデータベースの構造を記述します。
 
-**テーブル数**: 50
+**テーブル数**: 51
 
 ## プロジェクト別テーブル使用状況
 
@@ -13,7 +13,7 @@
 |-------------|-----------------|
 | vi-admin | admin_users, stores, casts, sales_settings, compensation_settings, wage_statuses, deduction_types 等 |
 | table-management-system (POS) | orders, order_items, payments, products, table_status, current_order_items 等 |
-| shift-management-app | shifts, shift_requests, attendance, attendance_history, casts 等 |
+| shift-management-app | shifts, shift_requests, attendance, attendance_history, casts, cast_sales_targets 等 |
 
 ---
 
@@ -43,12 +43,13 @@
 - `attendance_history` - 勤怠修正履歴
 - `attendance_statuses` 
 
-### 売上・バック
+### 売上・バック・目標
 - `cast_daily_stats` - キャスト別日別売上サマリー
 - `cast_daily_items` - キャスト別日別商品詳細
 - `sales_settings` - 店舗別売上計算設定
 - `cast_back_rates` - キャスト×商品別バック率設定
 - `monthly_targets` 
+- `cast_sales_targets` 
 
 ### 給与・報酬
 - `compensation_settings` - キャスト別報酬設定
@@ -382,6 +383,17 @@
 | costume_id | integer |  |  | FK → costumes.id |
 | wage_status_id | integer |  |  | FK → wage_statuses.id |
 
+### cast_sales_targets
+| カラム | 型 | NOT NULL | デフォルト | 説明 |
+|--------|-----|----------|-----------|------|
+| id | integer | ✓ |  | PK |
+| cast_id | integer | ✓ |  | FK → casts.id |
+| store_id | integer | ✓ |  | FK → stores.id |
+| year_month | varchar(7) | ✓ |  |  |
+| target_amount | integer | ✓ | 0 |  |
+| created_at | timestamptz |  | now() |  |
+| updated_at | timestamptz |  | now() |  |
+
 ### sales_settings
 **店舗別売上計算設定**
 | カラム | 型 | NOT NULL | デフォルト | 説明 |
@@ -713,6 +725,17 @@
 | name | varchar(100) | ✓ |  |  |
 | display_order | integer |  | 0 |  |
 | is_active | boolean |  | True |  |
+| created_at | timestamptz |  | now() |  |
+| updated_at | timestamptz |  | now() |  |
+
+### cast_sales_targets
+| カラム | 型 | NOT NULL | デフォルト | 説明 |
+|--------|-----|----------|-----------|------|
+| id | integer | ✓ |  | PK |
+| cast_id | integer | ✓ |  | FK → casts.id |
+| store_id | integer | ✓ |  | FK → stores.id |
+| year_month | varchar(7) | ✓ |  |  |
+| target_amount | integer | ✓ | 0 |  |
 | created_at | timestamptz |  | now() |  |
 | updated_at | timestamptz |  | now() |  |
 
