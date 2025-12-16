@@ -395,6 +395,9 @@ export default function AttendancePage() {
     const normalizedClockIn = buildDateTime(clockInTime, dateStr)
     const normalizedClockOut = buildDateTime(clockOutTime, clockOutDate)
 
+    // ステータス名を取得（status カラム用）
+    const statusName = selectedStatus?.name || ''
+
     try {
       if (existingAttendance) {
         // 更新
@@ -402,21 +405,18 @@ export default function AttendancePage() {
           check_in_datetime: normalizedClockIn,
           check_out_datetime: normalizedClockOut,
           status_id: tempTime.statusId,
+          status: statusName,
           late_minutes: tempTime.lateMinutes || 0,
           break_minutes: tempTime.breakMinutes || 0,
           daily_payment: tempTime.dailyPayment || 0,
           costume_id: tempTime.costumeId
         }
-        console.log('勤怠更新データ:', updateData)
-        console.log('更新対象ID:', existingAttendance.id)
 
-        const { error, data } = await supabase
+        const { error } = await supabase
           .from('attendance')
           .update(updateData)
           .eq('id', existingAttendance.id)
           .select()
-
-        console.log('更新結果:', { error, data })
 
         if (error) {
           toast.error('更新エラー: ' + error.message)
@@ -435,6 +435,7 @@ export default function AttendancePage() {
             check_in_datetime: normalizedClockIn,
             check_out_datetime: normalizedClockOut,
             status_id: tempTime.statusId,
+            status: statusName,
             store_id: storeId,
             late_minutes: tempTime.lateMinutes || 0,
             break_minutes: tempTime.breakMinutes || 0,
@@ -1151,9 +1152,11 @@ export default function AttendancePage() {
                               </span>
                             </div>
                             <div style={{ color: '#78350f' }}>
-                              {history.previous_status_id !== history.new_status_id && (
-                                <div>ステータス変更</div>
-                              )}
+                              {history.previous_status_id !== history.new_status_id && (() => {
+                                const prevStatus = attendanceStatuses.find(s => s.id === history.previous_status_id)
+                                const newStatus = attendanceStatuses.find(s => s.id === history.new_status_id)
+                                return <div>ステータス: {prevStatus?.name ?? '-'} → {newStatus?.name ?? '-'}</div>
+                              })()}
                               {prevIn !== newIn && (
                                 <div>出勤: {prevIn ?? '-'} → {newIn ?? '-'}</div>
                               )}
