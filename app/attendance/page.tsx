@@ -1131,14 +1131,32 @@ export default function AttendancePage() {
                             </span>
                           </div>
                           <div style={{ color: '#78350f' }}>
-                            {history.previous_check_in_datetime && (
+                            {history.previous_status_id !== history.new_status_id && (
+                              <div>ステータス変更</div>
+                            )}
+                            {history.previous_check_in_datetime !== history.new_check_in_datetime && (
                               <div>
-                                出勤: {format(new Date(history.previous_check_in_datetime), 'HH:mm')} → {history.new_check_in_datetime ? format(new Date(history.new_check_in_datetime), 'HH:mm') : '-'}
+                                出勤: {history.previous_check_in_datetime ? format(new Date(history.previous_check_in_datetime), 'HH:mm') : '-'} → {history.new_check_in_datetime ? format(new Date(history.new_check_in_datetime), 'HH:mm') : '-'}
                               </div>
                             )}
-                            {history.previous_check_out_datetime && (
+                            {history.previous_check_out_datetime !== history.new_check_out_datetime && (
                               <div>
-                                退勤: {format(new Date(history.previous_check_out_datetime), 'HH:mm')} → {history.new_check_out_datetime ? format(new Date(history.new_check_out_datetime), 'HH:mm') : '-'}
+                                退勤: {history.previous_check_out_datetime ? format(new Date(history.previous_check_out_datetime), 'HH:mm') : '-'} → {history.new_check_out_datetime ? format(new Date(history.new_check_out_datetime), 'HH:mm') : '-'}
+                              </div>
+                            )}
+                            {history.previous_late_minutes !== history.new_late_minutes && (
+                              <div>
+                                遅刻: {history.previous_late_minutes ?? 0}分 → {history.new_late_minutes ?? 0}分
+                              </div>
+                            )}
+                            {history.previous_break_minutes !== history.new_break_minutes && (
+                              <div>
+                                休憩: {history.previous_break_minutes ?? 0}分 → {history.new_break_minutes ?? 0}分
+                              </div>
+                            )}
+                            {history.previous_daily_payment !== history.new_daily_payment && (
+                              <div>
+                                日払い: ¥{(history.previous_daily_payment ?? 0).toLocaleString()} → ¥{(history.new_daily_payment ?? 0).toLocaleString()}
                               </div>
                             )}
                             {history.reason && (

@@ -88,9 +88,9 @@ BEGIN
     -- 営業日切替時刻を取得
     SELECT COALESCE(
         (SELECT setting_value::INTEGER
-         FROM store_settings
+         FROM system_settings
          WHERE store_id = NEW.store_id
-         AND setting_name = 'business_day_cutoff_hour'),
+         AND setting_key = 'business_day_start_hour'),
         6
     ) INTO cutoff_hour;
 
@@ -160,7 +160,7 @@ BEGIN
 
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- トリガーを設定
 DROP TRIGGER IF EXISTS trigger_attendance_history ON attendance;
