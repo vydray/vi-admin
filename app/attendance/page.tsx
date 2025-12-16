@@ -269,22 +269,18 @@ export default function AttendancePage() {
   const formatAttendanceTime = (attendance: Attendance | undefined) => {
     if (!attendance || !attendance.check_in_datetime) return ''
 
-    // datetimeから時刻部分を抽出 (HH:MM形式)
-    const clockIn = attendance.check_in_datetime.split('T')[1]?.slice(0, 5) || attendance.check_in_datetime.slice(11, 16)
-    const clockOut = attendance.check_out_datetime
-      ? (attendance.check_out_datetime.split('T')[1]?.slice(0, 5) || attendance.check_out_datetime.slice(11, 16))
-      : '---'
-
-    // 0-5時を24-29時に変換
-    const formatTime = (time: string) => {
-      const [hours, minutes] = time.split(':').map(Number)
-      if (hours >= 0 && hours <= 5) {
-        return `${hours + 24}:${minutes.toString().padStart(2, '0')}`
-      }
-      return time
+    // datetimeから時刻部分を直接抽出（タイムゾーン変換なし）
+    const extractTime = (datetime: string) => {
+      const match = datetime.match(/T(\d{2}:\d{2})/)
+      return match ? match[1] : datetime.slice(11, 16)
     }
 
-    return `${formatTime(clockIn)} ~ ${clockOut !== '---' ? formatTime(clockOut) : clockOut}`
+    const clockIn = extractTime(attendance.check_in_datetime)
+    const clockOut = attendance.check_out_datetime
+      ? extractTime(attendance.check_out_datetime)
+      : '---'
+
+    return `${clockIn} ~ ${clockOut}`
   }
 
   const handleCellClick = (castId: number, date: Date) => {
@@ -293,15 +289,10 @@ export default function AttendancePage() {
 
     const attendance = getAttendanceForCell(castId, date)
 
-    // 時間を24時間超えの形式に変換する関数
-    const convertTo24Plus = (datetime: string) => {
-      // datetimeから時刻部分を抽出
-      const time = datetime.split('T')[1]?.slice(0, 5) || datetime.slice(11, 16)
-      const [hours, minutes] = time.split(':').map(Number)
-      if (hours >= 0 && hours <= 5) {
-        return `${(hours + 24).toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`
-      }
-      return time
+    // datetimeから時刻部分を直接抽出（タイムゾーン変換なし）
+    const extractTime = (datetime: string) => {
+      const match = datetime.match(/T(\d{2}:\d{2})/)
+      return match ? match[1] : ''
     }
 
     if (attendance) {
@@ -312,8 +303,8 @@ export default function AttendancePage() {
         statusId = foundStatus?.id || ''
       }
       setTempTime({
-        clockIn: attendance.check_in_datetime ? convertTo24Plus(attendance.check_in_datetime) : '',
-        clockOut: attendance.check_out_datetime ? convertTo24Plus(attendance.check_out_datetime) : '',
+        clockIn: attendance.check_in_datetime ? extractTime(attendance.check_in_datetime) : '',
+        clockOut: attendance.check_out_datetime ? extractTime(attendance.check_out_datetime) : '',
         statusId,
         lateMinutes: attendance.late_minutes || 0,
         breakMinutes: attendance.break_minutes || 0,
@@ -325,7 +316,7 @@ export default function AttendancePage() {
       const defaultStatus = attendanceStatuses.find(s => s.name === '出勤')
       setTempTime({
         clockIn: '18:00',
-        clockOut: '24:00',
+        clockOut: '',
         statusId: defaultStatus?.id || '',
         lateMinutes: 0,
         breakMinutes: 0,
@@ -341,7 +332,7 @@ export default function AttendancePage() {
     const needsTime = status?.name === '出勤' || status?.name === '遅刻' || status?.name === '早退' || status?.name === 'リクエスト出勤'
     setTempTime({
       clockIn: needsTime ? '18:00' : '',
-      clockOut: needsTime ? '24:00' : '',
+      clockOut: needsTime ? '00:00' : '',
       statusId,
       lateMinutes: 0,
       breakMinutes: 0,
@@ -375,34 +366,34 @@ export default function AttendancePage() {
 
     const existingAttendance = attendances.find(a => a.cast_name === cast.name && a.date === dateStr)
 
-    // 24時間超えの時間を正規化してdatetime形式に変換（25:00 → 翌日01:00）
-    // タイムゾーン変換は行わず、入力された時刻をそのまま保存
-    const normalizeTime = (time: string, baseDate: string) => {
+    // 時刻をdatetime形式に変換（タイムゾーン変換なし）
+    const pad = (n: number) => n.toString().padStart(2, '0')
+    const buildDateTime = (time: string, date: string) => {
       if (!time) return null
-      const [hours, minutes] = time.split(':').map(Number)
-      const normalizedHours = hours >= 24 ? hours - 24 : hours
-
-      // 日付を計算（24時超えの場合は翌日）
-      const [year, month, day] = baseDate.split('-').map(Number)
-      let targetDay = day
-      let targetMonth = month
-      let targetYear = year
-
-      if (hours >= 24) {
-        // 翌日に繰り越し
-        const nextDate = new Date(year, month - 1, day + 1)
-        targetYear = nextDate.getFullYear()
-        targetMonth = nextDate.getMonth() + 1
-        targetDay = nextDate.getDate()
-      }
-
-      // タイムゾーン変換なしで直接文字列を構築
-      const pad = (n: number) => n.toString().padStart(2, '0')
-      return `${targetYear}-${pad(targetMonth)}-${pad(targetDay)}T${pad(normalizedHours)}:${pad(minutes)}:00`
+      return `${date}T${time}:00`
     }
 
-    const normalizedClockIn = tempTime.clockIn ? normalizeTime(tempTime.clockIn, dateStr) : null
-    const normalizedClockOut = tempTime.clockOut ? normalizeTime(tempTime.clockOut, dateStr) : null
+    // 退勤が出勤より早い時刻なら翌日と判断
+    const clockInTime = tempTime.clockIn
+    const clockOutTime = tempTime.clockOut
+    let clockOutDate = dateStr
+
+    if (clockInTime && clockOutTime) {
+      const [inH, inM] = clockInTime.split(':').map(Number)
+      const [outH, outM] = clockOutTime.split(':').map(Number)
+      const inMinutes = inH * 60 + inM
+      const outMinutes = outH * 60 + outM
+
+      if (outMinutes < inMinutes) {
+        // 翌日に繰り越し
+        const [year, month, day] = dateStr.split('-').map(Number)
+        const nextDate = new Date(year, month - 1, day + 1)
+        clockOutDate = `${nextDate.getFullYear()}-${pad(nextDate.getMonth() + 1)}-${pad(nextDate.getDate())}`
+      }
+    }
+
+    const normalizedClockIn = buildDateTime(clockInTime, dateStr)
+    const normalizedClockOut = buildDateTime(clockOutTime, clockOutDate)
 
     try {
       if (existingAttendance) {
@@ -1135,55 +1126,56 @@ export default function AttendancePage() {
                     <div style={{ textAlign: 'center', color: '#92400e', fontSize: '13px' }}>履歴がありません</div>
                   ) : (
                     <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
-                      {historyData.map((history, idx) => (
-                        <div key={history.id} style={{
-                          padding: '10px',
-                          borderBottom: idx < historyData.length - 1 ? '1px solid #fcd34d' : 'none',
-                          fontSize: '12px'
-                        }}>
-                          <div style={{ fontWeight: '600', color: '#92400e', marginBottom: '4px' }}>
-                            {format(new Date(history.modified_at), 'yyyy/M/d HH:mm')}
-                            <span style={{ marginLeft: '8px', fontWeight: '400' }}>
-                              ({history.modified_source === 'admin' ? '管理画面' : 'POS'})
-                            </span>
+                      {historyData.map((history, idx) => {
+                        // ISO文字列から時刻部分を直接抽出（タイムゾーン変換なし）
+                        const extractTime = (datetime: string | null) => {
+                          if (!datetime) return null
+                          const match = datetime.match(/T(\d{2}:\d{2})/)
+                          return match ? match[1] : null
+                        }
+                        const prevIn = extractTime(history.previous_check_in_datetime)
+                        const newIn = extractTime(history.new_check_in_datetime)
+                        const prevOut = extractTime(history.previous_check_out_datetime)
+                        const newOut = extractTime(history.new_check_out_datetime)
+
+                        return (
+                          <div key={history.id} style={{
+                            padding: '10px',
+                            borderBottom: idx < historyData.length - 1 ? '1px solid #fcd34d' : 'none',
+                            fontSize: '12px'
+                          }}>
+                            <div style={{ fontWeight: '600', color: '#92400e', marginBottom: '4px' }}>
+                              {format(new Date(history.modified_at), 'yyyy/M/d HH:mm')}
+                              <span style={{ marginLeft: '8px', fontWeight: '400' }}>
+                                ({history.modified_source === 'admin' ? '管理画面' : 'POS'})
+                              </span>
+                            </div>
+                            <div style={{ color: '#78350f' }}>
+                              {history.previous_status_id !== history.new_status_id && (
+                                <div>ステータス変更</div>
+                              )}
+                              {prevIn !== newIn && (
+                                <div>出勤: {prevIn ?? '-'} → {newIn ?? '-'}</div>
+                              )}
+                              {prevOut !== newOut && (
+                                <div>退勤: {prevOut ?? '-'} → {newOut ?? '-'}</div>
+                              )}
+                              {history.previous_late_minutes !== history.new_late_minutes && (
+                                <div>遅刻: {history.previous_late_minutes ?? 0}分 → {history.new_late_minutes ?? 0}分</div>
+                              )}
+                              {history.previous_break_minutes !== history.new_break_minutes && (
+                                <div>休憩: {history.previous_break_minutes ?? 0}分 → {history.new_break_minutes ?? 0}分</div>
+                              )}
+                              {history.previous_daily_payment !== history.new_daily_payment && (
+                                <div>日払い: ¥{(history.previous_daily_payment ?? 0).toLocaleString()} → ¥{(history.new_daily_payment ?? 0).toLocaleString()}</div>
+                              )}
+                              {history.reason && (
+                                <div style={{ marginTop: '4px', fontStyle: 'italic' }}>理由: {history.reason}</div>
+                              )}
+                            </div>
                           </div>
-                          <div style={{ color: '#78350f' }}>
-                            {history.previous_status_id !== history.new_status_id && (
-                              <div>ステータス変更</div>
-                            )}
-                            {history.previous_check_in_datetime !== history.new_check_in_datetime && (
-                              <div>
-                                出勤: {history.previous_check_in_datetime ? format(new Date(history.previous_check_in_datetime), 'HH:mm') : '-'} → {history.new_check_in_datetime ? format(new Date(history.new_check_in_datetime), 'HH:mm') : '-'}
-                              </div>
-                            )}
-                            {history.previous_check_out_datetime !== history.new_check_out_datetime && (
-                              <div>
-                                退勤: {history.previous_check_out_datetime ? format(new Date(history.previous_check_out_datetime), 'HH:mm') : '-'} → {history.new_check_out_datetime ? format(new Date(history.new_check_out_datetime), 'HH:mm') : '-'}
-                              </div>
-                            )}
-                            {history.previous_late_minutes !== history.new_late_minutes && (
-                              <div>
-                                遅刻: {history.previous_late_minutes ?? 0}分 → {history.new_late_minutes ?? 0}分
-                              </div>
-                            )}
-                            {history.previous_break_minutes !== history.new_break_minutes && (
-                              <div>
-                                休憩: {history.previous_break_minutes ?? 0}分 → {history.new_break_minutes ?? 0}分
-                              </div>
-                            )}
-                            {history.previous_daily_payment !== history.new_daily_payment && (
-                              <div>
-                                日払い: ¥{(history.previous_daily_payment ?? 0).toLocaleString()} → ¥{(history.new_daily_payment ?? 0).toLocaleString()}
-                              </div>
-                            )}
-                            {history.reason && (
-                              <div style={{ marginTop: '4px', fontStyle: 'italic' }}>
-                                理由: {history.reason}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   )}
                 </div>

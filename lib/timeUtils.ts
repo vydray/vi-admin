@@ -3,16 +3,16 @@
 
 export const DEFAULT_SHIFT_START = '19:00'
 export const DEFAULT_SHIFT_END = '03:00'
-export const HOURS_IN_EXTENDED_DAY = 30
+export const HOURS_IN_DAY = 24
 export const MINUTES_IN_HOUR = 60
 export const TIME_INTERVAL_MINUTES = 15
 
 /**
- * 時間選択肢を生成（00:00 から 29:45 まで15分刻み）
+ * 時間選択肢を生成（00:00 から 23:45 まで15分刻み）
  */
 export const generateTimeOptions = (): string[] => {
   const options: string[] = []
-  for (let h = 0; h < HOURS_IN_EXTENDED_DAY; h++) {
+  for (let h = 0; h < HOURS_IN_DAY; h++) {
     for (let m = 0; m < MINUTES_IN_HOUR; m += TIME_INTERVAL_MINUTES) {
       const hour = h.toString().padStart(2, '0')
       const minute = m.toString().padStart(2, '0')
