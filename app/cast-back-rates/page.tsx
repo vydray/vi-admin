@@ -10,6 +10,13 @@ interface CastWithStatus {
   name: string
   status: string | null
 }
+
+interface BaseProduct {
+  id: number
+  base_product_name: string
+  local_product_name: string
+  base_price: number
+}
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
 import HelpTooltip from '@/components/HelpTooltip'
@@ -42,6 +49,7 @@ export default function CastBackRatesPage() {
   const [casts, setCasts] = useState<CastWithStatus[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [products, setProducts] = useState<Product[]>([])
+  const [baseProducts, setBaseProducts] = useState<BaseProduct[]>([])
   const [backRates, setBackRates] = useState<CastBackRate[]>([])
   const [selectedCastId, setSelectedCastId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
@@ -116,6 +124,18 @@ export default function CastBackRatesPage() {
       if (productsError) throw productsError
       setProducts(productsData || [])
 
+      // BASE商品一覧
+      const { data: baseProductsData, error: baseProductsError } = await supabase
+        .from('base_products')
+        .select('id, base_product_name, local_product_name, base_price')
+        .eq('store_id', storeId)
+        .eq('is_active', true)
+
+      if (baseProductsError) {
+        console.warn('BASE商品の取得に失敗:', baseProductsError)
+      }
+      setBaseProducts(baseProductsData || [])
+
       // バック率設定
       const { data: ratesData, error: ratesError } = await supabase
         .from('cast_back_rates')
@@ -176,17 +196,44 @@ export default function CastBackRatesPage() {
     })
   }, [products, categories, castRates])
 
-  // カテゴリでグループ化
+  // カテゴリでグループ化（BASE商品も含む）
   const groupedProducts = useMemo(() => {
     const groups: { [key: string]: ProductWithRate[] } = {}
+
+    // 通常商品をグループ化
     allProductsWithRates.forEach(item => {
       if (!groups[item.categoryName]) {
         groups[item.categoryName] = []
       }
       groups[item.categoryName].push(item)
     })
+
+    // BASE商品を追加（categoryName = "BASE"）
+    if (baseProducts.length > 0) {
+      groups['BASE'] = baseProducts.map(bp => {
+        // BASE商品に対するバック率設定を探す
+        const rate = castRates.find(r =>
+          r.category === 'BASE' &&
+          r.product_name === bp.base_product_name
+        ) || null
+
+        // ProductWithRate形式に変換（product.idは負の値で区別）
+        return {
+          product: {
+            id: -bp.id, // 負の値でBASE商品を区別
+            name: bp.base_product_name,
+            price: bp.base_price,
+            category_id: -1, // BASE用のダミー値
+            store_id: storeId,
+          } as Product,
+          categoryName: 'BASE',
+          rate,
+        }
+      })
+    }
+
     return groups
-  }, [allProductsWithRates])
+  }, [allProductsWithRates, baseProducts, castRates, storeId])
 
   const openRateModal = (item: ProductWithRate) => {
     if (item.rate) {
@@ -342,13 +389,22 @@ export default function CastBackRatesPage() {
 
     setSaving(true)
     try {
-      // このカテゴリの全商品を取得
-      const categoryProducts = products.filter(p => {
-        const cat = categories.find(c => c.id === p.category_id)
-        return cat?.name === bulkCategory
-      })
+      // このカテゴリの全商品を取得（BASE対応）
+      let categoryProductNames: string[] = []
 
-      if (categoryProducts.length === 0) {
+      if (bulkCategory === 'BASE') {
+        // BASE商品の場合
+        categoryProductNames = baseProducts.map(bp => bp.base_product_name)
+      } else {
+        // 通常商品の場合
+        const categoryProducts = products.filter(p => {
+          const cat = categories.find(c => c.id === p.category_id)
+          return cat?.name === bulkCategory
+        })
+        categoryProductNames = categoryProducts.map(p => p.name)
+      }
+
+      if (categoryProductNames.length === 0) {
         toast.error('商品がありません')
         setSaving(false)
         return
@@ -363,17 +419,17 @@ export default function CastBackRatesPage() {
         const targetCastRates = backRates.filter(r => r.cast_id === targetCast.id)
 
         // 各商品に対してバック率を設定/更新
-        for (const product of categoryProducts) {
+        for (const productName of categoryProductNames) {
           const existingRate = targetCastRates.find(r =>
             r.category === bulkCategory &&
-            r.product_name === product.name
+            r.product_name === productName
           )
 
           const payload = {
             cast_id: targetCast.id,
             store_id: storeId,
             category: bulkCategory,
-            product_name: product.name,
+            product_name: productName,
             back_type: 'ratio' as BackType,
             back_ratio: bulkSelfRate,
             back_fixed_amount: 0,
@@ -402,8 +458,8 @@ export default function CastBackRatesPage() {
       }
 
       const message = bulkApplyToAll
-        ? `${targetCasts.length}人のキャスト × ${categoryProducts.length}商品 = ${totalUpdated}件を一括設定しました`
-        : `${categoryProducts.length}件の商品に一括設定しました`
+        ? `${targetCasts.length}人のキャスト × ${categoryProductNames.length}商品 = ${totalUpdated}件を一括設定しました`
+        : `${categoryProductNames.length}件の商品に一括設定しました`
       toast.success(message)
       setShowBulkModal(false)
       loadData()

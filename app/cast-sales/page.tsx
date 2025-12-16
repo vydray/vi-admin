@@ -17,6 +17,7 @@ interface DailySalesData {
   helpSales: number
   totalSales: number
   backAmount: number
+  baseSales: number
 }
 
 interface DailySales {
@@ -31,6 +32,8 @@ interface CastSalesData {
   totalHelp: number
   totalSales: number
   totalBack: number
+  totalBase: number
+  grandTotal: number  // totalSales + totalBase
 }
 
 interface OrderItemWithTax {
@@ -65,12 +68,6 @@ interface ProductSalesData {
   castSales: ProductCastSales[]
 }
 
-interface RegisteredProduct {
-  name: string
-  category_id: number | null
-  needs_cast: boolean
-  categoryName: string | null
-}
 
 export default function CastSalesPage() {
   const { storeId, storeName } = useStore()
@@ -210,6 +207,35 @@ export default function CastSalesPage() {
     })
   }, [storeId])
 
+  // BASE売上を取得
+  const loadBaseOrders = useCallback(async (startDate: string, endDate: string) => {
+    const { data, error } = await supabase
+      .from('base_orders')
+      .select('cast_id, actual_price, quantity, business_date')
+      .eq('store_id', storeId)
+      .gte('business_date', startDate)
+      .lte('business_date', endDate)
+      .not('cast_id', 'is', null)
+
+    if (error) {
+      console.warn('BASE売上の取得に失敗:', error)
+      return new Map<number, { [date: string]: number }>()
+    }
+
+    // キャスト別・日別のBASE売上をマップに集計
+    const baseMap = new Map<number, { [date: string]: number }>()
+    for (const order of data || []) {
+      if (!order.cast_id || !order.business_date) continue
+      const price = (order.actual_price || 0) * (order.quantity || 1)
+      if (!baseMap.has(order.cast_id)) {
+        baseMap.set(order.cast_id, {})
+      }
+      const castData = baseMap.get(order.cast_id)!
+      castData[order.business_date] = (castData[order.business_date] || 0) + price
+    }
+    return baseMap
+  }, [storeId])
+
   const loadSalesData = useCallback(async (
     loadedCasts: CastBasic[],
     settings: SalesSettings,
@@ -220,35 +246,38 @@ export default function CastSalesPage() {
     const startDate = format(start, 'yyyy-MM-dd')
     const endDate = format(end, 'yyyy-MM-dd')
 
-    // オーダーデータを取得（税抜き金額も含む）
-    const { data: orders, error: ordersError } = await supabase
-      .from('orders')
-      .select(`
-        id,
-        staff_name,
-        order_date,
-        order_items (
+    // オーダーデータとBASE売上を並列取得
+    const [ordersResult, baseOrdersMap] = await Promise.all([
+      supabase
+        .from('orders')
+        .select(`
           id,
-          product_name,
-          category,
-          cast_name,
-          quantity,
-          unit_price,
-          unit_price_excl_tax,
-          subtotal,
-          tax_amount
-        )
-      `)
-      .eq('store_id', storeId)
-      .gte('order_date', startDate)
-      .lte('order_date', endDate + 'T23:59:59')
-      .is('deleted_at', null)
+          staff_name,
+          order_date,
+          order_items (
+            id,
+            product_name,
+            category,
+            cast_name,
+            quantity,
+            unit_price,
+            unit_price_excl_tax,
+            subtotal,
+            tax_amount
+          )
+        `)
+        .eq('store_id', storeId)
+        .gte('order_date', startDate)
+        .lte('order_date', endDate + 'T23:59:59')
+        .is('deleted_at', null),
+      loadBaseOrders(startDate, endDate)
+    ])
 
-    if (ordersError) {
+    if (ordersResult.error) {
       throw new Error('売上データの取得に失敗しました')
     }
 
-    const typedOrders = (orders || []) as unknown as Order[]
+    const typedOrders = (ordersResult.data || []) as unknown as Order[]
 
     // キャストごとの売上を集計
     const salesMap = new Map<number, CastSalesData>()
@@ -263,6 +292,8 @@ export default function CastSalesPage() {
         totalHelp: 0,
         totalSales: 0,
         totalBack: 0,
+        totalBase: 0,
+        grandTotal: 0,
       })
     })
 
@@ -294,27 +325,57 @@ export default function CastSalesPage() {
       daySummaries.forEach((summary: { cast_id: number; self_sales: number; help_sales: number; total_sales: number; total_back: number }) => {
         const castData = salesMap.get(summary.cast_id)
         if (castData) {
+          // BASE売上を取得
+          const castBaseData = baseOrdersMap.get(summary.cast_id)
+          const baseSales = castBaseData?.[dateStr] || 0
+
           castData.dailySales[dateStr] = {
             selfSales: summary.self_sales,
             helpSales: summary.help_sales,
             totalSales: summary.total_sales,
             backAmount: summary.total_back,
+            baseSales: baseSales,
           }
           castData.totalSelf += summary.self_sales
           castData.totalHelp += summary.help_sales
           castData.totalSales += summary.total_sales
           castData.totalBack += summary.total_back
+          castData.totalBase += baseSales
         }
       })
     })
 
-    // 売上順にソート
+    // BASE売上のみあるキャスト（店舗売上が無い日）も処理
+    baseOrdersMap.forEach((dateSales, castId) => {
+      const castData = salesMap.get(castId)
+      if (castData) {
+        Object.entries(dateSales).forEach(([dateStr, baseSales]) => {
+          if (!castData.dailySales[dateStr]) {
+            castData.dailySales[dateStr] = {
+              selfSales: 0,
+              helpSales: 0,
+              totalSales: 0,
+              backAmount: 0,
+              baseSales: baseSales,
+            }
+            castData.totalBase += baseSales
+          }
+        })
+      }
+    })
+
+    // grandTotalを計算
+    salesMap.forEach(castData => {
+      castData.grandTotal = castData.totalSales + castData.totalBase
+    })
+
+    // 総売上順にソート（店舗売上 or BASE売上があるもの）
     const sortedData = Array.from(salesMap.values())
-      .filter(d => d.totalSales > 0)
-      .sort((a, b) => b.totalSales - a.totalSales)
+      .filter(d => d.totalSales > 0 || d.totalBase > 0)
+      .sort((a, b) => b.grandTotal - a.grandTotal)
 
     setSalesData(sortedData)
-  }, [storeId, selectedMonth])
+  }, [storeId, selectedMonth, loadBaseOrders])
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -554,9 +615,6 @@ export default function CastSalesPage() {
     return formatCurrency(data.totalSales)
   }
 
-  const getTotalDisplay = (cast: CastSalesData): string => {
-    return formatCurrency(cast.totalSales)
-  }
 
   const settingsDescription = useMemo(() => {
     if (!salesSettings) return ''
@@ -791,12 +849,42 @@ export default function CastSalesPage() {
                 <th style={{
                   position: 'sticky',
                   top: 0,
-                  right: 0,
                   backgroundColor: '#f8fafc',
                   padding: '12px',
                   borderBottom: '2px solid #e2e8f0',
+                  borderRight: '1px solid #e2e8f0',
                   fontWeight: '600',
                   color: '#475569',
+                  minWidth: '100px',
+                  zIndex: 10,
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+                }}>
+                  店舗売上
+                </th>
+                <th style={{
+                  position: 'sticky',
+                  top: 0,
+                  backgroundColor: '#ede9fe',
+                  padding: '12px',
+                  borderBottom: '2px solid #e2e8f0',
+                  borderRight: '1px solid #e2e8f0',
+                  fontWeight: '600',
+                  color: '#6d28d9',
+                  minWidth: '100px',
+                  zIndex: 10,
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+                }}>
+                  BASE売上
+                </th>
+                <th style={{
+                  position: 'sticky',
+                  top: 0,
+                  right: 0,
+                  backgroundColor: '#fef3c7',
+                  padding: '12px',
+                  borderBottom: '2px solid #e2e8f0',
+                  fontWeight: '600',
+                  color: '#92400e',
                   minWidth: '120px',
                   zIndex: 20,
                   boxShadow: '-2px 2px 4px rgba(0,0,0,0.05)'
@@ -808,7 +896,7 @@ export default function CastSalesPage() {
             <tbody>
               {salesData.length === 0 ? (
                 <tr>
-                  <td colSpan={days.length + 2} style={{
+                  <td colSpan={days.length + 4} style={{
                     padding: '40px',
                     textAlign: 'center',
                     color: '#64748b'
@@ -852,6 +940,35 @@ export default function CastSalesPage() {
                         </td>
                       )
                     })}
+                    {/* 店舗売上 */}
+                    <td style={{
+                      backgroundColor: '#f8fafc',
+                      padding: '12px',
+                      borderBottom: '1px solid #e2e8f0',
+                      borderRight: '1px solid #e2e8f0',
+                      textAlign: 'right',
+                      fontWeight: '500',
+                      color: castSales.totalSales > 0 ? '#1a1a1a' : '#94a3b8',
+                      fontSize: '13px',
+                      whiteSpace: 'nowrap'
+                    }}>
+                      {formatCurrency(castSales.totalSales)}
+                    </td>
+                    {/* BASE売上 */}
+                    <td style={{
+                      backgroundColor: '#ede9fe',
+                      padding: '12px',
+                      borderBottom: '1px solid #e2e8f0',
+                      borderRight: '1px solid #e2e8f0',
+                      textAlign: 'right',
+                      fontWeight: '500',
+                      color: castSales.totalBase > 0 ? '#6d28d9' : '#a5b4fc',
+                      fontSize: '13px',
+                      whiteSpace: 'nowrap'
+                    }}>
+                      {formatCurrency(castSales.totalBase)}
+                    </td>
+                    {/* 売上合計 */}
                     <td style={{
                       position: 'sticky',
                       right: 0,
@@ -866,7 +983,7 @@ export default function CastSalesPage() {
                       fontSize: '14px',
                       whiteSpace: 'nowrap'
                     }}>
-                      {getTotalDisplay(castSales)}
+                      {formatCurrency(castSales.grandTotal)}
                     </td>
                   </tr>
                 ))
