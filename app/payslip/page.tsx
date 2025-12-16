@@ -155,6 +155,7 @@ interface ProductBackItem {
   backRatio: number
   backAmount: number
   salesType: 'self' | 'help'
+  isBase?: boolean  // BASE注文かどうか
 }
 
 export default function PayslipPage() {
@@ -515,14 +516,41 @@ export default function PayslipPage() {
       .lte('order_date', endDate + 'T23:59:59')
       .is('deleted_at', null)
 
-    if (!orders || orders.length === 0) {
+    // BASE注文を取得
+    const { data: baseOrders } = await supabase
+      .from('base_orders')
+      .select('id, base_order_id, product_name, actual_price, quantity, business_date')
+      .eq('store_id', storeId)
+      .eq('cast_id', castId)
+      .gte('business_date', startDate)
+      .lte('business_date', endDate)
+
+    // BASE注文を日別にグループ化
+    const baseOrdersByDate = new Map<string, Array<{
+      id: number
+      base_order_id: string
+      product_name: string
+      actual_price: number | null
+      quantity: number
+      business_date: string | null
+    }>>()
+
+    baseOrders?.forEach(order => {
+      if (order.business_date) {
+        const existing = baseOrdersByDate.get(order.business_date) || []
+        existing.push(order)
+        baseOrdersByDate.set(order.business_date, existing)
+      }
+    })
+
+    if ((!orders || orders.length === 0) && (!baseOrders || baseOrders.length === 0)) {
       setDailySalesData(new Map())
       return
     }
 
     // 日別に分解（order_dateベースで集計）
     const ordersByDate = new Map<string, Order[]>()
-    orders.forEach(order => {
+    orders?.forEach(order => {
       const dateStr = order.order_date?.split('T')[0]
       if (dateStr) {
         const existing = ordersByDate.get(dateStr) || []
@@ -531,12 +559,19 @@ export default function PayslipPage() {
       }
     })
 
+    // 全日付を取得（POS注文とBASE注文の両方の日付を含める）
+    const allDates = new Set<string>()
+    ordersByDate.forEach((_, dateStr) => allDates.add(dateStr))
+    baseOrdersByDate.forEach((_, dateStr) => allDates.add(dateStr))
+
     // 日別に集計
     const dailyMap = new Map<string, DailySalesData>()
     const castList = casts.map(c => ({ id: c.id, name: c.name }))
 
     // 各日の売上を計算
-    ordersByDate.forEach((dayOrders, dateStr) => {
+    allDates.forEach(dateStr => {
+      const dayOrders = ordersByDate.get(dateStr) || []
+      const dayBaseOrders = baseOrdersByDate.get(dateStr) || []
       // 売上は公開設定に基づいて計算
       const publishedSales = calculateCastSalesByPublishedMethod(
         dayOrders,
@@ -782,10 +817,55 @@ export default function PayslipPage() {
             subtotal,
             backRatio: backInfo.rate,
             backAmount,
-            salesType
+            salesType,
+            isBase: false
           })
         })
       })
+
+      // BASE注文のバックを計算（POS注文と同じ売上設定を適用）
+      if (useProductBack) {
+        dayBaseOrders.forEach(baseOrder => {
+          // BASE商品のバック情報を取得（カテゴリは'BASE'として検索）
+          const backInfo = getProductBackInfo(castId, 'BASE', baseOrder.product_name, 'self')
+          if (backInfo === null) return // 設定がない商品はスキップ
+
+          // 金額計算（POS注文と同じ売上設定を適用）
+          let calcPrice = baseOrder.actual_price || 0
+
+          if (roundingTiming === 'per_item') {
+            // 単価に対して税抜き・端数処理を適用
+            if (excludeTax) {
+              calcPrice = Math.floor(calcPrice * 100 / (100 + taxPercent))
+            }
+            calcPrice = applyRoundingNew(calcPrice, roundingPosition, roundingType)
+            // サービス料を除外する場合
+            if (excludeService && serviceRate > 0) {
+              const servicePercent = Math.round(serviceRate * 100)
+              const afterServicePrice = Math.floor(calcPrice * (100 + servicePercent) / 100)
+              calcPrice = applyRoundingNew(afterServicePrice, roundingPosition, roundingType)
+            }
+          }
+
+          const subtotal = calcPrice * baseOrder.quantity
+          const backAmount = backInfo.type === 'fixed'
+            ? backInfo.fixedAmount * baseOrder.quantity
+            : Math.floor(subtotal * backInfo.rate / 100)
+
+          productBackTotal += backAmount
+          productBackItems.push({
+            orderId: baseOrder.base_order_id,
+            productName: baseOrder.product_name,
+            category: 'BASE',
+            quantity: baseOrder.quantity,
+            subtotal,
+            backRatio: backInfo.rate,
+            backAmount,
+            salesType: 'self',
+            isBase: true
+          })
+        })
+      }
 
       if (publishedResult || productBackTotal > 0) {
         dailyMap.set(dateStr, {
@@ -1592,7 +1672,7 @@ export default function PayslipPage() {
                         allItems.push(...day.items)
                       })
 
-                      // 商品名+カテゴリ+売上タイプでグループ化（推し/ヘルプを分ける）
+                      // 商品名+カテゴリ+売上タイプ+BASEフラグでグループ化
                       const grouped = new Map<string, {
                         productName: string
                         category: string | null
@@ -1601,10 +1681,11 @@ export default function PayslipPage() {
                         subtotal: number
                         backRatio: number
                         backAmount: number
+                        isBase: boolean
                       }>()
 
                       allItems.forEach(item => {
-                        const key = `${item.category || ''}:${item.productName}:${item.salesType}`
+                        const key = `${item.category || ''}:${item.productName}:${item.salesType}:${item.isBase ? 'base' : 'pos'}`
                         const existing = grouped.get(key)
                         if (existing) {
                           existing.quantity += item.quantity
@@ -1619,6 +1700,7 @@ export default function PayslipPage() {
                             subtotal: item.subtotal,
                             backRatio: item.backRatio,
                             backAmount: item.backAmount,
+                            isBase: item.isBase || false,
                           })
                         }
                       })
@@ -1656,6 +1738,18 @@ export default function PayslipPage() {
                               }}>
                                 {item.salesType === 'self' ? '推し' : 'ヘルプ'}
                               </span>
+                              {item.isBase && (
+                                <span style={{
+                                  marginLeft: '4px',
+                                  fontSize: '11px',
+                                  padding: '2px 6px',
+                                  borderRadius: '4px',
+                                  backgroundColor: '#ede9fe',
+                                  color: '#6b21a8'
+                                }}>
+                                  BASE
+                                </span>
+                              )}
                             </td>
                             <td style={{ ...styles.td, color: '#86868b', fontSize: '12px' }}>{item.category || '-'}</td>
                             <td style={{ ...styles.td, textAlign: 'right' }}>{item.quantity}</td>
