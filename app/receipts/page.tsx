@@ -1266,9 +1266,10 @@ function ReceiptsPageContent() {
       (receipt.guest_name && receipt.guest_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
       receipt.id.toString().includes(searchTerm)
 
-    const receiptDate = new Date(receipt.checkout_datetime || receipt.order_date)
-    const matchesStartDate = !startDate || receiptDate >= new Date(startDate)
-    const matchesEndDate = !endDate || receiptDate <= new Date(endDate + 'T23:59:59')
+    // order_dateの日付部分だけを取り出して営業日ベースで比較（時間は無視）
+    const orderDateStr = receipt.order_date ? receipt.order_date.split('T')[0] : ''
+    const matchesStartDate = !startDate || orderDateStr >= startDate
+    const matchesEndDate = !endDate || orderDateStr <= endDate
 
     // 推しフィルター（配列対応）
     const matchesStaffName = filterStaffName === '' || (
