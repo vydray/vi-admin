@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import { calculateCastSalesByPublishedMethod, getDefaultSalesSettings } from '@/lib/salesCalculation'
+import { getBusinessDayRange } from '@/lib/businessDay'
 import { SalesSettings, CastSalesSummary } from '@/types'
 
 // Service Role Key でRLSをバイパス
@@ -165,7 +166,20 @@ async function recalculateForDate(storeId: number, date: string): Promise<{
     const taxRate = systemSettings.tax_rate / 100
     const serviceRate = systemSettings.service_fee_rate / 100
 
-    // 2. その日の伝票とorder_itemsを取得
+    // 営業日切替時刻を取得
+    const { data: cutoffHourSetting } = await supabaseAdmin
+      .from('system_settings')
+      .select('setting_value')
+      .eq('store_id', storeId)
+      .eq('setting_key', 'business_day_start_hour')
+      .maybeSingle()
+
+    const cutoffHour = cutoffHourSetting?.setting_value ? Number(cutoffHourSetting.setting_value) : 6
+
+    // 営業日の範囲を計算
+    const { start, end } = getBusinessDayRange(date, cutoffHour)
+
+    // 2. その日の伝票とorder_itemsを取得（営業日ベース）
     const { data: orders, error: ordersError } = await supabaseAdmin
       .from('orders')
       .select(`
@@ -185,8 +199,8 @@ async function recalculateForDate(storeId: number, date: string): Promise<{
         )
       `)
       .eq('store_id', storeId)
-      .gte('order_date', `${date}T00:00:00`)
-      .lte('order_date', `${date}T23:59:59.999`)
+      .gte('order_date', start)
+      .lte('order_date', end)
       .is('deleted_at', null)
 
     if (ordersError) throw ordersError
