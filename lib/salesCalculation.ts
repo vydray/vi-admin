@@ -586,6 +586,7 @@ export function calculateReceiptBased(
 
     // 伝票内の全商品を集計
     let receiptTotalRaw = 0
+    let receiptTotalProcessed = 0 // 商品ごとに処理済みの合計
     let selfTotalRaw = 0
     let helpTotalRaw = 0
     const helpCastsInReceipt: string[] = []
@@ -594,6 +595,11 @@ export function calculateReceiptBased(
     order.order_items.forEach(item => {
       const itemAmount = item.unit_price * item.quantity
       receiptTotalRaw += itemAmount
+
+      // 商品ごと(per_item)の場合は、各商品に対して税抜き＆端数処理を適用
+      if (roundingTiming === 'per_item') {
+        receiptTotalProcessed += applyTaxAndRounding(itemAmount)
+      }
 
       const castsOnItem = item.cast_name || []
 
@@ -635,9 +641,10 @@ export function calculateReceiptBased(
     // 税計算・端数処理
     let receiptTotal: number
     if (roundingTiming === 'per_item') {
-      // 商品ごとに既に処理済みと仮定して合計
-      receiptTotal = applyTaxAndRounding(receiptTotalRaw)
+      // 商品ごとに処理済みの合計を使用
+      receiptTotal = receiptTotalProcessed
     } else {
+      // 合計に対して税抜き＆端数処理を適用
       receiptTotal = applyTaxAndRounding(receiptTotalRaw)
     }
 
