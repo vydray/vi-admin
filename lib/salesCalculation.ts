@@ -218,7 +218,7 @@ export function calculateCastSales(
   orders.forEach(order => {
     // オーダーの推し（staff_name）を取得
     const orderStaffName = order.staff_name
-    const allNominations = orderStaffName ? orderStaffName.split(', ').map(n => n.trim()) : []
+    const allNominations = orderStaffName ? orderStaffName.split(',').map(n => n.trim()) : []
 
     order.order_items.forEach(item => {
       const castsOnItem = item.cast_name || []
@@ -362,7 +362,9 @@ export function calculateItemBased(
 
   // 各オーダーの商品を処理
   orders.forEach(order => {
-    const orderNominations = order.staff_name ? [order.staff_name] : []
+    const orderNominations = order.staff_name
+      ? order.staff_name.split(',').map(n => n.trim())
+      : []
     const allNominations = [...new Set([...orderNominations, ...nominations])]
 
     // ヘルプ除外名を推しから除外（実在キャストの推しのみ残す）
@@ -576,7 +578,9 @@ export function calculateReceiptBased(
   // 各オーダー（伝票）を処理
   orders.forEach(order => {
     // 推し（担当）
-    const allNominations = order.staff_name ? [order.staff_name] : []
+    const allNominations = order.staff_name
+      ? order.staff_name.split(',').map(n => n.trim())
+      : []
     if (allNominations.length === 0) return // 推しがいない伝票はスキップ
 
     // ヘルプ除外名を推しから除外（実在キャストの推しのみ残す）
