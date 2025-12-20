@@ -19,7 +19,6 @@ interface LineConfig {
   line_channel_id: string
   line_channel_secret: string
   line_channel_access_token: string
-  discord_webhook_url: string | null
   is_active: boolean
   created_at: string
   updated_at: string
@@ -30,7 +29,6 @@ interface EditForm {
   line_channel_id: string
   line_channel_secret: string
   line_channel_access_token: string
-  discord_webhook_url: string
 }
 
 export default function LineSettingsPage() {
@@ -54,8 +52,7 @@ function LineSettingsPageContent() {
   const [editForm, setEditForm] = useState<EditForm>({
     line_channel_id: '',
     line_channel_secret: '',
-    line_channel_access_token: '',
-    discord_webhook_url: ''
+    line_channel_access_token: ''
   })
   const [showSecrets, setShowSecrets] = useState<{ [key: number]: boolean }>({})
 
@@ -137,7 +134,6 @@ function LineSettingsPageContent() {
           line_channel_id: editForm.line_channel_id.trim(),
           line_channel_secret: editForm.line_channel_secret.trim(),
           line_channel_access_token: editForm.line_channel_access_token.trim(),
-          discord_webhook_url: editForm.discord_webhook_url.trim() || null,
           is_active: true
         })
 
@@ -152,7 +148,7 @@ function LineSettingsPageContent() {
       }
 
       toast.success('LINE設定を追加しました')
-      setEditForm({ line_channel_id: '', line_channel_secret: '', line_channel_access_token: '', discord_webhook_url: '' })
+      setEditForm({ line_channel_id: '', line_channel_secret: '', line_channel_access_token: '' })
       setSelectedStoreId('')
       setShowAddForm(false)
       loadData()
@@ -168,8 +164,7 @@ function LineSettingsPageContent() {
     setEditForm({
       line_channel_id: config.line_channel_id,
       line_channel_secret: config.line_channel_secret,
-      line_channel_access_token: config.line_channel_access_token,
-      discord_webhook_url: config.discord_webhook_url || ''
+      line_channel_access_token: config.line_channel_access_token
     })
   }
 
@@ -184,7 +179,6 @@ function LineSettingsPageContent() {
           line_channel_id: editForm.line_channel_id.trim(),
           line_channel_secret: editForm.line_channel_secret.trim(),
           line_channel_access_token: editForm.line_channel_access_token.trim(),
-          discord_webhook_url: editForm.discord_webhook_url.trim() || null,
           updated_at: new Date().toISOString()
         })
         .eq('id', editingId)
@@ -193,7 +187,7 @@ function LineSettingsPageContent() {
 
       toast.success('LINE設定を更新しました')
       setEditingId(null)
-      setEditForm({ line_channel_id: '', line_channel_secret: '', line_channel_access_token: '', discord_webhook_url: '' })
+      setEditForm({ line_channel_id: '', line_channel_secret: '', line_channel_access_token: '' })
       loadData()
     } catch (error) {
       console.error('Error updating config:', error)
@@ -253,7 +247,7 @@ function LineSettingsPageContent() {
               LINE設定管理
             </h1>
             <p style={{ margin: '8px 0 0', fontSize: '14px', color: '#64748b' }}>
-              店舗ごとのLINE公式アカウント・Discord連携設定
+              店舗ごとのLINE公式アカウント設定
             </p>
           </div>
           {getAvailableStores().length > 0 && (
@@ -371,40 +365,6 @@ function LineSettingsPageContent() {
                     boxSizing: 'border-box'
                   }}
                 />
-              </div>
-            </div>
-          </div>
-
-          <div style={{
-            backgroundColor: '#f5f3ff',
-            border: '1px solid #c4b5fd',
-            borderRadius: '8px',
-            padding: '15px',
-            marginBottom: '20px'
-          }}>
-            <div style={{ fontSize: '14px', fontWeight: '600', color: '#5b21b6', marginBottom: '15px' }}>
-              Discord連携（オプション）
-            </div>
-            <div>
-              <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500', color: '#374151' }}>
-                Webhook URL
-              </label>
-              <input
-                type="text"
-                value={editForm.discord_webhook_url}
-                onChange={(e) => setEditForm({ ...editForm, discord_webhook_url: e.target.value })}
-                placeholder="https://discord.com/api/webhooks/..."
-                style={{
-                  width: '100%',
-                  padding: '10px',
-                  fontSize: '14px',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: '6px',
-                  boxSizing: 'border-box'
-                }}
-              />
-              <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
-                欠勤・お問い合わせ通知を受け取るDiscordチャンネルのWebhook URL
               </div>
             </div>
           </div>
@@ -543,31 +503,12 @@ function LineSettingsPageContent() {
                           }}
                         />
                       </div>
-                      <div>
-                        <label style={{ display: 'block', marginBottom: '5px', fontSize: '13px', fontWeight: '500', color: '#475569' }}>
-                          Discord Webhook URL
-                        </label>
-                        <input
-                          type="text"
-                          value={editForm.discord_webhook_url}
-                          onChange={(e) => setEditForm({ ...editForm, discord_webhook_url: e.target.value })}
-                          placeholder="https://discord.com/api/webhooks/..."
-                          style={{
-                            width: '100%',
-                            padding: '8px',
-                            fontSize: '14px',
-                            border: '1px solid #e2e8f0',
-                            borderRadius: '4px',
-                            boxSizing: 'border-box'
-                          }}
-                        />
-                      </div>
                     </div>
                     <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
                       <Button onClick={updateConfig} disabled={saving} variant="success">
                         {saving ? '保存中...' : '保存'}
                       </Button>
-                      <Button onClick={() => { setEditingId(null); setEditForm({ line_channel_id: '', line_channel_secret: '', line_channel_access_token: '', discord_webhook_url: '' }) }} variant="secondary">
+                      <Button onClick={() => { setEditingId(null); setEditForm({ line_channel_id: '', line_channel_secret: '', line_channel_access_token: '' }) }} variant="secondary">
                         キャンセル
                       </Button>
                     </div>
@@ -603,12 +544,6 @@ function LineSettingsPageContent() {
                       <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>Access Token</div>
                       <div style={{ fontSize: '14px', color: '#1a1a1a', fontFamily: 'monospace' }}>
                         {maskValue(config.line_channel_access_token)}
-                      </div>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>Discord Webhook</div>
-                      <div style={{ fontSize: '14px', color: config.discord_webhook_url ? '#1a1a1a' : '#94a3b8' }}>
-                        {config.discord_webhook_url ? '設定済み' : '未設定'}
                       </div>
                     </div>
                   </div>
@@ -702,22 +637,6 @@ function LineSettingsPageContent() {
             </div>
             • 「Webhookの利用」→ <strong>オン</strong><br />
             • 「応答メッセージ」→ <strong>オフ</strong>（自動返信を無効化）
-          </div>
-        </div>
-
-        {/* Discord説明 */}
-        <div style={{
-          backgroundColor: '#f5f3ff',
-          border: '1px solid #c4b5fd',
-          borderRadius: '6px',
-          padding: '12px',
-          marginTop: '15px'
-        }}>
-          <div style={{ fontSize: '13px', fontWeight: '600', color: '#5b21b6', marginBottom: '6px' }}>
-            Discord Webhook URL（オプション）
-          </div>
-          <div style={{ fontSize: '12px', color: '#4c1d95', lineHeight: '1.6' }}>
-            Discordで通知を受け取りたい場合は、サーバー設定 → 連携サービス → ウェブフック から作成してURLをコピー
           </div>
         </div>
       </div>

@@ -4,7 +4,11 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useAuth } from '@/contexts/AuthContext';
-import { useStore } from '@/contexts/StoreContext';
+
+interface Store {
+  id: number;
+  store_name: string;
+}
 
 interface AISettings {
   advance_absence_deadline_days_before: string;
@@ -36,8 +40,9 @@ interface AISettings {
 export default function AISettingsPage() {
   const router = useRouter();
   const { user, isLoading: authLoading } = useAuth();
-  const { storeId } = useStore();
   const supabase = createClientComponentClient();
+  const [stores, setStores] = useState<Store[]>([]);
+  const [selectedStoreId, setSelectedStoreId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [settings, setSettings] = useState<AISettings>({
@@ -67,7 +72,7 @@ export default function AISettingsPage() {
     ai_request_max_future_months: '2',
   });
 
-  // 権限チェック
+  // 権限チェックと店舗リスト取得
   useEffect(() => {
     if (authLoading) return;
 
@@ -81,17 +86,41 @@ export default function AISettingsPage() {
       return;
     }
 
-    fetchSettings();
-  }, [authLoading, user, storeId]);
+    fetchStores();
+  }, [authLoading, user]);
+
+  // 店舗変更時に設定を取得
+  useEffect(() => {
+    if (selectedStoreId) {
+      fetchSettings();
+    }
+  }, [selectedStoreId]);
+
+  const fetchStores = async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('stores')
+      .select('id, store_name')
+      .eq('is_active', true)
+      .order('id');
+
+    if (!error && data) {
+      setStores(data);
+      if (data.length > 0) {
+        setSelectedStoreId(data[0].id);
+      }
+    }
+    setLoading(false);
+  };
 
   const fetchSettings = async () => {
-    if (!storeId) return;
+    if (!selectedStoreId) return;
 
     setLoading(true);
     const { data, error } = await supabase
       .from('system_settings')
       .select('setting_key, setting_value')
-      .eq('store_id', storeId);
+      .eq('store_id', selectedStoreId);
 
     if (!error && data) {
       const newSettings: any = { ...settings };
@@ -109,12 +138,12 @@ export default function AISettingsPage() {
   };
 
   const handleSave = async () => {
-    if (!storeId) return;
+    if (!selectedStoreId) return;
 
     setSaving(true);
 
     const updates = Object.entries(settings).map(([key, value]) => ({
-      store_id: storeId,
+      store_id: selectedStoreId,
       setting_key: key,
       setting_value: typeof value === 'boolean' ? (value ? 'true' : 'false') : String(value),
     }));
@@ -147,6 +176,31 @@ export default function AISettingsPage() {
   return (
     <div style={{ padding: '16px', maxWidth: '800px', margin: '0 auto', paddingBottom: '80px' }}>
       <h1 style={{ fontSize: '24px', fontWeight: '600', color: '#1a1a1a', marginBottom: '16px' }}>AI統合設定</h1>
+
+      {/* 店舗選択 */}
+      <section style={{ backgroundColor: '#fff', borderRadius: '8px', padding: '16px', marginBottom: '12px' }}>
+        <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '6px' }}>
+          店舗選択
+        </label>
+        <select
+          value={selectedStoreId || ''}
+          onChange={(e) => setSelectedStoreId(Number(e.target.value))}
+          style={{
+            width: '100%',
+            padding: '10px',
+            borderRadius: '6px',
+            border: '1px solid #e2e8f0',
+            fontSize: '14px',
+            backgroundColor: '#fff',
+          }}
+        >
+          {stores.map((store) => (
+            <option key={store.id} value={store.id}>
+              {store.store_name}
+            </option>
+          ))}
+        </select>
+      </section>
 
       {/* 期限設定 */}
       <section style={{ backgroundColor: '#fff', borderRadius: '8px', padding: '16px', marginBottom: '12px' }}>
