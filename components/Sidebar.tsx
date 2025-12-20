@@ -132,8 +132,8 @@ export default function Sidebar() {
           </div>
         )}
 
-        {/* 店舗選択（super_adminのみ表示） */}
-        {isSuperAdmin && (
+        {/* 店舗選択（super_adminのみ表示、ただし店舗管理とAI統合設定では非表示） */}
+        {isSuperAdmin && pathname !== '/stores' && pathname !== '/settings/ai' && (
           <div style={styles.storeSelector}>
             <select
               value={storeId}
