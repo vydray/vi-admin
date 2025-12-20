@@ -93,14 +93,20 @@ function AISettingsPageContent() {
     setLoading(true);
     const { data, error } = await supabase
       .from('stores')
-      .select('id, store_name')
-      .eq('is_active', true)
+      .select('*')
       .order('id');
 
-    if (!error && data) {
-      setStores(data);
-      if (data.length > 0) {
-        setSelectedStoreId(data[0].id);
+    if (error) {
+      console.error('Failed to fetch stores:', error);
+    } else if (data) {
+      // store_nameフィールドをマッピング
+      const mappedStores = data.map(store => ({
+        id: store.id,
+        store_name: store.store_name
+      }));
+      setStores(mappedStores);
+      if (mappedStores.length > 0) {
+        setSelectedStoreId(mappedStores[0].id);
       }
     }
     setLoading(false);
@@ -183,6 +189,10 @@ function AISettingsPageContent() {
           {loading ? (
             <div style={{ padding: '20px', textAlign: 'center', color: '#94a3b8' }}>
               読み込み中...
+            </div>
+          ) : stores.length === 0 ? (
+            <div style={{ padding: '20px', textAlign: 'center', color: '#ef4444' }}>
+              店舗が見つかりません
             </div>
           ) : (
             stores.map(store => (
