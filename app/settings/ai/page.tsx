@@ -252,6 +252,75 @@ export default function AISettingsPage() {
         ))}
       </section>
 
+      {/* 承認ロール設定 */}
+      <section style={{ backgroundColor: '#fff', borderRadius: '8px', padding: '16px', marginBottom: '12px' }}>
+        <h2 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '12px' }}>承認ロール設定</h2>
+        <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '16px' }}>
+          各申請タイプを承認できるロールを選択してください
+        </p>
+
+        {[
+          { key: 'request_shift_approval_roles', label: 'リクエスト出勤' },
+          { key: 'advance_absence_approval_roles', label: '事前欠勤' },
+          { key: 'same_day_absence_approval_roles', label: '当日欠勤' },
+          { key: 'public_absence_approval_roles', label: '公欠申請' },
+        ].map((item) => {
+          const currentRoles = (settings[item.key as keyof AISettings] as string).split(',');
+          const hasAdmin = currentRoles.includes('admin');
+          const hasManager = currentRoles.includes('manager');
+
+          const handleRoleChange = (role: string, checked: boolean) => {
+            let roles = currentRoles.filter(r => r.trim());
+            if (checked) {
+              if (!roles.includes(role)) {
+                roles.push(role);
+              }
+            } else {
+              roles = roles.filter(r => r !== role);
+            }
+            // 少なくとも1つのロールは必要
+            if (roles.length === 0) {
+              roles = ['admin'];
+            }
+            setSettings({ ...settings, [item.key]: roles.join(',') });
+          };
+
+          return (
+            <div
+              key={item.key}
+              style={{
+                padding: '12px 0',
+                borderBottom: '1px solid #f1f5f9',
+              }}
+            >
+              <div style={{ fontSize: '14px', fontWeight: '500', marginBottom: '8px' }}>
+                {item.label}
+              </div>
+              <div style={{ display: 'flex', gap: '16px', paddingLeft: '12px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={hasAdmin}
+                    onChange={(e) => handleRoleChange('admin', e.target.checked)}
+                    style={{ width: '18px', height: '18px' }}
+                  />
+                  <span style={{ fontSize: '14px' }}>管理者</span>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={hasManager}
+                    onChange={(e) => handleRoleChange('manager', e.target.checked)}
+                    style={{ width: '18px', height: '18px' }}
+                  />
+                  <span style={{ fontSize: '14px' }}>マネージャー</span>
+                </label>
+              </div>
+            </div>
+          );
+        })}
+      </section>
+
       {/* Discord通知設定 */}
       <section style={{ backgroundColor: '#fff', borderRadius: '8px', padding: '16px', marginBottom: '12px' }}>
         <h2 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '12px' }}>Discord通知設定</h2>
