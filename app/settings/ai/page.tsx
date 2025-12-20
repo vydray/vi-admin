@@ -51,7 +51,8 @@ function AISettingsPageContent() {
   const { user } = useAuth();
   const [stores, setStores] = useState<Store[]>([]);
   const [selectedStoreId, setSelectedStoreId] = useState<number | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loadingStores, setLoadingStores] = useState(true);
+  const [loadingSettings, setLoadingSettings] = useState(false);
   const [saving, setSaving] = useState(false);
   const [settings, setSettings] = useState<AISettings>({
     advance_absence_deadline_days_before: '1',
@@ -95,7 +96,7 @@ function AISettingsPageContent() {
   }, [selectedStoreId]);
 
   const loadStores = async () => {
-    setLoading(true);
+    setLoadingStores(true);
     const { data, error } = await supabase
       .from('stores')
       .select('*')
@@ -109,13 +110,13 @@ function AISettingsPageContent() {
         setSelectedStoreId(data[0].id);
       }
     }
-    setLoading(false);
+    setLoadingStores(false);
   };
 
   const fetchSettings = async () => {
     if (!selectedStoreId) return;
 
-    setLoading(true);
+    setLoadingSettings(true);
     const { data, error } = await supabase
       .from('system_settings')
       .select('setting_key, setting_value')
@@ -133,7 +134,7 @@ function AISettingsPageContent() {
       });
       setSettings(newSettings);
     }
-    setLoading(false);
+    setLoadingSettings(false);
   };
 
   const handleSave = async () => {
@@ -186,7 +187,7 @@ function AISettingsPageContent() {
         </div>
 
         <div style={{ flex: 1, overflowY: 'auto' }}>
-          {loading ? (
+          {loadingStores ? (
             <div style={{ padding: '20px', textAlign: 'center', color: '#94a3b8' }}>
               読み込み中...
             </div>
@@ -213,7 +214,7 @@ function AISettingsPageContent() {
                     width: '8px',
                     height: '8px',
                     borderRadius: '50%',
-                    backgroundColor: '#22c55e'
+                    backgroundColor: store.is_active ? '#22c55e' : '#ef4444'
                   }} />
                   <span style={{
                     fontWeight: selectedStoreId === store.id ? '600' : '400',
