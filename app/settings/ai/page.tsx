@@ -37,6 +37,8 @@ interface AISettings {
   reminder_payslip_enabled: boolean;
   reminder_payslip_day: string;
   ai_request_max_future_months: string;
+  openai_api_key: string;
+  ai_cast_registration_enabled: boolean;
 }
 
 export default function AISettingsPage() {
@@ -79,6 +81,8 @@ function AISettingsPageContent() {
     reminder_payslip_enabled: true,
     reminder_payslip_day: '25',
     ai_request_max_future_months: '2',
+    openai_api_key: '',
+    ai_cast_registration_enabled: false,
   });
 
   // 店舗リスト取得
@@ -417,6 +421,57 @@ function AISettingsPageContent() {
             </div>
           );
         })}
+      </section>
+
+      {/* OpenAI設定 */}
+      <section style={{ backgroundColor: '#fff', borderRadius: '8px', padding: '16px', marginBottom: '12px' }}>
+        <h2 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '12px' }}>AI設定</h2>
+
+        <div style={{ marginBottom: '16px' }}>
+          <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '6px' }}>
+            OpenAI APIキー
+          </label>
+          <input
+            type="password"
+            value={settings.openai_api_key}
+            onChange={(e) => setSettings({ ...settings, openai_api_key: e.target.value })}
+            placeholder="sk-..."
+            style={{
+              width: '100%',
+              padding: '10px',
+              borderRadius: '6px',
+              border: '1px solid #e2e8f0',
+              fontSize: '14px',
+              fontFamily: 'monospace',
+            }}
+          />
+          <p style={{ fontSize: '12px', color: '#64748b', marginTop: '6px' }}>
+            OpenAIのAPIキーを入力してください。AIによるキャスト登録などの機能に使用されます。
+          </p>
+        </div>
+
+        <label
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '12px 0',
+            borderTop: '1px solid #f1f5f9',
+          }}
+        >
+          <div>
+            <div style={{ fontSize: '14px', marginBottom: '4px' }}>AIキャスト登録を有効化</div>
+            <div style={{ fontSize: '12px', color: '#64748b' }}>
+              LINEから自然な会話でキャスト登録ができるようになります
+            </div>
+          </div>
+          <input
+            type="checkbox"
+            checked={settings.ai_cast_registration_enabled}
+            onChange={(e) => setSettings({ ...settings, ai_cast_registration_enabled: e.target.checked })}
+            style={{ width: '20px', height: '20px' }}
+          />
+        </label>
       </section>
 
       {/* Discord通知設定 */}
