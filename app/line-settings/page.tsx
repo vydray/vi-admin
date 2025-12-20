@@ -11,6 +11,8 @@ import ProtectedPage from '@/components/ProtectedPage'
 interface Store {
   id: number
   store_name: string
+  is_active: boolean
+  created_at: string
 }
 
 interface LineConfig {
@@ -22,7 +24,6 @@ interface LineConfig {
   is_active: boolean
   created_at: string
   updated_at: string
-  stores?: Store
 }
 
 interface EditForm {
@@ -42,19 +43,21 @@ export default function LineSettingsPage() {
 function LineSettingsPageContent() {
   const router = useRouter()
   const { user } = useAuth()
-  const [configs, setConfigs] = useState<LineConfig[]>([])
   const [stores, setStores] = useState<Store[]>([])
-  const [loading, setLoading] = useState(true)
+  const [selectedStoreId, setSelectedStoreId] = useState<number | null>(null)
+  const [currentConfig, setCurrentConfig] = useState<LineConfig | null>(null)
+  const [loadingStores, setLoadingStores] = useState(true)
+  const [loadingConfig, setLoadingConfig] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [editingId, setEditingId] = useState<number | null>(null)
-  const [showAddForm, setShowAddForm] = useState(false)
-  const [selectedStoreId, setSelectedStoreId] = useState<number | ''>('')
+  const [isEditing, setIsEditing] = useState(false)
   const [editForm, setEditForm] = useState<EditForm>({
     line_channel_id: '',
     line_channel_secret: '',
     line_channel_access_token: ''
   })
-  const [showSecrets, setShowSecrets] = useState<{ [key: number]: boolean }>({})
+  const [showSecrets, setShowSecrets] = useState(false)
+
+  const selectedStore = stores.find(s => s.id === selectedStoreId)
 
   // super_admin以外はリダイレクト
   useEffect(() => {
@@ -63,55 +66,76 @@ function LineSettingsPageContent() {
     }
   }, [user, router])
 
+  // 店舗リストを取得
   useEffect(() => {
     if (user?.role === 'super_admin') {
-      loadData()
+      loadStores()
     }
   }, [user])
 
-  const loadData = async () => {
-    setLoading(true)
+  // 選択された店舗のLINE設定を取得
+  useEffect(() => {
+    if (selectedStoreId) {
+      loadConfig(selectedStoreId)
+    }
+  }, [selectedStoreId])
 
-    // 店舗一覧を取得（全店舗）
-    const { data: storesData } = await supabase
+  const loadStores = async () => {
+    setLoadingStores(true)
+    const { data, error } = await supabase
       .from('stores')
-      .select('id, store_name')
+      .select('*')
       .order('id')
 
-    const allStores = storesData || []
-    setStores(allStores)
+    if (error) {
+      console.error('Error loading stores:', error)
+      toast.error('店舗の読み込みに失敗しました')
+    } else {
+      setStores(data || [])
+      if (!selectedStoreId && data && data.length > 0) {
+        setSelectedStoreId(data[0].id)
+      }
+    }
+    setLoadingStores(false)
+  }
 
-    // LINE設定一覧を取得（joinなし）
-    const { data: configsData, error } = await supabase
+  const loadConfig = async (storeId: number) => {
+    setLoadingConfig(true)
+    setIsEditing(false)
+
+    const { data, error } = await supabase
       .from('store_line_configs')
       .select('*')
-      .order('store_id')
+      .eq('store_id', storeId)
+      .single()
 
     if (error) {
-      console.error('Error loading configs:', error)
-      toast.error('LINE設定の読み込みに失敗しました')
+      if (error.code === 'PGRST116') {
+        // 設定が存在しない場合
+        setCurrentConfig(null)
+        setEditForm({
+          line_channel_id: '',
+          line_channel_secret: '',
+          line_channel_access_token: ''
+        })
+      } else {
+        console.error('Error loading config:', error)
+        toast.error('LINE設定の読み込みに失敗しました')
+      }
     } else {
-      // 店舗情報を手動でマージ
-      const storeMap = new Map(allStores.map(s => [s.id, s]))
-      const configsWithStores = (configsData || []).map(config => ({
-        ...config,
-        stores: storeMap.get(config.store_id)
-      }))
-      setConfigs(configsWithStores)
+      setCurrentConfig(data)
+      setEditForm({
+        line_channel_id: data.line_channel_id,
+        line_channel_secret: data.line_channel_secret,
+        line_channel_access_token: data.line_channel_access_token
+      })
     }
-    setLoading(false)
+    setLoadingConfig(false)
   }
 
-  const getAvailableStores = () => {
-    const configuredStoreIds = configs.map(c => c.store_id)
-    return stores.filter(s => !configuredStoreIds.includes(s.id))
-  }
+  const saveConfig = async () => {
+    if (!selectedStoreId) return
 
-  const createConfig = async () => {
-    if (!selectedStoreId) {
-      toast.error('店舗を選択してください')
-      return
-    }
     if (!editForm.line_channel_id.trim()) {
       toast.error('Channel IDを入力してください')
       return
@@ -127,95 +151,93 @@ function LineSettingsPageContent() {
 
     setSaving(true)
     try {
-      const { error } = await supabase
-        .from('store_line_configs')
-        .insert({
-          store_id: selectedStoreId,
-          line_channel_id: editForm.line_channel_id.trim(),
-          line_channel_secret: editForm.line_channel_secret.trim(),
-          line_channel_access_token: editForm.line_channel_access_token.trim(),
-          is_active: true
-        })
+      if (currentConfig) {
+        // 更新
+        const { error } = await supabase
+          .from('store_line_configs')
+          .update({
+            line_channel_id: editForm.line_channel_id.trim(),
+            line_channel_secret: editForm.line_channel_secret.trim(),
+            line_channel_access_token: editForm.line_channel_access_token.trim(),
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', currentConfig.id)
 
-      if (error) {
-        if (error.code === '23505') {
-          toast.error('この店舗は既に設定されています')
-        } else {
-          throw error
-        }
-        setSaving(false)
-        return
+        if (error) throw error
+        toast.success('LINE設定を更新しました')
+      } else {
+        // 新規作成
+        const { error } = await supabase
+          .from('store_line_configs')
+          .insert({
+            store_id: selectedStoreId,
+            line_channel_id: editForm.line_channel_id.trim(),
+            line_channel_secret: editForm.line_channel_secret.trim(),
+            line_channel_access_token: editForm.line_channel_access_token.trim(),
+            is_active: true
+          })
+
+        if (error) throw error
+        toast.success('LINE設定を作成しました')
       }
 
-      toast.success('LINE設定を追加しました')
-      setEditForm({ line_channel_id: '', line_channel_secret: '', line_channel_access_token: '' })
-      setSelectedStoreId('')
-      setShowAddForm(false)
-      loadData()
+      setIsEditing(false)
+      await loadConfig(selectedStoreId)
     } catch (error) {
-      console.error('Error creating config:', error)
-      toast.error('LINE設定の追加に失敗しました')
+      console.error('Error saving config:', error)
+      toast.error('LINE設定の保存に失敗しました')
     }
     setSaving(false)
   }
 
-  const startEditing = (config: LineConfig) => {
-    setEditingId(config.id)
-    setEditForm({
-      line_channel_id: config.line_channel_id,
-      line_channel_secret: config.line_channel_secret,
-      line_channel_access_token: config.line_channel_access_token
-    })
-  }
-
-  const updateConfig = async () => {
-    if (!editingId) return
+  const deleteConfig = async () => {
+    if (!currentConfig || !window.confirm('LINE設定を削除しますか？')) return
 
     setSaving(true)
     try {
       const { error } = await supabase
         .from('store_line_configs')
-        .update({
-          line_channel_id: editForm.line_channel_id.trim(),
-          line_channel_secret: editForm.line_channel_secret.trim(),
-          line_channel_access_token: editForm.line_channel_access_token.trim(),
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', editingId)
+        .delete()
+        .eq('id', currentConfig.id)
 
       if (error) throw error
 
-      toast.success('LINE設定を更新しました')
-      setEditingId(null)
-      setEditForm({ line_channel_id: '', line_channel_secret: '', line_channel_access_token: '' })
-      loadData()
+      toast.success('LINE設定を削除しました')
+      setCurrentConfig(null)
+      setEditForm({
+        line_channel_id: '',
+        line_channel_secret: '',
+        line_channel_access_token: ''
+      })
     } catch (error) {
-      console.error('Error updating config:', error)
-      toast.error('LINE設定の更新に失敗しました')
+      console.error('Error deleting config:', error)
+      toast.error('LINE設定の削除に失敗しました')
     }
     setSaving(false)
   }
 
-  const toggleActive = async (config: LineConfig) => {
+  const toggleActive = async () => {
+    if (!currentConfig) return
+
     try {
       const { error } = await supabase
         .from('store_line_configs')
-        .update({ is_active: !config.is_active })
-        .eq('id', config.id)
+        .update({ is_active: !currentConfig.is_active })
+        .eq('id', currentConfig.id)
 
       if (error) throw error
 
-      toast.success(config.is_active ? 'LINE連携を無効化しました' : 'LINE連携を有効化しました')
-      loadData()
+      toast.success(currentConfig.is_active ? 'LINE連携を無効化しました' : 'LINE連携を有効化しました')
+      await loadConfig(selectedStoreId!)
     } catch (error) {
-      console.error('Error toggling config:', error)
+      console.error('Error toggling active:', error)
       toast.error('状態の変更に失敗しました')
     }
   }
 
-  const maskValue = (value: string) => {
-    if (value.length <= 8) return '••••••••'
-    return value.slice(0, 4) + '••••••••' + value.slice(-4)
+  const maskSecret = (secret: string) => {
+    if (showSecrets) return secret
+    return secret.substring(0, 4) + '••••••••' + secret.substring(secret.length - 4)
   }
 
   if (user?.role !== 'super_admin') {
@@ -228,417 +250,320 @@ function LineSettingsPageContent() {
 
   return (
     <div style={{
+      display: 'flex',
+      height: 'calc(100vh - 60px)',
       backgroundColor: '#f7f9fc',
-      minHeight: '100vh',
-      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-      paddingBottom: '60px'
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
     }}>
-      {/* ヘッダー */}
+      {/* 左サイドバー: 店舗一覧 */}
       <div style={{
+        width: '280px',
         backgroundColor: '#fff',
-        padding: '20px',
-        marginBottom: '20px',
-        borderRadius: '12px',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
+        borderRight: '1px solid #e2e8f0',
+        display: 'flex',
+        flexDirection: 'column'
       }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: 0, color: '#1a1a1a' }}>
-              LINE設定管理
-            </h1>
-            <p style={{ margin: '8px 0 0', fontSize: '14px', color: '#64748b' }}>
-              店舗ごとのLINE公式アカウント設定
-            </p>
-          </div>
-          {getAvailableStores().length > 0 && (
-            <Button
-              onClick={() => setShowAddForm(!showAddForm)}
-              variant={showAddForm ? 'secondary' : 'primary'}
-            >
-              {showAddForm ? 'キャンセル' : '+ 新規設定'}
-            </Button>
+        <div style={{
+          padding: '20px',
+          borderBottom: '1px solid #e2e8f0'
+        }}>
+          <h2 style={{ fontSize: '18px', fontWeight: 'bold', margin: 0, color: '#1a1a1a' }}>
+            LINE設定
+          </h2>
+        </div>
+
+        <div style={{ flex: 1, overflowY: 'auto' }}>
+          {loadingStores ? (
+            <div style={{ padding: '20px', textAlign: 'center', color: '#94a3b8' }}>
+              読み込み中...
+            </div>
+          ) : stores.length === 0 ? (
+            <div style={{ padding: '20px', textAlign: 'center', color: '#ef4444' }}>
+              店舗が見つかりません
+            </div>
+          ) : (
+            stores.map(store => (
+              <div
+                key={store.id}
+                onClick={() => setSelectedStoreId(store.id)}
+                style={{
+                  padding: '14px 20px',
+                  cursor: 'pointer',
+                  backgroundColor: selectedStoreId === store.id ? '#f0f9ff' : 'transparent',
+                  borderLeft: selectedStoreId === store.id ? '3px solid #3b82f6' : '3px solid transparent',
+                  borderBottom: '1px solid #f1f5f9',
+                  transition: 'all 0.15s'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span style={{
+                    width: '8px',
+                    height: '8px',
+                    borderRadius: '50%',
+                    backgroundColor: store.is_active ? '#22c55e' : '#ef4444'
+                  }} />
+                  <span style={{
+                    fontWeight: selectedStoreId === store.id ? '600' : '400',
+                    color: '#1a1a1a',
+                    fontSize: '14px'
+                  }}>
+                    {store.store_name}
+                  </span>
+                </div>
+                <div style={{ marginLeft: '18px', marginTop: '4px' }}>
+                  <code style={{ fontSize: '11px', color: '#94a3b8' }}>ID: {store.id}</code>
+                </div>
+              </div>
+            ))
           )}
         </div>
       </div>
 
-      {/* 新規設定フォーム */}
-      {showAddForm && (
-        <div style={{
-          backgroundColor: '#fff',
-          padding: '20px',
-          marginBottom: '20px',
-          borderRadius: '12px',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
-        }}>
-          <h3 style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '20px', color: '#374151' }}>
-            新規LINE設定
-          </h3>
-
-          <div style={{ marginBottom: '20px' }}>
-            <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500', color: '#374151' }}>
-              店舗 <span style={{ color: '#ef4444' }}>*</span>
-            </label>
-            <select
-              value={selectedStoreId}
-              onChange={(e) => setSelectedStoreId(e.target.value ? Number(e.target.value) : '')}
-              style={{
-                width: '100%',
-                padding: '10px',
-                fontSize: '14px',
-                border: '1px solid #e2e8f0',
-                borderRadius: '6px'
-              }}
-            >
-              <option value="">店舗を選択</option>
-              {getAvailableStores().map(store => (
-                <option key={store.id} value={store.id}>
-                  {store.store_name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div style={{
-            backgroundColor: '#ecfdf5',
-            border: '1px solid #a7f3d0',
-            borderRadius: '8px',
-            padding: '15px',
-            marginBottom: '20px'
-          }}>
-            <div style={{ fontSize: '14px', fontWeight: '600', color: '#065f46', marginBottom: '15px' }}>
-              LINE Messaging API設定
-            </div>
-            <div style={{ display: 'grid', gap: '15px' }}>
-              <div>
-                <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500', color: '#374151' }}>
-                  Channel ID <span style={{ color: '#ef4444' }}>*</span>
-                </label>
-                <input
-                  type="text"
-                  value={editForm.line_channel_id}
-                  onChange={(e) => setEditForm({ ...editForm, line_channel_id: e.target.value })}
-                  placeholder="例: 1234567890"
-                  style={{
-                    width: '100%',
-                    padding: '10px',
-                    fontSize: '14px',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '6px',
-                    boxSizing: 'border-box'
-                  }}
-                />
-              </div>
-              <div>
-                <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500', color: '#374151' }}>
-                  Channel Secret <span style={{ color: '#ef4444' }}>*</span>
-                </label>
-                <input
-                  type="password"
-                  value={editForm.line_channel_secret}
-                  onChange={(e) => setEditForm({ ...editForm, line_channel_secret: e.target.value })}
-                  placeholder="Channel Secret"
-                  style={{
-                    width: '100%',
-                    padding: '10px',
-                    fontSize: '14px',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '6px',
-                    boxSizing: 'border-box'
-                  }}
-                />
-              </div>
-              <div>
-                <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500', color: '#374151' }}>
-                  Channel Access Token <span style={{ color: '#ef4444' }}>*</span>
-                </label>
-                <input
-                  type="password"
-                  value={editForm.line_channel_access_token}
-                  onChange={(e) => setEditForm({ ...editForm, line_channel_access_token: e.target.value })}
-                  placeholder="Channel Access Token"
-                  style={{
-                    width: '100%',
-                    padding: '10px',
-                    fontSize: '14px',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '6px',
-                    boxSizing: 'border-box'
-                  }}
-                />
-              </div>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <Button onClick={createConfig} disabled={saving} variant="success">
-              {saving ? '追加中...' : '設定を追加'}
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* 設定一覧 */}
-      <div style={{
-        backgroundColor: '#fff',
-        borderRadius: '12px',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
-      }}>
-        {loading ? (
-          <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>
-            読み込み中...
-          </div>
-        ) : configs.length === 0 ? (
-          <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>
-            LINE設定がありません
-          </div>
-        ) : (
+      {/* 右メインエリア: 詳細表示 */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
+        {selectedStore ? (
           <div>
-            {configs.map((config) => (
-              <div
-                key={config.id}
-                style={{
-                  padding: '20px',
-                  borderBottom: '1px solid #e2e8f0'
-                }}
-              >
-                {/* 店舗情報ヘッダー */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <span style={{ fontSize: '18px', fontWeight: '600', color: '#1a1a1a' }}>
-                      {config.stores?.store_name}
-                    </span>
-                    <code style={{
-                      backgroundColor: '#f1f5f9',
-                      padding: '4px 8px',
-                      borderRadius: '4px',
-                      fontSize: '12px',
-                      color: '#475569'
-                    }}>
-                      ID: {config.store_id}
-                    </code>
-                    <span style={{
-                      display: 'inline-block',
-                      padding: '4px 10px',
-                      borderRadius: '12px',
-                      fontSize: '11px',
-                      fontWeight: '600',
-                      backgroundColor: config.is_active ? '#dcfce7' : '#fee2e2',
-                      color: config.is_active ? '#166534' : '#991b1b'
-                    }}>
-                      {config.is_active ? '有効' : '無効'}
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    {editingId !== config.id && (
-                      <>
-                        <Button onClick={() => startEditing(config)} variant="primary">
-                          編集
-                        </Button>
-                        <Button
-                          onClick={() => toggleActive(config)}
-                          variant={config.is_active ? 'danger' : 'success'}
-                        >
-                          {config.is_active ? '無効化' : '有効化'}
-                        </Button>
-                      </>
-                    )}
-                  </div>
-                </div>
+            {/* 店舗情報ヘッダー */}
+            <div style={{
+              backgroundColor: '#fff',
+              borderRadius: '12px',
+              padding: '24px',
+              marginBottom: '20px',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
+            }}>
+              <h2 style={{
+                fontSize: '24px',
+                fontWeight: 'bold',
+                margin: 0,
+                color: '#1a1a1a'
+              }}>
+                {selectedStore.store_name}
+              </h2>
+              <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '16px' }}>
+                <code style={{ backgroundColor: '#f1f5f9', padding: '4px 10px', borderRadius: '4px', fontSize: '13px', color: '#475569' }}>
+                  ID: {selectedStore.id}
+                </code>
+                <span style={{
+                  padding: '4px 12px',
+                  borderRadius: '12px',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  backgroundColor: selectedStore.is_active ? '#dcfce7' : '#fee2e2',
+                  color: selectedStore.is_active ? '#166534' : '#991b1b'
+                }}>
+                  {selectedStore.is_active ? '有効' : '無効'}
+                </span>
+              </div>
+            </div>
 
-                {editingId === config.id ? (
-                  /* 編集フォーム */
-                  <div style={{ backgroundColor: '#f8fafc', padding: '15px', borderRadius: '8px' }}>
-                    <div style={{ display: 'grid', gap: '15px', marginBottom: '15px' }}>
-                      <div>
-                        <label style={{ display: 'block', marginBottom: '5px', fontSize: '13px', fontWeight: '500', color: '#475569' }}>
-                          Channel ID
-                        </label>
-                        <input
-                          type="text"
-                          value={editForm.line_channel_id}
-                          onChange={(e) => setEditForm({ ...editForm, line_channel_id: e.target.value })}
-                          style={{
-                            width: '100%',
-                            padding: '8px',
-                            fontSize: '14px',
-                            border: '1px solid #e2e8f0',
-                            borderRadius: '4px',
-                            boxSizing: 'border-box'
-                          }}
-                        />
-                      </div>
-                      <div>
-                        <label style={{ display: 'block', marginBottom: '5px', fontSize: '13px', fontWeight: '500', color: '#475569' }}>
-                          Channel Secret
-                        </label>
-                        <input
-                          type="password"
-                          value={editForm.line_channel_secret}
-                          onChange={(e) => setEditForm({ ...editForm, line_channel_secret: e.target.value })}
-                          style={{
-                            width: '100%',
-                            padding: '8px',
-                            fontSize: '14px',
-                            border: '1px solid #e2e8f0',
-                            borderRadius: '4px',
-                            boxSizing: 'border-box'
-                          }}
-                        />
-                      </div>
-                      <div>
-                        <label style={{ display: 'block', marginBottom: '5px', fontSize: '13px', fontWeight: '500', color: '#475569' }}>
-                          Channel Access Token
-                        </label>
-                        <input
-                          type="password"
-                          value={editForm.line_channel_access_token}
-                          onChange={(e) => setEditForm({ ...editForm, line_channel_access_token: e.target.value })}
-                          style={{
-                            width: '100%',
-                            padding: '8px',
-                            fontSize: '14px',
-                            border: '1px solid #e2e8f0',
-                            borderRadius: '4px',
-                            boxSizing: 'border-box'
-                          }}
-                        />
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                      <Button onClick={updateConfig} disabled={saving} variant="success">
-                        {saving ? '保存中...' : '保存'}
-                      </Button>
-                      <Button onClick={() => { setEditingId(null); setEditForm({ line_channel_id: '', line_channel_secret: '', line_channel_access_token: '' }) }} variant="secondary">
-                        キャンセル
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  /* 表示モード */
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '15px' }}>
-                    <div>
-                      <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>Channel ID</div>
-                      <div style={{ fontSize: '14px', color: '#1a1a1a', fontFamily: 'monospace' }}>
-                        {config.line_channel_id}
-                      </div>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>Channel Secret</div>
-                      <div style={{ fontSize: '14px', color: '#1a1a1a', fontFamily: 'monospace', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        {showSecrets[config.id] ? config.line_channel_secret : maskValue(config.line_channel_secret)}
-                        <button
-                          onClick={() => setShowSecrets({ ...showSecrets, [config.id]: !showSecrets[config.id] })}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            cursor: 'pointer',
-                            fontSize: '12px',
-                            color: '#3b82f6'
-                          }}
-                        >
-                          {showSecrets[config.id] ? '隠す' : '表示'}
-                        </button>
-                      </div>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>Access Token</div>
-                      <div style={{ fontSize: '14px', color: '#1a1a1a', fontFamily: 'monospace' }}>
-                        {maskValue(config.line_channel_access_token)}
-                      </div>
-                    </div>
+            {/* LINE設定 */}
+            <div style={{
+              backgroundColor: '#fff',
+              borderRadius: '12px',
+              padding: '24px',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                <h3 style={{
+                  fontSize: '18px',
+                  fontWeight: '600',
+                  margin: 0,
+                  color: '#1a1a1a'
+                }}>
+                  LINE連携設定
+                </h3>
+                {currentConfig && !isEditing && (
+                  <div style={{ display: 'flex', gap: '10px' }}>
+                    <Button
+                      onClick={toggleActive}
+                      variant={currentConfig.is_active ? 'secondary' : 'success'}
+                    >
+                      {currentConfig.is_active ? '無効化' : '有効化'}
+                    </Button>
+                    <Button onClick={() => setIsEditing(true)} variant="primary">
+                      編集
+                    </Button>
+                    <Button onClick={deleteConfig} variant="danger">
+                      削除
+                    </Button>
                   </div>
                 )}
               </div>
-            ))}
+
+              {loadingConfig ? (
+                <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>
+                  読み込み中...
+                </div>
+              ) : isEditing || !currentConfig ? (
+                // 編集フォーム
+                <div>
+                  <div style={{ marginBottom: '20px' }}>
+                    <label style={{ display: 'block', marginBottom: '6px', fontSize: '14px', fontWeight: '500', color: '#374151' }}>
+                      Channel ID <span style={{ color: '#ef4444' }}>*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={editForm.line_channel_id}
+                      onChange={(e) => setEditForm({ ...editForm, line_channel_id: e.target.value })}
+                      placeholder="1234567890"
+                      style={{
+                        width: '100%',
+                        padding: '12px',
+                        fontSize: '14px',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '8px',
+                        boxSizing: 'border-box',
+                        fontFamily: 'monospace'
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ marginBottom: '20px' }}>
+                    <label style={{ display: 'block', marginBottom: '6px', fontSize: '14px', fontWeight: '500', color: '#374151' }}>
+                      Channel Secret <span style={{ color: '#ef4444' }}>*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={editForm.line_channel_secret}
+                      onChange={(e) => setEditForm({ ...editForm, line_channel_secret: e.target.value })}
+                      placeholder="abcdef1234567890..."
+                      style={{
+                        width: '100%',
+                        padding: '12px',
+                        fontSize: '14px',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '8px',
+                        boxSizing: 'border-box',
+                        fontFamily: 'monospace'
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ marginBottom: '24px' }}>
+                    <label style={{ display: 'block', marginBottom: '6px', fontSize: '14px', fontWeight: '500', color: '#374151' }}>
+                      Channel Access Token <span style={{ color: '#ef4444' }}>*</span>
+                    </label>
+                    <textarea
+                      value={editForm.line_channel_access_token}
+                      onChange={(e) => setEditForm({ ...editForm, line_channel_access_token: e.target.value })}
+                      placeholder="長いアクセストークン..."
+                      rows={3}
+                      style={{
+                        width: '100%',
+                        padding: '12px',
+                        fontSize: '14px',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '8px',
+                        boxSizing: 'border-box',
+                        fontFamily: 'monospace',
+                        resize: 'vertical'
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '10px' }}>
+                    <Button onClick={saveConfig} disabled={saving} variant="success">
+                      {saving ? '保存中...' : (currentConfig ? '更新' : '作成')}
+                    </Button>
+                    {currentConfig && (
+                      <Button onClick={() => {
+                        setIsEditing(false)
+                        setEditForm({
+                          line_channel_id: currentConfig.line_channel_id,
+                          line_channel_secret: currentConfig.line_channel_secret,
+                          line_channel_access_token: currentConfig.line_channel_access_token
+                        })
+                      }} variant="secondary">
+                        キャンセル
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                // 表示モード
+                <div>
+                  <div style={{
+                    backgroundColor: currentConfig.is_active ? '#dcfce7' : '#fee2e2',
+                    color: currentConfig.is_active ? '#166534' : '#991b1b',
+                    padding: '12px 16px',
+                    borderRadius: '8px',
+                    marginBottom: '20px',
+                    fontSize: '14px',
+                    fontWeight: '500'
+                  }}>
+                    ステータス: {currentConfig.is_active ? '有効' : '無効'}
+                  </div>
+
+                  <div style={{ marginBottom: '20px' }}>
+                    <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '4px' }}>Channel ID</div>
+                    <code style={{
+                      display: 'block',
+                      padding: '10px',
+                      backgroundColor: '#f9fafb',
+                      borderRadius: '6px',
+                      fontSize: '14px',
+                      color: '#111827'
+                    }}>
+                      {currentConfig.line_channel_id}
+                    </code>
+                  </div>
+
+                  <div style={{ marginBottom: '20px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                      <span style={{ fontSize: '13px', color: '#6b7280' }}>Channel Secret</span>
+                      <button
+                        onClick={() => setShowSecrets(!showSecrets)}
+                        style={{
+                          fontSize: '12px',
+                          color: '#3b82f6',
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {showSecrets ? '隠す' : '表示'}
+                      </button>
+                    </div>
+                    <code style={{
+                      display: 'block',
+                      padding: '10px',
+                      backgroundColor: '#f9fafb',
+                      borderRadius: '6px',
+                      fontSize: '14px',
+                      color: '#111827'
+                    }}>
+                      {maskSecret(currentConfig.line_channel_secret)}
+                    </code>
+                  </div>
+
+                  <div style={{ marginBottom: '20px' }}>
+                    <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '4px' }}>Channel Access Token</div>
+                    <code style={{
+                      display: 'block',
+                      padding: '10px',
+                      backgroundColor: '#f9fafb',
+                      borderRadius: '6px',
+                      fontSize: '14px',
+                      color: '#111827',
+                      wordBreak: 'break-all'
+                    }}>
+                      {maskSecret(currentConfig.line_channel_access_token)}
+                    </code>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '20px', fontSize: '12px', color: '#6b7280' }}>
+                    <div>作成日: {new Date(currentConfig.created_at).toLocaleDateString('ja-JP')}</div>
+                    <div>更新日: {new Date(currentConfig.updated_at).toLocaleDateString('ja-JP')}</div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>
+            店舗を選択してください
           </div>
         )}
-      </div>
-
-      {/* 説明 */}
-      <div style={{
-        backgroundColor: '#eff6ff',
-        border: '1px solid #bfdbfe',
-        borderRadius: '8px',
-        padding: '20px',
-        marginTop: '20px'
-      }}>
-        <div style={{ fontSize: '16px', fontWeight: '600', color: '#1e40af', marginBottom: '15px' }}>
-          LINE Developers Console での設定・取得方法
-        </div>
-
-        {/* Step 1 */}
-        <div style={{ marginBottom: '20px' }}>
-          <div style={{ fontSize: '14px', fontWeight: '600', color: '#1e3a8a', marginBottom: '8px' }}>
-            Step 1: LINE Developers Console にアクセス
-          </div>
-          <div style={{ fontSize: '13px', color: '#374151', lineHeight: '1.7', paddingLeft: '12px' }}>
-            <a href="https://developers.line.biz/" target="_blank" rel="noopener noreferrer" style={{ color: '#2563eb' }}>
-              https://developers.line.biz/
-            </a> にログインし、対象のプロバイダーを選択（なければ新規作成）
-          </div>
-        </div>
-
-        {/* Step 2 */}
-        <div style={{ marginBottom: '20px' }}>
-          <div style={{ fontSize: '14px', fontWeight: '600', color: '#1e3a8a', marginBottom: '8px' }}>
-            Step 2: Messaging API チャネルを作成/選択
-          </div>
-          <div style={{ fontSize: '13px', color: '#374151', lineHeight: '1.7', paddingLeft: '12px' }}>
-            「新規チャネル作成」→「Messaging API」を選択し、必要情報を入力して作成<br />
-            ※既存のチャネルがあれば、そのチャネルを選択
-          </div>
-        </div>
-
-        {/* Step 3 */}
-        <div style={{ marginBottom: '20px' }}>
-          <div style={{ fontSize: '14px', fontWeight: '600', color: '#1e3a8a', marginBottom: '8px' }}>
-            Step 3: Channel ID・Channel Secret を取得
-          </div>
-          <div style={{ fontSize: '13px', color: '#374151', lineHeight: '1.7', paddingLeft: '12px' }}>
-            「チャネル基本設定」タブを開く<br />
-            • <strong>Channel ID</strong>: 「チャネルID」に表示されている数字<br />
-            • <strong>Channel Secret</strong>: 「チャネルシークレット」の値（表示ボタンで確認）
-          </div>
-        </div>
-
-        {/* Step 4 */}
-        <div style={{ marginBottom: '20px' }}>
-          <div style={{ fontSize: '14px', fontWeight: '600', color: '#1e3a8a', marginBottom: '8px' }}>
-            Step 4: Channel Access Token を発行
-          </div>
-          <div style={{ fontSize: '13px', color: '#374151', lineHeight: '1.7', paddingLeft: '12px' }}>
-            「Messaging API設定」タブを開く<br />
-            • ページ下部の「チャネルアクセストークン」セクション<br />
-            • 「発行」ボタンをクリックしてトークンを生成<br />
-            • <span style={{ color: '#dc2626' }}>※トークンは一度しか表示されないのでコピーして保存</span>
-          </div>
-        </div>
-
-        {/* Step 5 */}
-        <div style={{ marginBottom: '20px' }}>
-          <div style={{ fontSize: '14px', fontWeight: '600', color: '#1e3a8a', marginBottom: '8px' }}>
-            Step 5: Webhook URL を設定
-          </div>
-          <div style={{ fontSize: '13px', color: '#374151', lineHeight: '1.7', paddingLeft: '12px' }}>
-            同じ「Messaging API設定」タブで<br />
-            • 「Webhook URL」に以下を入力:
-            <div style={{
-              backgroundColor: '#dbeafe',
-              padding: '8px 12px',
-              borderRadius: '4px',
-              marginTop: '8px',
-              fontFamily: 'monospace',
-              fontSize: '12px'
-            }}>
-              https://[your-domain]/api/line/webhook/[store_id]
-            </div>
-            <div style={{ marginTop: '8px', fontSize: '12px', color: '#64748b' }}>
-              例: store_id=1 の場合 → https://example.com/api/line/webhook/1
-            </div>
-            • 「Webhookの利用」→ <strong>オン</strong><br />
-            • 「応答メッセージ」→ <strong>オフ</strong>（自動返信を無効化）
-          </div>
-        </div>
       </div>
     </div>
   )
