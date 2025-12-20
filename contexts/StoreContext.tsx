@@ -31,7 +31,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     try {
       const { data, error } = await supabase
         .from('stores')
-        .select('id, store_name')
+        .select('id, store_name, is_active')
+        .eq('is_active', true)  // アクティブな店舗のみを取得
         .order('id')
 
       if (error) throw error
