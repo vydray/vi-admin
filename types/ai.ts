@@ -128,7 +128,8 @@ export interface ChatResponse {
 // 店舗設定
 export interface StoreAISettings {
   // 期限設定
-  advance_absence_deadline_hours: number;
+  advance_absence_deadline_days_before: number; // 何日前
+  advance_absence_deadline_time: string; // その日の何時まで (HH:mm)
   public_absence_receipt_deadline_days: number;
 
   // 承認要否設定
@@ -154,7 +155,9 @@ export interface StoreAISettings {
   reminder_unapproved_requests_mode: 'realtime' | 'scheduled';
   reminder_unapproved_requests_times: string[]; // HH:MM[]
   reminder_shift_submission_enabled: boolean;
+  reminder_shift_submission_days: string; // 毎月何日 (例: "15,20")
   reminder_payslip_enabled: boolean;
+  reminder_payslip_day: string; // 毎月何日 (例: "25")
 
   // AI制限設定
   ai_request_max_future_months: number;

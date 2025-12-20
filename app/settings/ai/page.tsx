@@ -7,7 +7,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useStore } from '@/contexts/StoreContext';
 
 interface AISettings {
-  advance_absence_deadline_hours: string;
+  advance_absence_deadline_days_before: string;
+  advance_absence_deadline_time: string;
   public_absence_receipt_deadline_days: string;
   request_shift_requires_approval: boolean;
   advance_absence_requires_approval: boolean;
@@ -26,7 +27,9 @@ interface AISettings {
   reminder_unapproved_requests_mode: string;
   reminder_unapproved_requests_times: string;
   reminder_shift_submission_enabled: boolean;
+  reminder_shift_submission_days: string;
   reminder_payslip_enabled: boolean;
+  reminder_payslip_day: string;
   ai_request_max_future_months: string;
 }
 
@@ -38,7 +41,8 @@ export default function AISettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [settings, setSettings] = useState<AISettings>({
-    advance_absence_deadline_hours: '24',
+    advance_absence_deadline_days_before: '1',
+    advance_absence_deadline_time: '23:59',
     public_absence_receipt_deadline_days: '2',
     request_shift_requires_approval: false,
     advance_absence_requires_approval: false,
@@ -57,7 +61,9 @@ export default function AISettingsPage() {
     reminder_unapproved_requests_mode: 'realtime',
     reminder_unapproved_requests_times: '09:00,18:00',
     reminder_shift_submission_enabled: true,
+    reminder_shift_submission_days: '15,20',
     reminder_payslip_enabled: true,
+    reminder_payslip_day: '25',
     ai_request_max_future_months: '2',
   });
 
@@ -147,29 +153,58 @@ export default function AISettingsPage() {
         <h2 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '12px' }}>期限設定</h2>
 
         <div style={{ marginBottom: '16px' }}>
-          <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '6px' }}>
-            事前欠勤の締切（何時間前まで）
+          <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '12px' }}>
+            事前欠勤の締切
           </label>
-          <input
-            type="number"
-            value={settings.advance_absence_deadline_hours}
-            onChange={(e) => setSettings({ ...settings, advance_absence_deadline_hours: e.target.value })}
-            style={{
-              width: '100%',
-              padding: '10px',
-              borderRadius: '6px',
-              border: '1px solid #e2e8f0',
-              fontSize: '14px',
-            }}
-          />
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+            <div style={{ flex: 1 }}>
+              <label style={{ display: 'block', fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>
+                何日前
+              </label>
+              <input
+                type="number"
+                min="0"
+                value={settings.advance_absence_deadline_days_before}
+                onChange={(e) => setSettings({ ...settings, advance_absence_deadline_days_before: e.target.value })}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  borderRadius: '6px',
+                  border: '1px solid #e2e8f0',
+                  fontSize: '14px',
+                }}
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={{ display: 'block', fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>
+                その日の何時まで
+              </label>
+              <input
+                type="time"
+                value={settings.advance_absence_deadline_time}
+                onChange={(e) => setSettings({ ...settings, advance_absence_deadline_time: e.target.value })}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  borderRadius: '6px',
+                  border: '1px solid #e2e8f0',
+                  fontSize: '14px',
+                }}
+              />
+            </div>
+          </div>
+          <p style={{ fontSize: '12px', color: '#64748b', marginTop: '6px' }}>
+            例：出勤日の1日前の23:59まで
+          </p>
         </div>
 
         <div>
           <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '6px' }}>
-            公欠証明の提出期限（欠勤日から何日以内）
+            公欠証明の提出期限（欠勤日含めて何日以内）
           </label>
           <input
             type="number"
+            min="1"
             value={settings.public_absence_receipt_deadline_days}
             onChange={(e) => setSettings({ ...settings, public_absence_receipt_deadline_days: e.target.value })}
             style={{
@@ -180,6 +215,9 @@ export default function AISettingsPage() {
               fontSize: '14px',
             }}
           />
+          <p style={{ fontSize: '12px', color: '#64748b', marginTop: '6px' }}>
+            当日欠勤を公欠に変更するための証明書提出期限
+          </p>
         </div>
       </section>
 
@@ -292,30 +330,101 @@ export default function AISettingsPage() {
           )}
         </div>
 
-        {[
-          { key: 'reminder_public_absence_receipt_enabled', label: '公欠証明提出期限リマインダー' },
-          { key: 'reminder_shift_submission_enabled', label: 'シフト提出期限リマインダー' },
-          { key: 'reminder_payslip_enabled', label: '給与明細確認リマインダー' },
-        ].map((item) => (
+        <label
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '12px 0',
+            borderBottom: '1px solid #f1f5f9',
+          }}
+        >
+          <span style={{ fontSize: '14px' }}>公欠証明提出期限リマインダー</span>
+          <input
+            type="checkbox"
+            checked={settings.reminder_public_absence_receipt_enabled}
+            onChange={(e) => setSettings({ ...settings, reminder_public_absence_receipt_enabled: e.target.checked })}
+            style={{ width: '20px', height: '20px' }}
+          />
+        </label>
+
+        <div style={{ marginBottom: '16px' }}>
           <label
-            key={item.key}
             style={{
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              padding: '12px 0',
-              borderBottom: '1px solid #f1f5f9',
+              marginBottom: '8px',
             }}
           >
-            <span style={{ fontSize: '14px' }}>{item.label}</span>
+            <span style={{ fontSize: '14px', fontWeight: '500' }}>シフト提出期限リマインダー</span>
             <input
               type="checkbox"
-              checked={settings[item.key as keyof AISettings] as boolean}
-              onChange={(e) => setSettings({ ...settings, [item.key]: e.target.checked })}
+              checked={settings.reminder_shift_submission_enabled}
+              onChange={(e) => setSettings({ ...settings, reminder_shift_submission_enabled: e.target.checked })}
               style={{ width: '20px', height: '20px' }}
             />
           </label>
-        ))}
+          {settings.reminder_shift_submission_enabled && (
+            <>
+              <label style={{ display: 'block', fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>
+                毎月何日にリマインドするか（カンマ区切り）
+              </label>
+              <input
+                type="text"
+                value={settings.reminder_shift_submission_days}
+                onChange={(e) => setSettings({ ...settings, reminder_shift_submission_days: e.target.value })}
+                placeholder="15,20"
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  borderRadius: '6px',
+                  border: '1px solid #e2e8f0',
+                  fontSize: '14px',
+                }}
+              />
+            </>
+          )}
+        </div>
+
+        <div style={{ marginBottom: '16px' }}>
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: '8px',
+            }}
+          >
+            <span style={{ fontSize: '14px', fontWeight: '500' }}>給与明細確認リマインダー</span>
+            <input
+              type="checkbox"
+              checked={settings.reminder_payslip_enabled}
+              onChange={(e) => setSettings({ ...settings, reminder_payslip_enabled: e.target.checked })}
+              style={{ width: '20px', height: '20px' }}
+            />
+          </label>
+          {settings.reminder_payslip_enabled && (
+            <>
+              <label style={{ display: 'block', fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>
+                毎月何日にリマインドするか
+              </label>
+              <input
+                type="text"
+                value={settings.reminder_payslip_day}
+                onChange={(e) => setSettings({ ...settings, reminder_payslip_day: e.target.value })}
+                placeholder="25"
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  borderRadius: '6px',
+                  border: '1px solid #e2e8f0',
+                  fontSize: '14px',
+                }}
+              />
+            </>
+          )}
+        </div>
 
         <div style={{ marginTop: '16px' }}>
           <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '8px' }}>
