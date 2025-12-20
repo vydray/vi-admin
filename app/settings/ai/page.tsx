@@ -1,0 +1,383 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+
+interface AISettings {
+  advance_absence_deadline_hours: string;
+  public_absence_receipt_deadline_days: string;
+  request_shift_requires_approval: boolean;
+  advance_absence_requires_approval: boolean;
+  same_day_absence_requires_approval: boolean;
+  public_absence_requires_approval: boolean;
+  request_shift_approval_roles: string;
+  advance_absence_approval_roles: string;
+  same_day_absence_approval_roles: string;
+  public_absence_approval_roles: string;
+  discord_notify_auto_approved: boolean;
+  discord_webhook_url: string;
+  reminder_shift_confirmation_enabled: boolean;
+  reminder_shift_confirmation_time: string;
+  reminder_public_absence_receipt_enabled: boolean;
+  reminder_unapproved_requests_enabled: boolean;
+  reminder_unapproved_requests_mode: string;
+  reminder_unapproved_requests_times: string;
+  reminder_shift_submission_enabled: boolean;
+  reminder_payslip_enabled: boolean;
+  ai_request_max_future_months: string;
+}
+
+export default function AISettingsPage() {
+  const supabase = createClientComponentClient();
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [settings, setSettings] = useState<AISettings>({
+    advance_absence_deadline_hours: '24',
+    public_absence_receipt_deadline_days: '2',
+    request_shift_requires_approval: false,
+    advance_absence_requires_approval: false,
+    same_day_absence_requires_approval: false,
+    public_absence_requires_approval: true,
+    request_shift_approval_roles: 'admin,manager',
+    advance_absence_approval_roles: 'admin,manager',
+    same_day_absence_approval_roles: 'admin,manager',
+    public_absence_approval_roles: 'admin,manager',
+    discord_notify_auto_approved: true,
+    discord_webhook_url: '',
+    reminder_shift_confirmation_enabled: true,
+    reminder_shift_confirmation_time: '13:00',
+    reminder_public_absence_receipt_enabled: true,
+    reminder_unapproved_requests_enabled: true,
+    reminder_unapproved_requests_mode: 'realtime',
+    reminder_unapproved_requests_times: '09:00,18:00',
+    reminder_shift_submission_enabled: true,
+    reminder_payslip_enabled: true,
+    ai_request_max_future_months: '2',
+  });
+
+  useEffect(() => {
+    fetchSettings();
+  }, []);
+
+  const fetchSettings = async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('system_settings')
+      .select('setting_key, setting_value');
+
+    if (!error && data) {
+      const newSettings: any = { ...settings };
+      data.forEach((row) => {
+        const value = row.setting_value;
+        if (row.setting_key.includes('requires_approval') || row.setting_key.includes('_enabled') || row.setting_key === 'discord_notify_auto_approved') {
+          newSettings[row.setting_key] = value === 'true';
+        } else {
+          newSettings[row.setting_key] = value;
+        }
+      });
+      setSettings(newSettings);
+    }
+    setLoading(false);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+
+    const updates = Object.entries(settings).map(([key, value]) => ({
+      setting_key: key,
+      setting_value: typeof value === 'boolean' ? (value ? 'true' : 'false') : String(value),
+    }));
+
+    for (const update of updates) {
+      await supabase
+        .from('system_settings')
+        .upsert({
+          setting_key: update.setting_key,
+          setting_value: update.setting_value,
+        });
+    }
+
+    setSaving(false);
+    alert('設定を保存しました');
+  };
+
+  if (loading) {
+    return (
+      <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>読み込み中...</div>
+    );
+  }
+
+  return (
+    <div style={{ padding: '16px', maxWidth: '800px', margin: '0 auto', paddingBottom: '80px' }}>
+      <h1 style={{ fontSize: '24px', fontWeight: '600', color: '#1a1a1a', marginBottom: '16px' }}>AI統合設定</h1>
+
+      {/* 期限設定 */}
+      <section style={{ backgroundColor: '#fff', borderRadius: '8px', padding: '16px', marginBottom: '12px' }}>
+        <h2 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '12px' }}>期限設定</h2>
+
+        <div style={{ marginBottom: '16px' }}>
+          <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '6px' }}>
+            事前欠勤の締切（何時間前まで）
+          </label>
+          <input
+            type="number"
+            value={settings.advance_absence_deadline_hours}
+            onChange={(e) => setSettings({ ...settings, advance_absence_deadline_hours: e.target.value })}
+            style={{
+              width: '100%',
+              padding: '10px',
+              borderRadius: '6px',
+              border: '1px solid #e2e8f0',
+              fontSize: '14px',
+            }}
+          />
+        </div>
+
+        <div>
+          <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '6px' }}>
+            公欠証明の提出期限（欠勤日から何日以内）
+          </label>
+          <input
+            type="number"
+            value={settings.public_absence_receipt_deadline_days}
+            onChange={(e) => setSettings({ ...settings, public_absence_receipt_deadline_days: e.target.value })}
+            style={{
+              width: '100%',
+              padding: '10px',
+              borderRadius: '6px',
+              border: '1px solid #e2e8f0',
+              fontSize: '14px',
+            }}
+          />
+        </div>
+      </section>
+
+      {/* 承認要否設定 */}
+      <section style={{ backgroundColor: '#fff', borderRadius: '8px', padding: '16px', marginBottom: '12px' }}>
+        <h2 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '12px' }}>承認要否設定</h2>
+
+        {[
+          { key: 'request_shift_requires_approval', label: 'リクエスト出勤' },
+          { key: 'advance_absence_requires_approval', label: '事前欠勤' },
+          { key: 'same_day_absence_requires_approval', label: '当日欠勤' },
+          { key: 'public_absence_requires_approval', label: '公欠申請' },
+        ].map((item) => (
+          <label
+            key={item.key}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '12px 0',
+              borderBottom: '1px solid #f1f5f9',
+            }}
+          >
+            <span style={{ fontSize: '14px' }}>{item.label}</span>
+            <input
+              type="checkbox"
+              checked={settings[item.key as keyof AISettings] as boolean}
+              onChange={(e) => setSettings({ ...settings, [item.key]: e.target.checked })}
+              style={{ width: '20px', height: '20px' }}
+            />
+          </label>
+        ))}
+      </section>
+
+      {/* Discord通知設定 */}
+      <section style={{ backgroundColor: '#fff', borderRadius: '8px', padding: '16px', marginBottom: '12px' }}>
+        <h2 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '12px' }}>Discord通知設定</h2>
+
+        <div style={{ marginBottom: '16px' }}>
+          <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '6px' }}>
+            Discord Webhook URL
+          </label>
+          <input
+            type="text"
+            value={settings.discord_webhook_url}
+            onChange={(e) => setSettings({ ...settings, discord_webhook_url: e.target.value })}
+            placeholder="https://discord.com/api/webhooks/..."
+            style={{
+              width: '100%',
+              padding: '10px',
+              borderRadius: '6px',
+              border: '1px solid #e2e8f0',
+              fontSize: '14px',
+            }}
+          />
+        </div>
+
+        <label
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '12px 0',
+          }}
+        >
+          <span style={{ fontSize: '14px' }}>即反映時もDiscord通知を送る</span>
+          <input
+            type="checkbox"
+            checked={settings.discord_notify_auto_approved}
+            onChange={(e) => setSettings({ ...settings, discord_notify_auto_approved: e.target.checked })}
+            style={{ width: '20px', height: '20px' }}
+          />
+        </label>
+      </section>
+
+      {/* リマインダー設定 */}
+      <section style={{ backgroundColor: '#fff', borderRadius: '8px', padding: '16px', marginBottom: '12px' }}>
+        <h2 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '12px' }}>リマインダー設定</h2>
+
+        <div style={{ marginBottom: '16px' }}>
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: '8px',
+            }}
+          >
+            <span style={{ fontSize: '14px', fontWeight: '500' }}>当日シフト確認リマインダー</span>
+            <input
+              type="checkbox"
+              checked={settings.reminder_shift_confirmation_enabled}
+              onChange={(e) => setSettings({ ...settings, reminder_shift_confirmation_enabled: e.target.checked })}
+              style={{ width: '20px', height: '20px' }}
+            />
+          </label>
+          {settings.reminder_shift_confirmation_enabled && (
+            <input
+              type="time"
+              value={settings.reminder_shift_confirmation_time}
+              onChange={(e) => setSettings({ ...settings, reminder_shift_confirmation_time: e.target.value })}
+              style={{
+                width: '100%',
+                padding: '10px',
+                borderRadius: '6px',
+                border: '1px solid #e2e8f0',
+                fontSize: '14px',
+              }}
+            />
+          )}
+        </div>
+
+        {[
+          { key: 'reminder_public_absence_receipt_enabled', label: '公欠証明提出期限リマインダー' },
+          { key: 'reminder_shift_submission_enabled', label: 'シフト提出期限リマインダー' },
+          { key: 'reminder_payslip_enabled', label: '給与明細確認リマインダー' },
+        ].map((item) => (
+          <label
+            key={item.key}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '12px 0',
+              borderBottom: '1px solid #f1f5f9',
+            }}
+          >
+            <span style={{ fontSize: '14px' }}>{item.label}</span>
+            <input
+              type="checkbox"
+              checked={settings[item.key as keyof AISettings] as boolean}
+              onChange={(e) => setSettings({ ...settings, [item.key]: e.target.checked })}
+              style={{ width: '20px', height: '20px' }}
+            />
+          </label>
+        ))}
+
+        <div style={{ marginTop: '16px' }}>
+          <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '8px' }}>
+            未承認申請リマインダー
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
+            <input
+              type="checkbox"
+              checked={settings.reminder_unapproved_requests_enabled}
+              onChange={(e) => setSettings({ ...settings, reminder_unapproved_requests_enabled: e.target.checked })}
+              style={{ width: '20px', height: '20px', marginRight: '8px' }}
+            />
+            <span style={{ fontSize: '14px' }}>有効</span>
+          </label>
+          {settings.reminder_unapproved_requests_enabled && (
+            <>
+              <select
+                value={settings.reminder_unapproved_requests_mode}
+                onChange={(e) => setSettings({ ...settings, reminder_unapproved_requests_mode: e.target.value })}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  borderRadius: '6px',
+                  border: '1px solid #e2e8f0',
+                  fontSize: '14px',
+                  marginBottom: '8px',
+                }}
+              >
+                <option value="realtime">リアルタイム（申請後すぐ）</option>
+                <option value="scheduled">スケジュール（指定時刻）</option>
+              </select>
+              {settings.reminder_unapproved_requests_mode === 'scheduled' && (
+                <input
+                  type="text"
+                  value={settings.reminder_unapproved_requests_times}
+                  onChange={(e) => setSettings({ ...settings, reminder_unapproved_requests_times: e.target.value })}
+                  placeholder="09:00,18:00"
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    borderRadius: '6px',
+                    border: '1px solid #e2e8f0',
+                    fontSize: '14px',
+                  }}
+                />
+              )}
+            </>
+          )}
+        </div>
+      </section>
+
+      {/* AI制限設定 */}
+      <section style={{ backgroundColor: '#fff', borderRadius: '8px', padding: '16px', marginBottom: '12px' }}>
+        <h2 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '12px' }}>AI制限設定</h2>
+
+        <div>
+          <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '6px' }}>
+            リクエスト出勤の最大未来月数
+          </label>
+          <input
+            type="number"
+            value={settings.ai_request_max_future_months}
+            onChange={(e) => setSettings({ ...settings, ai_request_max_future_months: e.target.value })}
+            style={{
+              width: '100%',
+              padding: '10px',
+              borderRadius: '6px',
+              border: '1px solid #e2e8f0',
+              fontSize: '14px',
+            }}
+          />
+        </div>
+      </section>
+
+      {/* 保存ボタン */}
+      <button
+        onClick={handleSave}
+        disabled={saving}
+        style={{
+          width: '100%',
+          padding: '14px',
+          backgroundColor: '#2563eb',
+          color: '#fff',
+          border: 'none',
+          borderRadius: '8px',
+          fontSize: '16px',
+          fontWeight: '600',
+          cursor: saving ? 'not-allowed' : 'pointer',
+          opacity: saving ? 0.5 : 1,
+        }}
+      >
+        {saving ? '保存中...' : '設定を保存'}
+      </button>
+    </div>
+  );
+}
