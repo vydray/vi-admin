@@ -174,33 +174,74 @@ export default function AISettingsPage() {
   }
 
   return (
-    <div style={{ padding: '16px', maxWidth: '800px', margin: '0 auto', paddingBottom: '80px' }}>
-      <h1 style={{ fontSize: '24px', fontWeight: '600', color: '#1a1a1a', marginBottom: '16px' }}>AI統合設定</h1>
+    <div style={{
+      display: 'flex',
+      height: 'calc(100vh - 60px)',
+      backgroundColor: '#f7f9fc',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+    }}>
+      {/* 左サイドバー: 店舗一覧 */}
+      <div style={{
+        width: '280px',
+        backgroundColor: '#fff',
+        borderRight: '1px solid #e2e8f0',
+        display: 'flex',
+        flexDirection: 'column'
+      }}>
+        <div style={{
+          padding: '20px',
+          borderBottom: '1px solid #e2e8f0'
+        }}>
+          <h2 style={{ fontSize: '18px', fontWeight: 'bold', margin: 0, color: '#1a1a1a' }}>
+            AI統合設定
+          </h2>
+        </div>
 
-      {/* 店舗選択 */}
-      <section style={{ backgroundColor: '#fff', borderRadius: '8px', padding: '16px', marginBottom: '12px' }}>
-        <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '6px' }}>
-          店舗選択
-        </label>
-        <select
-          value={selectedStoreId || ''}
-          onChange={(e) => setSelectedStoreId(Number(e.target.value))}
-          style={{
-            width: '100%',
-            padding: '10px',
-            borderRadius: '6px',
-            border: '1px solid #e2e8f0',
-            fontSize: '14px',
-            backgroundColor: '#fff',
-          }}
-        >
-          {stores.map((store) => (
-            <option key={store.id} value={store.id}>
-              {store.store_name}
-            </option>
-          ))}
-        </select>
-      </section>
+        <div style={{ flex: 1, overflowY: 'auto' }}>
+          {loading ? (
+            <div style={{ padding: '20px', textAlign: 'center', color: '#94a3b8' }}>
+              読み込み中...
+            </div>
+          ) : (
+            stores.map(store => (
+              <div
+                key={store.id}
+                onClick={() => setSelectedStoreId(store.id)}
+                style={{
+                  padding: '14px 20px',
+                  cursor: 'pointer',
+                  backgroundColor: selectedStoreId === store.id ? '#f0f9ff' : 'transparent',
+                  borderLeft: selectedStoreId === store.id ? '3px solid #3b82f6' : '3px solid transparent',
+                  borderBottom: '1px solid #f1f5f9',
+                  transition: 'all 0.15s'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span style={{
+                    width: '8px',
+                    height: '8px',
+                    borderRadius: '50%',
+                    backgroundColor: '#22c55e'
+                  }} />
+                  <span style={{
+                    fontWeight: selectedStoreId === store.id ? '600' : '400',
+                    color: '#1a1a1a',
+                    fontSize: '14px'
+                  }}>
+                    {store.store_name}
+                  </span>
+                </div>
+                <div style={{ marginLeft: '18px', marginTop: '4px' }}>
+                  <code style={{ fontSize: '11px', color: '#94a3b8' }}>ID: {store.id}</code>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      {/* 右側: 設定内容 */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
 
       {/* 期限設定 */}
       <section style={{ backgroundColor: '#fff', borderRadius: '8px', padding: '16px', marginBottom: '12px' }}>
@@ -641,6 +682,7 @@ export default function AISettingsPage() {
       >
         {saving ? '保存中...' : '設定を保存'}
       </button>
+      </div>
     </div>
   );
 }
