@@ -70,6 +70,7 @@ const menuGroups: MenuGroup[] = [
     items: [
       { name: '店舗管理', path: '/stores', icon: '🏢' },
       { name: 'LINE設定', path: '/line-settings', icon: '💬' },
+      { name: 'AI統合設定', path: '/settings/ai', icon: '🤖' },
     ]
   },
 ]

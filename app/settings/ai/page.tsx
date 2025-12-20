@@ -1,7 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { useAuth } from '@/contexts/AuthContext';
+import { useStore } from '@/contexts/StoreContext';
 
 interface AISettings {
   advance_absence_deadline_hours: string;
@@ -28,6 +31,9 @@ interface AISettings {
 }
 
 export default function AISettingsPage() {
+  const router = useRouter();
+  const { user, isLoading: authLoading } = useAuth();
+  const { storeId } = useStore();
   const supabase = createClientComponentClient();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -55,15 +61,31 @@ export default function AISettingsPage() {
     ai_request_max_future_months: '2',
   });
 
+  // 権限チェック
   useEffect(() => {
+    if (authLoading) return;
+
+    if (!user) {
+      router.push('/login');
+      return;
+    }
+
+    if (user.role !== 'super_admin') {
+      router.push('/');
+      return;
+    }
+
     fetchSettings();
-  }, []);
+  }, [authLoading, user, storeId]);
 
   const fetchSettings = async () => {
+    if (!storeId) return;
+
     setLoading(true);
     const { data, error } = await supabase
       .from('system_settings')
-      .select('setting_key, setting_value');
+      .select('setting_key, setting_value')
+      .eq('store_id', storeId);
 
     if (!error && data) {
       const newSettings: any = { ...settings };
@@ -81,9 +103,12 @@ export default function AISettingsPage() {
   };
 
   const handleSave = async () => {
+    if (!storeId) return;
+
     setSaving(true);
 
     const updates = Object.entries(settings).map(([key, value]) => ({
+      store_id: storeId,
       setting_key: key,
       setting_value: typeof value === 'boolean' ? (value ? 'true' : 'false') : String(value),
     }));
@@ -92,6 +117,7 @@ export default function AISettingsPage() {
       await supabase
         .from('system_settings')
         .upsert({
+          store_id: update.store_id,
           setting_key: update.setting_key,
           setting_value: update.setting_value,
         });
@@ -101,10 +127,15 @@ export default function AISettingsPage() {
     alert('設定を保存しました');
   };
 
-  if (loading) {
+  if (authLoading || loading) {
     return (
       <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>読み込み中...</div>
     );
+  }
+
+  // super_admin以外は表示しない（念のため）
+  if (!user || user.role !== 'super_admin') {
+    return null;
   }
 
   return (
