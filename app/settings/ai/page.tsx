@@ -1,9 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { useAuth } from '@/contexts/AuthContext';
+import ProtectedPage from '@/components/ProtectedPage';
 
 interface Store {
   id: number;
@@ -38,8 +37,14 @@ interface AISettings {
 }
 
 export default function AISettingsPage() {
-  const router = useRouter();
-  const { user, isLoading: authLoading } = useAuth();
+  return (
+    <ProtectedPage requireSuperAdmin>
+      <AISettingsPageContent />
+    </ProtectedPage>
+  );
+}
+
+function AISettingsPageContent() {
   const supabase = createClientComponentClient();
   const [stores, setStores] = useState<Store[]>([]);
   const [selectedStoreId, setSelectedStoreId] = useState<number | null>(null);
@@ -72,22 +77,10 @@ export default function AISettingsPage() {
     ai_request_max_future_months: '2',
   });
 
-  // 権限チェックと店舗リスト取得
+  // 店舗リスト取得
   useEffect(() => {
-    if (authLoading) return;
-
-    if (!user) {
-      router.push('/login');
-      return;
-    }
-
-    if (user.role !== 'super_admin') {
-      router.push('/');
-      return;
-    }
-
     fetchStores();
-  }, [authLoading, user]);
+  }, []);
 
   // 店舗変更時に設定を取得
   useEffect(() => {
@@ -162,17 +155,6 @@ export default function AISettingsPage() {
     alert('設定を保存しました');
   };
 
-  if (authLoading || loading) {
-    return (
-      <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>読み込み中...</div>
-    );
-  }
-
-  // super_admin以外は表示しない（念のため）
-  if (!user || user.role !== 'super_admin') {
-    return null;
-  }
-
   return (
     <div style={{
       display: 'flex',
@@ -242,6 +224,16 @@ export default function AISettingsPage() {
 
       {/* 右側: 設定内容 */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
+        {selectedStoreId && (
+          <div style={{ marginBottom: '24px' }}>
+            <h1 style={{ fontSize: '24px', fontWeight: '600', color: '#1a1a1a', marginBottom: '8px' }}>
+              {stores.find(s => s.id === selectedStoreId)?.store_name}
+            </h1>
+            <p style={{ fontSize: '14px', color: '#64748b' }}>
+              AI統合設定を管理
+            </p>
+          </div>
+        )}
 
       {/* 期限設定 */}
       <section style={{ backgroundColor: '#fff', borderRadius: '8px', padding: '16px', marginBottom: '12px' }}>
