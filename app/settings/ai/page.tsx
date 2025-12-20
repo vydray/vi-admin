@@ -1,12 +1,15 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/contexts/AuthContext';
 import ProtectedPage from '@/components/ProtectedPage';
 
 interface Store {
   id: number;
   store_name: string;
+  is_active: boolean;
+  created_at: string;
 }
 
 interface AISettings {
@@ -45,7 +48,7 @@ export default function AISettingsPage() {
 }
 
 function AISettingsPageContent() {
-  const supabase = createClientComponentClient();
+  const { user } = useAuth();
   const [stores, setStores] = useState<Store[]>([]);
   const [selectedStoreId, setSelectedStoreId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -79,8 +82,10 @@ function AISettingsPageContent() {
 
   // 店舗リスト取得
   useEffect(() => {
-    fetchStores();
-  }, []);
+    if (user?.role === 'super_admin') {
+      loadStores();
+    }
+  }, [user]);
 
   // 店舗変更時に設定を取得
   useEffect(() => {
@@ -89,7 +94,7 @@ function AISettingsPageContent() {
     }
   }, [selectedStoreId]);
 
-  const fetchStores = async () => {
+  const loadStores = async () => {
     setLoading(true);
     const { data, error } = await supabase
       .from('stores')
@@ -97,16 +102,11 @@ function AISettingsPageContent() {
       .order('id');
 
     if (error) {
-      console.error('Failed to fetch stores:', error);
-    } else if (data) {
-      // store_nameフィールドをマッピング
-      const mappedStores = data.map(store => ({
-        id: store.id,
-        store_name: store.store_name
-      }));
-      setStores(mappedStores);
-      if (mappedStores.length > 0) {
-        setSelectedStoreId(mappedStores[0].id);
+      console.error('Error loading stores:', error);
+    } else {
+      setStores(data || []);
+      if (!selectedStoreId && data && data.length > 0) {
+        setSelectedStoreId(data[0].id);
       }
     }
     setLoading(false);
