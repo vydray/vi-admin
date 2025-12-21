@@ -923,11 +923,27 @@ function ShiftManageContent() {
       console.warn('マッチしなかったヘッダー:', unmatchedHeaders)
     }
 
-    let successCount = 0
     let errorCount = 0
     const errors: string[] = []
 
-    // データ行を処理
+    // 時間を正規化（24:00 → 00:00:00）
+    const normalizeTime = (time: string) => {
+      const [hours, minutes] = time.split(':').map(Number)
+      const normalizedHours = hours >= 24 ? hours - 24 : hours
+      return `${normalizedHours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`
+    }
+
+    // 一括処理用のデータを収集
+    const shiftsToInsert: Array<{
+      cast_id: number
+      date: string
+      start_time: string
+      end_time: string
+      store_id: number
+    }> = []
+    const deleteKeys: Array<{ cast_id: number, date: string }> = []
+
+    // データ行を処理（バリデーションとデータ収集）
     for (let i = 1; i < lines.length; i++) {
       const cells = lines[i].split(',').map(c => c.trim())
       if (cells.length < 2) continue
@@ -949,61 +965,60 @@ function ShiftManageContent() {
 
         const timeValue = cells[j]
 
-        // 時間を正規化（24:00 → 00:00:00）
-        const normalizeTime = (time: string) => {
-          const [hours, minutes] = time.split(':').map(Number)
-          const normalizedHours = hours >= 24 ? hours - 24 : hours
-          return `${normalizedHours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`
-        }
+        // 削除対象として記録
+        deleteKeys.push({ cast_id: cast.id, date: dateStr })
 
-        try {
-          if (!timeValue) {
-            // 空欄の場合、該当のシフトをDBから直接削除
-            const { error, count } = await supabase
-              .from('shifts')
-              .delete()
-              .eq('cast_id', cast.id)
-              .eq('date', dateStr)
-              .eq('store_id', storeId)
-            if (error) throw error
-            if (count && count > 0) successCount++
-          } else {
-            // 時間形式をパース（18:00~24:00 または 18:00-24:00）
-            const timeMatch = timeValue.match(/(\d{1,2}:\d{2})[~\-](\d{1,2}:\d{2})/)
-            if (!timeMatch) {
-              errors.push(`${i + 1}行目 ${headerCells[j]}: 「${timeValue}」は不正な形式です（例: 18:00~24:00）`)
-              errorCount++
-              continue
-            }
-
-            const [, startTime, endTime] = timeMatch
-
-            // まず既存のシフトを削除してから新規作成（upsert的な動作）
-            await supabase
-              .from('shifts')
-              .delete()
-              .eq('cast_id', cast.id)
-              .eq('date', dateStr)
-              .eq('store_id', storeId)
-
-            // 新規作成
-            const { error } = await supabase
-              .from('shifts')
-              .insert({
-                cast_id: cast.id,
-                date: dateStr,
-                start_time: normalizeTime(startTime),
-                end_time: normalizeTime(endTime),
-                store_id: storeId
-              })
-            if (error) throw error
-            successCount++
+        if (timeValue) {
+          // 時間形式をパース（18:00~24:00 または 18:00-24:00）
+          const timeMatch = timeValue.match(/(\d{1,2}:\d{2})[~\-](\d{1,2}:\d{2})/)
+          if (!timeMatch) {
+            errors.push(`${i + 1}行目 ${headerCells[j]}: 「${timeValue}」は不正な形式です（例: 18:00~24:00）`)
+            errorCount++
+            continue
           }
-        } catch (err) {
-          errors.push(`${i + 1}行目 ${headerCells[j]}: 保存に失敗しました`)
-          errorCount++
+
+          const [, startTime, endTime] = timeMatch
+          shiftsToInsert.push({
+            cast_id: cast.id,
+            date: dateStr,
+            start_time: normalizeTime(startTime),
+            end_time: normalizeTime(endTime),
+            store_id: storeId
+          })
         }
       }
+    }
+
+    // バリデーションエラーがあっても続行（有効なデータのみ処理）
+    let successCount = 0
+
+    try {
+      // 一括削除: 対象の日付・キャスト組み合わせを全て削除
+      if (deleteKeys.length > 0) {
+        // 日付リストを取得
+        const uniqueDates = [...new Set(deleteKeys.map(k => k.date))]
+        const uniqueCastIds = [...new Set(deleteKeys.map(k => k.cast_id))]
+
+        await supabase
+          .from('shifts')
+          .delete()
+          .eq('store_id', storeId)
+          .in('date', uniqueDates)
+          .in('cast_id', uniqueCastIds)
+      }
+
+      // 一括挿入
+      if (shiftsToInsert.length > 0) {
+        const { error } = await supabase
+          .from('shifts')
+          .insert(shiftsToInsert)
+
+        if (error) throw error
+        successCount = shiftsToInsert.length
+      }
+    } catch (err) {
+      errors.push('データベース操作中にエラーが発生しました')
+      errorCount++
     }
 
     await loadShifts()
