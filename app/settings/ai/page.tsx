@@ -33,7 +33,8 @@ interface AISettings {
   reminder_unapproved_requests_mode: string;
   reminder_unapproved_requests_times: string;
   reminder_shift_submission_enabled: boolean;
-  reminder_shift_submission_days: string;
+  reminder_shift_submission_first_half_day: string;
+  reminder_shift_submission_second_half_day: string;
   reminder_payslip_enabled: boolean;
   reminder_payslip_day: string;
   ai_request_max_future_months: string;
@@ -77,7 +78,8 @@ function AISettingsPageContent() {
     reminder_unapproved_requests_mode: 'realtime',
     reminder_unapproved_requests_times: '09:00,18:00',
     reminder_shift_submission_enabled: true,
-    reminder_shift_submission_days: '15,20',
+    reminder_shift_submission_first_half_day: '10',
+    reminder_shift_submission_second_half_day: '25',
     reminder_payslip_enabled: true,
     reminder_payslip_day: '25',
     ai_request_max_future_months: '2',
@@ -588,24 +590,48 @@ function AISettingsPageContent() {
             />
           </label>
           {settings.reminder_shift_submission_enabled && (
-            <>
-              <label style={{ display: 'block', fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>
-                毎月何日にリマインドするか（カンマ区切り）
-              </label>
-              <input
-                type="text"
-                value={settings.reminder_shift_submission_days}
-                onChange={(e) => setSettings({ ...settings, reminder_shift_submission_days: e.target.value })}
-                placeholder="15,20"
-                style={{
-                  width: '100%',
-                  padding: '10px',
-                  borderRadius: '6px',
-                  border: '1px solid #e2e8f0',
-                  fontSize: '14px',
-                }}
-              />
-            </>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>
+                  前半（何日）
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  max="15"
+                  value={settings.reminder_shift_submission_first_half_day}
+                  onChange={(e) => setSettings({ ...settings, reminder_shift_submission_first_half_day: e.target.value })}
+                  placeholder="10"
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    borderRadius: '6px',
+                    border: '1px solid #e2e8f0',
+                    fontSize: '14px',
+                  }}
+                />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>
+                  後半（何日）
+                </label>
+                <input
+                  type="number"
+                  min="16"
+                  max="31"
+                  value={settings.reminder_shift_submission_second_half_day}
+                  onChange={(e) => setSettings({ ...settings, reminder_shift_submission_second_half_day: e.target.value })}
+                  placeholder="25"
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    borderRadius: '6px',
+                    border: '1px solid #e2e8f0',
+                    fontSize: '14px',
+                  }}
+                />
+              </div>
+            </div>
           )}
         </div>
 
