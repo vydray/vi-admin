@@ -86,6 +86,12 @@ function ShiftManageContent() {
 
   // CSVインポート用
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [isImporting, setIsImporting] = useState(false)
+  const [importResult, setImportResult] = useState<{
+    show: boolean
+    success: number
+    errors: string[]
+  }>({ show: false, success: 0, errors: [] })
 
   useEffect(() => {
     loadData()
@@ -794,20 +800,42 @@ function ShiftManageContent() {
 
   // CSVインポート（横持ちフォーマット）
   const importCSV = async (file: File) => {
-    const text = await file.text()
-    const lines = text.split('\n').filter(line => line.trim())
+    setIsImporting(true)
+    setImportResult({ show: false, success: 0, errors: [] })
 
-    if (lines.length < 2) {
-      toast.error('CSVファイルにデータがありません\n\n【必要な形式】\n1行目: 名前,12月1日,12月2日,...\n2行目以降: キャスト名,18:00~24:00,...')
-      return
-    }
+    try {
+      const text = await file.text()
+      const lines = text.split('\n').filter(line => line.trim())
+
+      if (lines.length < 2) {
+        setImportResult({
+          show: true,
+          success: 0,
+          errors: ['CSVファイルにデータがありません', '', '【必要な形式】', '1行目: 名前,12月1日,12月2日,...', '2行目以降: キャスト名,18:00~24:00,...']
+        })
+        setIsImporting(false)
+        return
+      }
 
     // ヘッダーから日付を取得
     const headerCells = lines[0].split(',').map(h => h.trim())
 
     // 1列目が「名前」かチェック
     if (headerCells[0] !== '名前') {
-      toast.error(`1行目1列目が「名前」ではありません\n\n【読み込んだ値】${headerCells[0]}\n【期待する値】名前\n\n【正しい形式】\n名前,12月1日,12月2日,...`)
+      setImportResult({
+        show: true,
+        success: 0,
+        errors: [
+          '1行目1列目が「名前」ではありません',
+          '',
+          `【読み込んだ値】${headerCells[0]}`,
+          '【期待する値】名前',
+          '',
+          '【正しい形式】',
+          '名前,12月1日,12月2日,...'
+        ]
+      })
+      setIsImporting(false)
       return
     }
 
@@ -870,7 +898,24 @@ function ShiftManageContent() {
     })
 
     if (dateMap.size === 0) {
-      toast.error(`日付列が見つかりません\n\n【読み込んだヘッダー】\n${headerCells.join(', ')}\n\n【対応形式】\n・12月1日\n・12/1\n・2024/12/1\n・2024-12-01\n・1日`)
+      setImportResult({
+        show: true,
+        success: 0,
+        errors: [
+          '日付列が見つかりません',
+          '',
+          '【読み込んだヘッダー】',
+          headerCells.join(', '),
+          '',
+          '【対応形式】',
+          '・12月1日',
+          '・12/1',
+          '・2024/12/1',
+          '・2024-12-01',
+          '・1日'
+        ]
+      })
+      setIsImporting(false)
       return
     }
 
@@ -963,14 +1008,27 @@ function ShiftManageContent() {
 
     await loadShifts()
 
-    if (errorCount > 0) {
-      const errorSummary = errors.slice(0, 5).join('\n')
-      const moreErrors = errors.length > 5 ? `\n...他${errors.length - 5}件のエラー` : ''
-      toast.error(`${successCount}件成功、${errorCount}件失敗\n\n${errorSummary}${moreErrors}`, { duration: 8000 })
-    } else if (successCount === 0) {
-      toast.error('インポートするデータがありませんでした')
+    // 結果をモーダルで表示
+    if (errorCount > 0 || successCount === 0) {
+      const allErrors = successCount === 0 && errorCount === 0
+        ? ['インポートするデータがありませんでした']
+        : errors
+      setImportResult({
+        show: true,
+        success: successCount,
+        errors: allErrors
+      })
     } else {
       toast.success(`${successCount}件のシフトをインポートしました`)
+    }
+    } catch (err) {
+      setImportResult({
+        show: true,
+        success: 0,
+        errors: ['インポート中に予期しないエラーが発生しました']
+      })
+    } finally {
+      setIsImporting(false)
     }
   }
 
@@ -1322,26 +1380,40 @@ function ShiftManageContent() {
 
           {/* CSVインポート */}
           <button
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => !isImporting && fileInputRef.current?.click()}
+            disabled={isImporting}
             style={{
               padding: '8px 16px',
               fontSize: '14px',
               fontWeight: '500',
-              backgroundColor: '#fff',
-              color: '#475569',
+              backgroundColor: isImporting ? '#f1f5f9' : '#fff',
+              color: isImporting ? '#94a3b8' : '#475569',
               border: '1px solid #e2e8f0',
               borderRadius: '8px',
-              cursor: 'pointer',
+              cursor: isImporting ? 'not-allowed' : 'pointer',
               transition: 'all 0.2s ease',
               display: 'flex',
               alignItems: 'center',
               gap: '6px'
             }}
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-              <path d="M9 16h6v-6h4l-7-7-7 7h4v6zm-4 2h14v2H5v-2z" fill="currentColor"/>
-            </svg>
-            インポート
+            {isImporting ? (
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                style={{ animation: 'spin 1s linear infinite' }}
+              >
+                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" strokeOpacity="0.25"/>
+                <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="4" strokeLinecap="round"/>
+              </svg>
+            ) : (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <path d="M9 16h6v-6h4l-7-7-7 7h4v6zm-4 2h14v2H5v-2z" fill="currentColor"/>
+              </svg>
+            )}
+            {isImporting ? 'インポート中...' : 'インポート'}
           </button>
           <input
             ref={fileInputRef}
@@ -1990,6 +2062,116 @@ function ShiftManageContent() {
             zIndex: 999
           }}
         />
+      )}
+
+      {/* インポート結果モーダル */}
+      {importResult.show && (
+        <>
+          <div
+            onClick={() => setImportResult({ ...importResult, show: false })}
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0, 0, 0, 0.5)',
+              zIndex: 1100
+            }}
+          />
+          <div
+            style={{
+              position: 'fixed',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              backgroundColor: '#fff',
+              padding: '24px',
+              borderRadius: '12px',
+              boxShadow: '0 10px 40px rgba(0,0,0,0.2)',
+              zIndex: 1101,
+              minWidth: '400px',
+              maxWidth: '600px',
+              maxHeight: '80vh',
+              overflow: 'auto'
+            }}
+          >
+            <h3 style={{
+              margin: '0 0 16px 0',
+              fontSize: '18px',
+              fontWeight: '600',
+              color: importResult.errors.length > 0 ? '#dc2626' : '#059669',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}>
+              {importResult.errors.length > 0 ? (
+                <>
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+                  </svg>
+                  インポートエラー
+                </>
+              ) : (
+                <>
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                  </svg>
+                  インポート完了
+                </>
+              )}
+            </h3>
+
+            {importResult.success > 0 && (
+              <div style={{
+                padding: '12px 16px',
+                backgroundColor: '#dcfce7',
+                borderRadius: '8px',
+                marginBottom: '16px',
+                fontSize: '14px',
+                color: '#166534'
+              }}>
+                {importResult.success}件のシフトをインポートしました
+              </div>
+            )}
+
+            {importResult.errors.length > 0 && (
+              <div style={{
+                padding: '16px',
+                backgroundColor: '#fef2f2',
+                borderRadius: '8px',
+                marginBottom: '16px',
+                fontSize: '13px',
+                color: '#991b1b',
+                lineHeight: '1.6',
+                whiteSpace: 'pre-wrap'
+              }}>
+                {importResult.errors.map((error, idx) => (
+                  <div key={idx} style={{ marginBottom: error === '' ? '8px' : '4px' }}>
+                    {error}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <button
+              onClick={() => setImportResult({ ...importResult, show: false })}
+              style={{
+                width: '100%',
+                padding: '12px',
+                fontSize: '14px',
+                fontWeight: '500',
+                backgroundColor: '#3b82f6',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer'
+              }}
+            >
+              閉じる
+            </button>
+          </div>
+        </>
       )}
     </div>
   )
