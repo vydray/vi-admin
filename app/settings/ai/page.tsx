@@ -157,11 +157,16 @@ function AISettingsPageContent() {
     for (const update of updates) {
       await supabase
         .from('system_settings')
-        .upsert({
-          store_id: update.store_id,
-          setting_key: update.setting_key,
-          setting_value: update.setting_value,
-        });
+        .upsert(
+          {
+            store_id: update.store_id,
+            setting_key: update.setting_key,
+            setting_value: update.setting_value,
+          },
+          {
+            onConflict: 'store_id,setting_key',
+          }
+        );
     }
 
     setSaving(false);
