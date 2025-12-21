@@ -804,7 +804,6 @@ function ShiftManageContent() {
 
     // ヘッダーから日付を取得
     const headerCells = lines[0].split(',').map(h => h.trim())
-    const days = getDaysInPeriod()
 
     // 1列目が「名前」かチェック
     if (headerCells[0] !== '名前') {
@@ -812,30 +811,66 @@ function ShiftManageContent() {
       return
     }
 
-    // ヘッダーの日付とマッチング（M月d日 → yyyy-MM-dd）
+    // 日付を解析する関数（複数形式対応）
+    const parseDate = (header: string): { month: number, day: number } | null => {
+      // 形式1: 12月1日, 12月01日
+      let match = header.match(/(\d{1,2})月(\d{1,2})日/)
+      if (match) {
+        return { month: parseInt(match[1]), day: parseInt(match[2]) }
+      }
+
+      // 形式2: 12/1, 12/01
+      match = header.match(/^(\d{1,2})\/(\d{1,2})$/)
+      if (match) {
+        return { month: parseInt(match[1]), day: parseInt(match[2]) }
+      }
+
+      // 形式3: 2024/12/1, 2024/12/01
+      match = header.match(/^\d{4}\/(\d{1,2})\/(\d{1,2})$/)
+      if (match) {
+        return { month: parseInt(match[1]), day: parseInt(match[2]) }
+      }
+
+      // 形式4: 2024-12-01
+      match = header.match(/^\d{4}-(\d{1,2})-(\d{1,2})$/)
+      if (match) {
+        return { month: parseInt(match[1]), day: parseInt(match[2]) }
+      }
+
+      // 形式5: 1日（月は選択中の月と仮定）
+      match = header.match(/^(\d{1,2})日$/)
+      if (match) {
+        return { month: selectedMonth.getMonth() + 1, day: parseInt(match[1]) }
+      }
+
+      return null
+    }
+
+    // ヘッダーの日付とマッチング（複数形式対応、期間外も許可）
     const dateMap: Map<number, string> = new Map()
     const unmatchedHeaders: string[] = []
+    const year = selectedMonth.getFullYear()
 
     headerCells.forEach((header, index) => {
       if (index === 0) return // 「名前」列をスキップ
-      const match = header.match(/(\d+)月(\d+)日/)
-      if (match) {
-        const month = parseInt(match[1])
-        const day = parseInt(match[2])
-        // 現在選択中の年月から日付を特定
-        const targetDate = days.find(d => d.getMonth() + 1 === month && d.getDate() === day)
-        if (targetDate) {
-          dateMap.set(index, format(targetDate, 'yyyy-MM-dd'))
-        } else {
-          unmatchedHeaders.push(`${header}（選択期間外）`)
-        }
+
+      const parsed = parseDate(header)
+      if (parsed) {
+        // 選択中の年と月を使用して日付を構築
+        // 日付が1-15なら現在の月、16-31なら現在の月として扱う
+        const targetMonth = parsed.month
+        const targetDay = parsed.day
+
+        // 年を決定（月が選択月と異なる場合も選択年を使用）
+        const dateStr = `${year}-${targetMonth.toString().padStart(2, '0')}-${targetDay.toString().padStart(2, '0')}`
+        dateMap.set(index, dateStr)
       } else if (header) {
         unmatchedHeaders.push(`${header}（形式不正）`)
       }
     })
 
     if (dateMap.size === 0) {
-      toast.error(`日付列が見つかりません\n\n【読み込んだヘッダー】\n${headerCells.join(', ')}\n\n【期待する形式】\n名前,12月1日,12月2日,...\n\n※ 日付は「M月d日」の形式で指定してください`)
+      toast.error(`日付列が見つかりません\n\n【読み込んだヘッダー】\n${headerCells.join(', ')}\n\n【対応形式】\n・12月1日\n・12/1\n・2024/12/1\n・2024-12-01\n・1日`)
       return
     }
 
@@ -877,18 +912,16 @@ function ShiftManageContent() {
         }
 
         try {
-          const existingShift = shifts.find(s => s.cast_id === cast.id && s.date === dateStr)
-
           if (!timeValue) {
-            // 空欄の場合、既存シフトがあれば削除
-            if (existingShift) {
-              const { error } = await supabase
-                .from('shifts')
-                .delete()
-                .eq('id', existingShift.id)
-              if (error) throw error
-              successCount++
-            }
+            // 空欄の場合、該当のシフトをDBから直接削除
+            const { error, count } = await supabase
+              .from('shifts')
+              .delete()
+              .eq('cast_id', cast.id)
+              .eq('date', dateStr)
+              .eq('store_id', storeId)
+            if (error) throw error
+            if (count && count > 0) successCount++
           } else {
             // 時間形式をパース（18:00~24:00 または 18:00-24:00）
             const timeMatch = timeValue.match(/(\d{1,2}:\d{2})[~\-](\d{1,2}:\d{2})/)
@@ -900,29 +933,25 @@ function ShiftManageContent() {
 
             const [, startTime, endTime] = timeMatch
 
-            if (existingShift) {
-              // 更新
-              const { error } = await supabase
-                .from('shifts')
-                .update({
-                  start_time: normalizeTime(startTime),
-                  end_time: normalizeTime(endTime)
-                })
-                .eq('id', existingShift.id)
-              if (error) throw error
-            } else {
-              // 新規作成
-              const { error } = await supabase
-                .from('shifts')
-                .insert({
-                  cast_id: cast.id,
-                  date: dateStr,
-                  start_time: normalizeTime(startTime),
-                  end_time: normalizeTime(endTime),
-                  store_id: storeId
-                })
-              if (error) throw error
-            }
+            // まず既存のシフトを削除してから新規作成（upsert的な動作）
+            await supabase
+              .from('shifts')
+              .delete()
+              .eq('cast_id', cast.id)
+              .eq('date', dateStr)
+              .eq('store_id', storeId)
+
+            // 新規作成
+            const { error } = await supabase
+              .from('shifts')
+              .insert({
+                cast_id: cast.id,
+                date: dateStr,
+                start_time: normalizeTime(startTime),
+                end_time: normalizeTime(endTime),
+                store_id: storeId
+              })
+            if (error) throw error
             successCount++
           }
         } catch (err) {
