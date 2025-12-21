@@ -37,7 +37,7 @@ interface AISettings {
   reminder_payslip_enabled: boolean;
   reminder_payslip_day: string;
   ai_request_max_future_months: string;
-  openai_api_key: string;
+  anthropic_api_key: string;
   ai_cast_registration_enabled: boolean;
 }
 
@@ -81,7 +81,7 @@ function AISettingsPageContent() {
     reminder_payslip_enabled: true,
     reminder_payslip_day: '25',
     ai_request_max_future_months: '2',
-    openai_api_key: '',
+    anthropic_api_key: '',
     ai_cast_registration_enabled: false,
   });
 
@@ -429,13 +429,13 @@ function AISettingsPageContent() {
 
         <div style={{ marginBottom: '16px' }}>
           <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '6px' }}>
-            OpenAI APIキー
+            Anthropic Claude APIキー
           </label>
           <input
             type="password"
-            value={settings.openai_api_key}
-            onChange={(e) => setSettings({ ...settings, openai_api_key: e.target.value })}
-            placeholder="sk-..."
+            value={settings.anthropic_api_key}
+            onChange={(e) => setSettings({ ...settings, anthropic_api_key: e.target.value })}
+            placeholder="sk-ant-..."
             style={{
               width: '100%',
               padding: '10px',
@@ -446,7 +446,7 @@ function AISettingsPageContent() {
             }}
           />
           <p style={{ fontSize: '12px', color: '#64748b', marginTop: '6px' }}>
-            OpenAIのAPIキーを入力してください。AIによるキャスト登録などの機能に使用されます。
+            AnthropicのClaude APIキーを入力してください。AIによるキャスト登録などの機能に使用されます。
           </p>
         </div>
 
