@@ -21,6 +21,7 @@ interface LineConfig {
   line_channel_id: string | null
   line_channel_secret: string
   line_channel_access_token: string
+  liff_id: string | null
   is_active: boolean
   created_at: string
   updated_at: string
@@ -30,6 +31,7 @@ interface EditForm {
   line_channel_id: string
   line_channel_secret: string
   line_channel_access_token: string
+  liff_id: string
 }
 
 export default function LineSettingsPage() {
@@ -53,7 +55,8 @@ function LineSettingsPageContent() {
   const [editForm, setEditForm] = useState<EditForm>({
     line_channel_id: '',
     line_channel_secret: '',
-    line_channel_access_token: ''
+    line_channel_access_token: '',
+    liff_id: ''
   })
   const [showSecrets, setShowSecrets] = useState(false)
 
@@ -116,7 +119,8 @@ function LineSettingsPageContent() {
         setEditForm({
           line_channel_id: '',
           line_channel_secret: '',
-          line_channel_access_token: ''
+          line_channel_access_token: '',
+          liff_id: ''
         })
       } else {
         console.error('Error loading config:', error)
@@ -127,7 +131,8 @@ function LineSettingsPageContent() {
       setEditForm({
         line_channel_id: data.line_channel_id || '',
         line_channel_secret: data.line_channel_secret,
-        line_channel_access_token: data.line_channel_access_token
+        line_channel_access_token: data.line_channel_access_token,
+        liff_id: data.liff_id || ''
       })
     }
     setLoadingConfig(false)
@@ -159,6 +164,7 @@ function LineSettingsPageContent() {
             line_channel_id: editForm.line_channel_id.trim(),
             line_channel_secret: editForm.line_channel_secret.trim(),
             line_channel_access_token: editForm.line_channel_access_token.trim(),
+            liff_id: editForm.liff_id.trim() || null,
             updated_at: new Date().toISOString()
           })
           .eq('id', currentConfig.id)
@@ -174,6 +180,7 @@ function LineSettingsPageContent() {
             line_channel_id: editForm.line_channel_id.trim(),
             line_channel_secret: editForm.line_channel_secret.trim(),
             line_channel_access_token: editForm.line_channel_access_token.trim(),
+            liff_id: editForm.liff_id.trim() || null,
             is_active: true
           })
 
@@ -207,7 +214,8 @@ function LineSettingsPageContent() {
       setEditForm({
         line_channel_id: '',
         line_channel_secret: '',
-        line_channel_access_token: ''
+        line_channel_access_token: '',
+        liff_id: ''
       })
     } catch (error) {
       console.error('Error deleting config:', error)
@@ -461,6 +469,30 @@ function LineSettingsPageContent() {
                     />
                   </div>
 
+                  <div style={{ marginBottom: '24px' }}>
+                    <label style={{ display: 'block', marginBottom: '6px', fontSize: '14px', fontWeight: '500', color: '#374151' }}>
+                      LIFF ID <span style={{ color: '#94a3b8', fontWeight: '400' }}>(任意)</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={editForm.liff_id}
+                      onChange={(e) => setEditForm({ ...editForm, liff_id: e.target.value })}
+                      placeholder="1234567890-xxxxxxxx"
+                      style={{
+                        width: '100%',
+                        padding: '12px',
+                        fontSize: '14px',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '8px',
+                        boxSizing: 'border-box',
+                        fontFamily: 'monospace'
+                      }}
+                    />
+                    <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '6px' }}>
+                      LINE DevelopersのLINEログインチャネル → LIFFタブで取得
+                    </div>
+                  </div>
+
                   <div style={{ display: 'flex', gap: '10px' }}>
                     <Button onClick={saveConfig} disabled={saving} variant="success">
                       {saving ? '保存中...' : (currentConfig ? '更新' : '作成')}
@@ -471,7 +503,8 @@ function LineSettingsPageContent() {
                         setEditForm({
                           line_channel_id: currentConfig.line_channel_id || '',
                           line_channel_secret: currentConfig.line_channel_secret,
-                          line_channel_access_token: currentConfig.line_channel_access_token
+                          line_channel_access_token: currentConfig.line_channel_access_token,
+                          liff_id: currentConfig.liff_id || ''
                         })
                       }} variant="secondary">
                         キャンセル
@@ -548,6 +581,20 @@ function LineSettingsPageContent() {
                       wordBreak: 'break-all'
                     }}>
                       {maskSecret(currentConfig.line_channel_access_token)}
+                    </code>
+                  </div>
+
+                  <div style={{ marginBottom: '20px' }}>
+                    <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '4px' }}>LIFF ID</div>
+                    <code style={{
+                      display: 'block',
+                      padding: '10px',
+                      backgroundColor: currentConfig.liff_id ? '#f0fdf4' : '#f9fafb',
+                      borderRadius: '6px',
+                      fontSize: '14px',
+                      color: currentConfig.liff_id ? '#166534' : '#94a3b8'
+                    }}>
+                      {currentConfig.liff_id || '未設定'}
                     </code>
                   </div>
 
