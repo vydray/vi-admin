@@ -114,7 +114,6 @@
 | カラム | 型 | NOT NULL | デフォルト | 説明 |
 |--------|-----|----------|-----------|------|
 | id | integer | ✓ |  | PK |
-| line_number | varchar(255) |  |  |  |
 | name | varchar(100) |  |  |  |
 | twitter | varchar(100) |  |  |  |
 | password | varchar(100) |  |  |  |
@@ -743,7 +742,6 @@
 | カラム | 型 | NOT NULL | デフォルト | 説明 |
 |--------|-----|----------|-----------|------|
 | id | integer | ✓ |  | PK |
-| line_number | varchar(255) |  |  |  |
 | name | varchar(100) |  |  |  |
 | twitter | varchar(100) |  |  |  |
 | password | varchar(100) |  |  |  |
@@ -779,7 +777,6 @@
 | カラム | 型 | NOT NULL | デフォルト | 説明 |
 |--------|-----|----------|-----------|------|
 | id | integer |  |  |  |
-| line_number | varchar(255) |  |  |  |
 | name | varchar(100) |  |  |  |
 | twitter | varchar(100) |  |  |  |
 | password | varchar(100) |  |  |  |

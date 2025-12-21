@@ -48,7 +48,7 @@
 - store_id: number (店舗ID: 1=Memorable, 2=MistressMirage)
 - name: string (キャスト名/源氏名)
 - status: string (ステータス: レギュラー/体験/etc)
-- line_number: string (LINE User ID - "U"で始まる33文字)
+- line_user_id: string (LINE User ID - "U"で始まる33文字)
 - line_msg_state: string (LINE連携状態: registered/pending/etc)
 - line_msg_registered_at: timestamp (LINE登録日時)
 - is_active: boolean (有効フラグ)
@@ -449,12 +449,11 @@ npm run dev
 
 ### シフトアプリ (`shift-management-app`)
 - **共有テーブル:** `casts`, `shifts`, `stores`
-- LINE連携情報（`line_number`）はシフトアプリで登録
+- LINE連携情報（`line_user_id`）はシフトアプリで登録
 - この管理画面でシフトの承認・編集が可能
 
 ### 重要な注意点
-- `line_number`カラムにLINE User ID（`U`で始まる33文字）が格納される
-- 以前は`line_msg_user_id`という名前だったが、`line_number`に統一済み
+- `line_user_id`カラムにLINE User ID（`U`で始まる33文字）が格納される
 - 同じSupabaseプロジェクトを3つのアプリで共有しているため、データ整合性に注意
 
 ## LINE連携について
@@ -470,8 +469,8 @@ Ubd24e1f2b324e3deb8377dd46593c33f
 1. ユーザーがLINE公式アカウントで「キャスト登録」を押す
 2. LINE表示名とデータベースの`casts.name`を完全一致検索
 3. 「○○様ですか？」と確認
-4. 「はい」を選択 → `line_number`に登録
-5. LIFFアプリへのログイン時に`line_number`で認証
+4. 「はい」を選択 → `line_user_id`に登録
+5. LIFFアプリへのログイン時に`line_user_id`で認証
 
 ## 開発時の注意事項
 
