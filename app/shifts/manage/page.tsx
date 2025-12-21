@@ -1321,6 +1321,57 @@ function ShiftManageContent() {
             onChange={handleFileChange}
             style={{ display: 'none' }}
           />
+
+          {/* テンプレートダウンロード */}
+          <button
+            onClick={() => {
+              const days = getDaysInPeriod()
+              const rows: string[] = []
+
+              // ヘッダー: 名前, 12月1日, 12月2日, ...
+              const headerRow = ['名前', ...days.map(date => format(date, 'M月d日'))]
+              rows.push(headerRow.join(','))
+
+              // 各キャストの行（空データ）
+              casts.forEach(cast => {
+                const cells = [cast.name, ...days.map(() => '')]
+                rows.push(cells.join(','))
+              })
+
+              // BOMを追加してExcelでの文字化けを防ぐ
+              const bom = '\uFEFF'
+              const csvContent = bom + rows.join('\n')
+              const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+              const url = URL.createObjectURL(blob)
+
+              const link = document.createElement('a')
+              link.href = url
+              link.download = `シフトテンプレート_${format(selectedMonth, 'yyyy年MM月')}_${isFirstHalf ? '前半' : '後半'}.csv`
+              link.click()
+
+              URL.revokeObjectURL(url)
+              toast.success('テンプレートをダウンロードしました')
+            }}
+            style={{
+              padding: '8px 16px',
+              fontSize: '14px',
+              fontWeight: '500',
+              backgroundColor: '#fff',
+              color: '#475569',
+              border: '1px solid #e2e8f0',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+              <path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm4 18H6V4h7v5h5v11z" fill="currentColor"/>
+            </svg>
+            テンプレート
+          </button>
         </div>
       </div>
 
