@@ -16,9 +16,9 @@ interface Store {
 }
 
 interface LineConfig {
-  id: number
+  id: string
   store_id: number
-  line_channel_id: string
+  line_channel_id: string | null
   line_channel_secret: string
   line_channel_access_token: string
   is_active: boolean
@@ -125,7 +125,7 @@ function LineSettingsPageContent() {
     } else {
       setCurrentConfig(data)
       setEditForm({
-        line_channel_id: data.line_channel_id,
+        line_channel_id: data.line_channel_id || '',
         line_channel_secret: data.line_channel_secret,
         line_channel_access_token: data.line_channel_access_token
       })
@@ -469,7 +469,7 @@ function LineSettingsPageContent() {
                       <Button onClick={() => {
                         setIsEditing(false)
                         setEditForm({
-                          line_channel_id: currentConfig.line_channel_id,
+                          line_channel_id: currentConfig.line_channel_id || '',
                           line_channel_secret: currentConfig.line_channel_secret,
                           line_channel_access_token: currentConfig.line_channel_access_token
                         })
@@ -504,7 +504,7 @@ function LineSettingsPageContent() {
                       fontSize: '14px',
                       color: '#111827'
                     }}>
-                      {currentConfig.line_channel_id}
+                      {currentConfig.line_channel_id || '未設定'}
                     </code>
                   </div>
 
