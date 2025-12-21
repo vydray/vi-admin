@@ -637,10 +637,7 @@ function LineSettingsPageContent() {
                     color: '#0c4a6e',
                     border: '1px solid #7dd3fc'
                   }}>
-                    https://[your-domain]/api/line/webhook/[store_id]
-                  </div>
-                  <div style={{ marginTop: '8px', fontSize: '12px', color: '#64748b' }}>
-                    例: store_id={selectedStore?.id || 1} の場合 → https://example.com/api/line/webhook/{selectedStore?.id || 1}
+                    https://shift-management-app-olive.vercel.app/api/line/webhook/{selectedStore?.id || 1}
                   </div>
                   • 「Webhookの利用」→ <strong>オン</strong><br />
                   • 「応答メッセージ」→ <strong>オフ</strong>（自動返信を無効化）
