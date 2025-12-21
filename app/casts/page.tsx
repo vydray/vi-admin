@@ -279,7 +279,6 @@ function CastsPageContent() {
     // CastListView から Cast に変換（削除されたフィールドにデフォルト値を設定）
     const fullCast: Cast = {
       ...cast,
-      line_number: null,
       line_user_id: null,
       line_msg_user_id: null,
       line_msg_state: null,
@@ -305,7 +304,7 @@ function CastsPageContent() {
     // 新規キャストのデフォルト値を設定
     const newCast: Cast = {
       id: 0, // 新規作成時は0（保存時は無視される）
-      line_number: null,
+      line_user_id: null,
       name: '',
       twitter: null,
       password: null,
@@ -327,7 +326,6 @@ function CastsPageContent() {
       store_id: storeId,
       show_in_pos: true,
       birthday: null,
-      line_user_id: null,
       is_admin: false,
       is_manager: false,
       line_msg_user_id: null,

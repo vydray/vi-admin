@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
     // キャスト情報を取得
     const { data: cast } = await supabase
       .from('casts')
-      .select('line_number')
+      .select('line_user_id')
       .eq('id', requestData.cast_id)
       .single();
 
@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
       await notifyApproval(
         requestData.store_id,
         requestData.cast_id,
-        cast?.line_number || null,
+        cast?.line_user_id || null,
         requestData.request_type,
         requestId
       );
@@ -121,7 +121,7 @@ export async function POST(request: NextRequest) {
       await notifyRejection(
         requestData.store_id,
         requestData.cast_id,
-        cast?.line_number || null,
+        cast?.line_user_id || null,
         requestData.request_type,
         requestId,
         rejectReason!

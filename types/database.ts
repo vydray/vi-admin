@@ -5,7 +5,7 @@
 // ============================================================================
 export interface Cast {
   id: number
-  line_number: string | null
+  line_user_id: string | null
   name: string
   twitter: string | null
   password: string | null
@@ -27,7 +27,6 @@ export interface Cast {
   store_id: number
   show_in_pos: boolean
   birthday: string | null
-  line_user_id: string | null
   is_admin: boolean
   is_manager: boolean
   line_msg_user_id: string | null

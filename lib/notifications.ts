@@ -265,7 +265,7 @@ export async function notifyShiftConfirmed(storeId: number, month: string) {
   // その月のシフトに入っているキャスト全員を取得
   const { data: shifts } = await supabase
     .from('shifts')
-    .select('cast_id, casts(id, name, line_number)')
+    .select('cast_id, casts(id, name, line_user_id)')
     .eq('store_id', storeId)
     .gte('work_date', `${month}-01`)
     .lt('work_date', `${month}-32`)
@@ -290,8 +290,8 @@ export async function notifyShiftConfirmed(storeId: number, month: string) {
       message,
     });
 
-    if (cast.line_number) {
-      await sendLinePushMessage(storeId, cast.line_number, `📅 ${title}\n\n${message}`);
+    if (cast.line_user_id) {
+      await sendLinePushMessage(storeId, cast.line_user_id, `📅 ${title}\n\n${message}`);
     }
   }
 }

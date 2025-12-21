@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
     // キャスト情報を取得
     const { data: cast, error: castError } = await supabase
       .from('casts')
-      .select('id, name, line_number')
+      .select('id, name, line_user_id')
       .eq('id', castId)
       .eq('store_id', storeId)
       .single();
