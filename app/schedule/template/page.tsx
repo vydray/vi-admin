@@ -29,11 +29,18 @@ interface NameStyle {
 
 // サーバーで使用可能なフォント（public/fonts/に.ttfファイルがあるもの）
 const FONT_OPTIONS = [
-  { value: 'M PLUS Rounded 1c', label: 'M PLUS 丸ゴシック' },
+  { value: 'M PLUS Rounded 1c', label: 'M PLUS 丸ゴシック', weights: ['100', '300', '400', '500', '700', '800', '900'] },
+  { value: 'Zen Maru Gothic', label: 'Zen 丸ゴシック', weights: ['400', '700'] },
+  { value: 'Kosugi Maru', label: '小杉丸ゴシック', weights: ['400'] },
+  { value: 'Hachi Maru Pop', label: 'はちまるポップ', weights: ['400'] },
+  { value: 'Yusei Magic', label: '油性マジック', weights: ['400'] },
+  { value: 'Dela Gothic One', label: 'デラゴシック', weights: ['400'] },
+  { value: 'Reggae One', label: 'レゲエ', weights: ['400'] },
+  { value: 'RocknRoll One', label: 'ロックンロール', weights: ['400'] },
 ]
 
-// フォントウェイト選択肢
-const FONT_WEIGHT_OPTIONS = [
+// フォントウェイト選択肢（全て）
+const ALL_FONT_WEIGHT_OPTIONS = [
   { value: '100', label: 'Thin (極細)' },
   { value: '300', label: 'Light (細)' },
   { value: '400', label: 'Regular (標準)' },
@@ -42,6 +49,13 @@ const FONT_WEIGHT_OPTIONS = [
   { value: '800', label: 'ExtraBold (極太)' },
   { value: '900', label: 'Black (最太)' },
 ]
+
+// 選択中のフォントで使用可能なウェイトを取得
+const getAvailableWeights = (fontFamily: string) => {
+  const font = FONT_OPTIONS.find(f => f.value === fontFamily)
+  const availableWeights = font?.weights || ['400']
+  return ALL_FONT_WEIGHT_OPTIONS.filter(w => availableWeights.includes(w.value))
+}
 
 interface Template {
   id?: number
@@ -520,7 +534,14 @@ export default function TemplateEditorPage() {
                 フォント
                 <select
                   value={template?.name_style.font_family || 'M PLUS Rounded 1c'}
-                  onChange={(e) => updateNameStyle({ font_family: e.target.value })}
+                  onChange={(e) => {
+                    const newFont = e.target.value
+                    const availableWeights = FONT_OPTIONS.find(f => f.value === newFont)?.weights || ['400']
+                    const currentWeight = template?.name_style.font_weight || '400'
+                    // 現在のウェイトが新しいフォントで使えない場合、最初の利用可能なウェイトにリセット
+                    const newWeight = availableWeights.includes(currentWeight) ? currentWeight : availableWeights[0]
+                    updateNameStyle({ font_family: newFont, font_weight: newWeight })
+                  }}
                   style={styles.select}
                 >
                   {FONT_OPTIONS.map((font) => (
@@ -533,11 +554,11 @@ export default function TemplateEditorPage() {
               <label style={styles.styleLabel}>
                 太さ
                 <select
-                  value={template?.name_style.font_weight || '700'}
+                  value={template?.name_style.font_weight || '400'}
                   onChange={(e) => updateNameStyle({ font_weight: e.target.value })}
                   style={styles.select}
                 >
-                  {FONT_WEIGHT_OPTIONS.map((weight) => (
+                  {getAvailableWeights(template?.name_style.font_family || 'M PLUS Rounded 1c').map((weight) => (
                     <option key={weight.value} value={weight.value}>
                       {weight.label}
                     </option>

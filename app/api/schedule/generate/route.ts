@@ -4,15 +4,27 @@ import sharp from 'sharp';
 import { createCanvas, registerFont } from 'canvas';
 import path from 'path';
 
-// フォントウェイトの定義
-const FONT_WEIGHTS = [
-  { file: 'MPLUSRounded1c-Thin.ttf', weight: '100', name: 'Thin' },
-  { file: 'MPLUSRounded1c-Light.ttf', weight: '300', name: 'Light' },
-  { file: 'MPLUSRounded1c-Regular.ttf', weight: '400', name: 'Regular' },
-  { file: 'MPLUSRounded1c-Medium.ttf', weight: '500', name: 'Medium' },
-  { file: 'MPLUSRounded1c-Bold.ttf', weight: '700', name: 'Bold' },
-  { file: 'MPLUSRounded1c-ExtraBold.ttf', weight: '800', name: 'ExtraBold' },
-  { file: 'MPLUSRounded1c-Black.ttf', weight: '900', name: 'Black' },
+// M PLUS Rounded 1c のウェイト定義
+const MPLUS_WEIGHTS = [
+  { file: 'MPLUSRounded1c-Thin.ttf', weight: '100' },
+  { file: 'MPLUSRounded1c-Light.ttf', weight: '300' },
+  { file: 'MPLUSRounded1c-Regular.ttf', weight: '400' },
+  { file: 'MPLUSRounded1c-Medium.ttf', weight: '500' },
+  { file: 'MPLUSRounded1c-Bold.ttf', weight: '700' },
+  { file: 'MPLUSRounded1c-ExtraBold.ttf', weight: '800' },
+  { file: 'MPLUSRounded1c-Black.ttf', weight: '900' },
+];
+
+// 他のフォント（ウェイト1種類のみ）
+const OTHER_FONTS = [
+  { file: 'KosugiMaru-Regular.ttf', family: 'Kosugi Maru', weight: '400' },
+  { file: 'HachiMaruPop-Regular.ttf', family: 'Hachi Maru Pop', weight: '400' },
+  { file: 'YuseiMagic-Regular.ttf', family: 'Yusei Magic', weight: '400' },
+  { file: 'ZenMaruGothic-Regular.ttf', family: 'Zen Maru Gothic', weight: '400' },
+  { file: 'ZenMaruGothic-Bold.ttf', family: 'Zen Maru Gothic', weight: '700' },
+  { file: 'DelaGothicOne-Regular.ttf', family: 'Dela Gothic One', weight: '400' },
+  { file: 'ReggaeOne-Regular.ttf', family: 'Reggae One', weight: '400' },
+  { file: 'RocknRollOne-Regular.ttf', family: 'RocknRoll One', weight: '400' },
 ];
 
 // フォントを登録（サーバー起動時に1回だけ実行される）
@@ -21,15 +33,25 @@ function ensureFontsRegistered() {
   if (fontsRegistered) return;
   try {
     const fontsDir = path.join(process.cwd(), 'public', 'fonts');
-    // 全ウェイトを登録
-    for (const font of FONT_WEIGHTS) {
+
+    // M PLUS Rounded 1c の全ウェイトを登録
+    for (const font of MPLUS_WEIGHTS) {
       registerFont(path.join(fontsDir, font.file), {
         family: 'M PLUS Rounded 1c',
         weight: font.weight,
       });
     }
+
+    // 他のフォントを登録
+    for (const font of OTHER_FONTS) {
+      registerFont(path.join(fontsDir, font.file), {
+        family: font.family,
+        weight: font.weight,
+      });
+    }
+
     fontsRegistered = true;
-    console.log('All font weights registered successfully');
+    console.log('All fonts registered successfully');
   } catch (error) {
     console.error('Failed to register fonts:', error);
   }
@@ -224,7 +246,13 @@ export async function POST(request: NextRequest) {
 // 登録済みフォントのマッピング
 const REGISTERED_FONTS: Record<string, string> = {
   'M PLUS Rounded 1c': 'M PLUS Rounded 1c',
-  // 他のフォントはM PLUS Rounded 1cにフォールバック
+  'Kosugi Maru': 'Kosugi Maru',
+  'Hachi Maru Pop': 'Hachi Maru Pop',
+  'Yusei Magic': 'Yusei Magic',
+  'Zen Maru Gothic': 'Zen Maru Gothic',
+  'Dela Gothic One': 'Dela Gothic One',
+  'Reggae One': 'Reggae One',
+  'RocknRoll One': 'RocknRoll One',
 };
 
 // 名前テキストを画像として生成（node-canvas使用）
