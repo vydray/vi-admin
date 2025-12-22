@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
 import { toast } from 'react-hot-toast'
 
@@ -16,7 +16,6 @@ interface Cast {
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
 
 export default function GeneratePage() {
-  const supabase = createClientComponentClient()
   const { storeId } = useStore()
   const [selectedDate, setSelectedDate] = useState<string>(() => {
     const today = new Date()
