@@ -1,6 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import sharp from 'sharp';
+import { createCanvas, registerFont } from 'canvas';
+import path from 'path';
+
+// フォントを登録（サーバー起動時に1回だけ実行される）
+let fontsRegistered = false;
+function ensureFontsRegistered() {
+  if (fontsRegistered) return;
+  try {
+    const fontsDir = path.join(process.cwd(), 'public', 'fonts');
+    registerFont(path.join(fontsDir, 'MPLUSRounded1c-Bold.ttf'), {
+      family: 'M PLUS Rounded 1c',
+      weight: 'bold',
+    });
+    fontsRegistered = true;
+    console.log('Fonts registered successfully');
+  } catch (error) {
+    console.error('Failed to register fonts:', error);
+  }
+}
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -155,7 +174,7 @@ export async function POST(request: NextRequest) {
       }
 
       // 名前テキストを生成して配置
-      const nameBuffer = await generateNameText(cast.name, frameSize.width, nameStyle);
+      const nameBuffer = generateNameText(cast.name, frameSize.width, nameStyle);
       if (nameBuffer) {
         composites.push({
           input: nameBuffer,
@@ -187,63 +206,52 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Google Fontsの@font-face定義
-const GOOGLE_FONTS_CSS = `
-  @import url('https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=Hachi+Maru+Pop&family=Kosugi+Maru&family=M+PLUS+Rounded+1c:wght@700&family=Reggae+One&family=RocknRoll+One&family=Yusei+Magic&family=Zen+Maru+Gothic:wght@700&display=swap');
-`;
-
-// 名前テキストを画像として生成
-async function generateNameText(
+// 名前テキストを画像として生成（node-canvas使用）
+function generateNameText(
   name: string,
   width: number,
   style: NameStyle
-): Promise<Buffer | null> {
+): Buffer | null {
   try {
+    // フォントを登録
+    ensureFontsRegistered();
+
     const height = style.font_size + 20;
     const fontSize = style.font_size;
-    const fontFamily = style.font_family || 'Hiragino Kaku Gothic ProN';
+    const fontFamily = style.font_family || 'M PLUS Rounded 1c';
     const strokeEnabled = style.stroke_enabled !== false;
 
-    // SVGでテキストを生成
-    const svg = `
-      <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-          <style>
-            ${GOOGLE_FONTS_CSS}
-            .name {
-              font-family: '${fontFamily}', 'Hiragino Kaku Gothic ProN', 'メイリオ', sans-serif;
-              font-size: ${fontSize}px;
-              font-weight: bold;
-            }
-          </style>
-        </defs>
-        <text
-          x="${width / 2}"
-          y="${fontSize + 5}"
-          text-anchor="middle"
-          class="name"
-          ${strokeEnabled ? `stroke="${style.stroke_color}" stroke-width="${style.stroke_width}"` : ''}
-          fill="${style.color}"
-        >${escapeXml(name)}</text>
-      </svg>
-    `;
+    // Canvasを作成
+    const canvas = createCanvas(width, height);
+    const ctx = canvas.getContext('2d');
 
-    const buffer = await sharp(Buffer.from(svg))
-      .png()
-      .toBuffer();
+    // 背景を透明に
+    ctx.clearRect(0, 0, width, height);
 
-    return buffer;
+    // フォント設定
+    ctx.font = `bold ${fontSize}px "${fontFamily}", "M PLUS Rounded 1c", sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    const x = width / 2;
+    const y = height / 2;
+
+    // 縁取り（先に描画）
+    if (strokeEnabled && style.stroke_width > 0) {
+      ctx.strokeStyle = style.stroke_color;
+      ctx.lineWidth = style.stroke_width * 2;
+      ctx.lineJoin = 'round';
+      ctx.miterLimit = 2;
+      ctx.strokeText(name, x, y);
+    }
+
+    // 塗りつぶし
+    ctx.fillStyle = style.color;
+    ctx.fillText(name, x, y);
+
+    return canvas.toBuffer('image/png');
   } catch (error) {
     console.error('Generate name text error:', error);
     return null;
   }
-}
-
-function escapeXml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
 }
