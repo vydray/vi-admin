@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { storeId, name, imagePath, placeholderPath, frames, nameStyle } = body;
+    const { storeId, name, imagePath, placeholderPath, frames, frameSize, nameStyle } = body;
 
     if (!storeId) {
       return NextResponse.json(
@@ -124,10 +124,12 @@ export async function PUT(request: NextRequest) {
           image_path: imagePath,
           placeholder_path: placeholderPath || null,
           frames: frames || [],
+          frame_size: frameSize || { width: 150, height: 200 },
           name_style: nameStyle || {
             font_size: 24,
             font_family: 'Hiragino Kaku Gothic ProN',
             color: '#FFFFFF',
+            stroke_enabled: true,
             stroke_color: '#000000',
             stroke_width: 2,
             offset_y: 10,

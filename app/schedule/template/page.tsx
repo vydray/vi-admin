@@ -7,14 +7,20 @@ import { toast } from 'react-hot-toast'
 interface Frame {
   x: number
   y: number
+}
+
+interface FrameSize {
   width: number
   height: number
 }
+
+const FRAME_ASPECT_RATIO = 3 / 4 // 写真と同じ比率
 
 interface NameStyle {
   font_size: number
   font_family: string
   color: string
+  stroke_enabled: boolean
   stroke_color: string
   stroke_width: number
   offset_y: number
@@ -39,6 +45,7 @@ interface Template {
   image_path: string | null
   placeholder_path: string | null
   frames: Frame[]
+  frame_size: FrameSize
   name_style: NameStyle
 }
 
@@ -72,6 +79,7 @@ export default function TemplateEditorPage() {
     font_size: 24,
     font_family: 'Hiragino Kaku Gothic ProN',
     color: '#FFFFFF',
+    stroke_enabled: true,
     stroke_color: '#000000',
     stroke_width: 2,
     offset_y: 10,
@@ -104,6 +112,7 @@ export default function TemplateEditorPage() {
           image_path: null,
           placeholder_path: null,
           frames: [],
+          frame_size: { width: 150, height: 200 },
           name_style: defaultNameStyle,
         })
       }
@@ -187,8 +196,6 @@ export default function TemplateEditorPage() {
     const newFrame: Frame = {
       x: 100,
       y: 100,
-      width: 150,
-      height: 200,
     }
     setTemplate({
       ...template,
@@ -203,8 +210,6 @@ export default function TemplateEditorPage() {
     const newFrame: Frame = {
       x: sourceFrame.x + 20,
       y: sourceFrame.y + 20,
-      width: sourceFrame.width,
-      height: sourceFrame.height,
     }
     setTemplate({
       ...template,
@@ -252,13 +257,20 @@ export default function TemplateEditorPage() {
       })
       setDragStart({ x: e.clientX, y: e.clientY })
     } else if (isResizing) {
-      const frame = template.frames[selectedFrameIndex]
-      updateFrame(selectedFrameIndex, {
-        width: Math.max(50, frame.width + dx),
-        height: Math.max(50, frame.height + dy),
-      })
+      // 全枠共通のサイズを更新（3:4比率を維持）
+      const newWidth = Math.max(50, template.frame_size.width + dx)
+      const newHeight = newWidth / FRAME_ASPECT_RATIO
+      updateFrameSize({ width: newWidth, height: newHeight })
       setDragStart({ x: e.clientX, y: e.clientY })
     }
+  }
+
+  const updateFrameSize = (updates: Partial<FrameSize>) => {
+    if (!template) return
+    setTemplate({
+      ...template,
+      frame_size: { ...template.frame_size, ...updates },
+    })
   }
 
   const handleMouseUp = () => {
@@ -288,6 +300,7 @@ export default function TemplateEditorPage() {
           imagePath: template.image_path,
           placeholderPath: template.placeholder_path,
           frames: template.frames,
+          frameSize: template.frame_size,
           nameStyle: template.name_style,
         }),
       })
@@ -345,8 +358,8 @@ export default function TemplateEditorPage() {
                     ...styles.frame,
                     left: frame.x * scale,
                     top: frame.y * scale,
-                    width: frame.width * scale,
-                    height: frame.height * scale,
+                    width: template.frame_size.width * scale,
+                    height: template.frame_size.height * scale,
                     borderColor: showFrameBorders ? (selectedFrameIndex === index ? '#3b82f6' : frameBorderColor) : 'transparent',
                     backgroundColor: showFrameBorders ? 'rgba(255,255,255,0.2)' : 'transparent',
                     zIndex: selectedFrameIndex === index ? 10 : 1,
@@ -366,14 +379,16 @@ export default function TemplateEditorPage() {
                   style={{
                     position: 'absolute',
                     left: frame.x * scale,
-                    top: (frame.y + frame.height + (template?.name_style.offset_y || 10)) * scale,
-                    width: frame.width * scale,
+                    top: (frame.y + template.frame_size.height + (template?.name_style.offset_y || 10)) * scale,
+                    width: template.frame_size.width * scale,
                     textAlign: 'center',
                     fontSize: `${(template?.name_style.font_size || 24) * scale}px`,
                     fontFamily: template?.name_style.font_family || 'Hiragino Kaku Gothic ProN',
                     fontWeight: 'bold',
                     color: template?.name_style.color || '#FFFFFF',
-                    textShadow: `0 0 ${(template?.name_style.stroke_width || 2) * scale}px ${template?.name_style.stroke_color || '#000000'}`,
+                    textShadow: template?.name_style.stroke_enabled !== false
+                      ? `0 0 ${(template?.name_style.stroke_width || 2) * scale}px ${template?.name_style.stroke_color || '#000000'}`
+                      : 'none',
                     pointerEvents: 'none',
                     zIndex: selectedFrameIndex === index ? 9 : 0,
                   }}
@@ -427,34 +442,59 @@ export default function TemplateEditorPage() {
               </h3>
             </div>
             {!framesCollapsed && (
-              template?.frames.length === 0 ? (
-                <p style={styles.emptyText}>枠がありません。「+ 枠を追加」で追加してください。</p>
-              ) : (
-                template?.frames.map((frame, index) => (
-                  <div
-                    key={index}
-                    style={{
-                      ...styles.frameItem,
-                      backgroundColor: selectedFrameIndex === index ? '#e0f2fe' : '#f8fafc',
-                    }}
-                    onClick={() => setSelectedFrameIndex(index)}
-                  >
-                    <div style={styles.frameItemHeader}>
-                      <span>枠 {index + 1}</span>
-                    <div style={styles.frameButtons}>
-                      <button onClick={(e) => { e.stopPropagation(); duplicateFrame(index); }} style={styles.duplicateButton}>複製</button>
-                      <button onClick={(e) => { e.stopPropagation(); removeFrame(index); }} style={styles.removeButton}>削除</button>
-                    </div>
-                  </div>
-                  <div style={styles.frameInputs}>
-                    <label>X: <input type="number" value={Math.round(frame.x)} onChange={(e) => updateFrame(index, { x: parseInt(e.target.value) || 0 })} style={styles.numberInput} /></label>
-                    <label>Y: <input type="number" value={Math.round(frame.y)} onChange={(e) => updateFrame(index, { y: parseInt(e.target.value) || 0 })} style={styles.numberInput} /></label>
-                    <label>幅: <input type="number" value={Math.round(frame.width)} onChange={(e) => updateFrame(index, { width: parseInt(e.target.value) || 50 })} style={styles.numberInput} /></label>
-                    <label>高さ: <input type="number" value={Math.round(frame.height)} onChange={(e) => updateFrame(index, { height: parseInt(e.target.value) || 50 })} style={styles.numberInput} /></label>
+              <>
+                {/* 共通枠サイズ設定 */}
+                <div style={styles.frameSizeSection}>
+                  <p style={styles.frameSizeLabel}>共通サイズ（3:4比率）</p>
+                  <div style={styles.frameSizeInputs}>
+                    <label>幅: <input
+                      type="number"
+                      value={Math.round(template?.frame_size.width || 150)}
+                      onChange={(e) => {
+                        const newWidth = parseInt(e.target.value) || 50
+                        updateFrameSize({ width: newWidth, height: newWidth / FRAME_ASPECT_RATIO })
+                      }}
+                      style={styles.numberInput}
+                    /></label>
+                    <label>高さ: <input
+                      type="number"
+                      value={Math.round(template?.frame_size.height || 200)}
+                      onChange={(e) => {
+                        const newHeight = parseInt(e.target.value) || 50
+                        updateFrameSize({ width: newHeight * FRAME_ASPECT_RATIO, height: newHeight })
+                      }}
+                      style={styles.numberInput}
+                    /></label>
                   </div>
                 </div>
-              ))
-            ))}
+                {template?.frames.length === 0 ? (
+                  <p style={styles.emptyText}>枠がありません。「+ 枠を追加」で追加してください。</p>
+                ) : (
+                  template?.frames.map((frame, index) => (
+                    <div
+                      key={index}
+                      style={{
+                        ...styles.frameItem,
+                        backgroundColor: selectedFrameIndex === index ? '#e0f2fe' : '#f8fafc',
+                      }}
+                      onClick={() => setSelectedFrameIndex(index)}
+                    >
+                      <div style={styles.frameItemHeader}>
+                        <span>枠 {index + 1}</span>
+                        <div style={styles.frameButtons}>
+                          <button onClick={(e) => { e.stopPropagation(); duplicateFrame(index); }} style={styles.duplicateButton}>複製</button>
+                          <button onClick={(e) => { e.stopPropagation(); removeFrame(index); }} style={styles.removeButton}>削除</button>
+                        </div>
+                      </div>
+                      <div style={styles.frameInputs}>
+                        <label>X: <input type="number" value={Math.round(frame.x)} onChange={(e) => updateFrame(index, { x: parseInt(e.target.value) || 0 })} style={styles.numberInput} /></label>
+                        <label>Y: <input type="number" value={Math.round(frame.y)} onChange={(e) => updateFrame(index, { y: parseInt(e.target.value) || 0 })} style={styles.numberInput} /></label>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </>
+            )}
           </div>
 
           {/* 名前スタイル設定 */}
@@ -494,23 +534,39 @@ export default function TemplateEditorPage() {
                 />
               </label>
               <label style={styles.styleLabel}>
-                縁取り色
-                <input
-                  type="color"
-                  value={template?.name_style.stroke_color || '#000000'}
-                  onChange={(e) => updateNameStyle({ stroke_color: e.target.value })}
-                  style={styles.colorInput}
-                />
+                縁取り
+                <button
+                  onClick={() => updateNameStyle({ stroke_enabled: !template?.name_style.stroke_enabled })}
+                  style={{
+                    ...styles.toggleButtonSmall,
+                    backgroundColor: template?.name_style.stroke_enabled !== false ? '#22c55e' : '#94a3b8',
+                  }}
+                >
+                  {template?.name_style.stroke_enabled !== false ? 'ON' : 'OFF'}
+                </button>
               </label>
-              <label style={styles.styleLabel}>
-                縁取り幅 (px)
-                <input
-                  type="number"
-                  value={template?.name_style.stroke_width || 2}
-                  onChange={(e) => updateNameStyle({ stroke_width: parseInt(e.target.value) || 0 })}
-                  style={styles.input}
-                />
-              </label>
+              {template?.name_style.stroke_enabled !== false && (
+                <>
+                  <label style={styles.styleLabel}>
+                    縁取り色
+                    <input
+                      type="color"
+                      value={template?.name_style.stroke_color || '#000000'}
+                      onChange={(e) => updateNameStyle({ stroke_color: e.target.value })}
+                      style={styles.colorInput}
+                    />
+                  </label>
+                  <label style={styles.styleLabel}>
+                    縁取り幅 (px)
+                    <input
+                      type="number"
+                      value={template?.name_style.stroke_width || 2}
+                      onChange={(e) => updateNameStyle({ stroke_width: parseInt(e.target.value) || 0 })}
+                      style={styles.input}
+                    />
+                  </label>
+                </>
+              )}
               <label style={styles.styleLabel}>
                 名前位置オフセット (px)
                 <input
@@ -656,6 +712,16 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '14px',
     transition: 'background-color 0.2s',
   },
+  toggleButtonSmall: {
+    padding: '6px 16px',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    fontSize: '13px',
+    fontWeight: '500',
+    transition: 'background-color 0.2s',
+  },
   borderColorPicker: {
     display: 'flex',
     alignItems: 'center',
@@ -751,9 +817,26 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   frameInputs: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(4, 1fr)',
+    gridTemplateColumns: 'repeat(2, 1fr)',
     gap: '8px',
     fontSize: '12px',
+  },
+  frameSizeSection: {
+    backgroundColor: '#f0f9ff',
+    padding: '12px',
+    borderRadius: '6px',
+    marginBottom: '12px',
+  },
+  frameSizeLabel: {
+    fontSize: '13px',
+    fontWeight: '500',
+    color: '#0369a1',
+    margin: '0 0 8px 0',
+  },
+  frameSizeInputs: {
+    display: 'flex',
+    gap: '16px',
+    fontSize: '13px',
   },
   numberInput: {
     width: '60px',

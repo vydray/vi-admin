@@ -12,6 +12,9 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 interface Frame {
   x: number;
   y: number;
+}
+
+interface FrameSize {
   width: number;
   height: number;
 }
@@ -20,6 +23,7 @@ interface NameStyle {
   font_size: number;
   font_family: string;
   color: string;
+  stroke_enabled?: boolean;
   stroke_color: string;
   stroke_width: number;
   offset_y: number;
@@ -102,10 +106,12 @@ export async function POST(request: NextRequest) {
     }
 
     const frames: Frame[] = template.frames || [];
+    const frameSize: FrameSize = template.frame_size || { width: 150, height: 200 };
     const nameStyle: NameStyle = template.name_style || {
       font_size: 24,
       font_family: 'Hiragino Kaku Gothic ProN',
       color: '#FFFFFF',
+      stroke_enabled: true,
       stroke_color: '#000000',
       stroke_width: 2,
       offset_y: 10,
@@ -138,7 +144,7 @@ export async function POST(request: NextRequest) {
       // 写真があれば配置
       if (photoBuffer) {
         const resizedPhoto = await sharp(photoBuffer)
-          .resize(frame.width, frame.height, { fit: 'cover' })
+          .resize(frameSize.width, frameSize.height, { fit: 'cover' })
           .toBuffer();
 
         composites.push({
@@ -149,12 +155,12 @@ export async function POST(request: NextRequest) {
       }
 
       // 名前テキストを生成して配置
-      const nameBuffer = await generateNameText(cast.name, frame.width, nameStyle);
+      const nameBuffer = await generateNameText(cast.name, frameSize.width, nameStyle);
       if (nameBuffer) {
         composites.push({
           input: nameBuffer,
           left: frame.x,
-          top: frame.y + frame.height + nameStyle.offset_y,
+          top: frame.y + frameSize.height + nameStyle.offset_y,
         });
       }
     }
@@ -191,6 +197,7 @@ async function generateNameText(
     const height = style.font_size + 20;
     const fontSize = style.font_size;
     const fontFamily = style.font_family || 'Hiragino Kaku Gothic ProN';
+    const strokeEnabled = style.stroke_enabled !== false;
 
     // SVGでテキストを生成
     const svg = `
@@ -207,8 +214,7 @@ async function generateNameText(
           y="${fontSize + 5}"
           text-anchor="middle"
           class="name"
-          stroke="${style.stroke_color}"
-          stroke-width="${style.stroke_width}"
+          ${strokeEnabled ? `stroke="${style.stroke_color}" stroke-width="${style.stroke_width}"` : ''}
           fill="${style.color}"
         >${escapeXml(name)}</text>
       </svg>
