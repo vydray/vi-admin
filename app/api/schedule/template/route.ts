@@ -125,7 +125,8 @@ export async function PUT(request: NextRequest) {
           placeholder_path: placeholderPath || null,
           frames: frames || [],
           frame_size: frameSize || { width: 150, height: 200 },
-          name_style: nameStyle || {
+          // デフォルト値と提供された値をマージ（提供された値が優先）
+          name_style: {
             font_size: 24,
             font_family: 'Rounded Mplus 1c',
             font_weight: '700',
@@ -134,6 +135,7 @@ export async function PUT(request: NextRequest) {
             stroke_color: '#000000',
             stroke_width: 2,
             offset_y: 10,
+            ...nameStyle,
           },
           updated_at: new Date().toISOString(),
         },

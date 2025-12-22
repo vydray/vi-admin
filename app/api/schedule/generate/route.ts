@@ -288,9 +288,12 @@ function generateNameText(
     const requestedFont = style.font_family || 'Rounded Mplus 1c';
     const fontFamily = REGISTERED_FONTS[requestedFont] || 'Rounded Mplus 1c';
     const fontWeight = style.font_weight || '700'; // デフォルトはBold
-    const strokeEnabled = style.stroke_enabled !== false;
+    // stroke_enabledが文字列"false"の場合も考慮（DBから取得時に型が変わる可能性）
+    const rawStrokeEnabled = style.stroke_enabled as unknown;
+    // falseまたは'false'の場合のみ無効、それ以外（true, undefined等）は有効
+    const strokeEnabled = rawStrokeEnabled !== false && rawStrokeEnabled !== 'false';
 
-    console.log(`Generating text "${name}" with font: ${fontFamily}, weight: ${fontWeight}`);
+    console.log(`Generating text "${name}" with font: ${fontFamily}, weight: ${fontWeight}, strokeEnabled: ${strokeEnabled}, raw: ${rawStrokeEnabled} (type: ${typeof rawStrokeEnabled})`);
 
     // Canvasを作成
     const canvas = createCanvas(width, height);
