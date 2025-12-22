@@ -47,6 +47,7 @@ export default function TemplateEditorPage() {
   const [isDragging, setIsDragging] = useState(false)
   const [isResizing, setIsResizing] = useState(false)
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
+  const [framesCollapsed, setFramesCollapsed] = useState(false)
 
   // 画像の実際のサイズとキャンバスのスケール
   const [imageSize, setImageSize] = useState({ width: 1200, height: 1200 })
@@ -376,21 +377,28 @@ export default function TemplateEditorPage() {
         <div style={styles.settingsPanel}>
           {/* 枠設定 */}
           <div style={styles.section}>
-            <h3 style={styles.sectionTitle}>枠設定</h3>
-            {template?.frames.length === 0 ? (
-              <p style={styles.emptyText}>枠がありません。「+ 枠を追加」で追加してください。</p>
-            ) : (
-              template?.frames.map((frame, index) => (
-                <div
-                  key={index}
-                  style={{
-                    ...styles.frameItem,
-                    backgroundColor: selectedFrameIndex === index ? '#e0f2fe' : '#f8fafc',
-                  }}
-                  onClick={() => setSelectedFrameIndex(index)}
-                >
-                  <div style={styles.frameItemHeader}>
-                    <span>枠 {index + 1}</span>
+            <div
+              style={styles.sectionTitleClickable}
+              onClick={() => setFramesCollapsed(!framesCollapsed)}
+            >
+              <h3 style={styles.sectionTitle}>枠設定 ({template?.frames.length || 0})</h3>
+              <span style={styles.collapseIcon}>{framesCollapsed ? '▶' : '▼'}</span>
+            </div>
+            {!framesCollapsed && (
+              template?.frames.length === 0 ? (
+                <p style={styles.emptyText}>枠がありません。「+ 枠を追加」で追加してください。</p>
+              ) : (
+                template?.frames.map((frame, index) => (
+                  <div
+                    key={index}
+                    style={{
+                      ...styles.frameItem,
+                      backgroundColor: selectedFrameIndex === index ? '#e0f2fe' : '#f8fafc',
+                    }}
+                    onClick={() => setSelectedFrameIndex(index)}
+                  >
+                    <div style={styles.frameItemHeader}>
+                      <span>枠 {index + 1}</span>
                     <div style={styles.frameButtons}>
                       <button onClick={(e) => { e.stopPropagation(); duplicateFrame(index); }} style={styles.duplicateButton}>複製</button>
                       <button onClick={(e) => { e.stopPropagation(); removeFrame(index); }} style={styles.removeButton}>削除</button>
@@ -404,7 +412,7 @@ export default function TemplateEditorPage() {
                   </div>
                 </div>
               ))
-            )}
+            ))}
           </div>
 
           {/* 名前スタイル設定 */}
@@ -599,6 +607,19 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '16px',
     fontWeight: '600',
     marginBottom: '12px',
+    margin: 0,
+  },
+  sectionTitleClickable: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    cursor: 'pointer',
+    marginBottom: '12px',
+    padding: '4px 0',
+  },
+  collapseIcon: {
+    fontSize: '12px',
+    color: '#666',
   },
   emptyText: {
     color: '#666',
