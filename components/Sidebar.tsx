@@ -64,6 +64,15 @@ const menuGroups: MenuGroup[] = [
     ]
   },
   {
+    name: '出勤表作成',
+    icon: '📸',
+    items: [
+      { name: 'キャスト写真', path: '/schedule/photos', icon: '🖼️' },
+      { name: 'テンプレート', path: '/schedule/template', icon: '🎨' },
+      { name: '生成', path: '/schedule/generate', icon: '✨' },
+    ]
+  },
+  {
     name: '管理者専用',
     icon: '🔐',
     superAdminOnly: true,
