@@ -126,6 +126,7 @@ export async function PUT(request: NextRequest) {
           frames: frames || [],
           name_style: nameStyle || {
             font_size: 24,
+            font_family: 'Hiragino Kaku Gothic ProN',
             color: '#FFFFFF',
             stroke_color: '#000000',
             stroke_width: 2,

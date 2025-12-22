@@ -13,11 +13,24 @@ interface Frame {
 
 interface NameStyle {
   font_size: number
+  font_family: string
   color: string
   stroke_color: string
   stroke_width: number
   offset_y: number
 }
+
+const FONT_OPTIONS = [
+  { value: 'Hiragino Kaku Gothic ProN', label: 'ヒラギノ角ゴ' },
+  { value: 'Hiragino Mincho ProN', label: 'ヒラギノ明朝' },
+  { value: 'YuGothic', label: '游ゴシック' },
+  { value: 'YuMincho', label: '游明朝' },
+  { value: 'Meiryo', label: 'メイリオ' },
+  { value: 'MS Gothic', label: 'MSゴシック' },
+  { value: 'MS Mincho', label: 'MS明朝' },
+  { value: 'Noto Sans JP', label: 'Noto Sans JP' },
+  { value: 'Noto Serif JP', label: 'Noto Serif JP' },
+]
 
 interface Template {
   id?: number
@@ -49,6 +62,7 @@ export default function TemplateEditorPage() {
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
   const [framesCollapsed, setFramesCollapsed] = useState(false)
   const [showFrameBorders, setShowFrameBorders] = useState(true)
+  const [frameBorderColor, setFrameBorderColor] = useState('#ffffff')
 
   // 画像の実際のサイズとキャンバスのスケール
   const [imageSize, setImageSize] = useState({ width: 1200, height: 1200 })
@@ -56,6 +70,7 @@ export default function TemplateEditorPage() {
 
   const defaultNameStyle: NameStyle = {
     font_size: 24,
+    font_family: 'Hiragino Kaku Gothic ProN',
     color: '#FFFFFF',
     stroke_color: '#000000',
     stroke_width: 2,
@@ -332,7 +347,7 @@ export default function TemplateEditorPage() {
                     top: frame.y * scale,
                     width: frame.width * scale,
                     height: frame.height * scale,
-                    borderColor: showFrameBorders ? (selectedFrameIndex === index ? '#3b82f6' : '#fff') : 'transparent',
+                    borderColor: showFrameBorders ? (selectedFrameIndex === index ? '#3b82f6' : frameBorderColor) : 'transparent',
                     backgroundColor: showFrameBorders ? 'rgba(255,255,255,0.2)' : 'transparent',
                     zIndex: selectedFrameIndex === index ? 10 : 1,
                   }}
@@ -355,6 +370,7 @@ export default function TemplateEditorPage() {
                     width: frame.width * scale,
                     textAlign: 'center',
                     fontSize: `${(template?.name_style.font_size || 24) * scale}px`,
+                    fontFamily: template?.name_style.font_family || 'Hiragino Kaku Gothic ProN',
                     fontWeight: 'bold',
                     color: template?.name_style.color || '#FFFFFF',
                     textShadow: `0 0 ${(template?.name_style.stroke_width || 2) * scale}px ${template?.name_style.stroke_color || '#000000'}`,
@@ -383,6 +399,17 @@ export default function TemplateEditorPage() {
             >
               {showFrameBorders ? '枠線 ON' : '枠線 OFF'}
             </button>
+            {showFrameBorders && (
+              <div style={styles.borderColorPicker}>
+                <span style={styles.borderColorLabel}>枠線色</span>
+                <input
+                  type="color"
+                  value={frameBorderColor}
+                  onChange={(e) => setFrameBorderColor(e.target.value)}
+                  style={styles.borderColorInput}
+                />
+              </div>
+            )}
           </div>
         </div>
 
@@ -394,8 +421,10 @@ export default function TemplateEditorPage() {
               style={styles.sectionTitleClickable}
               onClick={() => setFramesCollapsed(!framesCollapsed)}
             >
-              <h3 style={styles.sectionTitle}>枠設定 ({template?.frames.length || 0})</h3>
-              <span style={styles.collapseIcon}>{framesCollapsed ? '▶' : '▼'}</span>
+              <h3 style={styles.sectionTitle}>
+                枠設定 ({template?.frames.length || 0})
+                <span style={styles.collapseIcon}>{framesCollapsed ? '▶' : '▼'}</span>
+              </h3>
             </div>
             {!framesCollapsed && (
               template?.frames.length === 0 ? (
@@ -432,6 +461,20 @@ export default function TemplateEditorPage() {
           <div style={styles.section}>
             <h3 style={styles.sectionTitle}>名前スタイル</h3>
             <div style={styles.styleInputs}>
+              <label style={styles.styleLabel}>
+                フォント
+                <select
+                  value={template?.name_style.font_family || 'Hiragino Kaku Gothic ProN'}
+                  onChange={(e) => updateNameStyle({ font_family: e.target.value })}
+                  style={styles.select}
+                >
+                  {FONT_OPTIONS.map((font) => (
+                    <option key={font.value} value={font.value} style={{ fontFamily: font.value }}>
+                      {font.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <label style={styles.styleLabel}>
                 フォントサイズ (px)
                 <input
@@ -613,6 +656,26 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '14px',
     transition: 'background-color 0.2s',
   },
+  borderColorPicker: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    padding: '6px 12px',
+    backgroundColor: '#f1f5f9',
+    borderRadius: '6px',
+  },
+  borderColorLabel: {
+    fontSize: '13px',
+    color: '#475569',
+  },
+  borderColorInput: {
+    width: '32px',
+    height: '32px',
+    padding: '0',
+    border: '2px solid #e2e8f0',
+    borderRadius: '4px',
+    cursor: 'pointer',
+  },
   settingsPanel: {
     flex: 1,
     display: 'flex',
@@ -630,18 +693,22 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontWeight: '600',
     marginBottom: '12px',
     margin: 0,
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
   },
   sectionTitleClickable: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     cursor: 'pointer',
     marginBottom: '12px',
     padding: '4px 0',
   },
   collapseIcon: {
-    fontSize: '12px',
-    color: '#666',
+    fontSize: '14px',
+    color: '#3b82f6',
+    fontWeight: 'bold',
+    backgroundColor: '#e0f2fe',
+    padding: '2px 6px',
+    borderRadius: '4px',
   },
   emptyText: {
     color: '#666',
@@ -711,6 +778,13 @@ const styles: { [key: string]: React.CSSProperties } = {
     padding: '6px',
     border: '1px solid #e2e8f0',
     borderRadius: '4px',
+  },
+  select: {
+    width: '180px',
+    padding: '6px',
+    border: '1px solid #e2e8f0',
+    borderRadius: '4px',
+    fontSize: '14px',
   },
   colorInput: {
     width: '60px',

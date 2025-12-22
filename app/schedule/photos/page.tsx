@@ -15,6 +15,8 @@ interface Cast {
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
 
+type PhotoFilter = 'all' | 'registered' | 'unregistered'
+
 export default function CastPhotosPage() {
   const { storeId } = useStore()
   const [casts, setCasts] = useState<Cast[]>([])
@@ -26,6 +28,26 @@ export default function CastPhotosPage() {
   const [zoom, setZoom] = useState(1)
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null)
   const [uploading, setUploading] = useState(false)
+
+  // フィルター用state
+  const [searchName, setSearchName] = useState('')
+  const [photoFilter, setPhotoFilter] = useState<PhotoFilter>('all')
+
+  // フィルター適用後のキャスト一覧
+  const filteredCasts = casts.filter((cast) => {
+    // 名前フィルター
+    if (searchName && !cast.name.toLowerCase().includes(searchName.toLowerCase())) {
+      return false
+    }
+    // 写真登録状況フィルター
+    if (photoFilter === 'registered' && !cast.photo_path) {
+      return false
+    }
+    if (photoFilter === 'unregistered' && cast.photo_path) {
+      return false
+    }
+    return true
+  })
 
   useEffect(() => {
     if (storeId) {
@@ -179,8 +201,51 @@ export default function CastPhotosPage() {
       <h1 style={styles.title}>キャスト写真管理</h1>
       <p style={styles.subtitle}>出勤表に使用する写真を管理します。クリックして写真をアップロード・変更できます。</p>
 
+      {/* フィルター */}
+      <div style={styles.filterContainer}>
+        <input
+          type="text"
+          placeholder="名前で検索..."
+          value={searchName}
+          onChange={(e) => setSearchName(e.target.value)}
+          style={styles.searchInput}
+        />
+        <div style={styles.filterButtons}>
+          <button
+            onClick={() => setPhotoFilter('all')}
+            style={{
+              ...styles.filterButton,
+              backgroundColor: photoFilter === 'all' ? '#3b82f6' : '#e2e8f0',
+              color: photoFilter === 'all' ? '#fff' : '#333',
+            }}
+          >
+            全て ({casts.length})
+          </button>
+          <button
+            onClick={() => setPhotoFilter('registered')}
+            style={{
+              ...styles.filterButton,
+              backgroundColor: photoFilter === 'registered' ? '#22c55e' : '#e2e8f0',
+              color: photoFilter === 'registered' ? '#fff' : '#333',
+            }}
+          >
+            登録済み ({casts.filter(c => c.photo_path).length})
+          </button>
+          <button
+            onClick={() => setPhotoFilter('unregistered')}
+            style={{
+              ...styles.filterButton,
+              backgroundColor: photoFilter === 'unregistered' ? '#f59e0b' : '#e2e8f0',
+              color: photoFilter === 'unregistered' ? '#fff' : '#333',
+            }}
+          >
+            未登録 ({casts.filter(c => !c.photo_path).length})
+          </button>
+        </div>
+      </div>
+
       <div style={styles.grid}>
-        {casts.map((cast) => {
+        {filteredCasts.map((cast) => {
           const photoUrl = getPhotoUrl(cast.photo_path)
           return (
             <div
@@ -313,7 +378,34 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   subtitle: {
     color: '#666',
-    marginBottom: '24px',
+    marginBottom: '16px',
+  },
+  filterContainer: {
+    display: 'flex',
+    gap: '16px',
+    marginBottom: '20px',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+  },
+  searchInput: {
+    padding: '10px 14px',
+    border: '1px solid #e2e8f0',
+    borderRadius: '8px',
+    fontSize: '14px',
+    width: '200px',
+  },
+  filterButtons: {
+    display: 'flex',
+    gap: '8px',
+  },
+  filterButton: {
+    padding: '8px 16px',
+    border: 'none',
+    borderRadius: '6px',
+    cursor: 'pointer',
+    fontSize: '14px',
+    fontWeight: '500',
+    transition: 'all 0.2s',
   },
   loading: {
     textAlign: 'center',

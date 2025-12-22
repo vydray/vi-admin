@@ -18,6 +18,7 @@ interface Frame {
 
 interface NameStyle {
   font_size: number;
+  font_family: string;
   color: string;
   stroke_color: string;
   stroke_width: number;
@@ -103,6 +104,7 @@ export async function POST(request: NextRequest) {
     const frames: Frame[] = template.frames || [];
     const nameStyle: NameStyle = template.name_style || {
       font_size: 24,
+      font_family: 'Hiragino Kaku Gothic ProN',
       color: '#FFFFFF',
       stroke_color: '#000000',
       stroke_width: 2,
@@ -188,13 +190,14 @@ async function generateNameText(
   try {
     const height = style.font_size + 20;
     const fontSize = style.font_size;
+    const fontFamily = style.font_family || 'Hiragino Kaku Gothic ProN';
 
     // SVGでテキストを生成
     const svg = `
       <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
         <style>
           .name {
-            font-family: 'Hiragino Kaku Gothic ProN', 'メイリオ', sans-serif;
+            font-family: '${fontFamily}', 'Hiragino Kaku Gothic ProN', 'メイリオ', sans-serif;
             font-size: ${fontSize}px;
             font-weight: bold;
           }
