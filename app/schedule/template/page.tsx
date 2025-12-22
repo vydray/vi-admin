@@ -180,6 +180,22 @@ export default function TemplateEditorPage() {
     setSelectedFrameIndex(template.frames.length)
   }
 
+  const duplicateFrame = (index: number) => {
+    if (!template) return
+    const sourceFrame = template.frames[index]
+    const newFrame: Frame = {
+      x: sourceFrame.x + 20,
+      y: sourceFrame.y + 20,
+      width: sourceFrame.width,
+      height: sourceFrame.height,
+    }
+    setTemplate({
+      ...template,
+      frames: [...template.frames, newFrame],
+    })
+    setSelectedFrameIndex(template.frames.length)
+  }
+
   const removeFrame = (index: number) => {
     if (!template) return
     const newFrames = template.frames.filter((_, i) => i !== index)
@@ -306,24 +322,43 @@ export default function TemplateEditorPage() {
 
             {/* 枠を表示 */}
             {template?.frames.map((frame, index) => (
-              <div
-                key={index}
-                style={{
-                  ...styles.frame,
-                  left: frame.x * scale,
-                  top: frame.y * scale,
-                  width: frame.width * scale,
-                  height: frame.height * scale,
-                  borderColor: selectedFrameIndex === index ? '#3b82f6' : '#fff',
-                  zIndex: selectedFrameIndex === index ? 10 : 1,
-                }}
-                onMouseDown={(e) => handleMouseDown(e, index, false)}
-              >
-                <span style={styles.frameLabel}>{index + 1}</span>
+              <div key={index}>
                 <div
-                  style={styles.resizeHandle}
-                  onMouseDown={(e) => handleMouseDown(e, index, true)}
-                />
+                  style={{
+                    ...styles.frame,
+                    left: frame.x * scale,
+                    top: frame.y * scale,
+                    width: frame.width * scale,
+                    height: frame.height * scale,
+                    borderColor: selectedFrameIndex === index ? '#3b82f6' : '#fff',
+                    zIndex: selectedFrameIndex === index ? 10 : 1,
+                  }}
+                  onMouseDown={(e) => handleMouseDown(e, index, false)}
+                >
+                  <span style={styles.frameLabel}>{index + 1}</span>
+                  <div
+                    style={styles.resizeHandle}
+                    onMouseDown={(e) => handleMouseDown(e, index, true)}
+                  />
+                </div>
+                {/* 名前プレビュー */}
+                <div
+                  style={{
+                    position: 'absolute',
+                    left: frame.x * scale,
+                    top: (frame.y + frame.height + (template?.name_style.offset_y || 10)) * scale,
+                    width: frame.width * scale,
+                    textAlign: 'center',
+                    fontSize: `${(template?.name_style.font_size || 24) * scale}px`,
+                    fontWeight: 'bold',
+                    color: template?.name_style.color || '#FFFFFF',
+                    textShadow: `0 0 ${(template?.name_style.stroke_width || 2) * scale}px ${template?.name_style.stroke_color || '#000000'}`,
+                    pointerEvents: 'none',
+                    zIndex: selectedFrameIndex === index ? 9 : 0,
+                  }}
+                >
+                  サンプル名
+                </div>
               </div>
             ))}
           </div>
@@ -356,7 +391,10 @@ export default function TemplateEditorPage() {
                 >
                   <div style={styles.frameItemHeader}>
                     <span>枠 {index + 1}</span>
-                    <button onClick={() => removeFrame(index)} style={styles.removeButton}>削除</button>
+                    <div style={styles.frameButtons}>
+                      <button onClick={(e) => { e.stopPropagation(); duplicateFrame(index); }} style={styles.duplicateButton}>複製</button>
+                      <button onClick={(e) => { e.stopPropagation(); removeFrame(index); }} style={styles.removeButton}>削除</button>
+                    </div>
                   </div>
                   <div style={styles.frameInputs}>
                     <label>X: <input type="number" value={Math.round(frame.x)} onChange={(e) => updateFrame(index, { x: parseInt(e.target.value) || 0 })} style={styles.numberInput} /></label>
@@ -578,6 +616,19 @@ const styles: { [key: string]: React.CSSProperties } = {
     alignItems: 'center',
     marginBottom: '8px',
     fontWeight: '500',
+  },
+  frameButtons: {
+    display: 'flex',
+    gap: '6px',
+  },
+  duplicateButton: {
+    padding: '4px 8px',
+    backgroundColor: '#3b82f6',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    fontSize: '12px',
   },
   removeButton: {
     padding: '4px 8px',
