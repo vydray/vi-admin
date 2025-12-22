@@ -1,4 +1,123 @@
-@import url('https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=Hachi+Maru+Pop&family=Kosugi+Maru&family=M+PLUS+Rounded+1c:wght@100;300;400;500;700;800;900&family=Reggae+One&family=RocknRoll+One&family=Yusei+Magic&family=Zen+Maru+Gothic:wght@400;700&display=swap');
+/* M PLUS Rounded 1c - ローカルフォント */
+@font-face {
+  font-family: 'M PLUS Rounded 1c';
+  src: url('/fonts/MPLUSRounded1c-Thin.ttf') format('truetype');
+  font-weight: 100;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'M PLUS Rounded 1c';
+  src: url('/fonts/MPLUSRounded1c-Light.ttf') format('truetype');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'M PLUS Rounded 1c';
+  src: url('/fonts/MPLUSRounded1c-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'M PLUS Rounded 1c';
+  src: url('/fonts/MPLUSRounded1c-Medium.ttf') format('truetype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'M PLUS Rounded 1c';
+  src: url('/fonts/MPLUSRounded1c-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'M PLUS Rounded 1c';
+  src: url('/fonts/MPLUSRounded1c-ExtraBold.ttf') format('truetype');
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'M PLUS Rounded 1c';
+  src: url('/fonts/MPLUSRounded1c-Black.ttf') format('truetype');
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Zen Maru Gothic */
+@font-face {
+  font-family: 'Zen Maru Gothic';
+  src: url('/fonts/ZenMaruGothic-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Zen Maru Gothic';
+  src: url('/fonts/ZenMaruGothic-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Kosugi Maru */
+@font-face {
+  font-family: 'Kosugi Maru';
+  src: url('/fonts/KosugiMaru-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Hachi Maru Pop */
+@font-face {
+  font-family: 'Hachi Maru Pop';
+  src: url('/fonts/HachiMaruPop-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Yusei Magic */
+@font-face {
+  font-family: 'Yusei Magic';
+  src: url('/fonts/YuseiMagic-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Dela Gothic One */
+@font-face {
+  font-family: 'Dela Gothic One';
+  src: url('/fonts/DelaGothicOne-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Reggae One */
+@font-face {
+  font-family: 'Reggae One';
+  src: url('/fonts/ReggaeOne-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* RocknRoll One */
+@font-face {
+  font-family: 'RocknRoll One';
+  src: url('/fonts/RocknRollOne-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
 
 /* Reset */
 * {
