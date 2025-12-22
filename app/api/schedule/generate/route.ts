@@ -206,6 +206,12 @@ export async function POST(request: NextRequest) {
   }
 }
 
+// 登録済みフォントのマッピング
+const REGISTERED_FONTS: Record<string, string> = {
+  'M PLUS Rounded 1c': 'M PLUS Rounded 1c',
+  // 他のフォントはM PLUS Rounded 1cにフォールバック
+};
+
 // 名前テキストを画像として生成（node-canvas使用）
 function generateNameText(
   name: string,
@@ -218,8 +224,12 @@ function generateNameText(
 
     const height = style.font_size + 20;
     const fontSize = style.font_size;
-    const fontFamily = style.font_family || 'M PLUS Rounded 1c';
+    // 登録済みフォントがあればそれを使用、なければM PLUS Rounded 1cにフォールバック
+    const requestedFont = style.font_family || 'M PLUS Rounded 1c';
+    const fontFamily = REGISTERED_FONTS[requestedFont] || 'M PLUS Rounded 1c';
     const strokeEnabled = style.stroke_enabled !== false;
+
+    console.log(`Generating text "${name}" with font: ${fontFamily} (requested: ${requestedFont})`);
 
     // Canvasを作成
     const canvas = createCanvas(width, height);
@@ -228,8 +238,8 @@ function generateNameText(
     // 背景を透明に
     ctx.clearRect(0, 0, width, height);
 
-    // フォント設定
-    ctx.font = `bold ${fontSize}px "${fontFamily}", "M PLUS Rounded 1c", sans-serif`;
+    // フォント設定（node-canvasはフォールバックリストをサポートしないため単一フォントを指定）
+    ctx.font = `bold ${fontSize}px "${fontFamily}"`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 

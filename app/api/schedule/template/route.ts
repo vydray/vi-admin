@@ -127,7 +127,7 @@ export async function PUT(request: NextRequest) {
           frame_size: frameSize || { width: 150, height: 200 },
           name_style: nameStyle || {
             font_size: 24,
-            font_family: 'Hiragino Kaku Gothic ProN',
+            font_family: 'M PLUS Rounded 1c',
             color: '#FFFFFF',
             stroke_enabled: true,
             stroke_color: '#000000',

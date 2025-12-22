@@ -26,20 +26,11 @@ interface NameStyle {
   offset_y: number
 }
 
+// サーバーで使用可能なフォント（public/fonts/に.ttfファイルがあるもの）
 const FONT_OPTIONS = [
-  // Google Fonts（丸系・かわいい系）
   { value: 'M PLUS Rounded 1c', label: 'M PLUS 丸ゴシック' },
-  { value: 'Kosugi Maru', label: 'コウスギ丸' },
-  { value: 'Zen Maru Gothic', label: '禅丸ゴシック' },
-  { value: 'Dela Gothic One', label: 'デラゴシック' },
-  { value: 'Yusei Magic', label: '油性マジック' },
-  { value: 'Reggae One', label: 'レゲエ' },
-  { value: 'RocknRoll One', label: 'ロックンロール' },
-  { value: 'Hachi Maru Pop', label: '八丸ポップ' },
-  // システムフォント
-  { value: 'Hiragino Kaku Gothic ProN', label: 'ヒラギノ角ゴ' },
-  { value: 'Hiragino Mincho ProN', label: 'ヒラギノ明朝' },
-  { value: 'Noto Sans JP', label: 'Noto Sans JP' },
+  // 他のフォントを追加する場合は、public/fonts/にTTFを追加し、
+  // generate/route.tsのregisterFontとREGISTERED_FONTSにも追加する
 ]
 
 interface Template {
@@ -81,7 +72,7 @@ export default function TemplateEditorPage() {
 
   const defaultNameStyle: NameStyle = {
     font_size: 24,
-    font_family: 'Hiragino Kaku Gothic ProN',
+    font_family: 'M PLUS Rounded 1c',
     color: '#FFFFFF',
     stroke_enabled: true,
     stroke_color: '#000000',
