@@ -18,7 +18,7 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
 type PhotoFilter = 'all' | 'registered' | 'unregistered'
 
 export default function CastPhotosPage() {
-  const { storeId } = useStore()
+  const { storeId, isLoading: storeLoading } = useStore()
   const [casts, setCasts] = useState<Cast[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedCast, setSelectedCast] = useState<Cast | null>(null)
@@ -50,10 +50,11 @@ export default function CastPhotosPage() {
   })
 
   useEffect(() => {
-    if (storeId) {
+    // storeの読み込みが完了してからキャスト取得
+    if (!storeLoading && storeId) {
       loadCasts()
     }
-  }, [storeId])
+  }, [storeId, storeLoading])
 
   const loadCasts = async () => {
     setLoading(true)

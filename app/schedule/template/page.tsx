@@ -29,14 +29,14 @@ interface NameStyle {
 
 // サーバーで使用可能なフォント（public/fonts/に.ttfファイルがあるもの）
 const FONT_OPTIONS = [
-  { value: 'M PLUS Rounded 1c', label: 'M PLUS 丸ゴシック', weights: ['100', '300', '400', '500', '700', '800', '900'] },
-  { value: 'Zen Maru Gothic', label: 'Zen 丸ゴシック', weights: ['400', '700'] },
-  { value: 'Kosugi Maru', label: '小杉丸ゴシック', weights: ['400'] },
-  { value: 'Hachi Maru Pop', label: 'はちまるポップ', weights: ['400'] },
-  { value: 'Yusei Magic', label: '油性マジック', weights: ['400'] },
-  { value: 'Dela Gothic One', label: 'デラゴシック', weights: ['400'] },
-  { value: 'Reggae One', label: 'レゲエ', weights: ['400'] },
-  { value: 'RocknRoll One', label: 'ロックンロール', weights: ['400'] },
+  { value: 'Rounded Mplus 1c', label: 'Rounded Mplus 1c', weights: ['100', '300', '400', '500', '700', '800', '900'] },
+  { value: 'Zen Maru Gothic', label: 'Zen Maru Gothic', weights: ['400', '700'] },
+  { value: 'Kosugi Maru', label: 'Kosugi Maru', weights: ['400'] },
+  { value: 'Hachi Maru Pop', label: 'Hachi Maru Pop', weights: ['400'] },
+  { value: 'Yusei Magic', label: 'Yusei Magic', weights: ['400'] },
+  { value: 'Dela Gothic One', label: 'Dela Gothic One', weights: ['400'] },
+  { value: 'Reggae One', label: 'Reggae One', weights: ['400'] },
+  { value: 'RocknRoll One', label: 'RocknRoll One', weights: ['400'] },
 ]
 
 // フォントウェイト選択肢（全て）
@@ -73,7 +73,7 @@ const CANVAS_WIDTH = 600
 const CANVAS_HEIGHT = 600
 
 export default function TemplateEditorPage() {
-  const { storeId } = useStore()
+  const { storeId, isLoading: storeLoading } = useStore()
   const canvasRef = useRef<HTMLDivElement>(null)
   const [template, setTemplate] = useState<Template | null>(null)
   const [loading, setLoading] = useState(true)
@@ -96,7 +96,7 @@ export default function TemplateEditorPage() {
 
   const defaultNameStyle: NameStyle = {
     font_size: 24,
-    font_family: 'M PLUS Rounded 1c',
+    font_family: 'Rounded Mplus 1c',
     font_weight: '700',
     color: '#FFFFFF',
     stroke_enabled: true,
@@ -106,13 +106,18 @@ export default function TemplateEditorPage() {
   }
 
   useEffect(() => {
-    if (storeId) {
+    // storeの読み込みが完了してからテンプレートを読み込む
+    if (!storeLoading && storeId) {
       loadTemplate()
     }
-  }, [storeId])
+  }, [storeId, storeLoading])
 
   const loadTemplate = async () => {
     setLoading(true)
+    // 店舗切り替え時に前の状態をリセット
+    setTemplateImageUrl(null)
+    setPlaceholderImageUrl(null)
+    setSelectedFrameIndex(null)
     try {
       const response = await fetch(`/api/schedule/template?storeId=${storeId}`)
       const data = await response.json()
@@ -412,7 +417,7 @@ export default function TemplateEditorPage() {
                     width: template.frame_size.width * scale,
                     textAlign: 'center',
                     fontSize: `${(template?.name_style.font_size || 24) * scale}px`,
-                    fontFamily: template?.name_style.font_family || 'M PLUS Rounded 1c',
+                    fontFamily: template?.name_style.font_family || 'Rounded Mplus 1c',
                     fontWeight: template?.name_style.font_weight || '700',
                     color: template?.name_style.color || '#FFFFFF',
                     textShadow: template?.name_style.stroke_enabled !== false
@@ -533,7 +538,7 @@ export default function TemplateEditorPage() {
               <label style={styles.styleLabel}>
                 フォント
                 <select
-                  value={template?.name_style.font_family || 'M PLUS Rounded 1c'}
+                  value={template?.name_style.font_family || 'Rounded Mplus 1c'}
                   onChange={(e) => {
                     const newFont = e.target.value
                     const availableWeights = FONT_OPTIONS.find(f => f.value === newFont)?.weights || ['400']
@@ -558,7 +563,7 @@ export default function TemplateEditorPage() {
                   onChange={(e) => updateNameStyle({ font_weight: e.target.value })}
                   style={styles.select}
                 >
-                  {getAvailableWeights(template?.name_style.font_family || 'M PLUS Rounded 1c').map((weight) => (
+                  {getAvailableWeights(template?.name_style.font_family || 'Rounded Mplus 1c').map((weight) => (
                     <option key={weight.value} value={weight.value}>
                       {weight.label}
                     </option>

@@ -16,7 +16,7 @@ interface Cast {
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
 
 export default function GeneratePage() {
-  const { storeId } = useStore()
+  const { storeId, isLoading: storeLoading } = useStore()
   const [selectedDate, setSelectedDate] = useState<string>(() => {
     const today = new Date()
     return today.toISOString().split('T')[0]
@@ -30,16 +30,18 @@ export default function GeneratePage() {
   const [hasTemplate, setHasTemplate] = useState(false)
 
   useEffect(() => {
-    if (storeId) {
+    // storeの読み込みが完了してからテンプレートチェック
+    if (!storeLoading && storeId) {
       checkTemplate()
     }
-  }, [storeId])
+  }, [storeId, storeLoading])
 
   useEffect(() => {
-    if (storeId && selectedDate) {
+    // storeの読み込みが完了してからシフト取得
+    if (!storeLoading && storeId && selectedDate) {
       loadShiftCasts()
     }
-  }, [storeId, selectedDate])
+  }, [storeId, storeLoading, selectedDate])
 
   useEffect(() => {
     sortCasts()
@@ -158,6 +160,14 @@ export default function GeneratePage() {
       if (data.success) {
         setGeneratedImage(data.image)
         toast.success('画像を生成しました')
+        // デバッグ情報をコンソールに出力
+        if (data.debug) {
+          console.log('=== 生成に使用された設定 ===')
+          console.log('DBのname_style:', data.debug.templateNameStyle)
+          console.log('実際に使用:', data.debug.usedNameStyle)
+          console.log('枠サイズ:', data.debug.frameSize)
+          console.log('枠数:', data.debug.framesCount, 'キャスト数:', data.debug.castsCount)
+        }
       } else {
         toast.error(data.error || '生成に失敗しました')
       }

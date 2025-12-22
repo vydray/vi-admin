@@ -34,10 +34,10 @@ function ensureFontsRegistered() {
   try {
     const fontsDir = path.join(process.cwd(), 'public', 'fonts');
 
-    // M PLUS Rounded 1c の全ウェイトを登録
+    // Rounded Mplus 1c の全ウェイトを登録
     for (const font of MPLUS_WEIGHTS) {
       registerFont(path.join(fontsDir, font.file), {
-        family: 'M PLUS Rounded 1c',
+        family: 'Rounded Mplus 1c',
         weight: font.weight,
       });
     }
@@ -165,13 +165,17 @@ export async function POST(request: NextRequest) {
     const frameSize: FrameSize = template.frame_size || { width: 150, height: 200 };
     const nameStyle: NameStyle = template.name_style || {
       font_size: 24,
-      font_family: 'Hiragino Kaku Gothic ProN',
+      font_family: 'Rounded Mplus 1c',
+      font_weight: '700',
       color: '#FFFFFF',
       stroke_enabled: true,
       stroke_color: '#000000',
       stroke_width: 2,
       offset_y: 10,
     };
+
+    console.log('Template name_style from DB:', JSON.stringify(template.name_style));
+    console.log('Using nameStyle:', JSON.stringify(nameStyle));
 
     // 合成用の配列を準備
     const composites: sharp.OverlayOptions[] = [];
@@ -200,23 +204,23 @@ export async function POST(request: NextRequest) {
       // 写真があれば配置
       if (photoBuffer) {
         const resizedPhoto = await sharp(photoBuffer)
-          .resize(frameSize.width, frameSize.height, { fit: 'cover' })
+          .resize(Math.round(frameSize.width), Math.round(frameSize.height), { fit: 'cover' })
           .toBuffer();
 
         composites.push({
           input: resizedPhoto,
-          left: frame.x,
-          top: frame.y,
+          left: Math.round(frame.x),
+          top: Math.round(frame.y),
         });
       }
 
       // 名前テキストを生成して配置
-      const nameBuffer = generateNameText(cast.name, frameSize.width, nameStyle);
+      const nameBuffer = generateNameText(cast.name, Math.round(frameSize.width), nameStyle);
       if (nameBuffer) {
         composites.push({
           input: nameBuffer,
-          left: frame.x,
-          top: frame.y + frameSize.height + nameStyle.offset_y,
+          left: Math.round(frame.x),
+          top: Math.round(frame.y + frameSize.height + nameStyle.offset_y),
         });
       }
     }
@@ -233,6 +237,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       image: `data:image/png;base64,${base64}`,
+      // デバッグ用：使用された設定を返す
+      debug: {
+        templateNameStyle: template.name_style,
+        usedNameStyle: nameStyle,
+        frameSize: frameSize,
+        framesCount: frames.length,
+        castsCount: orderedCasts.length,
+      },
     });
   } catch (error) {
     console.error('Generate schedule image error:', error);
@@ -245,7 +257,7 @@ export async function POST(request: NextRequest) {
 
 // 登録済みフォントのマッピング
 const REGISTERED_FONTS: Record<string, string> = {
-  'M PLUS Rounded 1c': 'M PLUS Rounded 1c',
+  'Rounded Mplus 1c': 'Rounded Mplus 1c',
   'Kosugi Maru': 'Kosugi Maru',
   'Hachi Maru Pop': 'Hachi Maru Pop',
   'Yusei Magic': 'Yusei Magic',
@@ -267,9 +279,9 @@ function generateNameText(
 
     const height = style.font_size + 20;
     const fontSize = style.font_size;
-    // 登録済みフォントがあればそれを使用、なければM PLUS Rounded 1cにフォールバック
-    const requestedFont = style.font_family || 'M PLUS Rounded 1c';
-    const fontFamily = REGISTERED_FONTS[requestedFont] || 'M PLUS Rounded 1c';
+    // 登録済みフォントがあればそれを使用、なければRounded Mplus 1cにフォールバック
+    const requestedFont = style.font_family || 'Rounded Mplus 1c';
+    const fontFamily = REGISTERED_FONTS[requestedFont] || 'Rounded Mplus 1c';
     const fontWeight = style.font_weight || '700'; // デフォルトはBold
     const strokeEnabled = style.stroke_enabled !== false;
 
