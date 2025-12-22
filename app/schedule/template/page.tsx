@@ -102,7 +102,16 @@ export default function TemplateEditorPage() {
       const data = await response.json()
 
       if (data.template) {
-        setTemplate(data.template)
+        // 既存テンプレートにframe_sizeがない場合はデフォルト値を設定
+        const templateWithDefaults = {
+          ...data.template,
+          frame_size: data.template.frame_size || { width: 150, height: 200 },
+          name_style: {
+            ...defaultNameStyle,
+            ...data.template.name_style,
+          },
+        }
+        setTemplate(templateWithDefaults)
         if (data.template.image_path) {
           setTemplateImageUrl(`${SUPABASE_URL}/storage/v1/object/public/schedule-templates/${data.template.image_path}`)
         }
