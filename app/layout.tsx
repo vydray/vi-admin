@@ -4,6 +4,7 @@ import { StoreProvider } from '@/contexts/StoreContext'
 import { ConfirmProvider } from '@/contexts/ConfirmContext'
 import { Toaster } from 'react-hot-toast'
 import LayoutWrapper from '@/components/LayoutWrapper'
+import './globals.css'
 
 export const metadata = {
   title: 'VI Admin Dashboard',
@@ -17,14 +18,6 @@ export default function RootLayout({
 }) {
   return (
     <html lang="ja">
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=Hachi+Maru+Pop&family=Kosugi+Maru&family=M+PLUS+Rounded+1c:wght@100;300;400;500;700;800;900&family=Reggae+One&family=RocknRoll+One&family=Yusei+Magic&family=Zen+Maru+Gothic:wght@400;700&display=swap"
-          rel="stylesheet"
-        />
-      </head>
       <body style={{ margin: 0, fontFamily: 'system-ui, sans-serif', backgroundColor: '#f5f5f5' }}>
         <ErrorBoundary>
           <AuthProvider>
