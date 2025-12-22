@@ -163,7 +163,8 @@ export async function POST(request: NextRequest) {
 
     const frames: Frame[] = template.frames || [];
     const frameSize: FrameSize = template.frame_size || { width: 150, height: 200 };
-    const nameStyle: NameStyle = template.name_style || {
+    // デフォルト値とDBの値をマージ（DBに欠けているフィールドはデフォルト値を使用）
+    const defaultNameStyle: NameStyle = {
       font_size: 24,
       font_family: 'Rounded Mplus 1c',
       font_weight: '700',
@@ -172,6 +173,10 @@ export async function POST(request: NextRequest) {
       stroke_color: '#000000',
       stroke_width: 2,
       offset_y: 10,
+    };
+    const nameStyle: NameStyle = {
+      ...defaultNameStyle,
+      ...template.name_style,
     };
 
     console.log('Template name_style from DB:', JSON.stringify(template.name_style));
