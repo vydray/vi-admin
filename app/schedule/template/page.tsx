@@ -19,6 +19,7 @@ const FRAME_ASPECT_RATIO = 3 / 4 // 写真と同じ比率
 interface NameStyle {
   font_size: number
   font_family: string
+  font_weight: string
   color: string
   stroke_enabled: boolean
   stroke_color: string
@@ -29,8 +30,17 @@ interface NameStyle {
 // サーバーで使用可能なフォント（public/fonts/に.ttfファイルがあるもの）
 const FONT_OPTIONS = [
   { value: 'M PLUS Rounded 1c', label: 'M PLUS 丸ゴシック' },
-  // 他のフォントを追加する場合は、public/fonts/にTTFを追加し、
-  // generate/route.tsのregisterFontとREGISTERED_FONTSにも追加する
+]
+
+// フォントウェイト選択肢
+const FONT_WEIGHT_OPTIONS = [
+  { value: '100', label: 'Thin (極細)' },
+  { value: '300', label: 'Light (細)' },
+  { value: '400', label: 'Regular (標準)' },
+  { value: '500', label: 'Medium (中)' },
+  { value: '700', label: 'Bold (太)' },
+  { value: '800', label: 'ExtraBold (極太)' },
+  { value: '900', label: 'Black (最太)' },
 ]
 
 interface Template {
@@ -73,6 +83,7 @@ export default function TemplateEditorPage() {
   const defaultNameStyle: NameStyle = {
     font_size: 24,
     font_family: 'M PLUS Rounded 1c',
+    font_weight: '700',
     color: '#FFFFFF',
     stroke_enabled: true,
     stroke_color: '#000000',
@@ -387,8 +398,8 @@ export default function TemplateEditorPage() {
                     width: template.frame_size.width * scale,
                     textAlign: 'center',
                     fontSize: `${(template?.name_style.font_size || 24) * scale}px`,
-                    fontFamily: template?.name_style.font_family || 'Hiragino Kaku Gothic ProN',
-                    fontWeight: 'bold',
+                    fontFamily: template?.name_style.font_family || 'M PLUS Rounded 1c',
+                    fontWeight: template?.name_style.font_weight || '700',
                     color: template?.name_style.color || '#FFFFFF',
                     textShadow: template?.name_style.stroke_enabled !== false
                       ? `0 0 ${(template?.name_style.stroke_width || 2) * scale}px ${template?.name_style.stroke_color || '#000000'}`
@@ -508,13 +519,27 @@ export default function TemplateEditorPage() {
               <label style={styles.styleLabel}>
                 フォント
                 <select
-                  value={template?.name_style.font_family || 'Hiragino Kaku Gothic ProN'}
+                  value={template?.name_style.font_family || 'M PLUS Rounded 1c'}
                   onChange={(e) => updateNameStyle({ font_family: e.target.value })}
                   style={styles.select}
                 >
                   {FONT_OPTIONS.map((font) => (
                     <option key={font.value} value={font.value} style={{ fontFamily: font.value }}>
                       {font.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label style={styles.styleLabel}>
+                太さ
+                <select
+                  value={template?.name_style.font_weight || '700'}
+                  onChange={(e) => updateNameStyle({ font_weight: e.target.value })}
+                  style={styles.select}
+                >
+                  {FONT_WEIGHT_OPTIONS.map((weight) => (
+                    <option key={weight.value} value={weight.value}>
+                      {weight.label}
                     </option>
                   ))}
                 </select>

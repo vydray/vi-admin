@@ -128,6 +128,7 @@ export async function PUT(request: NextRequest) {
           name_style: nameStyle || {
             font_size: 24,
             font_family: 'M PLUS Rounded 1c',
+            font_weight: '700',
             color: '#FFFFFF',
             stroke_enabled: true,
             stroke_color: '#000000',

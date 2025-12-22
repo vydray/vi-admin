@@ -4,18 +4,32 @@ import sharp from 'sharp';
 import { createCanvas, registerFont } from 'canvas';
 import path from 'path';
 
+// フォントウェイトの定義
+const FONT_WEIGHTS = [
+  { file: 'MPLUSRounded1c-Thin.ttf', weight: '100', name: 'Thin' },
+  { file: 'MPLUSRounded1c-Light.ttf', weight: '300', name: 'Light' },
+  { file: 'MPLUSRounded1c-Regular.ttf', weight: '400', name: 'Regular' },
+  { file: 'MPLUSRounded1c-Medium.ttf', weight: '500', name: 'Medium' },
+  { file: 'MPLUSRounded1c-Bold.ttf', weight: '700', name: 'Bold' },
+  { file: 'MPLUSRounded1c-ExtraBold.ttf', weight: '800', name: 'ExtraBold' },
+  { file: 'MPLUSRounded1c-Black.ttf', weight: '900', name: 'Black' },
+];
+
 // フォントを登録（サーバー起動時に1回だけ実行される）
 let fontsRegistered = false;
 function ensureFontsRegistered() {
   if (fontsRegistered) return;
   try {
     const fontsDir = path.join(process.cwd(), 'public', 'fonts');
-    registerFont(path.join(fontsDir, 'MPLUSRounded1c-Bold.ttf'), {
-      family: 'M PLUS Rounded 1c',
-      weight: 'bold',
-    });
+    // 全ウェイトを登録
+    for (const font of FONT_WEIGHTS) {
+      registerFont(path.join(fontsDir, font.file), {
+        family: 'M PLUS Rounded 1c',
+        weight: font.weight,
+      });
+    }
     fontsRegistered = true;
-    console.log('Fonts registered successfully');
+    console.log('All font weights registered successfully');
   } catch (error) {
     console.error('Failed to register fonts:', error);
   }
@@ -41,6 +55,7 @@ interface FrameSize {
 interface NameStyle {
   font_size: number;
   font_family: string;
+  font_weight?: string; // '100' | '300' | '400' | '500' | '700' | '800' | '900'
   color: string;
   stroke_enabled?: boolean;
   stroke_color: string;
@@ -227,9 +242,10 @@ function generateNameText(
     // 登録済みフォントがあればそれを使用、なければM PLUS Rounded 1cにフォールバック
     const requestedFont = style.font_family || 'M PLUS Rounded 1c';
     const fontFamily = REGISTERED_FONTS[requestedFont] || 'M PLUS Rounded 1c';
+    const fontWeight = style.font_weight || '700'; // デフォルトはBold
     const strokeEnabled = style.stroke_enabled !== false;
 
-    console.log(`Generating text "${name}" with font: ${fontFamily} (requested: ${requestedFont})`);
+    console.log(`Generating text "${name}" with font: ${fontFamily}, weight: ${fontWeight}`);
 
     // Canvasを作成
     const canvas = createCanvas(width, height);
@@ -238,8 +254,8 @@ function generateNameText(
     // 背景を透明に
     ctx.clearRect(0, 0, width, height);
 
-    // フォント設定（node-canvasはフォールバックリストをサポートしないため単一フォントを指定）
-    ctx.font = `bold ${fontSize}px "${fontFamily}"`;
+    // フォント設定（ウェイトを数値で指定）
+    ctx.font = `${fontWeight} ${fontSize}px "${fontFamily}"`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
