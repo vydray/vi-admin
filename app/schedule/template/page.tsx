@@ -48,6 +48,7 @@ export default function TemplateEditorPage() {
   const [isResizing, setIsResizing] = useState(false)
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
   const [framesCollapsed, setFramesCollapsed] = useState(false)
+  const [showFrameBorders, setShowFrameBorders] = useState(true)
 
   // 画像の実際のサイズとキャンバスのスケール
   const [imageSize, setImageSize] = useState({ width: 1200, height: 1200 })
@@ -331,16 +332,19 @@ export default function TemplateEditorPage() {
                     top: frame.y * scale,
                     width: frame.width * scale,
                     height: frame.height * scale,
-                    borderColor: selectedFrameIndex === index ? '#3b82f6' : '#fff',
+                    borderColor: showFrameBorders ? (selectedFrameIndex === index ? '#3b82f6' : '#fff') : 'transparent',
+                    backgroundColor: showFrameBorders ? 'rgba(255,255,255,0.2)' : 'transparent',
                     zIndex: selectedFrameIndex === index ? 10 : 1,
                   }}
                   onMouseDown={(e) => handleMouseDown(e, index, false)}
                 >
-                  <span style={styles.frameLabel}>{index + 1}</span>
-                  <div
-                    style={styles.resizeHandle}
-                    onMouseDown={(e) => handleMouseDown(e, index, true)}
-                  />
+                  {showFrameBorders && <span style={styles.frameLabel}>{index + 1}</span>}
+                  {showFrameBorders && (
+                    <div
+                      style={styles.resizeHandle}
+                      onMouseDown={(e) => handleMouseDown(e, index, true)}
+                    />
+                  )}
                 </div>
                 {/* 名前プレビュー */}
                 <div
@@ -370,6 +374,15 @@ export default function TemplateEditorPage() {
               背景画像を{templateImageUrl ? '変更' : 'アップロード'}
             </label>
             <button onClick={addFrame} style={styles.addFrameButton}>+ 枠を追加</button>
+            <button
+              onClick={() => setShowFrameBorders(!showFrameBorders)}
+              style={{
+                ...styles.toggleButton,
+                backgroundColor: showFrameBorders ? '#22c55e' : '#94a3b8',
+              }}
+            >
+              {showFrameBorders ? '枠線 ON' : '枠線 OFF'}
+            </button>
           </div>
         </div>
 
@@ -590,6 +603,15 @@ const styles: { [key: string]: React.CSSProperties } = {
     borderRadius: '6px',
     cursor: 'pointer',
     fontSize: '14px',
+  },
+  toggleButton: {
+    padding: '10px 20px',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '6px',
+    cursor: 'pointer',
+    fontSize: '14px',
+    transition: 'background-color 0.2s',
   },
   settingsPanel: {
     flex: 1,
