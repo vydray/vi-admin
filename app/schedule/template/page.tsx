@@ -27,15 +27,19 @@ interface NameStyle {
 }
 
 const FONT_OPTIONS = [
+  // Google Fonts（丸系・かわいい系）
+  { value: 'M PLUS Rounded 1c', label: 'M PLUS 丸ゴシック' },
+  { value: 'Kosugi Maru', label: 'コウスギ丸' },
+  { value: 'Zen Maru Gothic', label: '禅丸ゴシック' },
+  { value: 'Dela Gothic One', label: 'デラゴシック' },
+  { value: 'Yusei Magic', label: '油性マジック' },
+  { value: 'Reggae One', label: 'レゲエ' },
+  { value: 'RocknRoll One', label: 'ロックンロール' },
+  { value: 'Hachi Maru Pop', label: '八丸ポップ' },
+  // システムフォント
   { value: 'Hiragino Kaku Gothic ProN', label: 'ヒラギノ角ゴ' },
   { value: 'Hiragino Mincho ProN', label: 'ヒラギノ明朝' },
-  { value: 'YuGothic', label: '游ゴシック' },
-  { value: 'YuMincho', label: '游明朝' },
-  { value: 'Meiryo', label: 'メイリオ' },
-  { value: 'MS Gothic', label: 'MSゴシック' },
-  { value: 'MS Mincho', label: 'MS明朝' },
   { value: 'Noto Sans JP', label: 'Noto Sans JP' },
-  { value: 'Noto Serif JP', label: 'Noto Serif JP' },
 ]
 
 interface Template {

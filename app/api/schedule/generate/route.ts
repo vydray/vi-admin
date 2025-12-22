@@ -187,6 +187,11 @@ export async function POST(request: NextRequest) {
   }
 }
 
+// Google Fontsの@font-face定義
+const GOOGLE_FONTS_CSS = `
+  @import url('https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=Hachi+Maru+Pop&family=Kosugi+Maru&family=M+PLUS+Rounded+1c:wght@700&family=Reggae+One&family=RocknRoll+One&family=Yusei+Magic&family=Zen+Maru+Gothic:wght@700&display=swap');
+`;
+
 // 名前テキストを画像として生成
 async function generateNameText(
   name: string,
@@ -202,13 +207,16 @@ async function generateNameText(
     // SVGでテキストを生成
     const svg = `
       <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
-        <style>
-          .name {
-            font-family: '${fontFamily}', 'Hiragino Kaku Gothic ProN', 'メイリオ', sans-serif;
-            font-size: ${fontSize}px;
-            font-weight: bold;
-          }
-        </style>
+        <defs>
+          <style>
+            ${GOOGLE_FONTS_CSS}
+            .name {
+              font-family: '${fontFamily}', 'Hiragino Kaku Gothic ProN', 'メイリオ', sans-serif;
+              font-size: ${fontSize}px;
+              font-weight: bold;
+            }
+          </style>
+        </defs>
         <text
           x="${width / 2}"
           y="${fontSize + 5}"
