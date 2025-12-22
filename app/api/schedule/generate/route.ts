@@ -4,27 +4,27 @@ import sharp from 'sharp';
 import { createCanvas, registerFont } from 'canvas';
 import path from 'path';
 
-// M PLUS Rounded 1c のウェイト定義
+// M PLUS Rounded 1c のウェイト定義（node-canvasはnormal/boldキーワードを使用）
 const MPLUS_WEIGHTS = [
-  { file: 'MPLUSRounded1c-Thin.ttf', weight: '100' },
-  { file: 'MPLUSRounded1c-Light.ttf', weight: '300' },
-  { file: 'MPLUSRounded1c-Regular.ttf', weight: '400' },
-  { file: 'MPLUSRounded1c-Medium.ttf', weight: '500' },
-  { file: 'MPLUSRounded1c-Bold.ttf', weight: '700' },
-  { file: 'MPLUSRounded1c-ExtraBold.ttf', weight: '800' },
-  { file: 'MPLUSRounded1c-Black.ttf', weight: '900' },
+  { file: 'MPLUSRounded1c-Thin.ttf', weight: 'normal' },
+  { file: 'MPLUSRounded1c-Light.ttf', weight: 'normal' },
+  { file: 'MPLUSRounded1c-Regular.ttf', weight: 'normal' },
+  { file: 'MPLUSRounded1c-Medium.ttf', weight: 'normal' },
+  { file: 'MPLUSRounded1c-Bold.ttf', weight: 'bold' },
+  { file: 'MPLUSRounded1c-ExtraBold.ttf', weight: 'bold' },
+  { file: 'MPLUSRounded1c-Black.ttf', weight: 'bold' },
 ];
 
-// 他のフォント（ウェイト1種類のみ）
+// 他のフォント（node-canvasはnormal/boldキーワードを使用）
 const OTHER_FONTS = [
-  { file: 'KosugiMaru-Regular.ttf', family: 'Kosugi Maru', weight: '400' },
-  { file: 'HachiMaruPop-Regular.ttf', family: 'Hachi Maru Pop', weight: '400' },
-  { file: 'YuseiMagic-Regular.ttf', family: 'Yusei Magic', weight: '400' },
-  { file: 'ZenMaruGothic-Regular.ttf', family: 'Zen Maru Gothic', weight: '400' },
-  { file: 'ZenMaruGothic-Bold.ttf', family: 'Zen Maru Gothic', weight: '700' },
-  { file: 'DelaGothicOne-Regular.ttf', family: 'Dela Gothic One', weight: '400' },
-  { file: 'ReggaeOne-Regular.ttf', family: 'Reggae One', weight: '400' },
-  { file: 'RocknRollOne-Regular.ttf', family: 'RocknRoll One', weight: '400' },
+  { file: 'KosugiMaru-Regular.ttf', family: 'Kosugi Maru', weight: 'normal' },
+  { file: 'HachiMaruPop-Regular.ttf', family: 'Hachi Maru Pop', weight: 'normal' },
+  { file: 'YuseiMagic-Regular.ttf', family: 'Yusei Magic', weight: 'normal' },
+  { file: 'ZenMaruGothic-Regular.ttf', family: 'Zen Maru Gothic', weight: 'normal' },
+  { file: 'ZenMaruGothic-Bold.ttf', family: 'Zen Maru Gothic', weight: 'bold' },
+  { file: 'DelaGothicOne-Regular.ttf', family: 'Dela Gothic One', weight: 'normal' },
+  { file: 'ReggaeOne-Regular.ttf', family: 'Reggae One', weight: 'normal' },
+  { file: 'RocknRollOne-Regular.ttf', family: 'RocknRoll One', weight: 'normal' },
 ];
 
 // フォントを登録（サーバー起動時に1回だけ実行される）
@@ -272,6 +272,15 @@ const REGISTERED_FONTS: Record<string, string> = {
   'RocknRoll One': 'RocknRoll One',
 };
 
+// 数値ウェイトをnode-canvas用のキーワードに変換
+function getCanvasFontWeight(weight: string): string {
+  const numWeight = parseInt(weight, 10);
+  if (isNaN(numWeight)) return weight;
+  // 600以上はbold、それ以下はnormal
+  if (numWeight >= 600) return 'bold';
+  return 'normal';
+}
+
 // 名前テキストを画像として生成（node-canvas使用）
 function generateNameText(
   name: string,
@@ -288,12 +297,14 @@ function generateNameText(
     const requestedFont = style.font_family || 'Rounded Mplus 1c';
     const fontFamily = REGISTERED_FONTS[requestedFont] || 'Rounded Mplus 1c';
     const fontWeight = style.font_weight || '700'; // デフォルトはBold
+    // node-canvas用にウェイトをキーワードに変換
+    const canvasFontWeight = getCanvasFontWeight(fontWeight);
     // stroke_enabledが文字列"false"の場合も考慮（DBから取得時に型が変わる可能性）
     const rawStrokeEnabled = style.stroke_enabled as unknown;
     // falseまたは'false'の場合のみ無効、それ以外（true, undefined等）は有効
     const strokeEnabled = rawStrokeEnabled !== false && rawStrokeEnabled !== 'false';
 
-    console.log(`Generating text "${name}" with font: ${fontFamily}, weight: ${fontWeight}, strokeEnabled: ${strokeEnabled}, raw: ${rawStrokeEnabled} (type: ${typeof rawStrokeEnabled})`);
+    console.log(`Generating text "${name}" with font: ${fontFamily}, weight: ${fontWeight} -> ${canvasFontWeight}, strokeEnabled: ${strokeEnabled}, raw: ${rawStrokeEnabled} (type: ${typeof rawStrokeEnabled})`);
 
     // Canvasを作成
     const canvas = createCanvas(width, height);
@@ -302,8 +313,8 @@ function generateNameText(
     // 背景を透明に
     ctx.clearRect(0, 0, width, height);
 
-    // フォント設定（ウェイトを数値で指定）
-    ctx.font = `${fontWeight} ${fontSize}px "${fontFamily}"`;
+    // フォント設定（node-canvasではbold/normalキーワードを使用）
+    ctx.font = `${canvasFontWeight} ${fontSize}px "${fontFamily}"`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
