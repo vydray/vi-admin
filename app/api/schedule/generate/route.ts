@@ -307,7 +307,13 @@ function getActualFontFamily(baseFontFamily: string, weight: string): string {
 }
 
 // デバッグ用：最後に使用したフォント情報を保持
-let lastUsedFontDebug: { baseFontFamily: string; actualFontFamily: string; fontWeight: string } | null = null;
+let lastUsedFontDebug: {
+  baseFontFamily: string;
+  actualFontFamily: string;
+  fontWeight: string;
+  requestedFont: string;
+  actualCtxFont: string;
+} | null = null;
 
 // 名前テキストを画像として生成（node-canvas使用）
 function generateNameText(
@@ -332,11 +338,6 @@ function generateNameText(
     // falseまたは'false'の場合のみ無効、それ以外（true, undefined等）は有効
     const strokeEnabled = rawStrokeEnabled !== false && rawStrokeEnabled !== 'false';
 
-    // デバッグ情報を保存
-    lastUsedFontDebug = { baseFontFamily, actualFontFamily, fontWeight };
-
-    console.log(`Generating text "${name}" with font: ${baseFontFamily} -> ${actualFontFamily}, weight: ${fontWeight}, strokeEnabled: ${strokeEnabled}`);
-
     // Canvasを作成
     const canvas = createCanvas(width, height);
     const ctx = canvas.getContext('2d');
@@ -345,7 +346,20 @@ function generateNameText(
     ctx.clearRect(0, 0, width, height);
 
     // フォント設定（Boldは別ファミリー名なのでweightキーワード不要）
-    ctx.font = `${fontSize}px "${actualFontFamily}"`;
+    const fontString = `${fontSize}px "${actualFontFamily}"`;
+    ctx.font = fontString;
+
+    // デバッグ情報を保存（ctx.fontが実際に何になったかも確認）
+    lastUsedFontDebug = {
+      baseFontFamily,
+      actualFontFamily,
+      fontWeight,
+      requestedFont: fontString,
+      actualCtxFont: ctx.font, // node-canvasが実際に設定した値
+    };
+
+    console.log(`Generating text "${name}" with font: ${fontString} -> ctx.font: ${ctx.font}`);
+
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
