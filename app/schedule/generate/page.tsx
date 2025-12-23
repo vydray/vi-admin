@@ -9,6 +9,7 @@ interface Cast {
   id: number
   name: string
   photo_path: string | null
+  twitter: string | null
   start_time?: string
   end_time?: string
 }
@@ -106,7 +107,7 @@ export default function GeneratePage() {
       // キャスト情報を取得
       const { data: casts, error: castsError } = await supabase
         .from('casts')
-        .select('id, name, photo_path')
+        .select('id, name, photo_path, twitter')
         .in('id', castIds)
 
       // 最新のリクエストでなければ無視
@@ -220,6 +221,26 @@ export default function GeneratePage() {
     generatedImages.forEach((_, index) => {
       setTimeout(() => handleDownload(index), index * 300)
     })
+  }
+
+  // Twitter一覧テキストを生成
+  const generateTwitterText = () => {
+    return orderedCasts
+      .map((cast) => {
+        const twitterId = cast.twitter ? `@${cast.twitter.replace(/^@/, '')}` : ''
+        return `${cast.name}${twitterId ? `＠${twitterId}` : ''}`
+      })
+      .join('\n')
+  }
+
+  const handleCopyTwitterList = async () => {
+    const text = generateTwitterText()
+    try {
+      await navigator.clipboard.writeText(text)
+      toast.success('コピーしました')
+    } catch {
+      toast.error('コピーに失敗しました')
+    }
   }
 
   const orderedCasts = orderedCastIds
@@ -400,6 +421,36 @@ export default function GeneratePage() {
                       全てダウンロード
                     </button>
                   )}
+                </div>
+
+                {/* Twitter一覧 */}
+                <div style={styles.twitterSection}>
+                  <div style={styles.twitterHeader}>
+                    <h4 style={styles.twitterTitle}>出勤キャスト一覧</h4>
+                    <button onClick={handleCopyTwitterList} style={styles.copyButton}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                      </svg>
+                      コピー
+                    </button>
+                  </div>
+                  <div style={styles.twitterList}>
+                    {orderedCasts.map((cast) => {
+                      const twitterId = cast.twitter ? `@${cast.twitter.replace(/^@/, '')}` : null
+                      return (
+                        <div key={cast.id} style={styles.twitterItem}>
+                          <span>{cast.name}</span>
+                          {twitterId && (
+                            <>
+                              <span>＠</span>
+                              <span style={styles.twitterMention}>{twitterId}</span>
+                            </>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
                 </div>
               </>
             ) : (
@@ -643,5 +694,51 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '16px',
     fontWeight: '600',
     color: '#374151',
+  },
+  twitterSection: {
+    width: '100%',
+    marginTop: '24px',
+    padding: '16px',
+    backgroundColor: '#f8fafc',
+    borderRadius: '8px',
+    border: '1px solid #e2e8f0',
+  },
+  twitterHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '12px',
+  },
+  twitterTitle: {
+    fontSize: '14px',
+    fontWeight: '600',
+    color: '#374151',
+    margin: 0,
+  },
+  copyButton: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '8px 12px',
+    backgroundColor: '#fff',
+    border: '1px solid #d1d5db',
+    borderRadius: '6px',
+    fontSize: '13px',
+    fontWeight: '500',
+    cursor: 'pointer',
+    color: '#374151',
+  },
+  twitterList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '4px',
+  },
+  twitterItem: {
+    fontSize: '14px',
+    color: '#1a1a2e',
+    lineHeight: '1.6',
+  },
+  twitterMention: {
+    color: '#1d9bf0',
   },
 }
