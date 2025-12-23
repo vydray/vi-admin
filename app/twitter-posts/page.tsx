@@ -457,8 +457,8 @@ export default function TwitterPostsPage() {
     return date.getMonth() === currentDate.getMonth()
   }
 
-  // 時間軸用（8時〜23時）
-  const hours = Array.from({ length: 16 }, (_, i) => i + 8)
+  // 時間軸用（0時〜23時）
+  const hours = Array.from({ length: 24 }, (_, i) => i)
 
   // 投稿を日付と時間でグループ化
   const postsByDateAndHour = useMemo(() => {
