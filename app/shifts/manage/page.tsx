@@ -86,6 +86,10 @@ function ShiftManageContent() {
 
   // CSVインポート用
   const fileInputRef = useRef<HTMLInputElement>(null)
+  // スクロールコンテナへの参照
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  // 自動スクロール用のアニメーションフレームID
+  const scrollAnimationRef = useRef<number | null>(null)
   const [isImporting, setIsImporting] = useState(false)
   const [importResult, setImportResult] = useState<{
     show: boolean
@@ -98,6 +102,76 @@ function ShiftManageContent() {
       loadData()
     }
   }, [selectedMonth, isFirstHalf, storeId, storeLoading])
+
+  // ドラッグ中の自動スクロール
+  useEffect(() => {
+    if (!draggedCastId) {
+      // ドラッグ終了時にアニメーションをキャンセル
+      if (scrollAnimationRef.current) {
+        cancelAnimationFrame(scrollAnimationRef.current)
+        scrollAnimationRef.current = null
+      }
+      return
+    }
+
+    const handleDocumentDragOver = (e: DragEvent) => {
+      const container = scrollContainerRef.current
+      if (!container) return
+
+      const containerRect = container.getBoundingClientRect()
+      const mouseY = e.clientY
+      const scrollThreshold = 60 // 端からのピクセル数
+      const maxScrollSpeed = 15
+
+      // コンテナ内でのマウス位置を計算
+      const relativeY = mouseY - containerRect.top
+      const containerHeight = containerRect.height
+
+      let scrollDirection = 0
+      let scrollSpeed = 0
+
+      if (relativeY < scrollThreshold && relativeY > 0) {
+        // 上端に近い場合
+        scrollDirection = -1
+        // 端に近いほど速くスクロール
+        scrollSpeed = maxScrollSpeed * (1 - relativeY / scrollThreshold)
+      } else if (relativeY > containerHeight - scrollThreshold && relativeY < containerHeight) {
+        // 下端に近い場合
+        scrollDirection = 1
+        // 端に近いほど速くスクロール
+        scrollSpeed = maxScrollSpeed * (1 - (containerHeight - relativeY) / scrollThreshold)
+      }
+
+      // 連続スクロールのためのアニメーションループ
+      const scroll = () => {
+        if (scrollDirection !== 0 && container) {
+          container.scrollTop += scrollDirection * Math.max(1, scrollSpeed)
+          scrollAnimationRef.current = requestAnimationFrame(scroll)
+        }
+      }
+
+      // 既存のアニメーションをキャンセル
+      if (scrollAnimationRef.current) {
+        cancelAnimationFrame(scrollAnimationRef.current)
+        scrollAnimationRef.current = null
+      }
+
+      // スクロールが必要な場合のみアニメーション開始
+      if (scrollDirection !== 0) {
+        scrollAnimationRef.current = requestAnimationFrame(scroll)
+      }
+    }
+
+    document.addEventListener('dragover', handleDocumentDragOver)
+
+    return () => {
+      document.removeEventListener('dragover', handleDocumentDragOver)
+      if (scrollAnimationRef.current) {
+        cancelAnimationFrame(scrollAnimationRef.current)
+        scrollAnimationRef.current = null
+      }
+    }
+  }, [draggedCastId])
 
   const loadData = async () => {
     setLoading(true)
@@ -471,21 +545,6 @@ function ShiftManageContent() {
     e.preventDefault()
     e.dataTransfer.dropEffect = 'move'
     setDragOverCastId(castId)
-
-    // 自動スクロール: マウスが画面端に近い場合にスクロール
-    const scrollThreshold = 80 // 端からのピクセル数
-    const scrollSpeed = 10
-
-    const mouseY = e.clientY
-    const windowHeight = window.innerHeight
-
-    if (mouseY < scrollThreshold) {
-      // 上端に近い場合、上にスクロール
-      window.scrollBy(0, -scrollSpeed)
-    } else if (mouseY > windowHeight - scrollThreshold) {
-      // 下端に近い場合、下にスクロール
-      window.scrollBy(0, scrollSpeed)
-    }
   }
 
   const handleDragLeave = () => {
@@ -1522,11 +1581,14 @@ function ShiftManageContent() {
         boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
         overflow: 'hidden'
       }}>
-        <div style={{
-          maxHeight: 'calc(100vh - 300px)',
-          overflow: 'auto',
-          position: 'relative'
-        }}>
+        <div
+          ref={scrollContainerRef}
+          style={{
+            maxHeight: 'calc(100vh - 300px)',
+            overflow: 'auto',
+            position: 'relative'
+          }}
+        >
           <table style={{
             width: '100%',
             borderCollapse: 'collapse',
