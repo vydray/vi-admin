@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
 import { toast } from 'react-hot-toast'
@@ -28,86 +28,105 @@ export default function GeneratePage() {
   const [generatedImages, setGeneratedImages] = useState<string[]>([])
   const [currentPage, setCurrentPage] = useState(0)
   const [sortBy, setSortBy] = useState<'time' | 'name' | 'manual'>('time')
-  const [hasTemplate, setHasTemplate] = useState(false)
+  const [hasTemplate, setHasTemplate] = useState<boolean | null>(null)
+
+  // 最新のロードリクエストを追跡するref
+  const latestLoadRef = useRef<number>(0)
 
   useEffect(() => {
-    // storeの読み込みが完了してからテンプレートチェック
+    // storeの読み込みが完了してからデータ取得
     if (!storeLoading && storeId) {
-      checkTemplate()
+      checkTemplate(storeId)
+      loadShiftCasts(storeId, selectedDate)
     }
   }, [storeId, storeLoading])
 
   useEffect(() => {
-    // storeの読み込みが完了してからシフト取得
+    // 日付変更時にシフト再取得
     if (!storeLoading && storeId && selectedDate) {
-      loadShiftCasts()
+      loadShiftCasts(storeId, selectedDate)
     }
-  }, [storeId, storeLoading, selectedDate])
+  }, [selectedDate])
 
   useEffect(() => {
     sortCasts()
   }, [sortBy, shiftCasts])
 
-  const checkTemplate = async () => {
-    const response = await fetch(`/api/schedule/template?storeId=${storeId}`)
-    const data = await response.json()
-    setHasTemplate(!!data.template?.image_path)
+  const checkTemplate = async (targetStoreId: number) => {
+    try {
+      const response = await fetch(`/api/schedule/template?storeId=${targetStoreId}`)
+      const data = await response.json()
+      setHasTemplate(!!data.template?.image_path)
+    } catch {
+      setHasTemplate(false)
+    }
   }
 
-  const loadShiftCasts = async () => {
+  const loadShiftCasts = async (targetStoreId: number, targetDate: string) => {
+    const loadId = Date.now()
+    latestLoadRef.current = loadId
+
     setLoading(true)
+    setShiftCasts([])
+    setOrderedCastIds([])
     setGeneratedImages([])
     setCurrentPage(0)
 
-    // 出勤シフトを取得
-    const { data: shifts, error: shiftsError } = await supabase
-      .from('shifts')
-      .select('cast_id, start_time, end_time')
-      .eq('store_id', storeId)
-      .eq('date', selectedDate)
-      .eq('is_cancelled', false)
+    try {
+      // 出勤シフトを取得
+      const { data: shifts, error: shiftsError } = await supabase
+        .from('shifts')
+        .select('cast_id, start_time, end_time')
+        .eq('store_id', targetStoreId)
+        .eq('date', targetDate)
+        .eq('is_cancelled', false)
 
-    if (shiftsError || !shifts) {
-      setShiftCasts([])
-      setOrderedCastIds([])
-      setLoading(false)
-      return
-    }
+      // 最新のリクエストでなければ無視
+      if (latestLoadRef.current !== loadId) return
 
-    const castIds = shifts.map((s) => s.cast_id)
-    if (castIds.length === 0) {
-      setShiftCasts([])
-      setOrderedCastIds([])
-      setLoading(false)
-      return
-    }
-
-    // キャスト情報を取得
-    const { data: casts, error: castsError } = await supabase
-      .from('casts')
-      .select('id, name, photo_path')
-      .in('id', castIds)
-
-    if (castsError || !casts) {
-      setShiftCasts([])
-      setOrderedCastIds([])
-      setLoading(false)
-      return
-    }
-
-    // シフト情報とマージ
-    const castsWithShift: Cast[] = casts.map((cast) => {
-      const shift = shifts.find((s) => s.cast_id === cast.id)
-      return {
-        ...cast,
-        start_time: shift?.start_time,
-        end_time: shift?.end_time,
+      if (shiftsError || !shifts || shifts.length === 0) {
+        setShiftCasts([])
+        setOrderedCastIds([])
+        return
       }
-    })
 
-    setShiftCasts(castsWithShift)
-    setOrderedCastIds(castsWithShift.map((c) => c.id))
-    setLoading(false)
+      const castIds = shifts.map((s) => s.cast_id)
+
+      // キャスト情報を取得
+      const { data: casts, error: castsError } = await supabase
+        .from('casts')
+        .select('id, name, photo_path')
+        .in('id', castIds)
+
+      // 最新のリクエストでなければ無視
+      if (latestLoadRef.current !== loadId) return
+
+      if (castsError || !casts) {
+        setShiftCasts([])
+        setOrderedCastIds([])
+        return
+      }
+
+      // シフト情報とマージ
+      const castsWithShift: Cast[] = casts.map((cast) => {
+        const shift = shifts.find((s) => s.cast_id === cast.id)
+        return {
+          ...cast,
+          start_time: shift?.start_time,
+          end_time: shift?.end_time,
+        }
+      })
+
+      setShiftCasts(castsWithShift)
+      setOrderedCastIds(castsWithShift.map((c) => c.id))
+    } catch (error) {
+      if (latestLoadRef.current !== loadId) return
+      console.error('Load shifts error:', error)
+    } finally {
+      if (latestLoadRef.current === loadId) {
+        setLoading(false)
+      }
+    }
   }
 
   const sortCasts = () => {
@@ -195,6 +214,15 @@ export default function GeneratePage() {
   const orderedCasts = orderedCastIds
     .map((id) => shiftCasts.find((c) => c.id === id))
     .filter((c): c is Cast => c !== undefined)
+
+  // storeLoading中またはhasTemplateがnull（未確認）の場合はローディング表示
+  if (storeLoading || hasTemplate === null) {
+    return (
+      <div style={styles.container}>
+        <div style={styles.loadingText}>読み込み中...</div>
+      </div>
+    )
+  }
 
   return (
     <div style={styles.container}>
