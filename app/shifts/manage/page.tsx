@@ -471,6 +471,21 @@ function ShiftManageContent() {
     e.preventDefault()
     e.dataTransfer.dropEffect = 'move'
     setDragOverCastId(castId)
+
+    // 自動スクロール: マウスが画面端に近い場合にスクロール
+    const scrollThreshold = 80 // 端からのピクセル数
+    const scrollSpeed = 10
+
+    const mouseY = e.clientY
+    const windowHeight = window.innerHeight
+
+    if (mouseY < scrollThreshold) {
+      // 上端に近い場合、上にスクロール
+      window.scrollBy(0, -scrollSpeed)
+    } else if (mouseY > windowHeight - scrollThreshold) {
+      // 下端に近い場合、下にスクロール
+      window.scrollBy(0, scrollSpeed)
+    }
   }
 
   const handleDragLeave = () => {
@@ -509,21 +524,28 @@ function ShiftManageContent() {
     setCasts(updatedCasts)
     setDraggedCastId(null)
 
-    // データベースに保存（バッチ化）
+    // データベースに保存
     try {
-      const updates = updatedCasts.map((cast, index) => ({
-        id: cast.id,
-        display_order: index + 1
-      }))
+      // 各キャストのdisplay_orderを更新
+      const updatePromises = updatedCasts.map((cast, index) =>
+        supabase
+          .from('casts')
+          .update({ display_order: index + 1 })
+          .eq('id', cast.id)
+          .eq('store_id', storeId)
+      )
 
-      // upsertでまとめて更新
-      await supabase
-        .from('casts')
-        .upsert(updates, { onConflict: 'id' })
+      const results = await Promise.all(updatePromises)
+      const hasError = results.some(r => r.error)
 
+      if (hasError) {
+        console.error('並び順の保存エラー:', results.filter(r => r.error))
+        toast.error('並び順の保存に失敗しました')
+        loadCasts()
+      }
     } catch (error) {
       console.error('並び順の保存エラー:', error)
-      toast.success('並び順の保存に失敗しました')
+      toast.error('並び順の保存に失敗しました')
       // エラー時はリロード
       loadCasts()
     }
