@@ -394,7 +394,7 @@ export default function CompensationSettingsPage() {
 }
 
 function CompensationSettingsPageContent() {
-  const { storeId, storeName } = useStore()
+  const { storeId, storeName, isLoading: storeLoading } = useStore()
   const [casts, setCasts] = useState<CastWithStatus[]>([])
   const [selectedCastId, setSelectedCastId] = useState<number | null>(null)
   const [settingsState, setSettingsState] = useState<SettingsState | null>(null)
@@ -997,16 +997,18 @@ function CompensationSettingsPageContent() {
   }, [storeId])
 
   useEffect(() => {
-    loadCasts()
-    loadPayDay()
-    loadSalesSettings()
-    loadSystemSettings()
-    loadProducts()
-    loadBackRates()
-    loadWageStatuses()
-    loadSampleReceipt()
-    loadDeductionTypes()
-  }, [loadCasts, loadPayDay, loadSalesSettings, loadSystemSettings, loadProducts, loadBackRates, loadWageStatuses, loadSampleReceipt, loadDeductionTypes])
+    if (!storeLoading && storeId) {
+      loadCasts()
+      loadPayDay()
+      loadSalesSettings()
+      loadSystemSettings()
+      loadProducts()
+      loadBackRates()
+      loadWageStatuses()
+      loadSampleReceipt()
+      loadDeductionTypes()
+    }
+  }, [loadCasts, loadPayDay, loadSalesSettings, loadSystemSettings, loadProducts, loadBackRates, loadWageStatuses, loadSampleReceipt, loadDeductionTypes, storeLoading, storeId])
 
   useEffect(() => {
     if (selectedCastId) {
@@ -2108,7 +2110,7 @@ function CompensationSettingsPageContent() {
     setShowSlidingModal(false)
   }
 
-  if (loading) {
+  if (storeLoading || loading) {
     return <LoadingSpinner />
   }
 

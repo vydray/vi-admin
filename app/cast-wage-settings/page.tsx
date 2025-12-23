@@ -33,7 +33,7 @@ export default function CastWageSettingsPage() {
 }
 
 function CastWageSettingsPageContent() {
-  const { storeId, storeName } = useStore()
+  const { storeId, storeName, isLoading: storeLoading } = useStore()
   const [casts, setCasts] = useState<CastWithStatus[]>([])
   const [wageStatuses, setWageStatuses] = useState<WageStatus[]>([])
   const [compensationSettings, setCompensationSettings] = useState<CompensationSettings[]>([])
@@ -96,8 +96,10 @@ function CastWageSettingsPageContent() {
   }, [storeId, selectedCastId])
 
   useEffect(() => {
-    loadData()
-  }, [loadData])
+    if (!storeLoading && storeId) {
+      loadData()
+    }
+  }, [loadData, storeLoading, storeId])
 
   // キャストが選択されたときに設定を読み込む
   useEffect(() => {
@@ -246,7 +248,7 @@ function CastWageSettingsPageContent() {
     ? wageStatuses.find(s => s.id === editingSettings.status_id)
     : null
 
-  if (loading) {
+  if (storeLoading || loading) {
     return <LoadingSpinner />
   }
 

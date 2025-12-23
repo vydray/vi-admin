@@ -38,7 +38,7 @@ export default function AttendancePage() {
 }
 
 function AttendancePageContent() {
-  const { storeId } = useStore()
+  const { storeId, isLoading: storeLoading } = useStore()
   const { confirm } = useConfirm()
   const [selectedMonth, setSelectedMonth] = useState(new Date())
   const [casts, setCasts] = useState<CastBasic[]>([])
@@ -150,8 +150,10 @@ function AttendancePageContent() {
   }, [loadCasts, loadAttendances, loadAttendanceStatuses, loadCostumes])
 
   useEffect(() => {
-    loadData()
-  }, [loadData])
+    if (!storeLoading && storeId) {
+      loadData()
+    }
+  }, [loadData, storeLoading, storeId])
 
   useEffect(() => {
     if (showStatusModal) {
@@ -224,9 +226,19 @@ function AttendancePageContent() {
     }
   }
 
-  // Note: is_activeカラムは現在のDBスキーマに存在しないため、この機能は無効化
-  const toggleStatusActive = async (_statusId: string, _currentActive: boolean) => {
-    toast.error('この機能は現在利用できません')
+  const toggleStatusActive = async (statusId: string, currentActive: boolean) => {
+    try {
+      const { error } = await supabase
+        .from('attendance_statuses')
+        .update({ is_active: !currentActive })
+        .eq('id', statusId)
+
+      if (error) throw error
+      await loadAttendanceStatuses()
+    } catch (error) {
+      console.error('ステータス更新エラー:', error)
+      toast.error('ステータスの更新に失敗しました')
+    }
   }
 
   const deleteAttendanceStatus = async (statusId: string) => {
@@ -558,7 +570,7 @@ function AttendancePageContent() {
     return { castId, dateStr, cast, date, attendance }
   }, [editingCell, casts, attendances])
 
-  if (loading) {
+  if (storeLoading || loading) {
     return <LoadingSpinner />
   }
 

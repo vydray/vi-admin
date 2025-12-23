@@ -79,7 +79,7 @@ export default function CastSalesPage() {
 }
 
 function CastSalesPageContent() {
-  const { storeId, storeName } = useStore()
+  const { storeId, storeName, isLoading: storeLoading } = useStore()
   const { confirm } = useConfirm()
   const [selectedMonth, setSelectedMonth] = useState(new Date())
   const [salesData, setSalesData] = useState<CastSalesData[]>([])
@@ -498,8 +498,10 @@ function CastSalesPageContent() {
   }, [loadCasts, loadSalesSettings, loadBackRates, loadSystemSettings, loadSalesData, loadRegisteredProducts, selectedMonth, storeId])
 
   useEffect(() => {
-    loadData()
-  }, [loadData])
+    if (!storeLoading && storeId) {
+      loadData()
+    }
+  }, [loadData, storeLoading, storeId])
 
   // 確定状態を確認
   const checkFinalizedStatus = useCallback(async () => {
@@ -665,7 +667,7 @@ function CastSalesPageContent() {
     return parts.join(' / ')
   }, [salesSettings])
 
-  if (loading) {
+  if (storeLoading || loading) {
     return <LoadingSpinner />
   }
 

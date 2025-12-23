@@ -428,7 +428,7 @@ export default function SalesSettingsPage() {
 }
 
 function SalesSettingsPageContent() {
-  const { storeId } = useStore()
+  const { storeId, isLoading: storeLoading } = useStore()
   const [settings, setSettings] = useState<SalesSettings | null>(null)
   const latestStoreIdRef = useRef(storeId)
   const [systemSettings, setSystemSettings] = useState<SystemSettings>({
@@ -537,8 +537,10 @@ function SalesSettingsPageContent() {
 
   useEffect(() => {
     latestStoreIdRef.current = storeId
-    loadSettings()
-  }, [storeId, loadSettings])
+    if (!storeLoading && storeId) {
+      loadSettings()
+    }
+  }, [storeId, loadSettings, storeLoading])
 
   const handleSave = async () => {
     if (!settings) return
@@ -1524,7 +1526,7 @@ function SalesSettingsPageContent() {
     }
   }, [settings, systemSettings, previewNominations, previewItems])
 
-  if (loading) {
+  if (storeLoading || loading) {
     return <LoadingSpinner />
   }
 

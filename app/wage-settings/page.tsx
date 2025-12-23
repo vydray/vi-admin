@@ -20,7 +20,7 @@ export default function WageSettingsPage() {
 }
 
 function WageSettingsPageContent() {
-  const { storeId, storeName } = useStore()
+  const { storeId, storeName, isLoading: storeLoading } = useStore()
   const [activeTab, setActiveTab] = useState<TabType>('basic')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -115,8 +115,10 @@ function WageSettingsPageContent() {
   }, [storeId])
 
   useEffect(() => {
-    loadData()
-  }, [loadData])
+    if (!storeLoading && storeId) {
+      loadData()
+    }
+  }, [loadData, storeLoading, storeId])
 
   // 基本設定を保存
   const saveBasicSettings = async () => {
@@ -161,7 +163,7 @@ function WageSettingsPageContent() {
     }
   }
 
-  if (loading) {
+  if (storeLoading || loading) {
     return (
       <div style={styles.container}>
         <LoadingSpinner />

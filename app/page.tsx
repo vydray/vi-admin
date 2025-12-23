@@ -74,7 +74,7 @@ interface OrderWithPayment {
 }
 
 export default function Home() {
-  const { storeId, storeName } = useStore()
+  const { storeId, storeName, isLoading: storeLoading } = useStore()
   const [data, setData] = useState<DashboardData>({
     todaySales: 0,
     monthlySales: 0,
@@ -162,8 +162,10 @@ export default function Home() {
   }
 
   useEffect(() => {
-    fetchDashboardData()
-  }, [storeId, selectedYear, selectedMonth])
+    if (!storeLoading && storeId) {
+      fetchDashboardData()
+    }
+  }, [storeId, selectedYear, selectedMonth, storeLoading])
 
   const exportToCSV = async (exportType: 'receipts' | 'monthly') => {
     setIsExporting(true)
@@ -514,7 +516,7 @@ export default function Home() {
     }
   }
 
-  if (loading) {
+  if (storeLoading || loading) {
     return <LoadingSpinner />
   }
 

@@ -35,7 +35,7 @@ export default function BaseSettingsPage() {
 }
 
 function BaseSettingsPageContent() {
-  const { storeId, storeName } = useStore()
+  const { storeId, storeName, isLoading: storeLoading } = useStore()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // データ
@@ -180,8 +180,10 @@ function BaseSettingsPageContent() {
   }, [storeId])
 
   useEffect(() => {
-    loadData()
-  }, [loadData])
+    if (!storeLoading && storeId) {
+      loadData()
+    }
+  }, [loadData, storeLoading, storeId])
 
   // 商品追加
   const handleAddProduct = async () => {
@@ -688,7 +690,7 @@ function BaseSettingsPageContent() {
       })
     : []
 
-  if (loading) {
+  if (storeLoading || loading) {
     return <LoadingSpinner />
   }
 

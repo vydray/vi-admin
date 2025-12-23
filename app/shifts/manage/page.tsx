@@ -56,7 +56,7 @@ export default function ShiftManage() {
 }
 
 function ShiftManageContent() {
-  const { storeId } = useStore()
+  const { storeId, isLoading: storeLoading } = useStore()
   const { confirm } = useConfirm()
   const [selectedMonth, setSelectedMonth] = useState(new Date())
   const [isFirstHalf, setIsFirstHalf] = useState(true)
@@ -94,8 +94,10 @@ function ShiftManageContent() {
   }>({ show: false, success: 0, errors: [] })
 
   useEffect(() => {
-    loadData()
-  }, [selectedMonth, isFirstHalf, storeId])
+    if (!storeLoading && storeId) {
+      loadData()
+    }
+  }, [selectedMonth, isFirstHalf, storeId, storeLoading])
 
   const loadData = async () => {
     setLoading(true)
@@ -1055,7 +1057,7 @@ function ShiftManageContent() {
     }
   }
 
-  if (loading) {
+  if (storeLoading || loading) {
     return <LoadingSpinner />
   }
 

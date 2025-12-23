@@ -5,6 +5,7 @@ import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
 import Button from '@/components/Button'
+import LoadingSpinner from '@/components/LoadingSpinner'
 import ProtectedPage from '@/components/ProtectedPage'
 import type { StoreSettings, SystemSettings } from '@/types'
 
@@ -17,7 +18,7 @@ export default function StoreSettingsPage() {
 }
 
 function StoreSettingsPageContent() {
-  const { storeId } = useStore()
+  const { storeId, isLoading: storeLoading } = useStore()
   const latestStoreIdRef = useRef(storeId)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -51,10 +52,10 @@ function StoreSettingsPageContent() {
 
   useEffect(() => {
     latestStoreIdRef.current = storeId
-    if (storeId) {
+    if (!storeLoading && storeId) {
       loadSettings(storeId)
     }
-  }, [storeId])
+  }, [storeId, storeLoading])
 
   const loadSettings = async (currentStoreId: number) => {
     setLoading(true)
@@ -282,6 +283,10 @@ function StoreSettingsPageContent() {
   const handleDragLeave = (e: React.DragEvent) => {
     e.preventDefault()
     setIsDragging(false)
+  }
+
+  if (storeLoading || loading) {
+    return <LoadingSpinner />
   }
 
   return (

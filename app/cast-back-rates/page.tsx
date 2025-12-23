@@ -54,7 +54,7 @@ export default function CastBackRatesPage() {
 }
 
 function CastBackRatesPageContent() {
-  const { storeId, storeName } = useStore()
+  const { storeId, storeName, isLoading: storeLoading } = useStore()
   const [casts, setCasts] = useState<CastWithStatus[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [products, setProducts] = useState<Product[]>([])
@@ -169,8 +169,10 @@ function CastBackRatesPageContent() {
   }, [storeId, selectedCastId])
 
   useEffect(() => {
-    loadData()
-  }, [loadData])
+    if (!storeLoading && storeId) {
+      loadData()
+    }
+  }, [loadData, storeLoading, storeId])
 
   // フィルター済みキャスト一覧
   const filteredCasts = useMemo(() => {
@@ -543,7 +545,7 @@ function CastBackRatesPageContent() {
 
   const selectedCast = casts.find((c) => c.id === selectedCastId)
 
-  if (loading) {
+  if (storeLoading || loading) {
     return <LoadingSpinner />
   }
 

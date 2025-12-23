@@ -20,7 +20,7 @@ export default function CategoriesPage() {
 }
 
 function CategoriesPageContent() {
-  const { storeId } = useStore()
+  const { storeId, isLoading: storeLoading } = useStore()
   const { confirm } = useConfirm()
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
@@ -34,8 +34,10 @@ function CategoriesPageContent() {
   const [isDragging, setIsDragging] = useState(false)
 
   useEffect(() => {
-    loadCategories()
-  }, [storeId])
+    if (!storeLoading && storeId) {
+      loadCategories()
+    }
+  }, [storeId, storeLoading])
 
   const loadCategories = async () => {
     setLoading(true)
@@ -325,6 +327,10 @@ function CategoriesPageContent() {
 
   const handleDragLeave = () => {
     setIsDragging(false)
+  }
+
+  if (storeLoading || loading) {
+    return <LoadingSpinner />
   }
 
   return (

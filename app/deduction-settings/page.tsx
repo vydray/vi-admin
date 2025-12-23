@@ -103,7 +103,7 @@ export default function DeductionSettingsPage() {
 }
 
 function DeductionSettingsPageContent() {
-  const { storeId } = useStore()
+  const { storeId, isLoading: storeLoading } = useStore()
   const { confirm } = useConfirm()
   const [loading, setLoading] = useState(true)
   const [deductionTypes, setDeductionTypes] = useState<DeductionType[]>([])
@@ -249,8 +249,10 @@ function DeductionSettingsPageContent() {
   }, [storeId])
 
   useEffect(() => {
-    loadData()
-  }, [loadData])
+    if (!storeLoading && storeId) {
+      loadData()
+    }
+  }, [loadData, storeLoading, storeId])
 
   const resetForm = () => {
     setFormData({
@@ -544,7 +546,7 @@ function DeductionSettingsPageContent() {
     }
   }
 
-  if (loading) return <LoadingSpinner />
+  if (storeLoading || loading) return <LoadingSpinner />
 
   return (
     <div style={{ padding: '20px', maxWidth: '1000px', margin: '0 auto' }}>

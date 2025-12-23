@@ -168,7 +168,7 @@ export default function PayslipPage() {
 }
 
 function PayslipPageContent() {
-  const { storeId } = useStore()
+  const { storeId, isLoading: storeLoading } = useStore()
   const [loading, setLoading] = useState(true)
   const [selectedMonth, setSelectedMonth] = useState(new Date())
   const [casts, setCasts] = useState<Cast[]>([])
@@ -896,6 +896,7 @@ function PayslipPageContent() {
 
   // 初期ロード
   useEffect(() => {
+    if (storeLoading || !storeId) return
     const init = async () => {
       setLoading(true)
       await loadCasts()
@@ -906,7 +907,7 @@ function PayslipPageContent() {
       setLoading(false)
     }
     init()
-  }, [loadCasts, loadDeductionSettings, loadSalesSettings, loadBackRates])
+  }, [loadCasts, loadDeductionSettings, loadSalesSettings, loadBackRates, storeLoading, storeId])
 
   // キャストまたは月が変わったらデータを再取得（初期ロード完了後のみ）
   // ※ キャスト切り替え時のチカチカを防ぐため、loading状態は変更しない

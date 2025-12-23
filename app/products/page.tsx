@@ -21,7 +21,7 @@ export default function ProductsPage() {
 }
 
 function ProductsPageContent() {
-  const { storeId } = useStore()
+  const { storeId, isLoading: storeLoading } = useStore()
   const { confirm } = useConfirm()
   const [categories, setCategories] = useState<Category[]>([])
   const [products, setProducts] = useState<Product[]>([])
@@ -77,8 +77,10 @@ function ProductsPageContent() {
   }, [loadCategories, loadProducts])
 
   useEffect(() => {
-    loadData()
-  }, [loadData])
+    if (!storeLoading && storeId) {
+      loadData()
+    }
+  }, [loadData, storeLoading, storeId])
 
   const addProduct = async () => {
     if (!newProductName.trim() || !newProductPrice || !newProductCategory) {
@@ -516,6 +518,10 @@ function ProductsPageContent() {
         />
       </div>
     )
+  }
+
+  if (storeLoading || loading) {
+    return <LoadingSpinner />
   }
 
   return (

@@ -61,7 +61,7 @@ export default function ReceiptsPage() {
 }
 
 function ReceiptsPageContent() {
-  const { storeId } = useStore()
+  const { storeId, isLoading: storeLoading } = useStore()
   const { confirm } = useConfirm()
   const [receipts, setReceipts] = useState<ReceiptWithDetails[]>([])
   const [loading, setLoading] = useState(true)
@@ -317,10 +317,12 @@ function ReceiptsPageContent() {
   }
 
   useEffect(() => {
-    loadReceipts()
-    loadMasterData()
-    loadSystemSettings()
-  }, [loadReceipts, loadMasterData, loadSystemSettings])
+    if (!storeLoading && storeId) {
+      loadReceipts()
+      loadMasterData()
+      loadSystemSettings()
+    }
+  }, [loadReceipts, loadMasterData, loadSystemSettings, storeLoading, storeId])
 
   const loadReceiptDetails = async (receipt: Receipt) => {
     try {
@@ -1321,7 +1323,7 @@ function ReceiptsPageContent() {
     return new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY' }).format(amount)
   }
 
-  if (loading) {
+  if (storeLoading || loading) {
     return <LoadingSpinner />
   }
 

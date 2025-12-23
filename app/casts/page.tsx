@@ -22,7 +22,7 @@ export default function CastsPage() {
 }
 
 function CastsPageContent() {
-  const { storeId } = useStore()
+  const { storeId, isLoading: storeLoading } = useStore()
   const { confirm } = useConfirm()
   const { user } = useAuth()
   const isSuperAdmin = user?.role === 'super_admin'
@@ -129,9 +129,11 @@ function CastsPageContent() {
   }, [storeId])
 
   useEffect(() => {
-    loadCasts()
-    loadPositions()
-  }, [loadCasts, loadPositions])
+    if (!storeLoading && storeId) {
+      loadCasts()
+      loadPositions()
+    }
+  }, [loadCasts, loadPositions, storeLoading, storeId])
 
   const applyFilters = useCallback(() => {
     setSearchQuery(tempSearchQuery)
@@ -588,6 +590,10 @@ function CastsPageContent() {
         />
       </div>
     )
+  }
+
+  if (storeLoading || loading) {
+    return <LoadingSpinner />
   }
 
   return (
