@@ -11,7 +11,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const { user, isLoading: authLoading } = useAuth()
   const [storeId, setStoreIdState] = useState<number>(2)
   const [stores, setStores] = useState<Store[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [storesLoaded, setStoresLoaded] = useState(false)
+  const [storeIdInitialized, setStoreIdInitialized] = useState(false)
 
   // ユーザーの権限に基づいて店舗IDを初期化
   useEffect(() => {
@@ -20,12 +21,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         // ユーザーのstore_idを使用（super_admin/store_admin両方）
         setStoreIdState(user.store_id)
       }
+      setStoreIdInitialized(true)
     }
   }, [user, authLoading])
 
   useEffect(() => {
     loadStores()
   }, [])
+
+  // isLoadingは、店舗リストの読み込み中 OR ユーザー情報の読み込み中 OR storeIdが未確定の場合にtrue
+  const isLoading = !storesLoaded || authLoading || !storeIdInitialized
 
   const loadStores = async () => {
     try {
@@ -59,7 +64,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         { id: 2, name: 'Mistress Mirage' }
       ])
     } finally {
-      setIsLoading(false)
+      setStoresLoaded(true)
     }
   }
 

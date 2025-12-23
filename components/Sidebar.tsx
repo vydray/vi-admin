@@ -34,6 +34,15 @@ const mainItems: MenuItem[] = [
 // グループ化されたメニュー
 const menuGroups: MenuGroup[] = [
   {
+    name: '出勤表作成',
+    icon: '📸',
+    items: [
+      { name: 'キャスト写真', path: '/schedule/photos', icon: '🖼️' },
+      { name: 'テンプレート', path: '/schedule/template', icon: '🎨' },
+      { name: '生成', path: '/schedule/generate', icon: '✨' },
+    ]
+  },
+  {
     name: '商品',
     icon: '🛍️',
     items: [
@@ -61,15 +70,6 @@ const menuGroups: MenuGroup[] = [
       { name: 'BASE連携', path: '/base-settings', icon: '🛒' },
       { name: '店舗設定', path: '/store-settings', icon: '🏪' },
       { name: '設定', path: '/settings', icon: '⚙️' },
-    ]
-  },
-  {
-    name: '出勤表作成',
-    icon: '📸',
-    items: [
-      { name: 'キャスト写真', path: '/schedule/photos', icon: '🖼️' },
-      { name: 'テンプレート', path: '/schedule/template', icon: '🎨' },
-      { name: '生成', path: '/schedule/generate', icon: '✨' },
     ]
   },
   {
