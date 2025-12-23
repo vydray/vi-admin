@@ -457,32 +457,41 @@ function CastsPageContent() {
   }, [editingCast, storeId, closeModal, loadCasts])
 
   const handleDeleteCast = useCallback(async (castId: number, castName: string) => {
-    if (!await confirm(`${castName}を削除してもよろしいですか？\nこの操作は取り消せません。`)) {
+    if (!await confirm(`${castName}を削除してもよろしいですか？\n関連する全てのデータ（シフト、売上、給与明細など）も削除されます。\nこの操作は取り消せません。`)) {
       return
     }
 
-    // 関連するshift_locksを先に削除
-    await supabase
-      .from('shift_locks')
-      .delete()
-      .eq('cast_id', castId)
+    try {
+      // 関連データを全て削除（外部キー制約の順序で削除）
+      await Promise.all([
+        supabase.from('shift_locks').delete().eq('cast_id', castId),
+        supabase.from('cast_daily_stats').delete().eq('cast_id', castId),
+        supabase.from('payslips').delete().eq('cast_id', castId),
+        supabase.from('compensation_settings').delete().eq('cast_id', castId),
+        supabase.from('requests').delete().eq('cast_id', castId),
+        supabase.from('base_variations').delete().eq('cast_id', castId),
+      ])
 
-    const { error } = await supabase
-      .from('casts')
-      .delete()
-      .eq('id', castId)
-      .eq('store_id', storeId)
+      const { error } = await supabase
+        .from('casts')
+        .delete()
+        .eq('id', castId)
+        .eq('store_id', storeId)
 
-    if (error) {
-      console.error('Error deleting cast:', error)
-      if (error.code === '23503') {
-        toast.error('関連データがあるため削除できません')
+      if (error) {
+        console.error('Error deleting cast:', error)
+        if (error.code === '23503') {
+          toast.error('関連データがあるため削除できません: ' + error.details)
+        } else {
+          toast.error('削除に失敗しました')
+        }
       } else {
-        toast.error('削除に失敗しました')
+        toast.success('削除しました')
+        loadCasts()
       }
-    } else {
-      toast.success('削除しました')
-      loadCasts()
+    } catch (err) {
+      console.error('Error deleting cast:', err)
+      toast.error('削除に失敗しました')
     }
   }, [confirm, loadCasts, storeId])
 
@@ -575,7 +584,10 @@ function CastsPageContent() {
     const isOn = value === true
     return (
       <div
-        onClick={() => updateCastField(castId, field, !isOn)}
+        onClick={(e) => {
+          e.stopPropagation()
+          updateCastField(castId, field, !isOn)
+        }}
         style={{
           width: '44px',
           height: '24px',
