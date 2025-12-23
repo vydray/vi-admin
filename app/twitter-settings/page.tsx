@@ -256,37 +256,58 @@ export default function TwitterSettingsPage() {
           )}
         </div>
 
-        {/* 使い方 */}
+        {/* Developer Portal設定ガイド */}
         <div style={styles.section}>
-          <h2 style={styles.sectionTitle}>使い方</h2>
+          <h2 style={styles.sectionTitle}>Twitter Developer Portal 設定ガイド</h2>
           <div style={styles.instructions}>
             <div style={styles.step}>
               <span style={styles.stepNumber}>1</span>
               <div>
-                <p style={styles.stepTitle}>Twitter Developer Portalでアプリを作成</p>
+                <p style={styles.stepTitle}>Developer Portalでアプリを作成</p>
                 <p style={styles.stepText}>
-                  developer.twitter.com でDeveloper Accountを作成し、新しいAppを作成します。
+                  <a href="https://developer.twitter.com/en/portal/dashboard" target="_blank" rel="noopener noreferrer" style={styles.link}>
+                    developer.twitter.com
+                  </a> でDeveloper Accountを作成し、新しいAppを作成します。
                 </p>
               </div>
             </div>
             <div style={styles.step}>
               <span style={styles.stepNumber}>2</span>
               <div>
-                <p style={styles.stepTitle}>API KeyとSecretを取得</p>
+                <p style={styles.stepTitle}>ユーザー認証設定 (User authentication settings)</p>
                 <p style={styles.stepText}>
-                  アプリの「Keys and tokens」からAPI KeyとAPI Secretをコピーします。
+                  Appの設定画面で「User authentication settings」の「Set up」をクリックし、以下を設定：
                 </p>
+                <div style={styles.settingsList}>
+                  <div style={styles.settingItem}>
+                    <span style={styles.settingLabel}>アプリの種類:</span>
+                    <span style={styles.settingValue}>Web App, Automated App or Bot</span>
+                  </div>
+                  <div style={styles.settingItem}>
+                    <span style={styles.settingLabel}>アプリの権限:</span>
+                    <span style={styles.settingValue}>読み取りと書き込み (Read and Write)</span>
+                  </div>
+                  <div style={styles.settingItem}>
+                    <span style={styles.settingLabel}>コールバックURL:</span>
+                    <code style={styles.code}>
+                      {typeof window !== 'undefined' ? `${window.location.origin}/api/twitter/callback` : 'https://vi-admin-psi.vercel.app/api/twitter/callback'}
+                    </code>
+                  </div>
+                  <div style={styles.settingItem}>
+                    <span style={styles.settingLabel}>ウェブサイトURL:</span>
+                    <code style={styles.code}>
+                      {typeof window !== 'undefined' ? window.location.origin : 'https://vi-admin-psi.vercel.app'}
+                    </code>
+                  </div>
+                </div>
               </div>
             </div>
             <div style={styles.step}>
               <span style={styles.stepNumber}>3</span>
               <div>
-                <p style={styles.stepTitle}>Callback URLを設定</p>
+                <p style={styles.stepTitle}>API KeyとSecretを取得</p>
                 <p style={styles.stepText}>
-                  Appの設定で、Callback URLに以下を追加してください：<br />
-                  <code style={styles.code}>
-                    {typeof window !== 'undefined' ? `${window.location.origin}/api/twitter/callback` : ''}
-                  </code>
+                  「Keys and tokens」タブから「API Key and Secret」を生成してコピーします。
                 </p>
               </div>
             </div>
@@ -295,7 +316,7 @@ export default function TwitterSettingsPage() {
               <div>
                 <p style={styles.stepTitle}>認証情報を入力して連携</p>
                 <p style={styles.stepText}>
-                  上記フォームにAPI情報を入力し、「Twitterと連携」で投稿用アカウントを認証します。
+                  上記フォームにAPI情報を入力・保存し、「Twitterと連携」で投稿用アカウントを認証します。
                 </p>
               </div>
             </div>
@@ -520,5 +541,33 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '12px',
     marginTop: '4px',
     wordBreak: 'break-all',
+  },
+  link: {
+    color: '#3b82f6',
+    textDecoration: 'underline',
+  },
+  settingsList: {
+    marginTop: '12px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px',
+    backgroundColor: '#f9fafb',
+    padding: '12px',
+    borderRadius: '8px',
+  },
+  settingItem: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '4px',
+  },
+  settingLabel: {
+    fontSize: '12px',
+    fontWeight: '600',
+    color: '#374151',
+  },
+  settingValue: {
+    fontSize: '13px',
+    color: '#1a1a2e',
+    fontWeight: '500',
   },
 }
