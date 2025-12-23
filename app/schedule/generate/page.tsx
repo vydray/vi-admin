@@ -25,7 +25,8 @@ export default function GeneratePage() {
   const [orderedCastIds, setOrderedCastIds] = useState<number[]>([])
   const [loading, setLoading] = useState(false)
   const [generating, setGenerating] = useState(false)
-  const [generatedImage, setGeneratedImage] = useState<string | null>(null)
+  const [generatedImages, setGeneratedImages] = useState<string[]>([])
+  const [currentPage, setCurrentPage] = useState(0)
   const [sortBy, setSortBy] = useState<'time' | 'name' | 'manual'>('time')
   const [hasTemplate, setHasTemplate] = useState(false)
 
@@ -55,7 +56,8 @@ export default function GeneratePage() {
 
   const loadShiftCasts = async () => {
     setLoading(true)
-    setGeneratedImage(null)
+    setGeneratedImages([])
+    setCurrentPage(0)
 
     // 出勤シフトを取得
     const { data: shifts, error: shiftsError } = await supabase
@@ -158,18 +160,10 @@ export default function GeneratePage() {
 
       const data = await response.json()
       if (data.success) {
-        setGeneratedImage(data.image)
-        toast.success('画像を生成しました')
-        // デバッグ情報をコンソールに出力
-        if (data.debug) {
-          console.log('=== 生成に使用された設定 ===')
-          console.log('DBのname_style:', data.debug.templateNameStyle)
-          console.log('実際に使用:', data.debug.usedNameStyle)
-          console.log('フォント解決:', data.debug.fontResolution)
-          console.log('フォント登録:', data.debug.fontRegistration)
-          console.log('枠サイズ:', data.debug.frameSize)
-          console.log('枠数:', data.debug.framesCount, 'キャスト数:', data.debug.castsCount)
-        }
+        setGeneratedImages(data.images || [data.image])
+        setCurrentPage(0)
+        const pageCount = data.totalPages || 1
+        toast.success(pageCount > 1 ? `${pageCount}枚の画像を生成しました` : '画像を生成しました')
       } else {
         toast.error(data.error || '生成に失敗しました')
       }
@@ -180,13 +174,22 @@ export default function GeneratePage() {
     setGenerating(false)
   }
 
-  const handleDownload = () => {
-    if (!generatedImage) return
+  const handleDownload = (pageIndex?: number) => {
+    const index = pageIndex ?? currentPage
+    const image = generatedImages[index]
+    if (!image) return
 
     const link = document.createElement('a')
-    link.href = generatedImage
-    link.download = `schedule_${selectedDate}.png`
+    link.href = image
+    const suffix = generatedImages.length > 1 ? `_${index + 1}` : ''
+    link.download = `schedule_${selectedDate}${suffix}.png`
     link.click()
+  }
+
+  const handleDownloadAll = () => {
+    generatedImages.forEach((_, index) => {
+      setTimeout(() => handleDownload(index), index * 300)
+    })
   }
 
   const orderedCasts = orderedCastIds
@@ -324,12 +327,41 @@ export default function GeneratePage() {
         <div style={styles.previewSection}>
           <h3 style={styles.sectionTitle}>プレビュー</h3>
           <div style={styles.previewContainer}>
-            {generatedImage ? (
+            {generatedImages.length > 0 ? (
               <>
-                <img src={generatedImage} alt="Generated schedule" style={styles.previewImage} />
-                <button onClick={handleDownload} style={styles.downloadButton}>
-                  ダウンロード
-                </button>
+                {/* ページナビゲーション */}
+                {generatedImages.length > 1 && (
+                  <div style={styles.pageNav}>
+                    <button
+                      onClick={() => setCurrentPage(Math.max(0, currentPage - 1))}
+                      disabled={currentPage === 0}
+                      style={styles.pageNavButton}
+                    >
+                      ←
+                    </button>
+                    <span style={styles.pageInfo}>
+                      {currentPage + 1} / {generatedImages.length}
+                    </span>
+                    <button
+                      onClick={() => setCurrentPage(Math.min(generatedImages.length - 1, currentPage + 1))}
+                      disabled={currentPage === generatedImages.length - 1}
+                      style={styles.pageNavButton}
+                    >
+                      →
+                    </button>
+                  </div>
+                )}
+                <img src={generatedImages[currentPage]} alt={`Generated schedule page ${currentPage + 1}`} style={styles.previewImage} />
+                <div style={styles.downloadButtons}>
+                  <button onClick={() => handleDownload()} style={styles.downloadButton}>
+                    {generatedImages.length > 1 ? `${currentPage + 1}枚目をダウンロード` : 'ダウンロード'}
+                  </button>
+                  {generatedImages.length > 1 && (
+                    <button onClick={handleDownloadAll} style={styles.downloadAllButton}>
+                      全てダウンロード
+                    </button>
+                  )}
+                </div>
               </>
             ) : (
               <div style={styles.previewPlaceholder}>
@@ -533,5 +565,44 @@ const styles: { [key: string]: React.CSSProperties } = {
     cursor: 'pointer',
     fontSize: '16px',
     fontWeight: '600',
+  },
+  downloadAllButton: {
+    padding: '12px 32px',
+    backgroundColor: '#3b82f6',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    fontSize: '16px',
+    fontWeight: '600',
+  },
+  downloadButtons: {
+    display: 'flex',
+    gap: '12px',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+  },
+  pageNav: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '16px',
+    marginBottom: '12px',
+  },
+  pageNavButton: {
+    width: '40px',
+    height: '40px',
+    border: '1px solid #e2e8f0',
+    backgroundColor: '#fff',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    fontSize: '18px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pageInfo: {
+    fontSize: '16px',
+    fontWeight: '600',
+    color: '#374151',
   },
 }

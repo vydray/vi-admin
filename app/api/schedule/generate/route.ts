@@ -193,67 +193,88 @@ export async function POST(request: NextRequest) {
       ...template.name_style,
     };
 
+    // 枠数が0の場合はエラー
+    if (frames.length === 0) {
+      return NextResponse.json(
+        { error: 'No frames configured in template' },
+        { status: 400 }
+      );
+    }
 
-    // 合成用の配列を準備
-    const composites: sharp.OverlayOptions[] = [];
+    // 必要なページ数を計算
+    const totalPages = Math.ceil(orderedCasts.length / frames.length);
+    const images: string[] = [];
 
-    // 各枠にキャスト写真を配置
-    for (let i = 0; i < frames.length && i < orderedCasts.length; i++) {
-      const frame = frames[i];
-      const cast = orderedCasts[i];
+    // 各ページを生成
+    for (let page = 0; page < totalPages; page++) {
+      const startIndex = page * frames.length;
+      const pageCasts = orderedCasts.slice(startIndex, startIndex + frames.length);
 
-      let photoBuffer: Buffer | null = null;
+      // 合成用の配列を準備
+      const composites: sharp.OverlayOptions[] = [];
 
-      // キャスト写真を取得
-      if (cast.photo_path) {
-        const photoUrl = `${SUPABASE_URL}/storage/v1/object/public/cast-photos/${cast.photo_path}`;
-        const photoResponse = await fetch(photoUrl);
-        if (photoResponse.ok) {
-          photoBuffer = Buffer.from(await photoResponse.arrayBuffer());
+      // 各枠にキャスト写真を配置
+      for (let i = 0; i < frames.length && i < pageCasts.length; i++) {
+        const frame = frames[i];
+        const cast = pageCasts[i];
+
+        let photoBuffer: Buffer | null = null;
+
+        // キャスト写真を取得
+        if (cast.photo_path) {
+          const photoUrl = `${SUPABASE_URL}/storage/v1/object/public/cast-photos/${cast.photo_path}`;
+          const photoResponse = await fetch(photoUrl);
+          if (photoResponse.ok) {
+            photoBuffer = Buffer.from(await photoResponse.arrayBuffer());
+          }
+        }
+
+        // 写真がなければプレースホルダーを使用
+        if (!photoBuffer && placeholderBuffer) {
+          photoBuffer = placeholderBuffer;
+        }
+
+        // 写真があれば配置
+        if (photoBuffer) {
+          const resizedPhoto = await sharp(photoBuffer)
+            .resize(Math.round(frameSize.width), Math.round(frameSize.height), { fit: 'cover' })
+            .toBuffer();
+
+          composites.push({
+            input: resizedPhoto,
+            left: Math.round(frame.x),
+            top: Math.round(frame.y),
+          });
+        }
+
+        // 名前テキストを生成して配置
+        const nameBuffer = generateNameText(cast.name, Math.round(frameSize.width), nameStyle);
+        if (nameBuffer) {
+          composites.push({
+            input: nameBuffer,
+            left: Math.round(frame.x),
+            top: Math.round(frame.y + frameSize.height + nameStyle.offset_y),
+          });
         }
       }
 
-      // 写真がなければプレースホルダーを使用
-      if (!photoBuffer && placeholderBuffer) {
-        photoBuffer = placeholderBuffer;
-      }
+      // 画像を合成
+      const resultBuffer = await sharp(templateBuffer)
+        .composite(composites)
+        .png()
+        .toBuffer();
 
-      // 写真があれば配置
-      if (photoBuffer) {
-        const resizedPhoto = await sharp(photoBuffer)
-          .resize(Math.round(frameSize.width), Math.round(frameSize.height), { fit: 'cover' })
-          .toBuffer();
-
-        composites.push({
-          input: resizedPhoto,
-          left: Math.round(frame.x),
-          top: Math.round(frame.y),
-        });
-      }
-
-      // 名前テキストを生成して配置
-      const nameBuffer = generateNameText(cast.name, Math.round(frameSize.width), nameStyle);
-      if (nameBuffer) {
-        composites.push({
-          input: nameBuffer,
-          left: Math.round(frame.x),
-          top: Math.round(frame.y + frameSize.height + nameStyle.offset_y),
-        });
-      }
+      // Base64で追加
+      const base64 = resultBuffer.toString('base64');
+      images.push(`data:image/png;base64,${base64}`);
     }
-
-    // 画像を合成
-    const resultBuffer = await sharp(templateBuffer)
-      .composite(composites)
-      .png()
-      .toBuffer();
-
-    // Base64で返す
-    const base64 = resultBuffer.toString('base64');
 
     return NextResponse.json({
       success: true,
-      image: `data:image/png;base64,${base64}`,
+      images,
+      totalPages,
+      // 後方互換性のため、1枚目をimageとしても返す
+      image: images[0],
     });
   } catch (error) {
     console.error('Generate schedule image error:', error);
