@@ -855,19 +855,57 @@ export default function TwitterPostsPage() {
                         {twitterSettings?.twitter_username?.[0]?.toUpperCase() || 'X'}
                       </div>
                       <div style={styles.tweetUserInfo}>
-                        <span style={styles.tweetDisplayName}>
-                          @{twitterSettings?.twitter_username || 'username'}
-                        </span>
+                        <div style={styles.tweetNameRow}>
+                          <span style={styles.tweetDisplayName}>
+                            {twitterSettings?.twitter_username || 'username'}
+                          </span>
+                          <span style={styles.tweetUsername}>
+                            @{twitterSettings?.twitter_username || 'username'}
+                          </span>
+                          <span style={styles.tweetDot}>·</span>
+                          <span style={styles.tweetTime}>1分</span>
+                        </div>
                       </div>
                     </div>
                     <div style={styles.tweetContent}>
-                      {content || 'ツイート内容がここに表示されます...'}
+                      {content ? content.split('\n').map((line, i) => (
+                        <span key={i}>
+                          {line.split(/(@\w+)/g).map((part, j) =>
+                            part.startsWith('@') ? (
+                              <span key={j} style={styles.tweetMention}>{part}</span>
+                            ) : part
+                          )}
+                          {i < content.split('\n').length - 1 && <br />}
+                        </span>
+                      )) : <span style={styles.tweetPlaceholder}>ツイート内容がここに表示されます...</span>}
                     </div>
                     {imageUrl && (
                       <div style={styles.tweetImageContainer}>
                         <img src={imageUrl} alt="" style={styles.tweetImage} />
                       </div>
                     )}
+                    <div style={styles.tweetActions}>
+                      <div style={styles.tweetAction}>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#536471" strokeWidth="1.5">
+                          <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+                        </svg>
+                      </div>
+                      <div style={styles.tweetAction}>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#536471" strokeWidth="1.5">
+                          <path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>
+                        </svg>
+                      </div>
+                      <div style={styles.tweetAction}>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#536471" strokeWidth="1.5">
+                          <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+                        </svg>
+                      </div>
+                      <div style={styles.tweetAction}>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#536471" strokeWidth="1.5">
+                          <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/>
+                        </svg>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1503,6 +1541,7 @@ const styles: { [key: string]: React.CSSProperties } = {
   previewToggleBtnActive: {
     backgroundColor: '#3b82f6',
     borderColor: '#3b82f6',
+    color: '#fff',
   },
   previewNote: {
     fontSize: '12px',
@@ -1544,13 +1583,30 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontWeight: '600',
   },
   tweetUserInfo: {
+    flex: 1,
+  },
+  tweetNameRow: {
     display: 'flex',
-    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '4px',
+    flexWrap: 'wrap',
   },
   tweetDisplayName: {
     fontSize: '15px',
     fontWeight: '700',
     color: '#0f1419',
+  },
+  tweetUsername: {
+    fontSize: '15px',
+    color: '#536471',
+  },
+  tweetDot: {
+    fontSize: '15px',
+    color: '#536471',
+  },
+  tweetTime: {
+    fontSize: '15px',
+    color: '#536471',
   },
   tweetContent: {
     fontSize: '15px',
@@ -1567,6 +1623,29 @@ const styles: { [key: string]: React.CSSProperties } = {
   tweetImage: {
     width: '100%',
     display: 'block',
+  },
+  tweetMention: {
+    color: '#1d9bf0',
+  },
+  tweetPlaceholder: {
+    color: '#536471',
+    fontStyle: 'italic',
+  },
+  tweetActions: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    marginTop: '12px',
+    paddingTop: '12px',
+    maxWidth: '300px',
+  },
+  tweetAction: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    padding: '8px',
+    borderRadius: '50%',
+    transition: 'background-color 0.2s',
   },
   modal: {
     backgroundColor: '#fff',
