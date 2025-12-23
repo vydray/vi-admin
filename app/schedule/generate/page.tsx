@@ -228,7 +228,7 @@ export default function GeneratePage() {
     return orderedCasts
       .map((cast) => {
         const twitterId = cast.twitter ? `@${cast.twitter.replace(/^@/, '')}` : ''
-        return `${cast.name}${twitterId ? `＠${twitterId}` : ''}`
+        return twitterId ? `${cast.name} ${twitterId}` : cast.name
       })
       .join('\n')
   }
@@ -443,7 +443,7 @@ export default function GeneratePage() {
                           <span>{cast.name}</span>
                           {twitterId && (
                             <>
-                              <span>＠</span>
+                              <span> </span>
                               <span style={styles.twitterMention}>{twitterId}</span>
                             </>
                           )}
