@@ -203,19 +203,25 @@ export default function TemplateEditorPage() {
   useEffect(() => {
     // storeの読み込みが完了してからテンプレートを読み込む
     if (!storeLoading && storeId) {
-      loadTemplate()
+      loadTemplate(storeId)
     }
   }, [storeId, storeLoading])
 
-  const loadTemplate = async () => {
+  const loadTemplate = async (targetStoreId: number) => {
     setLoading(true)
     // 店舗切り替え時に前の状態をリセット
+    setTemplate(null)
     setTemplateImageUrl(null)
     setPlaceholderImageUrl(null)
     setSelectedFrameIndex(null)
     try {
-      const response = await fetch(`/api/schedule/template?storeId=${storeId}`)
+      const response = await fetch(`/api/schedule/template?storeId=${targetStoreId}`)
       const data = await response.json()
+
+      // 読み込み中にstoreIdが変わった場合は更新しない
+      if (targetStoreId !== storeId) {
+        return
+      }
 
       if (data.template) {
         // 既存テンプレートにframe_sizeがない場合はデフォルト値を設定
@@ -236,7 +242,7 @@ export default function TemplateEditorPage() {
         }
       } else {
         setTemplate({
-          store_id: storeId,
+          store_id: targetStoreId,
           name: null,
           image_path: null,
           placeholder_path: null,
@@ -638,7 +644,7 @@ export default function TemplateEditorPage() {
                 <input
                   type="text"
                   value={sampleText}
-                  onChange={(e) => setSampleText(e.target.value || 'サンプル')}
+                  onChange={(e) => setSampleText(e.target.value)}
                   style={styles.input}
                   placeholder="サンプル名"
                 />
