@@ -32,10 +32,13 @@ export default function GeneratePage() {
 
   // 最新のロードリクエストを追跡するref
   const latestLoadRef = useRef<number>(0)
+  const latestTemplateCheckRef = useRef<number>(0)
 
   useEffect(() => {
     // storeの読み込みが完了してからデータ取得
     if (!storeLoading && storeId) {
+      // 店舗切り替え時はhasTemplateをリセット
+      setHasTemplate(null)
       checkTemplate(storeId)
       loadShiftCasts(storeId, selectedDate)
     }
@@ -53,11 +56,19 @@ export default function GeneratePage() {
   }, [sortBy, shiftCasts])
 
   const checkTemplate = async (targetStoreId: number) => {
+    const checkId = Date.now()
+    latestTemplateCheckRef.current = checkId
+
     try {
       const response = await fetch(`/api/schedule/template?storeId=${targetStoreId}`)
       const data = await response.json()
+
+      // 最新のチェックでなければ無視
+      if (latestTemplateCheckRef.current !== checkId) return
+
       setHasTemplate(!!data.template?.image_path)
     } catch {
+      if (latestTemplateCheckRef.current !== checkId) return
       setHasTemplate(false)
     }
   }
