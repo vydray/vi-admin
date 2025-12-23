@@ -103,6 +103,19 @@ export default function TwitterSettingsPage() {
       return
     }
 
+    // 確認ダイアログを表示
+    const confirmed = confirm(
+      `【重要】投稿用アカウントでTwitterにログインしていますか？\n\n` +
+      `これからTwitterの認証画面に移動します。\n` +
+      `現在Twitterでログイン中のアカウントが連携されます。\n\n` +
+      `⚠️ 開発者アカウント（Developer Account）ではなく、\n` +
+      `　 実際にツイートを投稿するアカウントでログインしてください。\n\n` +
+      `別のアカウントで連携したい場合は、\n` +
+      `先にTwitterからログアウトしてください。`
+    )
+
+    if (!confirmed) return
+
     // OAuth認証フローを開始
     window.location.href = `/api/twitter/auth?storeId=${storeId}`
   }
