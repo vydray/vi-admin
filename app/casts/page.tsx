@@ -1419,18 +1419,21 @@ function CastsPageContent() {
           setNewPositionName('')
         }}
         title="属性設定"
-        maxWidth="500px"
+        maxWidth="420px"
       >
-        <div style={{ marginBottom: '24px' }}>
-          <p style={{ fontSize: '14px', color: '#666', marginBottom: '16px' }}>
-            キャストの属性（レギュラー、体験など）を管理できます。
-          </p>
-
+        <div>
           {/* 新規追加フォーム */}
-          <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+          <div style={{
+            display: 'flex',
+            gap: '8px',
+            marginBottom: '16px',
+            padding: '12px',
+            backgroundColor: '#f5f5f7',
+            borderRadius: '8px'
+          }}>
             <input
               type="text"
-              placeholder="新しい属性名を入力"
+              placeholder="新しい属性名"
               value={newPositionName}
               onChange={(e) => setNewPositionName(e.target.value)}
               onKeyDown={(e) => {
@@ -1440,26 +1443,42 @@ function CastsPageContent() {
               }}
               style={{
                 flex: 1,
-                padding: '10px 12px',
-                border: '1px solid #ddd',
+                padding: '8px 12px',
+                border: '1px solid #d1d1d6',
                 borderRadius: '6px',
-                fontSize: '14px'
+                fontSize: '14px',
+                backgroundColor: '#fff',
+                outline: 'none'
               }}
             />
-            <Button
+            <button
               onClick={handleAddPosition}
-              variant="primary"
               disabled={positionSaving || !newPositionName.trim()}
+              style={{
+                padding: '8px 16px',
+                backgroundColor: newPositionName.trim() ? '#007aff' : '#d1d1d6',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '6px',
+                fontSize: '14px',
+                fontWeight: '500',
+                cursor: newPositionName.trim() ? 'pointer' : 'not-allowed'
+              }}
             >
               追加
-            </Button>
+            </button>
           </div>
 
           {/* 属性一覧 */}
-          <div style={{ border: '1px solid #e5e5e5', borderRadius: '8px', overflow: 'hidden' }}>
+          <div style={{
+            backgroundColor: '#fff',
+            borderRadius: '10px',
+            border: '1px solid #d1d1d6',
+            overflow: 'hidden'
+          }}>
             {positions.length === 0 ? (
-              <div style={{ padding: '24px', textAlign: 'center', color: '#999' }}>
-                属性が登録されていません
+              <div style={{ padding: '32px', textAlign: 'center', color: '#8e8e93' }}>
+                属性がありません
               </div>
             ) : (
               positions.map((position, index) => (
@@ -1468,10 +1487,10 @@ function CastsPageContent() {
                   style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '10px',
+                    gap: '12px',
                     padding: '12px 16px',
-                    borderBottom: index < positions.length - 1 ? '1px solid #e5e5e5' : 'none',
-                    backgroundColor: index % 2 === 0 ? '#fff' : '#fafafa'
+                    borderBottom: index < positions.length - 1 ? '1px solid #e5e5ea' : 'none',
+                    backgroundColor: '#fff'
                   }}
                 >
                   {editingPosition?.id === position.id ? (
@@ -1491,63 +1510,102 @@ function CastsPageContent() {
                         style={{
                           flex: 1,
                           padding: '6px 10px',
-                          border: '1px solid #2563eb',
-                          borderRadius: '4px',
+                          border: '2px solid #007aff',
+                          borderRadius: '6px',
                           fontSize: '14px',
                           outline: 'none'
                         }}
                       />
-                      <Button
+                      <button
                         onClick={handleUpdatePosition}
-                        variant="primary"
-                        size="small"
                         disabled={positionSaving}
+                        style={{
+                          padding: '6px 12px',
+                          backgroundColor: '#007aff',
+                          color: '#fff',
+                          border: 'none',
+                          borderRadius: '6px',
+                          fontSize: '13px',
+                          fontWeight: '500',
+                          cursor: 'pointer'
+                        }}
                       >
                         保存
-                      </Button>
-                      <Button
+                      </button>
+                      <button
                         onClick={() => setEditingPosition(null)}
-                        variant="outline"
-                        size="small"
+                        style={{
+                          padding: '6px 12px',
+                          backgroundColor: '#f5f5f7',
+                          color: '#1d1d1f',
+                          border: '1px solid #d1d1d6',
+                          borderRadius: '6px',
+                          fontSize: '13px',
+                          cursor: 'pointer'
+                        }}
                       >
                         取消
-                      </Button>
+                      </button>
                     </>
                   ) : (
                     <>
-                      <span style={{ flex: 1, fontSize: '14px', fontWeight: '500' }}>
+                      <span style={{ flex: 1, fontSize: '15px', color: '#1d1d1f' }}>
                         {position.name}
                       </span>
-                      <span style={{ fontSize: '12px', color: '#999' }}>
+                      <span style={{
+                        fontSize: '13px',
+                        color: '#8e8e93',
+                        backgroundColor: '#f5f5f7',
+                        padding: '2px 8px',
+                        borderRadius: '10px'
+                      }}>
                         {casts.filter(c => c.attributes === position.name).length}人
                       </span>
                       <button
                         onClick={() => setEditingPosition({ ...position })}
                         style={{
-                          padding: '4px 8px',
+                          width: '28px',
+                          height: '28px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
                           border: 'none',
                           background: 'none',
                           cursor: 'pointer',
-                          color: '#666',
-                          fontSize: '13px'
+                          borderRadius: '6px',
+                          color: '#8e8e93'
                         }}
+                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f5f5f7'}
+                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                         title="編集"
                       >
-                        ✏️
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                        </svg>
                       </button>
                       <button
                         onClick={() => handleDeletePosition(position)}
                         style={{
-                          padding: '4px 8px',
+                          width: '28px',
+                          height: '28px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
                           border: 'none',
                           background: 'none',
                           cursor: 'pointer',
-                          color: '#dc2626',
-                          fontSize: '13px'
+                          borderRadius: '6px',
+                          color: '#ff3b30'
                         }}
+                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#fff5f5'}
+                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                         title="削除"
                       >
-                        🗑️
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="3 6 5 6 21 6" />
+                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                        </svg>
                       </button>
                     </>
                   )}
@@ -1555,19 +1613,6 @@ function CastsPageContent() {
               ))
             )}
           </div>
-        </div>
-
-        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <Button
-            onClick={() => {
-              setIsPositionModalOpen(false)
-              setEditingPosition(null)
-              setNewPositionName('')
-            }}
-            variant="outline"
-          >
-            閉じる
-          </Button>
         </div>
       </Modal>
     </div>
