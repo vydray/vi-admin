@@ -709,17 +709,17 @@ const styles: { [key: string]: React.CSSProperties } = {
     color: '#374151',
   },
   twitterSection: {
-    flex: '0 0 200px',
+    flex: '0 0 250px',
     padding: '16px',
     backgroundColor: '#f8fafc',
     borderRadius: '8px',
     border: '1px solid #e2e8f0',
-    alignSelf: 'stretch',
+    minWidth: '250px',
   },
   twitterHeader: {
     display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: 'column',
+    gap: '8px',
     marginBottom: '12px',
   },
   twitterTitle: {
@@ -731,6 +731,7 @@ const styles: { [key: string]: React.CSSProperties } = {
   copyButton: {
     display: 'flex',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: '6px',
     padding: '8px 12px',
     backgroundColor: '#fff',
@@ -740,6 +741,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontWeight: '500',
     cursor: 'pointer',
     color: '#374151',
+    width: '100%',
   },
   twitterList: {
     display: 'flex',
