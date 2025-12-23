@@ -411,7 +411,42 @@ export default function GeneratePage() {
                     </button>
                   </div>
                 )}
-                <img src={generatedImages[currentPage]} alt={`Generated schedule page ${currentPage + 1}`} style={styles.previewImage} />
+
+                {/* 画像とTwitter一覧を横並び */}
+                <div style={styles.previewRow}>
+                  <img src={generatedImages[currentPage]} alt={`Generated schedule page ${currentPage + 1}`} style={styles.previewImage} />
+
+                  {/* Twitter一覧 */}
+                  <div style={styles.twitterSection}>
+                    <div style={styles.twitterHeader}>
+                      <h4 style={styles.twitterTitle}>出勤キャスト一覧</h4>
+                      <button onClick={handleCopyTwitterList} style={styles.copyButton}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                        </svg>
+                        コピー
+                      </button>
+                    </div>
+                    <div style={styles.twitterList}>
+                      {orderedCasts.map((cast) => {
+                        const twitterId = cast.twitter ? `@${cast.twitter.replace(/^@/, '')}` : null
+                        return (
+                          <div key={cast.id} style={styles.twitterItem}>
+                            <span>{cast.name}</span>
+                            {twitterId && (
+                              <>
+                                <span> </span>
+                                <span style={styles.twitterMention}>{twitterId}</span>
+                              </>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                </div>
+
                 <div style={styles.downloadButtons}>
                   <button onClick={() => handleDownload()} style={styles.downloadButton}>
                     {generatedImages.length > 1 ? `${currentPage + 1}枚目をダウンロード` : 'ダウンロード'}
@@ -421,36 +456,6 @@ export default function GeneratePage() {
                       全てダウンロード
                     </button>
                   )}
-                </div>
-
-                {/* Twitter一覧 */}
-                <div style={styles.twitterSection}>
-                  <div style={styles.twitterHeader}>
-                    <h4 style={styles.twitterTitle}>出勤キャスト一覧</h4>
-                    <button onClick={handleCopyTwitterList} style={styles.copyButton}>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                      </svg>
-                      コピー
-                    </button>
-                  </div>
-                  <div style={styles.twitterList}>
-                    {orderedCasts.map((cast) => {
-                      const twitterId = cast.twitter ? `@${cast.twitter.replace(/^@/, '')}` : null
-                      return (
-                        <div key={cast.id} style={styles.twitterItem}>
-                          <span>{cast.name}</span>
-                          {twitterId && (
-                            <>
-                              <span> </span>
-                              <span style={styles.twitterMention}>{twitterId}</span>
-                            </>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
                 </div>
               </>
             ) : (
@@ -641,10 +646,18 @@ const styles: { [key: string]: React.CSSProperties } = {
     justifyContent: 'center',
     color: '#666',
   },
+  previewRow: {
+    display: 'flex',
+    gap: '16px',
+    alignItems: 'flex-start',
+    width: '100%',
+  },
   previewImage: {
-    maxWidth: '100%',
+    flex: 1,
+    maxWidth: '60%',
     maxHeight: '600px',
     borderRadius: '8px',
+    objectFit: 'contain',
   },
   downloadButton: {
     padding: '12px 32px',
@@ -696,12 +709,12 @@ const styles: { [key: string]: React.CSSProperties } = {
     color: '#374151',
   },
   twitterSection: {
-    width: '100%',
-    marginTop: '24px',
+    flex: '0 0 200px',
     padding: '16px',
     backgroundColor: '#f8fafc',
     borderRadius: '8px',
     border: '1px solid #e2e8f0',
+    alignSelf: 'stretch',
   },
   twitterHeader: {
     display: 'flex',
