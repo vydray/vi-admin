@@ -239,6 +239,7 @@ export async function POST(request: NextRequest) {
       debug: {
         templateNameStyle: template.name_style,
         usedNameStyle: nameStyle,
+        fontResolution: lastUsedFontDebug, // どのフォントに解決されたか
         frameSize: frameSize,
         framesCount: frames.length,
         castsCount: orderedCasts.length,
@@ -283,6 +284,9 @@ function getActualFontFamily(baseFontFamily: string, weight: string): string {
   return baseFontFamily;
 }
 
+// デバッグ用：最後に使用したフォント情報を保持
+let lastUsedFontDebug: { baseFontFamily: string; actualFontFamily: string; fontWeight: string } | null = null;
+
 // 名前テキストを画像として生成（node-canvas使用）
 function generateNameText(
   name: string,
@@ -305,6 +309,9 @@ function generateNameText(
     const rawStrokeEnabled = style.stroke_enabled as unknown;
     // falseまたは'false'の場合のみ無効、それ以外（true, undefined等）は有効
     const strokeEnabled = rawStrokeEnabled !== false && rawStrokeEnabled !== 'false';
+
+    // デバッグ情報を保存
+    lastUsedFontDebug = { baseFontFamily, actualFontFamily, fontWeight };
 
     console.log(`Generating text "${name}" with font: ${baseFontFamily} -> ${actualFontFamily}, weight: ${fontWeight}, strokeEnabled: ${strokeEnabled}`);
 
