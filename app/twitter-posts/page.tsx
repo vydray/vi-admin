@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
 import { toast } from 'react-hot-toast'
@@ -25,14 +25,18 @@ interface TwitterSettings {
   connected_at: string | null
 }
 
+type ViewMode = 'week' | 'month'
+
 export default function TwitterPostsPage() {
-  const { storeId, storeName, isLoading: storeLoading } = useStore()
+  const { storeId, isLoading: storeLoading } = useStore()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [posts, setPosts] = useState<ScheduledPost[]>([])
   const [twitterSettings, setTwitterSettings] = useState<TwitterSettings | null>(null)
+  const [viewMode, setViewMode] = useState<ViewMode>('week')
+  const [currentDate, setCurrentDate] = useState(new Date())
 
-  // 新規投稿フォーム
+  // モーダル状態
   const [showForm, setShowForm] = useState(false)
   const [content, setContent] = useState('')
   const [scheduledAt, setScheduledAt] = useState('')
@@ -44,7 +48,6 @@ export default function TwitterPostsPage() {
 
     setLoading(true)
     try {
-      // Twitter設定を取得
       const { data: settings } = await supabase
         .from('store_twitter_settings')
         .select('twitter_username, connected_at')
@@ -53,7 +56,6 @@ export default function TwitterPostsPage() {
 
       setTwitterSettings(settings)
 
-      // 予約投稿を取得
       const { data: postsData, error } = await supabase
         .from('scheduled_posts')
         .select('*')
@@ -76,6 +78,103 @@ export default function TwitterPostsPage() {
     }
   }, [storeLoading, storeId, loadData])
 
+  // 週の日付を取得
+  const getWeekDays = useCallback((date: Date) => {
+    const startOfWeek = new Date(date)
+    const day = startOfWeek.getDay()
+    const diff = day === 0 ? -6 : 1 - day // 月曜始まり
+    startOfWeek.setDate(startOfWeek.getDate() + diff)
+    startOfWeek.setHours(0, 0, 0, 0)
+
+    const days: Date[] = []
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(startOfWeek)
+      d.setDate(startOfWeek.getDate() + i)
+      days.push(d)
+    }
+    return days
+  }, [])
+
+  // 月の日付を取得
+  const getMonthDays = useCallback((date: Date) => {
+    const year = date.getFullYear()
+    const month = date.getMonth()
+    const firstDay = new Date(year, month, 1)
+
+    // 月曜始まりで最初の週を調整
+    const startDay = firstDay.getDay()
+    const startOffset = startDay === 0 ? -6 : 1 - startDay
+    const start = new Date(firstDay)
+    start.setDate(start.getDate() + startOffset)
+
+    const days: Date[] = []
+    const current = new Date(start)
+
+    // 6週間分 = 42日
+    for (let i = 0; i < 42; i++) {
+      days.push(new Date(current))
+      current.setDate(current.getDate() + 1)
+    }
+    return days
+  }, [])
+
+  const weekDays = useMemo(() => getWeekDays(currentDate), [currentDate, getWeekDays])
+  const monthDays = useMemo(() => getMonthDays(currentDate), [currentDate, getMonthDays])
+
+  // 投稿を日付でグループ化
+  const postsByDate = useMemo(() => {
+    const map: Record<string, ScheduledPost[]> = {}
+    posts.forEach(post => {
+      const dateKey = new Date(post.scheduled_at).toISOString().split('T')[0]
+      if (!map[dateKey]) map[dateKey] = []
+      map[dateKey].push(post)
+    })
+    // 各日付内で時間順にソート
+    Object.keys(map).forEach(key => {
+      map[key].sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())
+    })
+    return map
+  }, [posts])
+
+  const navigatePrev = () => {
+    const newDate = new Date(currentDate)
+    if (viewMode === 'week') {
+      newDate.setDate(newDate.getDate() - 7)
+    } else {
+      newDate.setMonth(newDate.getMonth() - 1)
+    }
+    setCurrentDate(newDate)
+  }
+
+  const navigateNext = () => {
+    const newDate = new Date(currentDate)
+    if (viewMode === 'week') {
+      newDate.setDate(newDate.getDate() + 7)
+    } else {
+      newDate.setMonth(newDate.getMonth() + 1)
+    }
+    setCurrentDate(newDate)
+  }
+
+  const goToToday = () => {
+    setCurrentDate(new Date())
+  }
+
+  const formatHeaderDate = () => {
+    const year = currentDate.getFullYear()
+    const month = currentDate.getMonth() + 1
+    if (viewMode === 'month') {
+      return `${year}年${month}月`
+    }
+    // 週表示の場合は週の範囲を表示
+    const start = weekDays[0]
+    const end = weekDays[6]
+    if (start.getMonth() === end.getMonth()) {
+      return `${start.getFullYear()}年${start.getMonth() + 1}月`
+    }
+    return `${start.getFullYear()}年${start.getMonth() + 1}月 - ${end.getMonth() + 1}月`
+  }
+
   const handleSubmit = async () => {
     if (!storeId) return
     if (!content.trim()) {
@@ -96,7 +195,6 @@ export default function TwitterPostsPage() {
     setSaving(true)
     try {
       if (editingId) {
-        // 更新
         const { error } = await supabase
           .from('scheduled_posts')
           .update({
@@ -110,7 +208,6 @@ export default function TwitterPostsPage() {
         if (error) throw error
         toast.success('予約投稿を更新しました')
       } else {
-        // 新規作成
         const { error } = await supabase
           .from('scheduled_posts')
           .insert({
@@ -143,7 +240,8 @@ export default function TwitterPostsPage() {
     setShowForm(true)
   }
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: number, e: React.MouseEvent) => {
+    e.stopPropagation()
     if (!confirm('この予約投稿を削除しますか？')) return
 
     try {
@@ -161,6 +259,16 @@ export default function TwitterPostsPage() {
     }
   }
 
+  const handleCreateNew = (date?: Date) => {
+    resetForm()
+    if (date) {
+      const d = new Date(date)
+      d.setHours(12, 0, 0, 0)
+      setScheduledAt(formatDateTimeLocal(d.toISOString()))
+    }
+    setShowForm(true)
+  }
+
   const resetForm = () => {
     setContent('')
     setScheduledAt('')
@@ -176,27 +284,29 @@ export default function TwitterPostsPage() {
     return localDate.toISOString().slice(0, 16)
   }
 
-  const formatDateTime = (isoString: string) => {
-    return new Date(isoString).toLocaleString('ja-JP', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
+  const formatTime = (isoString: string) => {
+    return new Date(isoString).toLocaleTimeString('ja-JP', {
       hour: '2-digit',
       minute: '2-digit',
     })
   }
 
-  const getStatusBadge = (status: string) => {
+  const getStatusColor = (status: string) => {
     switch (status) {
-      case 'pending':
-        return { label: '予約中', color: '#f59e0b', bg: '#fef3c7' }
-      case 'posted':
-        return { label: '投稿済み', color: '#10b981', bg: '#d1fae5' }
-      case 'failed':
-        return { label: '失敗', color: '#ef4444', bg: '#fee2e2' }
-      default:
-        return { label: status, color: '#6b7280', bg: '#f3f4f6' }
+      case 'pending': return '#f59e0b'
+      case 'posted': return '#10b981'
+      case 'failed': return '#ef4444'
+      default: return '#6b7280'
     }
+  }
+
+  const isToday = (date: Date) => {
+    const today = new Date()
+    return date.toDateString() === today.toDateString()
+  }
+
+  const isCurrentMonth = (date: Date) => {
+    return date.getMonth() === currentDate.getMonth()
   }
 
   if (storeLoading || loading) {
@@ -208,22 +318,112 @@ export default function TwitterPostsPage() {
   }
 
   const isConnected = !!twitterSettings?.twitter_username
+  const dayNames = ['月', '火', '水', '木', '金', '土', '日']
+
+  const renderPostCard = (post: ScheduledPost, compact = false) => (
+    <div
+      key={post.id}
+      onClick={() => post.status === 'pending' && handleEdit(post)}
+      style={{
+        ...styles.postCard,
+        ...(compact ? styles.postCardCompact : {}),
+        cursor: post.status === 'pending' ? 'pointer' : 'default',
+        borderLeft: `3px solid ${getStatusColor(post.status)}`,
+      }}
+    >
+      <div style={styles.postCardHeader}>
+        <span style={styles.postTime}>{formatTime(post.scheduled_at)}</span>
+        {post.status === 'pending' && (
+          <button
+            onClick={(e) => handleDelete(post.id, e)}
+            style={styles.deleteBtn}
+          >
+            ×
+          </button>
+        )}
+      </div>
+      {post.image_url && (
+        <img src={post.image_url} alt="" style={styles.postThumbnail} />
+      )}
+      <p style={styles.postContent}>
+        {post.content.length > (compact ? 30 : 50)
+          ? post.content.slice(0, compact ? 30 : 50) + '...'
+          : post.content}
+      </p>
+    </div>
+  )
+
+  const renderDayCell = (date: Date, isCompact = false) => {
+    const dateKey = date.toISOString().split('T')[0]
+    const dayPosts = postsByDate[dateKey] || []
+    const today = isToday(date)
+    const inMonth = isCurrentMonth(date)
+
+    return (
+      <div
+        key={dateKey}
+        style={{
+          ...styles.dayCell,
+          ...(isCompact ? styles.dayCellCompact : {}),
+          ...(today ? styles.dayCellToday : {}),
+          ...(viewMode === 'month' && !inMonth ? styles.dayCellOtherMonth : {}),
+        }}
+        onClick={() => handleCreateNew(date)}
+      >
+        <div style={styles.dayHeader}>
+          <span style={{
+            ...styles.dayNumber,
+            ...(today ? styles.dayNumberToday : {}),
+          }}>
+            {date.getDate()}
+          </span>
+        </div>
+        <div style={styles.dayPosts}>
+          {dayPosts.map(post => renderPostCard(post, isCompact))}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div style={styles.container}>
+      {/* ヘッダー */}
       <div style={styles.header}>
-        <div>
-          <h1 style={styles.title}>予約投稿</h1>
-          <p style={styles.storeName}>{storeName}</p>
+        <div style={styles.headerLeft}>
+          <button onClick={goToToday} style={styles.todayBtn}>今日</button>
+          <div style={styles.navButtons}>
+            <button onClick={navigatePrev} style={styles.navBtn}>‹</button>
+            <button onClick={navigateNext} style={styles.navBtn}>›</button>
+          </div>
+          <h1 style={styles.title}>{formatHeaderDate()}</h1>
         </div>
-        {isConnected && (
-          <button
-            onClick={() => setShowForm(true)}
-            style={styles.addButton}
-          >
-            + 新規予約
-          </button>
-        )}
+        <div style={styles.headerRight}>
+          <div style={styles.viewToggle}>
+            <button
+              onClick={() => setViewMode('month')}
+              style={{
+                ...styles.viewBtn,
+                ...(viewMode === 'month' ? styles.viewBtnActive : {}),
+              }}
+            >
+              月
+            </button>
+            <button
+              onClick={() => setViewMode('week')}
+              style={{
+                ...styles.viewBtn,
+                ...(viewMode === 'week' ? styles.viewBtnActive : {}),
+              }}
+            >
+              週
+            </button>
+          </div>
+          {isConnected && (
+            <button onClick={() => handleCreateNew()} style={styles.addButton}>
+              + 新しい投稿
+            </button>
+          )}
+        </div>
       </div>
 
       {!isConnected ? (
@@ -238,155 +438,100 @@ export default function TwitterPostsPage() {
       ) : (
         <>
           <div style={styles.connectedInfo}>
-            <span>連携中: @{twitterSettings.twitter_username}</span>
+            連携中: @{twitterSettings.twitter_username}
           </div>
 
-          {/* 新規/編集フォーム */}
-          {showForm && (
-            <div style={styles.formOverlay}>
-              <div style={styles.formModal}>
-                <div style={styles.formHeader}>
-                  <h2 style={styles.formTitle}>
-                    {editingId ? '予約投稿を編集' : '新規予約投稿'}
-                  </h2>
-                  <button onClick={resetForm} style={styles.closeButton}>
-                    ×
-                  </button>
-                </div>
-
-                <div style={styles.formBody}>
-                  <div style={styles.inputGroup}>
-                    <label style={styles.label}>投稿内容</label>
-                    <textarea
-                      value={content}
-                      onChange={(e) => setContent(e.target.value)}
-                      style={styles.textarea}
-                      placeholder="ツイート内容を入力..."
-                      maxLength={280}
-                    />
-                    <span style={styles.charCount}>{content.length}/280</span>
-                  </div>
-
-                  <div style={styles.inputGroup}>
-                    <label style={styles.label}>画像URL（任意）</label>
-                    <input
-                      type="url"
-                      value={imageUrl}
-                      onChange={(e) => setImageUrl(e.target.value)}
-                      style={styles.input}
-                      placeholder="https://..."
-                    />
-                  </div>
-
-                  <div style={styles.inputGroup}>
-                    <label style={styles.label}>投稿日時</label>
-                    <input
-                      type="datetime-local"
-                      value={scheduledAt}
-                      onChange={(e) => setScheduledAt(e.target.value)}
-                      style={styles.input}
-                      min={new Date().toISOString().slice(0, 16)}
-                    />
-                  </div>
-
-                  <div style={styles.formActions}>
-                    <button onClick={resetForm} style={styles.cancelButton}>
-                      キャンセル
-                    </button>
-                    <button
-                      onClick={handleSubmit}
-                      disabled={saving}
-                      style={styles.submitButton}
-                    >
-                      {saving ? '保存中...' : editingId ? '更新' : '予約する'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* 投稿一覧 */}
-          <div style={styles.postsList}>
-            {posts.length === 0 ? (
-              <div style={styles.emptyState}>
-                <p>予約投稿がありません</p>
-                <button
-                  onClick={() => setShowForm(true)}
-                  style={styles.addButtonEmpty}
+          {/* カレンダー */}
+          <div style={styles.calendar}>
+            {/* 曜日ヘッダー */}
+            <div style={styles.weekHeader}>
+              {dayNames.map((name, i) => (
+                <div
+                  key={name}
+                  style={{
+                    ...styles.weekDay,
+                    color: i === 5 ? '#3b82f6' : i === 6 ? '#ef4444' : '#374151',
+                  }}
                 >
-                  最初の予約を作成
-                </button>
-              </div>
-            ) : (
-              posts.map((post) => {
-                const status = getStatusBadge(post.status)
-                return (
-                  <div key={post.id} style={styles.postCard}>
-                    <div style={styles.postHeader}>
-                      <span
-                        style={{
-                          ...styles.statusBadge,
-                          backgroundColor: status.bg,
-                          color: status.color,
-                        }}
-                      >
-                        {status.label}
-                      </span>
-                      <span style={styles.scheduledTime}>
-                        {formatDateTime(post.scheduled_at)}
-                      </span>
-                    </div>
+                  {name}
+                </div>
+              ))}
+            </div>
 
-                    <p style={styles.postContent}>{post.content}</p>
-
-                    {post.image_url && (
-                      <div style={styles.imagePreview}>
-                        <img
-                          src={post.image_url}
-                          alt="Preview"
-                          style={styles.previewImage}
-                        />
-                      </div>
-                    )}
-
-                    {post.error_message && (
-                      <p style={styles.errorMessage}>{post.error_message}</p>
-                    )}
-
-                    {post.twitter_post_id && (
-                      <a
-                        href={`https://twitter.com/i/status/${post.twitter_post_id}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={styles.tweetLink}
-                      >
-                        ツイートを見る →
-                      </a>
-                    )}
-
-                    {post.status === 'pending' && (
-                      <div style={styles.postActions}>
-                        <button
-                          onClick={() => handleEdit(post)}
-                          style={styles.editButton}
-                        >
-                          編集
-                        </button>
-                        <button
-                          onClick={() => handleDelete(post.id)}
-                          style={styles.deleteButton}
-                        >
-                          削除
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )
-              })
-            )}
+            {/* 日付グリッド */}
+            <div style={{
+              ...styles.daysGrid,
+              ...(viewMode === 'month' ? styles.daysGridMonth : {}),
+            }}>
+              {viewMode === 'week'
+                ? weekDays.map(date => renderDayCell(date))
+                : monthDays.map(date => renderDayCell(date, true))
+              }
+            </div>
           </div>
         </>
+      )}
+
+      {/* 投稿作成/編集モーダル */}
+      {showForm && (
+        <div style={styles.modalOverlay} onClick={resetForm}>
+          <div style={styles.modal} onClick={e => e.stopPropagation()}>
+            <div style={styles.modalHeader}>
+              <h2 style={styles.modalTitle}>
+                {editingId ? '投稿を編集' : '投稿を作成'}
+              </h2>
+              <button onClick={resetForm} style={styles.closeButton}>×</button>
+            </div>
+
+            <div style={styles.modalBody}>
+              <div style={styles.inputGroup}>
+                <label style={styles.label}>投稿内容</label>
+                <textarea
+                  value={content}
+                  onChange={(e) => setContent(e.target.value)}
+                  style={styles.textarea}
+                  placeholder="ツイート内容を入力..."
+                  maxLength={280}
+                />
+                <span style={styles.charCount}>{content.length}/280</span>
+              </div>
+
+              <div style={styles.inputGroup}>
+                <label style={styles.label}>画像URL（任意）</label>
+                <input
+                  type="url"
+                  value={imageUrl}
+                  onChange={(e) => setImageUrl(e.target.value)}
+                  style={styles.input}
+                  placeholder="https://..."
+                />
+              </div>
+
+              <div style={styles.inputGroup}>
+                <label style={styles.label}>投稿日時</label>
+                <input
+                  type="datetime-local"
+                  value={scheduledAt}
+                  onChange={(e) => setScheduledAt(e.target.value)}
+                  style={styles.input}
+                />
+              </div>
+            </div>
+
+            <div style={styles.modalFooter}>
+              <button onClick={resetForm} style={styles.cancelButton}>
+                キャンセル
+              </button>
+              <button
+                onClick={handleSubmit}
+                disabled={saving}
+                style={styles.submitButton}
+              >
+                {saving ? '保存中...' : '投稿を予約'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
@@ -394,31 +539,75 @@ export default function TwitterPostsPage() {
 
 const styles: { [key: string]: React.CSSProperties } = {
   container: {
-    padding: '24px',
-    maxWidth: '800px',
-    margin: '0 auto',
+    padding: '16px 24px',
     minHeight: '100vh',
     backgroundColor: '#f7f9fc',
   },
   header: {
     display: 'flex',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: '24px',
+    alignItems: 'center',
+    marginBottom: '16px',
+  },
+  headerLeft: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '16px',
+  },
+  headerRight: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '16px',
+  },
+  todayBtn: {
+    padding: '8px 16px',
+    backgroundColor: '#fff',
+    border: '1px solid #d1d5db',
+    borderRadius: '6px',
+    fontSize: '14px',
+    cursor: 'pointer',
+  },
+  navButtons: {
+    display: 'flex',
+    gap: '4px',
+  },
+  navBtn: {
+    width: '32px',
+    height: '32px',
+    backgroundColor: '#fff',
+    border: '1px solid #d1d5db',
+    borderRadius: '6px',
+    fontSize: '18px',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   title: {
-    fontSize: '28px',
-    fontWeight: 'bold',
+    fontSize: '22px',
+    fontWeight: '600',
     color: '#1a1a2e',
     margin: 0,
   },
-  storeName: {
+  viewToggle: {
+    display: 'flex',
+    border: '1px solid #d1d5db',
+    borderRadius: '6px',
+    overflow: 'hidden',
+  },
+  viewBtn: {
+    padding: '8px 16px',
+    backgroundColor: '#fff',
+    border: 'none',
     fontSize: '14px',
-    color: '#6b7280',
-    marginTop: '4px',
+    cursor: 'pointer',
+  },
+  viewBtnActive: {
+    backgroundColor: '#3b82f6',
+    color: '#fff',
   },
   addButton: {
-    padding: '12px 24px',
+    padding: '10px 20px',
     backgroundColor: '#1da1f2',
     color: '#fff',
     border: 'none',
@@ -449,26 +638,141 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontWeight: '600',
   },
   connectedInfo: {
-    padding: '12px 16px',
+    padding: '8px 12px',
     backgroundColor: '#ecfdf5',
-    borderRadius: '8px',
-    marginBottom: '24px',
+    borderRadius: '6px',
+    marginBottom: '16px',
     color: '#065f46',
-    fontSize: '14px',
+    fontSize: '13px',
+    display: 'inline-block',
   },
-  formOverlay: {
+  calendar: {
+    backgroundColor: '#fff',
+    borderRadius: '12px',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+    overflow: 'hidden',
+  },
+  weekHeader: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(7, 1fr)',
+    borderBottom: '1px solid #e5e7eb',
+  },
+  weekDay: {
+    padding: '12px',
+    textAlign: 'center',
+    fontSize: '13px',
+    fontWeight: '600',
+  },
+  daysGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(7, 1fr)',
+    minHeight: '600px',
+  },
+  daysGridMonth: {
+    minHeight: 'auto',
+  },
+  dayCell: {
+    borderRight: '1px solid #e5e7eb',
+    borderBottom: '1px solid #e5e7eb',
+    padding: '8px',
+    minHeight: '120px',
+    cursor: 'pointer',
+    transition: 'background-color 0.2s',
+  },
+  dayCellCompact: {
+    minHeight: '100px',
+  },
+  dayCellToday: {
+    backgroundColor: '#eff6ff',
+  },
+  dayCellOtherMonth: {
+    backgroundColor: '#f9fafb',
+    opacity: 0.6,
+  },
+  dayHeader: {
+    marginBottom: '4px',
+  },
+  dayNumber: {
+    fontSize: '14px',
+    fontWeight: '500',
+    color: '#374151',
+  },
+  dayNumberToday: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '28px',
+    height: '28px',
+    backgroundColor: '#3b82f6',
+    color: '#fff',
+    borderRadius: '50%',
+  },
+  dayPosts: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '4px',
+    maxHeight: '200px',
+    overflowY: 'auto',
+  },
+  postCard: {
+    backgroundColor: '#f8fafc',
+    borderRadius: '6px',
+    padding: '6px 8px',
+    fontSize: '12px',
+  },
+  postCardCompact: {
+    padding: '4px 6px',
+  },
+  postCardHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '2px',
+  },
+  postTime: {
+    fontSize: '11px',
+    fontWeight: '600',
+    color: '#1da1f2',
+  },
+  deleteBtn: {
+    width: '18px',
+    height: '18px',
+    border: 'none',
+    backgroundColor: '#fee2e2',
+    color: '#dc2626',
+    borderRadius: '50%',
+    cursor: 'pointer',
+    fontSize: '12px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  postThumbnail: {
+    width: '100%',
+    height: '40px',
+    objectFit: 'cover',
+    borderRadius: '4px',
+    marginBottom: '4px',
+  },
+  postContent: {
+    margin: 0,
+    color: '#4b5563',
+    lineHeight: '1.3',
+    fontSize: '11px',
+  },
+  modalOverlay: {
     position: 'fixed',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 1000,
   },
-  formModal: {
+  modal: {
     backgroundColor: '#fff',
     borderRadius: '12px',
     width: '100%',
@@ -476,14 +780,14 @@ const styles: { [key: string]: React.CSSProperties } = {
     maxHeight: '90vh',
     overflow: 'auto',
   },
-  formHeader: {
+  modalHeader: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: '20px 24px',
+    padding: '16px 20px',
     borderBottom: '1px solid #e5e7eb',
   },
-  formTitle: {
+  modalTitle: {
     fontSize: '18px',
     fontWeight: '600',
     margin: 0,
@@ -497,11 +801,18 @@ const styles: { [key: string]: React.CSSProperties } = {
     cursor: 'pointer',
     color: '#6b7280',
   },
-  formBody: {
-    padding: '24px',
+  modalBody: {
+    padding: '20px',
+  },
+  modalFooter: {
+    display: 'flex',
+    gap: '12px',
+    justifyContent: 'flex-end',
+    padding: '16px 20px',
+    borderTop: '1px solid #e5e7eb',
   },
   inputGroup: {
-    marginBottom: '20px',
+    marginBottom: '16px',
   },
   label: {
     display: 'block',
@@ -512,20 +823,22 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   input: {
     width: '100%',
-    padding: '12px',
+    padding: '10px 12px',
     fontSize: '14px',
     border: '1px solid #d1d5db',
     borderRadius: '8px',
+    boxSizing: 'border-box',
   },
   textarea: {
     width: '100%',
-    padding: '12px',
+    padding: '10px 12px',
     fontSize: '14px',
     border: '1px solid #d1d5db',
     borderRadius: '8px',
-    minHeight: '120px',
+    minHeight: '100px',
     resize: 'vertical',
     fontFamily: 'inherit',
+    boxSizing: 'border-box',
   },
   charCount: {
     display: 'block',
@@ -534,13 +847,8 @@ const styles: { [key: string]: React.CSSProperties } = {
     color: '#6b7280',
     marginTop: '4px',
   },
-  formActions: {
-    display: 'flex',
-    gap: '12px',
-    justifyContent: 'flex-end',
-  },
   cancelButton: {
-    padding: '12px 24px',
+    padding: '10px 20px',
     backgroundColor: '#f3f4f6',
     color: '#374151',
     border: 'none',
@@ -550,111 +858,13 @@ const styles: { [key: string]: React.CSSProperties } = {
     cursor: 'pointer',
   },
   submitButton: {
-    padding: '12px 24px',
+    padding: '10px 20px',
     backgroundColor: '#1da1f2',
     color: '#fff',
     border: 'none',
     borderRadius: '8px',
     fontSize: '14px',
     fontWeight: '600',
-    cursor: 'pointer',
-  },
-  postsList: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '16px',
-  },
-  emptyState: {
-    padding: '48px',
-    backgroundColor: '#fff',
-    borderRadius: '12px',
-    textAlign: 'center',
-    color: '#6b7280',
-  },
-  addButtonEmpty: {
-    marginTop: '16px',
-    padding: '12px 24px',
-    backgroundColor: '#1da1f2',
-    color: '#fff',
-    border: 'none',
-    borderRadius: '8px',
-    fontSize: '14px',
-    fontWeight: '600',
-    cursor: 'pointer',
-  },
-  postCard: {
-    backgroundColor: '#fff',
-    borderRadius: '12px',
-    padding: '20px',
-    boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-  },
-  postHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: '12px',
-  },
-  statusBadge: {
-    padding: '4px 12px',
-    borderRadius: '12px',
-    fontSize: '12px',
-    fontWeight: '600',
-  },
-  scheduledTime: {
-    fontSize: '13px',
-    color: '#6b7280',
-  },
-  postContent: {
-    fontSize: '15px',
-    color: '#1a1a2e',
-    lineHeight: '1.6',
-    whiteSpace: 'pre-wrap',
-    margin: '0 0 12px 0',
-  },
-  imagePreview: {
-    marginBottom: '12px',
-  },
-  previewImage: {
-    maxWidth: '100%',
-    maxHeight: '200px',
-    borderRadius: '8px',
-  },
-  errorMessage: {
-    fontSize: '13px',
-    color: '#dc2626',
-    backgroundColor: '#fee2e2',
-    padding: '8px 12px',
-    borderRadius: '6px',
-    marginBottom: '12px',
-  },
-  tweetLink: {
-    fontSize: '13px',
-    color: '#1da1f2',
-    textDecoration: 'none',
-  },
-  postActions: {
-    display: 'flex',
-    gap: '8px',
-    marginTop: '12px',
-    paddingTop: '12px',
-    borderTop: '1px solid #e5e7eb',
-  },
-  editButton: {
-    padding: '8px 16px',
-    backgroundColor: '#f3f4f6',
-    color: '#374151',
-    border: 'none',
-    borderRadius: '6px',
-    fontSize: '13px',
-    cursor: 'pointer',
-  },
-  deleteButton: {
-    padding: '8px 16px',
-    backgroundColor: '#fee2e2',
-    color: '#dc2626',
-    border: 'none',
-    borderRadius: '6px',
-    fontSize: '13px',
     cursor: 'pointer',
   },
 }
