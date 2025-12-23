@@ -465,11 +465,16 @@ function CastsPageContent() {
       // 関連データを全て削除（外部キー制約の順序で削除）
       await Promise.all([
         supabase.from('shift_locks').delete().eq('cast_id', castId),
+        supabase.from('shifts').delete().eq('cast_id', castId),
+        supabase.from('shift_requests').delete().eq('cast_id', castId),
         supabase.from('cast_daily_stats').delete().eq('cast_id', castId),
+        supabase.from('cast_daily_items').delete().eq('cast_id', castId),
+        supabase.from('cast_back_rates').delete().eq('cast_id', castId),
         supabase.from('payslips').delete().eq('cast_id', castId),
         supabase.from('compensation_settings').delete().eq('cast_id', castId),
         supabase.from('requests').delete().eq('cast_id', castId),
         supabase.from('base_variations').delete().eq('cast_id', castId),
+        supabase.from('base_orders').delete().eq('cast_id', castId),
       ])
 
       const { error } = await supabase
