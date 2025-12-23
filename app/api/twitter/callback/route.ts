@@ -74,8 +74,14 @@ export async function GET(request: NextRequest) {
     }
 
     // Token Secretからstore_idを見つける
-    let settings = null
-    let storedData = null
+    let settings: {
+      store_id: number
+      api_key: string
+      api_secret: string
+      access_token: string | null
+      refresh_token: string | null
+    } | null = null
+    let storedData: { oauth_token_secret: string; expires: number } | null = null
 
     for (const s of allSettings || []) {
       if (s.refresh_token) {
