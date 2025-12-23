@@ -5,22 +5,22 @@ import { createCanvas, registerFont } from 'canvas';
 import path from 'path';
 import fs from 'fs';
 
-// M PLUS Rounded 1c のウェイト定義（Boldは別ファミリー名として登録）
+// M PLUS Rounded 1c のウェイト定義（Boldは別ファミリー名として登録、weightも指定）
 const MPLUS_FONTS = [
-  { file: 'MPLUSRounded1c-Regular.ttf', family: 'Rounded Mplus 1c' },
-  { file: 'MPLUSRounded1c-Bold.ttf', family: 'Rounded Mplus 1c Bold' },
+  { file: 'MPLUSRounded1c-Regular.ttf', family: 'Rounded Mplus 1c', weight: 'normal' as const },
+  { file: 'MPLUSRounded1c-Bold.ttf', family: 'Rounded Mplus 1c Bold', weight: 'bold' as const },
 ];
 
-// 他のフォント（Boldバリアントは別ファミリー名として登録）
+// 他のフォント（Boldバリアントは別ファミリー名として登録、weightも指定）
 const OTHER_FONTS = [
-  { file: 'KosugiMaru-Regular.ttf', family: 'Kosugi Maru' },
-  { file: 'HachiMaruPop-Regular.ttf', family: 'Hachi Maru Pop' },
-  { file: 'YuseiMagic-Regular.ttf', family: 'Yusei Magic' },
-  { file: 'ZenMaruGothic-Regular.ttf', family: 'Zen Maru Gothic' },
-  { file: 'ZenMaruGothic-Bold.ttf', family: 'Zen Maru Gothic Bold' },
-  { file: 'DelaGothicOne-Regular.ttf', family: 'Dela Gothic One' },
-  { file: 'ReggaeOne-Regular.ttf', family: 'Reggae One' },
-  { file: 'RocknRollOne-Regular.ttf', family: 'RocknRoll One' },
+  { file: 'KosugiMaru-Regular.ttf', family: 'Kosugi Maru', weight: 'normal' as const },
+  { file: 'HachiMaruPop-Regular.ttf', family: 'Hachi Maru Pop', weight: 'normal' as const },
+  { file: 'YuseiMagic-Regular.ttf', family: 'Yusei Magic', weight: 'normal' as const },
+  { file: 'ZenMaruGothic-Regular.ttf', family: 'Zen Maru Gothic', weight: 'normal' as const },
+  { file: 'ZenMaruGothic-Bold.ttf', family: 'Zen Maru Gothic Bold', weight: 'bold' as const },
+  { file: 'DelaGothicOne-Regular.ttf', family: 'Dela Gothic One', weight: 'normal' as const },
+  { file: 'ReggaeOne-Regular.ttf', family: 'Reggae One', weight: 'normal' as const },
+  { file: 'RocknRollOne-Regular.ttf', family: 'RocknRoll One', weight: 'normal' as const },
 ];
 
 // フォントを登録（サーバー起動時に1回だけ実行される）
@@ -46,9 +46,9 @@ function ensureFontsRegistered() {
     for (const font of MPLUS_FONTS) {
       const fontPath = path.join(fontsDir, font.file);
       const exists = fs.existsSync(fontPath);
-      fontRegistrationLog.push(`${font.family}: ${exists ? 'OK' : 'NOT FOUND'} (${font.file})`);
+      fontRegistrationLog.push(`${font.family} (${font.weight}): ${exists ? 'OK' : 'NOT FOUND'} (${font.file})`);
       if (exists) {
-        registerFont(fontPath, { family: font.family });
+        registerFont(fontPath, { family: font.family, weight: font.weight });
       }
     }
 
@@ -56,9 +56,9 @@ function ensureFontsRegistered() {
     for (const font of OTHER_FONTS) {
       const fontPath = path.join(fontsDir, font.file);
       const exists = fs.existsSync(fontPath);
-      fontRegistrationLog.push(`${font.family}: ${exists ? 'OK' : 'NOT FOUND'} (${font.file})`);
+      fontRegistrationLog.push(`${font.family} (${font.weight}): ${exists ? 'OK' : 'NOT FOUND'} (${font.file})`);
       if (exists) {
-        registerFont(fontPath, { family: font.family });
+        registerFont(fontPath, { family: font.family, weight: font.weight });
       }
     }
 
@@ -345,8 +345,12 @@ function generateNameText(
     // 背景を透明に
     ctx.clearRect(0, 0, width, height);
 
-    // フォント設定（Boldは別ファミリー名なのでweightキーワード不要）
-    const fontString = `${fontSize}px "${actualFontFamily}"`;
+    // フォント設定（Boldフォントにはboldキーワードも追加）
+    const numWeight = parseInt(fontWeight, 10);
+    const isBold = !isNaN(numWeight) && numWeight >= 600;
+    const fontString = isBold
+      ? `bold ${fontSize}px "${actualFontFamily}"`
+      : `${fontSize}px "${actualFontFamily}"`;
     ctx.font = fontString;
 
     // デバッグ情報を保存（ctx.fontが実際に何になったかも確認）
