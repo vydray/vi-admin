@@ -214,6 +214,11 @@ function ShiftManageContent() {
     }
   }
 
+  // シフト編集後の軽量リロード（スクロール位置を保持）
+  const reloadShiftData = async () => {
+    await Promise.all([loadShifts(), loadShiftRequests()])
+  }
+
   const loadShiftRequests = async () => {
     const start = isFirstHalf ? startOfMonth(selectedMonth) : new Date(selectedMonth.getFullYear(), selectedMonth.getMonth(), 16)
     const end = isFirstHalf ? new Date(selectedMonth.getFullYear(), selectedMonth.getMonth(), 15) : endOfMonth(selectedMonth)
@@ -776,7 +781,7 @@ function ShiftManageContent() {
               })
           }
 
-          await loadData()
+          await reloadShiftData()
           setEditingCell(null)
           setIsNewShift(false)
         }
@@ -816,7 +821,7 @@ function ShiftManageContent() {
                 .eq('id', request.id)
             }
 
-            await loadData()
+            await reloadShiftData()
             setEditingCell(null)
             setIsNewShift(false)
           }
@@ -2100,7 +2105,7 @@ function ShiftManageContent() {
                         .eq('id', request.id)
 
                       if (!error) {
-                        await loadData()
+                        await reloadShiftData()
                         setEditingCell(null)
                         setIsNewShift(false)
                       } else {
