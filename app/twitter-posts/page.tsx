@@ -69,6 +69,9 @@ export default function TwitterPostsPage() {
   // 定期投稿リスト表示
   const [showRecurringList, setShowRecurringList] = useState(false)
 
+  // プレビューモード（mobile/desktop）
+  const [previewMode, setPreviewMode] = useState<'mobile' | 'desktop'>('mobile')
+
   const loadData = useCallback(async () => {
     if (!storeId) return
 
@@ -201,9 +204,9 @@ export default function TwitterPostsPage() {
     const start = weekDays[0]
     const end = weekDays[6]
     if (start.getMonth() === end.getMonth()) {
-      return `${start.getFullYear()}年${start.getMonth() + 1}月`
+      return `${start.getFullYear()}年${start.getMonth() + 1}月${start.getDate()}日〜${end.getDate()}日`
     }
-    return `${start.getFullYear()}年${start.getMonth() + 1}月 - ${end.getMonth() + 1}月`
+    return `${start.getFullYear()}年${start.getMonth() + 1}月${start.getDate()}日〜${end.getMonth() + 1}月${end.getDate()}日`
   }
 
   // 通常投稿の処理
@@ -734,10 +737,10 @@ export default function TwitterPostsPage() {
         </>
       )}
 
-      {/* 通常投稿モーダル */}
+      {/* 通常投稿モーダル（左右分割） */}
       {showForm && (
         <div style={styles.modalOverlay} onClick={resetForm}>
-          <div style={styles.modal} onClick={e => e.stopPropagation()}>
+          <div style={styles.postModal} onClick={e => e.stopPropagation()}>
             <div style={styles.modalHeader}>
               <h2 style={styles.modalTitle}>
                 {editingId ? '投稿を編集' : '投稿を作成'}
@@ -745,52 +748,122 @@ export default function TwitterPostsPage() {
               <button onClick={resetForm} style={styles.closeButton}>×</button>
             </div>
 
-            <div style={styles.modalBody}>
-              <div style={styles.inputGroup}>
-                <label style={styles.label}>投稿内容</label>
-                <textarea
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  style={styles.textarea}
-                  placeholder="ツイート内容を入力..."
-                  maxLength={280}
-                />
-                <span style={styles.charCount}>{content.length}/280</span>
+            <div style={styles.postModalBody}>
+              {/* 左側：入力エリア */}
+              <div style={styles.postEditArea}>
+                <div style={styles.inputGroup}>
+                  <label style={styles.label}>投稿内容</label>
+                  <textarea
+                    value={content}
+                    onChange={(e) => setContent(e.target.value)}
+                    style={styles.postTextarea}
+                    placeholder="ツイート内容を入力..."
+                    maxLength={280}
+                  />
+                  <span style={styles.charCount}>{content.length}/280</span>
+                </div>
+
+                <div style={styles.inputGroup}>
+                  <label style={styles.label}>画像URL（任意）</label>
+                  <input
+                    type="url"
+                    value={imageUrl}
+                    onChange={(e) => setImageUrl(e.target.value)}
+                    style={styles.input}
+                    placeholder="https://..."
+                  />
+                  {imageUrl && (
+                    <div style={styles.imagePreviewSmall}>
+                      <img src={imageUrl} alt="プレビュー" style={styles.imagePreviewImg} />
+                      <button
+                        onClick={() => setImageUrl('')}
+                        style={styles.imageRemoveBtn}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div style={styles.inputGroup}>
+                  <label style={styles.label}>投稿日時</label>
+                  <input
+                    type="datetime-local"
+                    value={scheduledAt}
+                    onChange={(e) => setScheduledAt(e.target.value)}
+                    style={styles.input}
+                  />
+                </div>
+
+                <div style={styles.postModalActions}>
+                  <button onClick={resetForm} style={styles.cancelButton}>
+                    キャンセル
+                  </button>
+                  <button
+                    onClick={handleSubmit}
+                    disabled={saving}
+                    style={styles.submitButton}
+                  >
+                    {saving ? '保存中...' : '投稿を予約'}
+                  </button>
+                </div>
               </div>
 
-              <div style={styles.inputGroup}>
-                <label style={styles.label}>画像URL（任意）</label>
-                <input
-                  type="url"
-                  value={imageUrl}
-                  onChange={(e) => setImageUrl(e.target.value)}
-                  style={styles.input}
-                  placeholder="https://..."
-                />
-              </div>
+              {/* 右側：プレビューエリア */}
+              <div style={styles.previewArea}>
+                <div style={styles.previewHeader}>
+                  <span style={styles.previewTitle}>プレビュー</span>
+                  <div style={styles.previewToggle}>
+                    <button
+                      onClick={() => setPreviewMode('mobile')}
+                      style={{
+                        ...styles.previewToggleBtn,
+                        ...(previewMode === 'mobile' ? styles.previewToggleBtnActive : {}),
+                      }}
+                      title="モバイル"
+                    >
+                      📱
+                    </button>
+                    <button
+                      onClick={() => setPreviewMode('desktop')}
+                      style={{
+                        ...styles.previewToggleBtn,
+                        ...(previewMode === 'desktop' ? styles.previewToggleBtnActive : {}),
+                      }}
+                      title="デスクトップ"
+                    >
+                      🖥️
+                    </button>
+                  </div>
+                </div>
+                <p style={styles.previewNote}>SNS上での実際の表示と異なることがあります。</p>
 
-              <div style={styles.inputGroup}>
-                <label style={styles.label}>投稿日時</label>
-                <input
-                  type="datetime-local"
-                  value={scheduledAt}
-                  onChange={(e) => setScheduledAt(e.target.value)}
-                  style={styles.input}
-                />
+                <div style={{
+                  ...styles.previewDevice,
+                  ...(previewMode === 'mobile' ? styles.previewDeviceMobile : styles.previewDeviceDesktop),
+                }}>
+                  <div style={styles.tweetPreview}>
+                    <div style={styles.tweetHeader}>
+                      <div style={styles.tweetAvatar}>
+                        {twitterSettings?.twitter_username?.[0]?.toUpperCase() || 'X'}
+                      </div>
+                      <div style={styles.tweetUserInfo}>
+                        <span style={styles.tweetDisplayName}>
+                          @{twitterSettings?.twitter_username || 'username'}
+                        </span>
+                      </div>
+                    </div>
+                    <div style={styles.tweetContent}>
+                      {content || 'ツイート内容がここに表示されます...'}
+                    </div>
+                    {imageUrl && (
+                      <div style={styles.tweetImageContainer}>
+                        <img src={imageUrl} alt="" style={styles.tweetImage} />
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
-            </div>
-
-            <div style={styles.modalFooter}>
-              <button onClick={resetForm} style={styles.cancelButton}>
-                キャンセル
-              </button>
-              <button
-                onClick={handleSubmit}
-                disabled={saving}
-                style={styles.submitButton}
-              >
-                {saving ? '保存中...' : '投稿を予約'}
-              </button>
             </div>
           </div>
         </div>
@@ -1316,6 +1389,177 @@ const styles: { [key: string]: React.CSSProperties } = {
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 1000,
+  },
+  // 投稿モーダル（左右分割）
+  postModal: {
+    backgroundColor: '#fff',
+    borderRadius: '12px',
+    width: '95%',
+    maxWidth: '1000px',
+    maxHeight: '90vh',
+    overflow: 'hidden',
+    display: 'flex',
+    flexDirection: 'column',
+  },
+  postModalBody: {
+    display: 'flex',
+    flex: 1,
+    overflow: 'hidden',
+  },
+  postEditArea: {
+    flex: 1,
+    padding: '20px',
+    borderRight: '1px solid #e5e7eb',
+    overflowY: 'auto',
+  },
+  postTextarea: {
+    width: '100%',
+    padding: '12px',
+    fontSize: '15px',
+    border: '1px solid #d1d5db',
+    borderRadius: '8px',
+    minHeight: '150px',
+    resize: 'vertical',
+    fontFamily: 'inherit',
+    boxSizing: 'border-box',
+    lineHeight: '1.5',
+  },
+  postModalActions: {
+    display: 'flex',
+    gap: '12px',
+    justifyContent: 'flex-end',
+    marginTop: '16px',
+    paddingTop: '16px',
+    borderTop: '1px solid #e5e7eb',
+  },
+  imagePreviewSmall: {
+    position: 'relative',
+    marginTop: '8px',
+    display: 'inline-block',
+  },
+  imagePreviewImg: {
+    width: '80px',
+    height: '80px',
+    objectFit: 'cover',
+    borderRadius: '8px',
+  },
+  imageRemoveBtn: {
+    position: 'absolute',
+    top: '-8px',
+    right: '-8px',
+    width: '24px',
+    height: '24px',
+    borderRadius: '50%',
+    backgroundColor: '#ef4444',
+    color: '#fff',
+    border: 'none',
+    cursor: 'pointer',
+    fontSize: '14px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // プレビューエリア
+  previewArea: {
+    width: '400px',
+    backgroundColor: '#f9fafb',
+    padding: '20px',
+    overflowY: 'auto',
+  },
+  previewHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '8px',
+  },
+  previewTitle: {
+    fontSize: '16px',
+    fontWeight: '600',
+    color: '#374151',
+  },
+  previewToggle: {
+    display: 'flex',
+    gap: '4px',
+  },
+  previewToggleBtn: {
+    width: '36px',
+    height: '36px',
+    border: '1px solid #d1d5db',
+    backgroundColor: '#fff',
+    borderRadius: '6px',
+    cursor: 'pointer',
+    fontSize: '18px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  previewToggleBtnActive: {
+    backgroundColor: '#3b82f6',
+    borderColor: '#3b82f6',
+  },
+  previewNote: {
+    fontSize: '12px',
+    color: '#6b7280',
+    marginBottom: '16px',
+  },
+  previewDevice: {
+    backgroundColor: '#fff',
+    borderRadius: '12px',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+    padding: '16px',
+    margin: '0 auto',
+  },
+  previewDeviceMobile: {
+    maxWidth: '320px',
+  },
+  previewDeviceDesktop: {
+    maxWidth: '100%',
+  },
+  tweetPreview: {
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+  },
+  tweetHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+    marginBottom: '12px',
+  },
+  tweetAvatar: {
+    width: '48px',
+    height: '48px',
+    borderRadius: '50%',
+    backgroundColor: '#1da1f2',
+    color: '#fff',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: '20px',
+    fontWeight: '600',
+  },
+  tweetUserInfo: {
+    display: 'flex',
+    flexDirection: 'column',
+  },
+  tweetDisplayName: {
+    fontSize: '15px',
+    fontWeight: '700',
+    color: '#0f1419',
+  },
+  tweetContent: {
+    fontSize: '15px',
+    lineHeight: '1.5',
+    color: '#0f1419',
+    whiteSpace: 'pre-wrap',
+    wordBreak: 'break-word',
+  },
+  tweetImageContainer: {
+    marginTop: '12px',
+    borderRadius: '16px',
+    overflow: 'hidden',
+  },
+  tweetImage: {
+    width: '100%',
+    display: 'block',
   },
   modal: {
     backgroundColor: '#fff',
