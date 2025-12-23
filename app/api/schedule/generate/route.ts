@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import sharp from 'sharp';
 import { createCanvas, registerFont } from 'canvas';
 import path from 'path';
+import fs from 'fs';
 
 // M PLUS Rounded 1c のウェイト定義（Boldは別ファミリー名として登録）
 const MPLUS_FONTS = [
@@ -24,28 +25,48 @@ const OTHER_FONTS = [
 
 // フォントを登録（サーバー起動時に1回だけ実行される）
 let fontsRegistered = false;
+let fontRegistrationLog: string[] = [];
+
 function ensureFontsRegistered() {
   if (fontsRegistered) return;
+  fontRegistrationLog = [];
   try {
     const fontsDir = path.join(process.cwd(), 'public', 'fonts');
+    fontRegistrationLog.push(`Fonts directory: ${fontsDir}`);
+
+    // ディレクトリの存在確認
+    if (fs.existsSync(fontsDir)) {
+      const files = fs.readdirSync(fontsDir);
+      fontRegistrationLog.push(`Found ${files.length} files in fonts dir`);
+    } else {
+      fontRegistrationLog.push(`ERROR: Fonts directory does not exist!`);
+    }
 
     // Rounded Mplus 1c（Regular/Bold別ファミリー）を登録
     for (const font of MPLUS_FONTS) {
-      registerFont(path.join(fontsDir, font.file), {
-        family: font.family,
-      });
+      const fontPath = path.join(fontsDir, font.file);
+      const exists = fs.existsSync(fontPath);
+      fontRegistrationLog.push(`${font.family}: ${exists ? 'OK' : 'NOT FOUND'} (${font.file})`);
+      if (exists) {
+        registerFont(fontPath, { family: font.family });
+      }
     }
 
     // 他のフォントを登録（Boldも別ファミリー名で登録済み）
     for (const font of OTHER_FONTS) {
-      registerFont(path.join(fontsDir, font.file), {
-        family: font.family,
-      });
+      const fontPath = path.join(fontsDir, font.file);
+      const exists = fs.existsSync(fontPath);
+      fontRegistrationLog.push(`${font.family}: ${exists ? 'OK' : 'NOT FOUND'} (${font.file})`);
+      if (exists) {
+        registerFont(fontPath, { family: font.family });
+      }
     }
 
     fontsRegistered = true;
-    console.log('All fonts registered successfully');
+    fontRegistrationLog.push('Font registration complete');
+    console.log('Font registration:', fontRegistrationLog);
   } catch (error) {
+    fontRegistrationLog.push(`ERROR: ${error}`);
     console.error('Failed to register fonts:', error);
   }
 }
@@ -240,6 +261,7 @@ export async function POST(request: NextRequest) {
         templateNameStyle: template.name_style,
         usedNameStyle: nameStyle,
         fontResolution: lastUsedFontDebug, // どのフォントに解決されたか
+        fontRegistration: fontRegistrationLog, // フォント登録状況
         frameSize: frameSize,
         framesCount: frames.length,
         castsCount: orderedCasts.length,

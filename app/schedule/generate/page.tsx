@@ -166,6 +166,7 @@ export default function GeneratePage() {
           console.log('DBのname_style:', data.debug.templateNameStyle)
           console.log('実際に使用:', data.debug.usedNameStyle)
           console.log('フォント解決:', data.debug.fontResolution)
+          console.log('フォント登録:', data.debug.fontRegistration)
           console.log('枠サイズ:', data.debug.frameSize)
           console.log('枠数:', data.debug.framesCount, 'キャスト数:', data.debug.castsCount)
         }
