@@ -26,6 +26,7 @@ export default function TwitterSettingsPage() {
   const [apiKey, setApiKey] = useState('')
   const [apiSecret, setApiSecret] = useState('')
   const [showSecrets, setShowSecrets] = useState(false)
+  const [showConnectModal, setShowConnectModal] = useState(false)
 
   const loadSettings = useCallback(async () => {
     if (!storeId) return
@@ -97,28 +98,16 @@ export default function TwitterSettingsPage() {
     }
   }
 
-  const handleConnect = async () => {
+  const handleConnect = () => {
     if (!settings?.api_key || !settings?.api_secret) {
       toast.error('先にAPI認証情報を保存してください')
       return
     }
+    setShowConnectModal(true)
+  }
 
-    // Twitter確認ページを新しいタブで開く
-    window.open('https://twitter.com/settings/account', '_blank')
-
-    // 確認ダイアログを表示
-    const confirmed = confirm(
-      `【確認】新しいタブでTwitterが開きました。\n\n` +
-      `ログイン中のアカウントを確認してください。\n\n` +
-      `投稿用アカウントでログインしていますか？\n` +
-      `（開発者アカウントではありません）\n\n` +
-      `「OK」で連携を開始します。\n` +
-      `「キャンセル」で中断します。`
-    )
-
-    if (!confirmed) return
-
-    // OAuth認証フローを開始
+  const handleStartOAuth = () => {
+    setShowConnectModal(false)
     window.location.href = `/api/twitter/auth?storeId=${storeId}`
   }
 
@@ -338,6 +327,49 @@ export default function TwitterSettingsPage() {
           </div>
         </div>
       </div>
+
+      {/* 連携確認モーダル */}
+      {showConnectModal && (
+        <div style={styles.modalOverlay}>
+          <div style={styles.modal}>
+            <h3 style={styles.modalTitle}>Twitter連携の確認</h3>
+            <div style={styles.modalContent}>
+              <p style={styles.modalText}>
+                連携する前に、正しいアカウントでログインしているか確認してください。
+              </p>
+              <div style={styles.warningBox}>
+                <p style={styles.warningTitle}>⚠️ 重要</p>
+                <p style={styles.warningText}>
+                  <strong>投稿用アカウント</strong>でログインしてください。<br />
+                  開発者アカウント（API登録したアカウント）ではありません。
+                </p>
+              </div>
+              <a
+                href="https://twitter.com/settings/account"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={styles.checkAccountLink}
+              >
+                Twitterでログイン中のアカウントを確認する →
+              </a>
+            </div>
+            <div style={styles.modalButtons}>
+              <button
+                onClick={() => setShowConnectModal(false)}
+                style={styles.cancelButton}
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={handleStartOAuth}
+                style={styles.confirmButton}
+              >
+                連携を開始
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -584,5 +616,96 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '13px',
     color: '#1a1a2e',
     fontWeight: '500',
+  },
+  modalOverlay: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1000,
+  },
+  modal: {
+    backgroundColor: '#fff',
+    borderRadius: '16px',
+    padding: '24px',
+    maxWidth: '480px',
+    width: '90%',
+    boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
+  },
+  modalTitle: {
+    fontSize: '20px',
+    fontWeight: '600',
+    color: '#1a1a2e',
+    margin: '0 0 16px 0',
+    textAlign: 'center',
+  },
+  modalContent: {
+    marginBottom: '24px',
+  },
+  modalText: {
+    fontSize: '14px',
+    color: '#6b7280',
+    margin: '0 0 16px 0',
+    textAlign: 'center',
+  },
+  warningBox: {
+    backgroundColor: '#fef3c7',
+    border: '1px solid #f59e0b',
+    borderRadius: '8px',
+    padding: '16px',
+    marginBottom: '16px',
+  },
+  warningTitle: {
+    fontSize: '14px',
+    fontWeight: '600',
+    color: '#92400e',
+    margin: '0 0 8px 0',
+  },
+  warningText: {
+    fontSize: '13px',
+    color: '#a16207',
+    margin: 0,
+    lineHeight: '1.6',
+  },
+  checkAccountLink: {
+    display: 'block',
+    textAlign: 'center',
+    color: '#1da1f2',
+    fontSize: '14px',
+    fontWeight: '500',
+    textDecoration: 'none',
+    padding: '12px',
+    backgroundColor: '#f0f9ff',
+    borderRadius: '8px',
+  },
+  modalButtons: {
+    display: 'flex',
+    gap: '12px',
+    justifyContent: 'flex-end',
+  },
+  cancelButton: {
+    padding: '10px 20px',
+    backgroundColor: '#fff',
+    color: '#6b7280',
+    border: '1px solid #d1d5db',
+    borderRadius: '8px',
+    fontSize: '14px',
+    fontWeight: '500',
+    cursor: 'pointer',
+  },
+  confirmButton: {
+    padding: '10px 20px',
+    backgroundColor: '#1da1f2',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '8px',
+    fontSize: '14px',
+    fontWeight: '600',
+    cursor: 'pointer',
   },
 }
