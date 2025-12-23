@@ -43,6 +43,14 @@ const menuGroups: MenuGroup[] = [
     ]
   },
   {
+    name: 'Twitter',
+    icon: '🐦',
+    items: [
+      { name: '予約投稿', path: '/twitter-posts', icon: '📝' },
+      { name: '設定', path: '/twitter-settings', icon: '⚙️' },
+    ]
+  },
+  {
     name: '商品',
     icon: '🛍️',
     items: [
