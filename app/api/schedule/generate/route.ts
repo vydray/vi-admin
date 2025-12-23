@@ -193,8 +193,6 @@ export async function POST(request: NextRequest) {
       ...template.name_style,
     };
 
-    console.log('Template name_style from DB:', JSON.stringify(template.name_style));
-    console.log('Using nameStyle:', JSON.stringify(nameStyle));
 
     // 合成用の配列を準備
     const composites: sharp.OverlayOptions[] = [];
@@ -256,16 +254,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       image: `data:image/png;base64,${base64}`,
-      // デバッグ用：使用された設定を返す
-      debug: {
-        templateNameStyle: template.name_style,
-        usedNameStyle: nameStyle,
-        fontResolution: lastUsedFontDebug, // どのフォントに解決されたか
-        fontRegistration: fontRegistrationLog, // フォント登録状況
-        frameSize: frameSize,
-        framesCount: frames.length,
-        castsCount: orderedCasts.length,
-      },
     });
   } catch (error) {
     console.error('Generate schedule image error:', error);
@@ -306,14 +294,6 @@ function getActualFontFamily(baseFontFamily: string, weight: string): string {
   return baseFontFamily;
 }
 
-// デバッグ用：最後に使用したフォント情報を保持
-let lastUsedFontDebug: {
-  baseFontFamily: string;
-  actualFontFamily: string;
-  fontWeight: string;
-  requestedFont: string;
-  actualCtxFont: string;
-} | null = null;
 
 // 名前テキストを画像として生成（node-canvas使用）
 function generateNameText(
@@ -353,16 +333,6 @@ function generateNameText(
       : `${fontSize}px "${actualFontFamily}"`;
     ctx.font = fontString;
 
-    // デバッグ情報を保存（ctx.fontが実際に何になったかも確認）
-    lastUsedFontDebug = {
-      baseFontFamily,
-      actualFontFamily,
-      fontWeight,
-      requestedFont: fontString,
-      actualCtxFont: ctx.font, // node-canvasが実際に設定した値
-    };
-
-    console.log(`Generating text "${name}" with font: ${fontString} -> ctx.font: ${ctx.font}`);
 
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';

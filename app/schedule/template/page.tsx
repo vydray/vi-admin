@@ -183,6 +183,7 @@ export default function TemplateEditorPage() {
   const [framesCollapsed, setFramesCollapsed] = useState(false)
   const [showFrameBorders, setShowFrameBorders] = useState(true)
   const [frameBorderColor, setFrameBorderColor] = useState('#ffffff')
+  const [sampleText, setSampleText] = useState('さんぷる')
 
   // 画像の実際のサイズとキャンバスのスケール
   const [imageSize, setImageSize] = useState({ width: 1200, height: 1200 })
@@ -444,7 +445,8 @@ export default function TemplateEditorPage() {
     setSaving(false)
   }
 
-  if (loading) {
+  // template が null の場合もロード中として扱う（レースコンディション対策）
+  if (loading || storeLoading || !template) {
     return <div style={styles.container}><div style={styles.loading}>読み込み中...</div></div>
   }
 
@@ -513,7 +515,7 @@ export default function TemplateEditorPage() {
                   }}
                 >
                   <NamePreviewCanvas
-                    text="サンプル名"
+                    text={sampleText}
                     width={template.frame_size.width}
                     fontSize={template?.name_style.font_size || 24}
                     fontFamily={template?.name_style.font_family || 'Rounded Mplus 1c'}
@@ -631,6 +633,16 @@ export default function TemplateEditorPage() {
           <div style={styles.section}>
             <h3 style={styles.sectionTitle}>名前スタイル</h3>
             <div style={styles.styleInputs}>
+              <label style={styles.styleLabel}>
+                プレビュー文字
+                <input
+                  type="text"
+                  value={sampleText}
+                  onChange={(e) => setSampleText(e.target.value || 'サンプル')}
+                  style={styles.input}
+                  placeholder="サンプル名"
+                />
+              </label>
               <label style={styles.styleLabel}>
                 フォント
                 <select
