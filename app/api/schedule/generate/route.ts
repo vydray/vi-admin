@@ -4,27 +4,22 @@ import sharp from 'sharp';
 import { createCanvas, registerFont } from 'canvas';
 import path from 'path';
 
-// M PLUS Rounded 1c のウェイト定義（node-canvasはnormal/boldキーワードを使用）
-const MPLUS_WEIGHTS = [
-  { file: 'MPLUSRounded1c-Thin.ttf', weight: 'normal' },
-  { file: 'MPLUSRounded1c-Light.ttf', weight: 'normal' },
-  { file: 'MPLUSRounded1c-Regular.ttf', weight: 'normal' },
-  { file: 'MPLUSRounded1c-Medium.ttf', weight: 'normal' },
-  { file: 'MPLUSRounded1c-Bold.ttf', weight: 'bold' },
-  { file: 'MPLUSRounded1c-ExtraBold.ttf', weight: 'bold' },
-  { file: 'MPLUSRounded1c-Black.ttf', weight: 'bold' },
+// M PLUS Rounded 1c のウェイト定義（Boldは別ファミリー名として登録）
+const MPLUS_FONTS = [
+  { file: 'MPLUSRounded1c-Regular.ttf', family: 'Rounded Mplus 1c' },
+  { file: 'MPLUSRounded1c-Bold.ttf', family: 'Rounded Mplus 1c Bold' },
 ];
 
-// 他のフォント（node-canvasはnormal/boldキーワードを使用）
+// 他のフォント（Boldバリアントは別ファミリー名として登録）
 const OTHER_FONTS = [
-  { file: 'KosugiMaru-Regular.ttf', family: 'Kosugi Maru', weight: 'normal' },
-  { file: 'HachiMaruPop-Regular.ttf', family: 'Hachi Maru Pop', weight: 'normal' },
-  { file: 'YuseiMagic-Regular.ttf', family: 'Yusei Magic', weight: 'normal' },
-  { file: 'ZenMaruGothic-Regular.ttf', family: 'Zen Maru Gothic', weight: 'normal' },
-  { file: 'ZenMaruGothic-Bold.ttf', family: 'Zen Maru Gothic', weight: 'bold' },
-  { file: 'DelaGothicOne-Regular.ttf', family: 'Dela Gothic One', weight: 'normal' },
-  { file: 'ReggaeOne-Regular.ttf', family: 'Reggae One', weight: 'normal' },
-  { file: 'RocknRollOne-Regular.ttf', family: 'RocknRoll One', weight: 'normal' },
+  { file: 'KosugiMaru-Regular.ttf', family: 'Kosugi Maru' },
+  { file: 'HachiMaruPop-Regular.ttf', family: 'Hachi Maru Pop' },
+  { file: 'YuseiMagic-Regular.ttf', family: 'Yusei Magic' },
+  { file: 'ZenMaruGothic-Regular.ttf', family: 'Zen Maru Gothic' },
+  { file: 'ZenMaruGothic-Bold.ttf', family: 'Zen Maru Gothic Bold' },
+  { file: 'DelaGothicOne-Regular.ttf', family: 'Dela Gothic One' },
+  { file: 'ReggaeOne-Regular.ttf', family: 'Reggae One' },
+  { file: 'RocknRollOne-Regular.ttf', family: 'RocknRoll One' },
 ];
 
 // フォントを登録（サーバー起動時に1回だけ実行される）
@@ -34,19 +29,17 @@ function ensureFontsRegistered() {
   try {
     const fontsDir = path.join(process.cwd(), 'public', 'fonts');
 
-    // Rounded Mplus 1c の全ウェイトを登録
-    for (const font of MPLUS_WEIGHTS) {
+    // Rounded Mplus 1c（Regular/Bold別ファミリー）を登録
+    for (const font of MPLUS_FONTS) {
       registerFont(path.join(fontsDir, font.file), {
-        family: 'Rounded Mplus 1c',
-        weight: font.weight,
+        family: font.family,
       });
     }
 
-    // 他のフォントを登録
+    // 他のフォントを登録（Boldも別ファミリー名で登録済み）
     for (const font of OTHER_FONTS) {
       registerFont(path.join(fontsDir, font.file), {
         family: font.family,
-        weight: font.weight,
       });
     }
 
@@ -272,13 +265,22 @@ const REGISTERED_FONTS: Record<string, string> = {
   'RocknRoll One': 'RocknRoll One',
 };
 
-// 数値ウェイトをnode-canvas用のキーワードに変換
-function getCanvasFontWeight(weight: string): string {
+// ウェイトに応じて実際のフォントファミリー名を返す（Boldは別ファミリー名）
+function getActualFontFamily(baseFontFamily: string, weight: string): string {
   const numWeight = parseInt(weight, 10);
-  if (isNaN(numWeight)) return weight;
-  // 600以上はbold、それ以下はnormal
-  if (numWeight >= 600) return 'bold';
-  return 'normal';
+  const isBold = !isNaN(numWeight) && numWeight >= 600;
+
+  // Boldウェイトの場合、対応するBoldファミリーがあれば使用
+  if (isBold) {
+    if (baseFontFamily === 'Zen Maru Gothic') {
+      return 'Zen Maru Gothic Bold';
+    }
+    if (baseFontFamily === 'Rounded Mplus 1c') {
+      return 'Rounded Mplus 1c Bold';
+    }
+  }
+
+  return baseFontFamily;
 }
 
 // 名前テキストを画像として生成（node-canvas使用）
@@ -295,16 +297,16 @@ function generateNameText(
     const fontSize = style.font_size;
     // 登録済みフォントがあればそれを使用、なければRounded Mplus 1cにフォールバック
     const requestedFont = style.font_family || 'Rounded Mplus 1c';
-    const fontFamily = REGISTERED_FONTS[requestedFont] || 'Rounded Mplus 1c';
+    const baseFontFamily = REGISTERED_FONTS[requestedFont] || 'Rounded Mplus 1c';
     const fontWeight = style.font_weight || '700'; // デフォルトはBold
-    // node-canvas用にウェイトをキーワードに変換
-    const canvasFontWeight = getCanvasFontWeight(fontWeight);
+    // ウェイトに応じて実際のフォントファミリー名を取得（Boldは別ファミリー名）
+    const actualFontFamily = getActualFontFamily(baseFontFamily, fontWeight);
     // stroke_enabledが文字列"false"の場合も考慮（DBから取得時に型が変わる可能性）
     const rawStrokeEnabled = style.stroke_enabled as unknown;
     // falseまたは'false'の場合のみ無効、それ以外（true, undefined等）は有効
     const strokeEnabled = rawStrokeEnabled !== false && rawStrokeEnabled !== 'false';
 
-    console.log(`Generating text "${name}" with font: ${fontFamily}, weight: ${fontWeight} -> ${canvasFontWeight}, strokeEnabled: ${strokeEnabled}, raw: ${rawStrokeEnabled} (type: ${typeof rawStrokeEnabled})`);
+    console.log(`Generating text "${name}" with font: ${baseFontFamily} -> ${actualFontFamily}, weight: ${fontWeight}, strokeEnabled: ${strokeEnabled}`);
 
     // Canvasを作成
     const canvas = createCanvas(width, height);
@@ -313,8 +315,8 @@ function generateNameText(
     // 背景を透明に
     ctx.clearRect(0, 0, width, height);
 
-    // フォント設定（node-canvasではbold/normalキーワードを使用）
-    ctx.font = `${canvasFontWeight} ${fontSize}px "${fontFamily}"`;
+    // フォント設定（Boldは別ファミリー名なのでweightキーワード不要）
+    ctx.font = `${fontSize}px "${actualFontFamily}"`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
