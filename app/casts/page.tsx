@@ -461,15 +461,17 @@ function CastsPageContent() {
       return
     }
 
-    const { error} = await supabase
+    const { error } = await supabase
       .from('casts')
       .delete()
       .eq('id', castId)
+      .eq('store_id', storeId)
 
     if (error) {
       console.error('Error deleting cast:', error)
-      toast.success('削除に失敗しました')
+      toast.error('削除に失敗しました')
     } else {
+      toast.success('削除しました')
       loadCasts()
     }
   }, [confirm, loadCasts])
@@ -548,7 +550,7 @@ function CastsPageContent() {
         .upsert(updates, { onConflict: 'id' })
     } catch (error) {
       console.error('並び順の保存エラー:', error)
-      toast.success('並び順の保存に失敗しました')
+      toast.error('並び順の保存に失敗しました')
       // エラー時はリロード
       loadCasts()
     }
