@@ -59,6 +59,12 @@ function CastsPageContent() {
   const [showTwitterPassword, setShowTwitterPassword] = useState(false)
   const [showInstagramPassword, setShowInstagramPassword] = useState(false)
 
+  // 属性設定モーダル状態
+  const [isPositionModalOpen, setIsPositionModalOpen] = useState(false)
+  const [editingPosition, setEditingPosition] = useState<CastPosition | null>(null)
+  const [newPositionName, setNewPositionName] = useState('')
+  const [positionSaving, setPositionSaving] = useState(false)
+
   // ドラッグ&ドロップ状態
   const [draggedCastId, setDraggedCastId] = useState<number | null>(null)
   const [dragOverCastId, setDragOverCastId] = useState<number | null>(null)
@@ -506,6 +512,93 @@ function CastsPageContent() {
     }
   }, [editingCast])
 
+  // 属性管理関数
+  const handleAddPosition = useCallback(async () => {
+    if (!newPositionName.trim()) {
+      toast.error('属性名を入力してください')
+      return
+    }
+
+    // 重複チェック
+    if (positions.some(p => p.name === newPositionName.trim())) {
+      toast.error('同じ名前の属性が既に存在します')
+      return
+    }
+
+    setPositionSaving(true)
+    const { error } = await supabase
+      .from('cast_positions')
+      .insert({
+        name: newPositionName.trim(),
+        store_id: storeId
+      })
+
+    if (error) {
+      toast.error('属性の追加に失敗しました')
+      console.error(error)
+    } else {
+      toast.success('属性を追加しました')
+      setNewPositionName('')
+      loadPositions()
+    }
+    setPositionSaving(false)
+  }, [newPositionName, positions, storeId, loadPositions])
+
+  const handleUpdatePosition = useCallback(async () => {
+    if (!editingPosition || !editingPosition.name.trim()) {
+      toast.error('属性名を入力してください')
+      return
+    }
+
+    // 重複チェック（自分自身を除く）
+    if (positions.some(p => p.id !== editingPosition.id && p.name === editingPosition.name.trim())) {
+      toast.error('同じ名前の属性が既に存在します')
+      return
+    }
+
+    setPositionSaving(true)
+    const { error } = await supabase
+      .from('cast_positions')
+      .update({ name: editingPosition.name.trim() })
+      .eq('id', editingPosition.id)
+
+    if (error) {
+      toast.error('属性の更新に失敗しました')
+      console.error(error)
+    } else {
+      toast.success('属性を更新しました')
+      setEditingPosition(null)
+      loadPositions()
+    }
+    setPositionSaving(false)
+  }, [editingPosition, positions, loadPositions])
+
+  const handleDeletePosition = useCallback(async (position: CastPosition) => {
+    // この属性を使用しているキャストがいるかチェック
+    const castsUsingPosition = casts.filter(c => c.attributes === position.name)
+    if (castsUsingPosition.length > 0) {
+      toast.error(`この属性は ${castsUsingPosition.length} 人のキャストが使用しています。先にキャストの属性を変更してください。`)
+      return
+    }
+
+    if (!await confirm(`「${position.name}」を削除しますか？`)) {
+      return
+    }
+
+    const { error } = await supabase
+      .from('cast_positions')
+      .delete()
+      .eq('id', position.id)
+
+    if (error) {
+      toast.error('属性の削除に失敗しました')
+      console.error(error)
+    } else {
+      toast.success('属性を削除しました')
+      loadPositions()
+    }
+  }, [casts, confirm, loadPositions])
+
   // ドラッグ&ドロップハンドラー
   const handleDragStart = (e: React.DragEvent, castId: number) => {
     setDraggedCastId(castId)
@@ -744,13 +837,21 @@ function CastsPageContent() {
           クリア
         </Button>
 
-        <Button
-          onClick={openNewCastModal}
-          variant="success"
-          style={{ marginLeft: 'auto' }}
-        >
-          ➕ 新規追加
-        </Button>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: '10px' }}>
+          <Button
+            onClick={() => setIsPositionModalOpen(true)}
+            variant="outline"
+          >
+            ⚙️ 属性設定
+          </Button>
+
+          <Button
+            onClick={openNewCastModal}
+            variant="success"
+          >
+            ➕ 新規追加
+          </Button>
+        </div>
       </div>
 
       {loading ? (
@@ -1307,6 +1408,167 @@ function CastsPageContent() {
             </div>
           </>
         )}
+      </Modal>
+
+      {/* 属性設定モーダル */}
+      <Modal
+        isOpen={isPositionModalOpen}
+        onClose={() => {
+          setIsPositionModalOpen(false)
+          setEditingPosition(null)
+          setNewPositionName('')
+        }}
+        title="属性設定"
+        maxWidth="500px"
+      >
+        <div style={{ marginBottom: '24px' }}>
+          <p style={{ fontSize: '14px', color: '#666', marginBottom: '16px' }}>
+            キャストの属性（レギュラー、体験など）を管理できます。
+          </p>
+
+          {/* 新規追加フォーム */}
+          <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+            <input
+              type="text"
+              placeholder="新しい属性名を入力"
+              value={newPositionName}
+              onChange={(e) => setNewPositionName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  handleAddPosition()
+                }
+              }}
+              style={{
+                flex: 1,
+                padding: '10px 12px',
+                border: '1px solid #ddd',
+                borderRadius: '6px',
+                fontSize: '14px'
+              }}
+            />
+            <Button
+              onClick={handleAddPosition}
+              variant="primary"
+              disabled={positionSaving || !newPositionName.trim()}
+            >
+              追加
+            </Button>
+          </div>
+
+          {/* 属性一覧 */}
+          <div style={{ border: '1px solid #e5e5e5', borderRadius: '8px', overflow: 'hidden' }}>
+            {positions.length === 0 ? (
+              <div style={{ padding: '24px', textAlign: 'center', color: '#999' }}>
+                属性が登録されていません
+              </div>
+            ) : (
+              positions.map((position, index) => (
+                <div
+                  key={position.id}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    padding: '12px 16px',
+                    borderBottom: index < positions.length - 1 ? '1px solid #e5e5e5' : 'none',
+                    backgroundColor: index % 2 === 0 ? '#fff' : '#fafafa'
+                  }}
+                >
+                  {editingPosition?.id === position.id ? (
+                    <>
+                      <input
+                        type="text"
+                        value={editingPosition.name}
+                        onChange={(e) => setEditingPosition({ ...editingPosition, name: e.target.value })}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            handleUpdatePosition()
+                          } else if (e.key === 'Escape') {
+                            setEditingPosition(null)
+                          }
+                        }}
+                        autoFocus
+                        style={{
+                          flex: 1,
+                          padding: '6px 10px',
+                          border: '1px solid #2563eb',
+                          borderRadius: '4px',
+                          fontSize: '14px',
+                          outline: 'none'
+                        }}
+                      />
+                      <Button
+                        onClick={handleUpdatePosition}
+                        variant="primary"
+                        size="small"
+                        disabled={positionSaving}
+                      >
+                        保存
+                      </Button>
+                      <Button
+                        onClick={() => setEditingPosition(null)}
+                        variant="outline"
+                        size="small"
+                      >
+                        取消
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <span style={{ flex: 1, fontSize: '14px', fontWeight: '500' }}>
+                        {position.name}
+                      </span>
+                      <span style={{ fontSize: '12px', color: '#999' }}>
+                        {casts.filter(c => c.attributes === position.name).length}人
+                      </span>
+                      <button
+                        onClick={() => setEditingPosition({ ...position })}
+                        style={{
+                          padding: '4px 8px',
+                          border: 'none',
+                          background: 'none',
+                          cursor: 'pointer',
+                          color: '#666',
+                          fontSize: '13px'
+                        }}
+                        title="編集"
+                      >
+                        ✏️
+                      </button>
+                      <button
+                        onClick={() => handleDeletePosition(position)}
+                        style={{
+                          padding: '4px 8px',
+                          border: 'none',
+                          background: 'none',
+                          cursor: 'pointer',
+                          color: '#dc2626',
+                          fontSize: '13px'
+                        }}
+                        title="削除"
+                      >
+                        🗑️
+                      </button>
+                    </>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <Button
+            onClick={() => {
+              setIsPositionModalOpen(false)
+              setEditingPosition(null)
+              setNewPositionName('')
+            }}
+            variant="outline"
+          >
+            閉じる
+          </Button>
+        </div>
       </Modal>
     </div>
   )
