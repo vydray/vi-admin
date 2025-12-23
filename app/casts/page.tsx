@@ -461,6 +461,12 @@ function CastsPageContent() {
       return
     }
 
+    // 関連するshift_locksを先に削除
+    await supabase
+      .from('shift_locks')
+      .delete()
+      .eq('cast_id', castId)
+
     const { error } = await supabase
       .from('casts')
       .delete()
@@ -469,12 +475,16 @@ function CastsPageContent() {
 
     if (error) {
       console.error('Error deleting cast:', error)
-      toast.error('削除に失敗しました')
+      if (error.code === '23503') {
+        toast.error('関連データがあるため削除できません')
+      } else {
+        toast.error('削除に失敗しました')
+      }
     } else {
       toast.success('削除しました')
       loadCasts()
     }
-  }, [confirm, loadCasts])
+  }, [confirm, loadCasts, storeId])
 
   const handleFieldChange = useCallback((field: keyof Cast, value: any) => {
     if (editingCast) {
