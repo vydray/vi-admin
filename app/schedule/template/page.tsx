@@ -189,6 +189,9 @@ export default function TemplateEditorPage() {
   const [imageSize, setImageSize] = useState({ width: 1200, height: 1200 })
   const scale = CANVAS_WIDTH / imageSize.width
 
+  // 最新のロードリクエストを追跡するref
+  const latestLoadRef = useRef<number>(0)
+
   const defaultNameStyle: NameStyle = {
     font_size: 24,
     font_family: 'Rounded Mplus 1c',
@@ -208,18 +211,23 @@ export default function TemplateEditorPage() {
   }, [storeId, storeLoading])
 
   const loadTemplate = async (targetStoreId: number) => {
+    // このロードリクエストのIDを記録
+    const loadId = Date.now()
+    latestLoadRef.current = loadId
+
     setLoading(true)
     // 店舗切り替え時に前の状態をリセット
     setTemplate(null)
     setTemplateImageUrl(null)
     setPlaceholderImageUrl(null)
     setSelectedFrameIndex(null)
+
     try {
       const response = await fetch(`/api/schedule/template?storeId=${targetStoreId}`)
       const data = await response.json()
 
-      // 読み込み中にstoreIdが変わった場合は更新しない
-      if (targetStoreId !== storeId) {
+      // このロードが最新でなければ結果を無視（新しいロードが開始された）
+      if (latestLoadRef.current !== loadId) {
         return
       }
 
@@ -252,10 +260,18 @@ export default function TemplateEditorPage() {
         })
       }
     } catch (error) {
+      // このロードが最新でなければエラーも無視
+      if (latestLoadRef.current !== loadId) {
+        return
+      }
       console.error('Load template error:', error)
       toast.error('テンプレートの読み込みに失敗しました')
+    } finally {
+      // このロードが最新の場合のみローディング状態を解除
+      if (latestLoadRef.current === loadId) {
+        setLoading(false)
+      }
     }
-    setLoading(false)
   }
 
   const handleTemplateImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
