@@ -468,9 +468,14 @@ function ShiftManageContent() {
 
       // 追加・更新処理
       if (updates.length > 0) {
-        await supabase
+        const { error } = await supabase
           .from('shift_locks')
-          .upsert(updates)
+          .upsert(updates, { onConflict: 'cast_id,date,store_id' })
+
+        if (error) {
+          console.error('upsert error:', error)
+          throw error
+        }
       }
 
       // データを再読み込み
