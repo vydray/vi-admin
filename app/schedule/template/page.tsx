@@ -4,6 +4,100 @@ import { useState, useEffect, useRef } from 'react'
 import { useStore } from '@/contexts/StoreContext'
 import { toast } from 'react-hot-toast'
 
+// Canvas APIで名前プレビューを描画するコンポーネント
+function NamePreviewCanvas({
+  text,
+  width,
+  fontSize,
+  fontFamily,
+  fontWeight,
+  color,
+  strokeEnabled,
+  strokeColor,
+  strokeWidth,
+  scale,
+}: {
+  text: string
+  width: number
+  fontSize: number
+  fontFamily: string
+  fontWeight: string
+  color: string
+  strokeEnabled: boolean
+  strokeColor: string
+  strokeWidth: number
+  scale: number
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    // 実際のサイズ（スケール前）
+    const actualWidth = width
+    const actualHeight = fontSize + 20
+
+    // Canvas のサイズを設定
+    canvas.width = actualWidth
+    canvas.height = actualHeight
+
+    // クリア
+    ctx.clearRect(0, 0, actualWidth, actualHeight)
+
+    // フォント設定（node-canvasと同じロジック）
+    const numWeight = parseInt(fontWeight, 10)
+    const isBold = !isNaN(numWeight) && numWeight >= 600
+    // Boldフォントは別ファミリー名を使用（node-canvasと同じ）
+    let actualFontFamily = fontFamily
+    if (isBold) {
+      if (fontFamily === 'Zen Maru Gothic') {
+        actualFontFamily = 'Zen Maru Gothic Bold'
+      } else if (fontFamily === 'Rounded Mplus 1c') {
+        actualFontFamily = 'Rounded Mplus 1c Bold'
+      }
+    }
+
+    const fontString = isBold
+      ? `bold ${fontSize}px "${actualFontFamily}"`
+      : `${fontSize}px "${actualFontFamily}"`
+
+    ctx.font = fontString
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+
+    const x = actualWidth / 2
+    const y = actualHeight / 2
+
+    // 縁取り（先に描画）
+    if (strokeEnabled && strokeWidth > 0) {
+      ctx.strokeStyle = strokeColor
+      ctx.lineWidth = strokeWidth * 2
+      ctx.lineJoin = 'round'
+      ctx.miterLimit = 2
+      ctx.strokeText(text, x, y)
+    }
+
+    // 塗りつぶし
+    ctx.fillStyle = color
+    ctx.fillText(text, x, y)
+  }, [text, width, fontSize, fontFamily, fontWeight, color, strokeEnabled, strokeColor, strokeWidth])
+
+  return (
+    <canvas
+      ref={canvasRef}
+      style={{
+        width: width * scale,
+        height: (fontSize + 20) * scale,
+        pointerEvents: 'none',
+      }}
+    />
+  )
+}
+
 interface Frame {
   x: number
   y: number
@@ -408,26 +502,28 @@ export default function TemplateEditorPage() {
                     />
                   )}
                 </div>
-                {/* 名前プレビュー */}
+                {/* 名前プレビュー（Canvas APIで描画） */}
                 <div
                   style={{
                     position: 'absolute',
                     left: frame.x * scale,
                     top: (frame.y + template.frame_size.height + (template?.name_style.offset_y || 10)) * scale,
-                    width: template.frame_size.width * scale,
-                    textAlign: 'center',
-                    fontSize: `${(template?.name_style.font_size || 24) * scale}px`,
-                    fontFamily: template?.name_style.font_family || 'Rounded Mplus 1c',
-                    fontWeight: template?.name_style.font_weight || '700',
-                    color: template?.name_style.color || '#FFFFFF',
-                    textShadow: template?.name_style.stroke_enabled !== false
-                      ? `0 0 ${(template?.name_style.stroke_width || 2) * scale}px ${template?.name_style.stroke_color || '#000000'}`
-                      : 'none',
                     pointerEvents: 'none',
                     zIndex: selectedFrameIndex === index ? 9 : 0,
                   }}
                 >
-                  サンプル名
+                  <NamePreviewCanvas
+                    text="サンプル名"
+                    width={template.frame_size.width}
+                    fontSize={template?.name_style.font_size || 24}
+                    fontFamily={template?.name_style.font_family || 'Rounded Mplus 1c'}
+                    fontWeight={template?.name_style.font_weight || '700'}
+                    color={template?.name_style.color || '#FFFFFF'}
+                    strokeEnabled={template?.name_style.stroke_enabled !== false}
+                    strokeColor={template?.name_style.stroke_color || '#000000'}
+                    strokeWidth={template?.name_style.stroke_width || 2}
+                    scale={scale}
+                  />
                 </div>
               </div>
             ))}

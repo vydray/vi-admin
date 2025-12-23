@@ -325,9 +325,7 @@ function generateNameText(
     // フォントを登録
     ensureFontsRegistered();
 
-    // node-canvasはブラウザより若干小さく描画されるため、補正係数を適用
-    const FONT_SIZE_SCALE = 1.1; // 10%大きく
-    const fontSize = Math.round(style.font_size * FONT_SIZE_SCALE);
+    const fontSize = style.font_size;
     const height = fontSize + 20;
     // 登録済みフォントがあればそれを使用、なければRounded Mplus 1cにフォールバック
     const requestedFont = style.font_family || 'Rounded Mplus 1c';

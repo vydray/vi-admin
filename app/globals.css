@@ -48,6 +48,14 @@
   font-style: normal;
   font-display: swap;
 }
+/* Rounded Mplus 1c Bold - Canvas API用（node-canvasと同じファミリー名） */
+@font-face {
+  font-family: 'Rounded Mplus 1c Bold';
+  src: url('/fonts/MPLUSRounded1c-Bold.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
 
 /* Zen Maru Gothic */
 @font-face {
@@ -61,6 +69,14 @@
   font-family: 'Zen Maru Gothic';
   src: url('/fonts/ZenMaruGothic-Bold.ttf') format('truetype');
   font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+/* Zen Maru Gothic Bold - Canvas API用（node-canvasと同じファミリー名） */
+@font-face {
+  font-family: 'Zen Maru Gothic Bold';
+  src: url('/fonts/ZenMaruGothic-Bold.ttf') format('truetype');
+  font-weight: normal;
   font-style: normal;
   font-display: swap;
 }
