@@ -7,6 +7,7 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, addMonths, subMont
 import { ja } from 'date-fns/locale'
 import { useStore } from '@/contexts/StoreContext'
 import { useConfirm } from '@/contexts/ConfirmContext'
+import holidayJp from '@holiday-jp/holiday_jp'
 import { generateTimeOptions, formatShiftTime as formatShiftTimeUtil } from '@/lib/timeUtils'
 import { handleUnexpectedError, showErrorToast } from '@/lib/errorHandling'
 import LoadingSpinner from '@/components/LoadingSpinner'
@@ -839,6 +840,11 @@ function ShiftManageContent() {
     return days[date.getDay()]
   }
 
+  // 祝日判定
+  const getHoliday = (date: Date) => {
+    return holidayJp.isHoliday(date) ? holidayJp.between(date, date)[0] : null
+  }
+
   const getAttendanceCount = (date: Date) => {
     const dateStr = format(date, 'yyyy-MM-dd')
     return shifts.filter(s => s.date === dateStr).length
@@ -1618,32 +1624,37 @@ function ShiftManageContent() {
                 }}>
                   スタッフ名
                 </th>
-                {getDaysInPeriod().map(date => (
-                  <th
-                    key={format(date, 'yyyy-MM-dd')}
-                    onClick={() => (isLockMode || isConfirmMode) && toggleLock('column', isLockMode ? 'locked' : 'confirmed', undefined, date)}
-                    style={{
-                      position: 'sticky',
-                      top: 0,
-                      padding: '8px',
-                      borderBottom: '2px solid #e2e8f0',
-                      borderRight: '1px solid #e2e8f0',
-                      textAlign: 'center',
-                      backgroundColor: '#f8fafc',
-                      color: date.getDay() === 0 ? '#dc2626' : date.getDay() === 6 ? '#2563eb' : '#475569',
-                      fontWeight: '600',
-                      minWidth: '100px',
-                      cursor: (isLockMode || isConfirmMode) ? 'pointer' : 'default',
-                      zIndex: 10,
-                      boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
-                    }}
-                  >
-                    <div>{getDate(date)}日({getDayOfWeek(date)})</div>
-                    <div style={{ fontSize: '12px', fontWeight: '400', marginTop: '4px' }}>
-                      {getAttendanceCount(date)}人
-                    </div>
-                  </th>
-                ))}
+                {getDaysInPeriod().map(date => {
+                  const holiday = getHoliday(date)
+                  const isHolidayOrSunday = date.getDay() === 0 || holiday
+                  return (
+                    <th
+                      key={format(date, 'yyyy-MM-dd')}
+                      onClick={() => (isLockMode || isConfirmMode) && toggleLock('column', isLockMode ? 'locked' : 'confirmed', undefined, date)}
+                      title={holiday?.name}
+                      style={{
+                        position: 'sticky',
+                        top: 0,
+                        padding: '8px',
+                        borderBottom: '2px solid #e2e8f0',
+                        borderRight: '1px solid #e2e8f0',
+                        textAlign: 'center',
+                        backgroundColor: '#f8fafc',
+                        color: isHolidayOrSunday ? '#dc2626' : date.getDay() === 6 ? '#2563eb' : '#475569',
+                        fontWeight: '600',
+                        minWidth: '100px',
+                        cursor: (isLockMode || isConfirmMode) ? 'pointer' : 'default',
+                        zIndex: 10,
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+                      }}
+                    >
+                      <div>{getDate(date)}日({getDayOfWeek(date)}){holiday && ' 祝'}</div>
+                      <div style={{ fontSize: '12px', fontWeight: '400', marginTop: '4px' }}>
+                        {getAttendanceCount(date)}人
+                      </div>
+                    </th>
+                  )
+                })}
               </tr>
             </thead>
             <tbody>

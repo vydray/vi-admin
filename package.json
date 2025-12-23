@@ -16,6 +16,7 @@
   "description": "",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
+    "@holiday-jp/holiday_jp": "^2.5.1",
     "@supabase/auth-helpers-nextjs": "^0.10.0",
     "@supabase/supabase-js": "^2.81.1",
     "@types/node": "^24.10.1",
