@@ -6,13 +6,23 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 );
 
-// POST: キャスト写真をアップロード
+// photo_cropの型定義
+interface PhotoCrop {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+// POST: キャスト写真をアップロード（元画像をそのまま保存）
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
     const file = formData.get('file') as File;
     const castId = formData.get('castId') as string;
     const storeId = formData.get('storeId') as string;
+    // 切り抜き設定（オプション）
+    const photoCropStr = formData.get('photoCrop') as string | null;
 
     if (!file || !castId || !storeId) {
       return NextResponse.json(
@@ -21,7 +31,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ファイルをBufferに変換
+    // photo_cropをパース
+    let photoCrop: PhotoCrop | null = null;
+    if (photoCropStr) {
+      try {
+        photoCrop = JSON.parse(photoCropStr);
+      } catch {
+        // パース失敗時は無視
+      }
+    }
+
+    // ファイルをBufferに変換（元画像をそのまま保存）
     const buffer = Buffer.from(await file.arrayBuffer());
     const fileName = `${storeId}/${castId}.jpg`;
 
@@ -49,10 +69,16 @@ export async function POST(request: NextRequest) {
       .from('cast-photos')
       .getPublicUrl(fileName);
 
-    // castsテーブルを更新
+    // castsテーブルを更新（photo_pathとphoto_crop）
+    // photo_cropが指定されていればその値、なければnullを設定
+    const updateData: { photo_path: string; photo_crop: PhotoCrop | null } = {
+      photo_path: fileName,
+      photo_crop: photoCrop, // nullまたは切り抜き設定
+    };
+
     const { error: updateError } = await supabase
       .from('casts')
-      .update({ photo_path: fileName })
+      .update(updateData)
       .eq('id', parseInt(castId))
       .eq('store_id', parseInt(storeId));
 
@@ -68,9 +94,55 @@ export async function POST(request: NextRequest) {
       success: true,
       path: fileName,
       url: urlData.publicUrl,
+      photoCrop,
     });
   } catch (error) {
     console.error('Cast photo upload error:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+
+// PATCH: 切り抜き設定のみを更新
+export async function PATCH(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { castId, storeId, photoCrop } = body as {
+      castId: number;
+      storeId: number;
+      photoCrop: PhotoCrop;
+    };
+
+    if (!castId || !storeId || !photoCrop) {
+      return NextResponse.json(
+        { error: 'Missing required parameters' },
+        { status: 400 }
+      );
+    }
+
+    // castsテーブルのphoto_cropを更新
+    const { error: updateError } = await supabase
+      .from('casts')
+      .update({ photo_crop: photoCrop })
+      .eq('id', castId)
+      .eq('store_id', storeId);
+
+    if (updateError) {
+      console.error('Update error:', updateError);
+      return NextResponse.json(
+        { error: 'Failed to update photo crop' },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      photoCrop,
+    });
+  } catch (error) {
+    console.error('Update photo crop error:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

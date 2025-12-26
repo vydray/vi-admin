@@ -12,6 +12,7 @@ interface Cast {
   twitter: string | null
   start_time?: string
   end_time?: string
+  display_order?: number
 }
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
@@ -28,8 +29,10 @@ export default function GeneratePage() {
   const [generating, setGenerating] = useState(false)
   const [generatedImages, setGeneratedImages] = useState<string[]>([])
   const [currentPage, setCurrentPage] = useState(0)
-  const [sortBy, setSortBy] = useState<'time' | 'name' | 'manual'>('time')
+  const [sortBy, setSortBy] = useState<'order' | 'time' | 'name' | 'manual'>('order')
   const [hasTemplate, setHasTemplate] = useState<boolean | null>(null)
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
 
   // 最新のロードリクエストを追跡するref
   const latestLoadRef = useRef<number>(0)
@@ -67,7 +70,19 @@ export default function GeneratePage() {
       // 最新のチェックでなければ無視
       if (latestTemplateCheckRef.current !== checkId) return
 
-      setHasTemplate(!!data.template?.image_path)
+      // グリッドモードの場合はテンプレートレコードがあればOK
+      // カスタムモードの場合はimage_pathが必要
+      const template = data.template
+      if (template) {
+        const mode = template.mode || 'custom'
+        if (mode === 'grid') {
+          setHasTemplate(true)
+        } else {
+          setHasTemplate(!!template.image_path)
+        }
+      } else {
+        setHasTemplate(false)
+      }
     } catch {
       if (latestTemplateCheckRef.current !== checkId) return
       setHasTemplate(false)
@@ -107,7 +122,7 @@ export default function GeneratePage() {
       // キャスト情報を取得
       const { data: casts, error: castsError } = await supabase
         .from('casts')
-        .select('id, name, photo_path, twitter')
+        .select('id, name, photo_path, twitter, display_order')
         .in('id', castIds)
 
       // 最新のリクエストでなければ無視
@@ -145,7 +160,14 @@ export default function GeneratePage() {
     if (sortBy === 'manual') return
 
     let sorted = [...shiftCasts]
-    if (sortBy === 'time') {
+    if (sortBy === 'order') {
+      // display_order順（キャスト管理での並び順）
+      sorted.sort((a, b) => {
+        const orderA = a.display_order ?? 9999
+        const orderB = b.display_order ?? 9999
+        return orderA - orderB
+      })
+    } else if (sortBy === 'time') {
       sorted.sort((a, b) => {
         const timeA = a.start_time || '99:99'
         const timeB = b.start_time || '99:99'
@@ -159,11 +181,36 @@ export default function GeneratePage() {
   }
 
   const moveCast = (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return
     setSortBy('manual')
     const newOrder = [...orderedCastIds]
     const [removed] = newOrder.splice(fromIndex, 1)
     newOrder.splice(toIndex, 0, removed)
     setOrderedCastIds(newOrder)
+  }
+
+  // ドラッグ&ドロップハンドラ
+  const handleDragStart = (index: number) => {
+    setDraggedIndex(index)
+  }
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault()
+    if (draggedIndex !== null && draggedIndex !== index) {
+      setDragOverIndex(index)
+    }
+  }
+
+  const handleDragEnd = () => {
+    if (draggedIndex !== null && dragOverIndex !== null) {
+      moveCast(draggedIndex, dragOverIndex)
+    }
+    setDraggedIndex(null)
+    setDragOverIndex(null)
+  }
+
+  const handleDragLeave = () => {
+    setDragOverIndex(null)
   }
 
   const getPhotoUrl = (photoPath: string | null) => {
@@ -285,6 +332,16 @@ export default function GeneratePage() {
             <h3 style={styles.sectionTitle}>並び順</h3>
             <div style={styles.sortButtons}>
               <button
+                onClick={() => setSortBy('order')}
+                style={{
+                  ...styles.sortButton,
+                  backgroundColor: sortBy === 'order' ? '#3b82f6' : '#e2e8f0',
+                  color: sortBy === 'order' ? '#fff' : '#333',
+                }}
+              >
+                登録順
+              </button>
+              <button
                 onClick={() => setSortBy('time')}
                 style={{
                   ...styles.sortButton,
@@ -329,7 +386,20 @@ export default function GeneratePage() {
             ) : (
               <div style={styles.castList}>
                 {orderedCasts.map((cast, index) => (
-                  <div key={cast.id} style={styles.castItem}>
+                  <div
+                    key={cast.id}
+                    draggable
+                    onDragStart={() => handleDragStart(index)}
+                    onDragOver={(e) => handleDragOver(e, index)}
+                    onDragEnd={handleDragEnd}
+                    onDragLeave={handleDragLeave}
+                    style={{
+                      ...styles.castItem,
+                      opacity: draggedIndex === index ? 0.5 : 1,
+                      borderTop: dragOverIndex === index && draggedIndex !== null && draggedIndex > index ? '2px solid #3b82f6' : undefined,
+                      borderBottom: dragOverIndex === index && draggedIndex !== null && draggedIndex < index ? '2px solid #3b82f6' : undefined,
+                    }}
+                  >
                     <span style={styles.castIndex}>{index + 1}</span>
                     <div style={styles.castPhotoSmall}>
                       {cast.photo_path ? (
@@ -346,24 +416,14 @@ export default function GeneratePage() {
                         </span>
                       )}
                     </div>
-                    {sortBy === 'manual' && (
-                      <div style={styles.moveButtons}>
-                        <button
-                          onClick={() => moveCast(index, Math.max(0, index - 1))}
-                          disabled={index === 0}
-                          style={styles.moveButton}
-                        >
-                          ↑
-                        </button>
-                        <button
-                          onClick={() => moveCast(index, Math.min(orderedCasts.length - 1, index + 1))}
-                          disabled={index === orderedCasts.length - 1}
-                          style={styles.moveButton}
-                        >
-                          ↓
-                        </button>
-                      </div>
-                    )}
+                    {/* ドラッグハンドル（3本線） */}
+                    <div style={styles.dragHandle}>
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="#94a3b8">
+                        <rect x="2" y="3" width="12" height="2" rx="1" />
+                        <rect x="2" y="7" width="12" height="2" rx="1" />
+                        <rect x="2" y="11" width="12" height="2" rx="1" />
+                      </svg>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -553,6 +613,8 @@ const styles: { [key: string]: React.CSSProperties } = {
     padding: '8px',
     backgroundColor: '#f8fafc',
     borderRadius: '6px',
+    transition: 'opacity 0.2s, border-color 0.2s',
+    userSelect: 'none',
   },
   castIndex: {
     width: '24px',
@@ -598,19 +660,12 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '12px',
     color: '#666',
   },
-  moveButtons: {
+  dragHandle: {
+    cursor: 'grab',
+    padding: '4px',
     display: 'flex',
-    flexDirection: 'column',
-    gap: '2px',
-  },
-  moveButton: {
-    width: '24px',
-    height: '20px',
-    border: '1px solid #e2e8f0',
-    backgroundColor: '#fff',
-    borderRadius: '4px',
-    cursor: 'pointer',
-    fontSize: '12px',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   generateButton: {
     width: '100%',

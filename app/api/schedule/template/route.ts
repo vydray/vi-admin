@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { storeId, name, imagePath, placeholderPath, frames, frameSize, nameStyle } = body;
+    const { storeId, name, mode, imagePath, placeholderPath, frames, frameSize, nameStyle, gridSettings } = body;
 
     if (!storeId) {
       return NextResponse.json(
@@ -121,6 +121,7 @@ export async function PUT(request: NextRequest) {
         {
           store_id: storeId,
           name: name || null,
+          mode: mode || 'custom',
           image_path: imagePath,
           placeholder_path: placeholderPath || null,
           frames: frames || [],
@@ -136,6 +137,15 @@ export async function PUT(request: NextRequest) {
             stroke_width: 2,
             offset_y: 10,
             ...nameStyle,
+          },
+          grid_settings: gridSettings || {
+            columns: 4,
+            rows: 2,
+            photo_width: 300,
+            photo_height: 400,
+            gap: 10,
+            background_color: '#ffffff',
+            show_names: false,
           },
           updated_at: new Date().toISOString(),
         },

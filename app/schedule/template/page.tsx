@@ -110,6 +110,19 @@ interface FrameSize {
 
 const FRAME_ASPECT_RATIO = 3 / 4 // 写真と同じ比率
 
+// グリッドモード設定
+interface GridSettings {
+  columns: number           // 横の列数
+  rows: number              // 縦の行数（1画像あたり）
+  photo_width: number       // 写真の幅
+  photo_height: number      // 写真の高さ
+  gap: number               // 写真間の隙間
+  background_color: string  // 背景色
+  show_names: boolean       // 名前表示
+}
+
+type TemplateMode = 'custom' | 'grid'
+
 interface NameStyle {
   font_size: number
   font_family: string
@@ -155,11 +168,13 @@ interface Template {
   id?: number
   store_id: number
   name: string | null
+  mode: TemplateMode
   image_path: string | null
   placeholder_path: string | null
   frames: Frame[]
   frame_size: FrameSize
   name_style: NameStyle
+  grid_settings: GridSettings
 }
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
@@ -185,6 +200,9 @@ export default function TemplateEditorPage() {
   const [frameBorderColor, setFrameBorderColor] = useState('#ffffff')
   const [sampleText, setSampleText] = useState('さんぷる')
 
+  // グリッドプレビュー用キャスト写真
+  const [castPhotos, setCastPhotos] = useState<{ name: string; photoUrl: string | null }[]>([])
+
   // 画像の実際のサイズとキャンバスのスケール
   const [imageSize, setImageSize] = useState({ width: 1200, height: 1200 })
   const scale = CANVAS_WIDTH / imageSize.width
@@ -203,12 +221,54 @@ export default function TemplateEditorPage() {
     offset_y: 10,
   }
 
+  const defaultGridSettings: GridSettings = {
+    columns: 4,
+    rows: 2,
+    photo_width: 300,
+    photo_height: 400,
+    gap: 10,
+    background_color: '#ffffff',
+    show_names: false,
+  }
+
   useEffect(() => {
     // storeの読み込みが完了してからテンプレートを読み込む
     if (!storeLoading && storeId) {
       loadTemplate(storeId)
+      loadCastPhotos(storeId)
     }
   }, [storeId, storeLoading])
+
+  // グリッドプレビュー用にキャスト写真を読み込む
+  const loadCastPhotos = async (targetStoreId: number) => {
+    try {
+      const { data, error } = await (await import('@/lib/supabase')).supabase
+        .from('casts')
+        .select('name, photo_path')
+        .eq('store_id', targetStoreId)
+        .eq('is_active', true)
+        .not('photo_path', 'is', null)
+        .limit(20)
+
+      if (error) {
+        console.error('Load cast photos error:', error)
+        return
+      }
+
+      // ランダムにシャッフル
+      const shuffled = (data || []).sort(() => Math.random() - 0.5)
+      setCastPhotos(
+        shuffled.map((cast) => ({
+          name: cast.name,
+          photoUrl: cast.photo_path
+            ? `${SUPABASE_URL}/storage/v1/object/public/cast-photos/${cast.photo_path}`
+            : null,
+        }))
+      )
+    } catch (error) {
+      console.error('Load cast photos error:', error)
+    }
+  }
 
   const loadTemplate = async (targetStoreId: number) => {
     // このロードリクエストのIDを記録
@@ -232,13 +292,18 @@ export default function TemplateEditorPage() {
       }
 
       if (data.template) {
-        // 既存テンプレートにframe_sizeがない場合はデフォルト値を設定
+        // 既存テンプレートにデフォルト値を設定
         const templateWithDefaults = {
           ...data.template,
+          mode: data.template.mode || 'custom',
           frame_size: data.template.frame_size || { width: 150, height: 200 },
           name_style: {
             ...defaultNameStyle,
             ...data.template.name_style,
+          },
+          grid_settings: {
+            ...defaultGridSettings,
+            ...data.template.grid_settings,
           },
         }
         setTemplate(templateWithDefaults)
@@ -252,11 +317,13 @@ export default function TemplateEditorPage() {
         setTemplate({
           store_id: targetStoreId,
           name: null,
+          mode: 'custom',
           image_path: null,
           placeholder_path: null,
           frames: [],
           frame_size: { width: 150, height: 200 },
           name_style: defaultNameStyle,
+          grid_settings: defaultGridSettings,
         })
       }
     } catch (error) {
@@ -437,6 +504,19 @@ export default function TemplateEditorPage() {
     })
   }
 
+  const updateGridSettings = (updates: Partial<GridSettings>) => {
+    if (!template) return
+    setTemplate({
+      ...template,
+      grid_settings: { ...template.grid_settings, ...updates },
+    })
+  }
+
+  const setMode = (mode: TemplateMode) => {
+    if (!template) return
+    setTemplate({ ...template, mode })
+  }
+
   const handleSave = async () => {
     if (!template) return
 
@@ -448,11 +528,13 @@ export default function TemplateEditorPage() {
         body: JSON.stringify({
           storeId,
           name: template.name,
+          mode: template.mode,
           imagePath: template.image_path,
           placeholderPath: template.placeholder_path,
           frames: template.frames,
           frameSize: template.frame_size,
           nameStyle: template.name_style,
+          gridSettings: template.grid_settings,
         }),
       })
 
@@ -481,6 +563,30 @@ export default function TemplateEditorPage() {
         </button>
       </div>
 
+      {/* モード切替タブ */}
+      <div style={styles.modeTabs}>
+        <button
+          onClick={() => setMode('custom')}
+          style={{
+            ...styles.modeTab,
+            ...(template.mode === 'custom' ? styles.modeTabActive : {}),
+          }}
+        >
+          カスタム（背景+枠配置）
+        </button>
+        <button
+          onClick={() => setMode('grid')}
+          style={{
+            ...styles.modeTab,
+            ...(template.mode === 'grid' ? styles.modeTabActive : {}),
+          }}
+        >
+          グリッド（シンプル横並び）
+        </button>
+      </div>
+
+      {/* カスタムモードの設定 */}
+      {template.mode === 'custom' && (
       <div style={styles.content}>
         {/* 左側: キャンバス */}
         <div style={styles.canvasSection}>
@@ -778,6 +884,150 @@ export default function TemplateEditorPage() {
           </div>
         </div>
       </div>
+      )}
+
+      {/* グリッドモード設定 */}
+      {template.mode === 'grid' && (
+        <div style={styles.gridModeContent}>
+          <div style={styles.section}>
+            <h3 style={styles.sectionTitle}>グリッド設定</h3>
+            <p style={styles.description}>写真を横並びで配置するシンプルなレイアウト</p>
+
+            <div style={styles.gridSettingsForm}>
+              <label style={styles.gridSettingLabel}>
+                列数
+                <input
+                  type="number"
+                  min="1"
+                  max="10"
+                  value={template.grid_settings.columns}
+                  onChange={(e) => updateGridSettings({ columns: parseInt(e.target.value) || 4 })}
+                  style={styles.gridSettingInput}
+                />
+              </label>
+
+              <label style={styles.gridSettingLabel}>
+                行数（1画像あたり）
+                <input
+                  type="number"
+                  min="1"
+                  max="10"
+                  value={template.grid_settings.rows}
+                  onChange={(e) => updateGridSettings({ rows: parseInt(e.target.value) || 2 })}
+                  style={styles.gridSettingInput}
+                />
+              </label>
+
+              <label style={styles.gridSettingLabel}>
+                写真間の隙間 (px)
+                <input
+                  type="number"
+                  min="0"
+                  value={template.grid_settings.gap}
+                  onChange={(e) => updateGridSettings({ gap: parseInt(e.target.value) || 0 })}
+                  style={styles.gridSettingInput}
+                />
+              </label>
+
+              <label style={styles.gridSettingLabel}>
+                背景色
+                <input
+                  type="color"
+                  value={template.grid_settings.background_color}
+                  onChange={(e) => updateGridSettings({ background_color: e.target.value })}
+                  style={styles.colorInput}
+                />
+              </label>
+
+              <label style={styles.gridSettingLabel}>
+                名前を表示
+                <button
+                  onClick={() => updateGridSettings({ show_names: !template.grid_settings.show_names })}
+                  style={{
+                    ...styles.toggleButtonSmall,
+                    backgroundColor: template.grid_settings.show_names ? '#22c55e' : '#94a3b8',
+                  }}
+                >
+                  {template.grid_settings.show_names ? 'ON' : 'OFF'}
+                </button>
+              </label>
+            </div>
+
+            {/* グリッドプレビュー */}
+            <div style={styles.gridPreviewSection}>
+              <h4 style={styles.gridPreviewTitle}>
+                プレビュー（{template.grid_settings.columns * template.grid_settings.rows}人/1画像）
+                {castPhotos.length > 0 && (
+                  <span style={{ fontWeight: 'normal', color: '#64748b', marginLeft: '8px' }}>
+                    ※実際のキャスト写真を使用
+                  </span>
+                )}
+              </h4>
+              <div
+                style={{
+                  ...styles.gridPreview,
+                  backgroundColor: template.grid_settings.background_color,
+                  gap: `${template.grid_settings.gap}px`,
+                  gridTemplateColumns: `repeat(${template.grid_settings.columns}, 1fr)`,
+                }}
+              >
+                {Array.from({ length: template.grid_settings.columns * template.grid_settings.rows }, (_, i) => {
+                  const cast = castPhotos[i % castPhotos.length]
+                  return (
+                    <div
+                      key={i}
+                      style={{
+                        aspectRatio: '3/4',
+                        backgroundColor: '#e2e8f0',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        overflow: 'hidden',
+                        position: 'relative',
+                      }}
+                    >
+                      {cast?.photoUrl ? (
+                        <img
+                          src={cast.photoUrl}
+                          alt={cast.name}
+                          style={{
+                            width: '100%',
+                            height: '100%',
+                            objectFit: 'cover',
+                          }}
+                        />
+                      ) : (
+                        <span style={{ color: '#94a3b8', fontSize: '12px' }}>{i + 1}</span>
+                      )}
+                      {template.grid_settings.show_names && cast?.name && (
+                        <div
+                          style={{
+                            position: 'absolute',
+                            bottom: '4px',
+                            left: 0,
+                            right: 0,
+                            textAlign: 'center',
+                            color: '#fff',
+                            fontSize: '10px',
+                            fontWeight: 'bold',
+                            textShadow: '1px 1px 2px rgba(0,0,0,0.8)',
+                          }}
+                        >
+                          {cast.name}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+              <p style={styles.gridPreviewNote}>
+                ※出力サイズは写真のサイズに応じて自動計算されます
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -1073,5 +1323,74 @@ const styles: { [key: string]: React.CSSProperties } = {
     objectFit: 'cover',
     borderRadius: '6px',
     marginBottom: '12px',
+  },
+  modeTabs: {
+    display: 'flex',
+    gap: '8px',
+    marginBottom: '20px',
+  },
+  modeTab: {
+    padding: '12px 24px',
+    borderWidth: '2px',
+    borderStyle: 'solid',
+    borderColor: '#e2e8f0',
+    borderRadius: '8px',
+    backgroundColor: '#f8fafc',
+    color: '#64748b',
+    cursor: 'pointer',
+    fontSize: '14px',
+    fontWeight: '500',
+    transition: 'all 0.2s',
+  },
+  modeTabActive: {
+    borderColor: '#3b82f6',
+    backgroundColor: '#eff6ff',
+    color: '#1d4ed8',
+  },
+  gridModeContent: {
+    maxWidth: '600px',
+  },
+  gridSettingsForm: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '16px',
+    marginBottom: '24px',
+  },
+  gridSettingLabel: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    fontSize: '14px',
+    color: '#374151',
+  },
+  gridSettingInput: {
+    width: '100px',
+    padding: '8px 12px',
+    border: '1px solid #e2e8f0',
+    borderRadius: '6px',
+    fontSize: '14px',
+  },
+  gridPreviewSection: {
+    backgroundColor: '#f8fafc',
+    padding: '16px',
+    borderRadius: '8px',
+  },
+  gridPreviewTitle: {
+    fontSize: '14px',
+    fontWeight: '500',
+    marginBottom: '12px',
+    color: '#374151',
+  },
+  gridPreview: {
+    display: 'grid',
+    padding: '16px',
+    borderRadius: '6px',
+    marginBottom: '8px',
+    maxWidth: '500px',
+  },
+  gridPreviewNote: {
+    fontSize: '12px',
+    color: '#64748b',
+    margin: 0,
   },
 }

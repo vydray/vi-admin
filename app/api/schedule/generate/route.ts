@@ -78,6 +78,20 @@ const supabase = createClient(
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 
+// HEX色をRGBオブジェクトに変換
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  if (result) {
+    return {
+      r: parseInt(result[1], 16),
+      g: parseInt(result[2], 16),
+      b: parseInt(result[3], 16),
+    };
+  }
+  // デフォルトは白
+  return { r: 255, g: 255, b: 255 };
+}
+
 interface Frame {
   x: number;
   y: number;
@@ -99,17 +113,35 @@ interface NameStyle {
   offset_y: number;
 }
 
+interface PhotoCrop {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface GridSettings {
+  columns: number;
+  rows: number;
+  photo_width: number;
+  photo_height: number;
+  gap: number;
+  background_color: string;
+  show_names: boolean;
+}
+
 interface CastData {
   id: number;
   name: string;
   photo_path: string | null;
+  photo_crop: PhotoCrop | null;
 }
 
 // POST: 出勤表画像を生成
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { storeId, date, castIds } = body as {
+    const { storeId, date: _date, castIds } = body as {
       storeId: number;
       date: string;
       castIds: number[];
@@ -129,9 +161,20 @@ export async function POST(request: NextRequest) {
       .eq('store_id', storeId)
       .single();
 
-    if (templateError || !template || !template.image_path) {
+    if (templateError || !template) {
       return NextResponse.json(
         { error: 'Template not found or not configured' },
+        { status: 404 }
+      );
+    }
+
+    // モードを判定（デフォルトはcustom）
+    const mode = template.mode || 'custom';
+
+    // customモードでは背景画像が必須
+    if (mode === 'custom' && !template.image_path) {
+      return NextResponse.json(
+        { error: 'Template image not configured for custom mode' },
         { status: 404 }
       );
     }
@@ -139,7 +182,7 @@ export async function POST(request: NextRequest) {
     // キャスト情報を取得（順序を維持）
     const { data: casts, error: castsError } = await supabase
       .from('casts')
-      .select('id, name, photo_path')
+      .select('id, name, photo_path, photo_crop')
       .in('id', castIds);
 
     if (castsError) {
@@ -154,17 +197,6 @@ export async function POST(request: NextRequest) {
       .map(id => casts?.find(c => c.id === id))
       .filter((c): c is CastData => c !== undefined);
 
-    // テンプレート画像を取得
-    const templateUrl = `${SUPABASE_URL}/storage/v1/object/public/schedule-templates/${template.image_path}`;
-    const templateResponse = await fetch(templateUrl);
-    if (!templateResponse.ok) {
-      return NextResponse.json(
-        { error: 'Failed to fetch template image' },
-        { status: 500 }
-      );
-    }
-    const templateBuffer = Buffer.from(await templateResponse.arrayBuffer());
-
     // プレースホルダー画像を取得（あれば）
     let placeholderBuffer: Buffer | null = null;
     if (template.placeholder_path) {
@@ -175,8 +207,6 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const frames: Frame[] = template.frames || [];
-    const frameSize: FrameSize = template.frame_size || { width: 150, height: 200 };
     // デフォルト値とDBの値をマージ（DBに欠けているフィールドはデフォルト値を使用）
     const defaultNameStyle: NameStyle = {
       font_size: 24,
@@ -193,86 +223,251 @@ export async function POST(request: NextRequest) {
       ...template.name_style,
     };
 
-    // 枠数が0の場合はエラー
-    if (frames.length === 0) {
-      return NextResponse.json(
-        { error: 'No frames configured in template' },
-        { status: 400 }
-      );
-    }
+    let images: string[] = [];
+    let totalPages = 1;
 
-    // 必要なページ数を計算
-    const totalPages = Math.ceil(orderedCasts.length / frames.length);
-    const images: string[] = [];
+    // モードによって処理を分岐
+    if (mode === 'grid') {
+      // グリッドモード
+      const defaultGridSettings: GridSettings = {
+        columns: 4,
+        rows: 2,
+        photo_width: 300,
+        photo_height: 400,
+        gap: 10,
+        background_color: '#ffffff',
+        show_names: false,
+      };
+      const gridSettings: GridSettings = {
+        ...defaultGridSettings,
+        ...template.grid_settings,
+      };
 
-    // 各ページを生成
-    for (let page = 0; page < totalPages; page++) {
-      const startIndex = page * frames.length;
-      const pageCasts = orderedCasts.slice(startIndex, startIndex + frames.length);
+      // 最初の写真からサイズを取得して自動計算
+      let photoWidth = 300;
+      let photoHeight = 400;
 
-      // 合成用の配列を準備
-      const composites: sharp.OverlayOptions[] = [];
-
-      // 各枠にキャスト写真を配置
-      for (let i = 0; i < frames.length && i < pageCasts.length; i++) {
-        const frame = frames[i];
-        const cast = pageCasts[i];
-
-        let photoBuffer: Buffer | null = null;
-
-        // キャスト写真を取得
+      // 写真がある最初のキャストを探してサイズを取得
+      for (const cast of orderedCasts) {
         if (cast.photo_path) {
           const photoUrl = `${SUPABASE_URL}/storage/v1/object/public/cast-photos/${cast.photo_path}`;
           const photoResponse = await fetch(photoUrl);
           if (photoResponse.ok) {
-            photoBuffer = Buffer.from(await photoResponse.arrayBuffer());
+            const photoBuffer = Buffer.from(await photoResponse.arrayBuffer());
+            const metadata = await sharp(photoBuffer).metadata();
+            if (metadata.width && metadata.height) {
+              photoWidth = metadata.width;
+              photoHeight = metadata.height;
+              break; // 最初の写真のサイズを使用
+            }
           }
-        }
-
-        // 写真がなければプレースホルダーを使用
-        if (!photoBuffer && placeholderBuffer) {
-          photoBuffer = placeholderBuffer;
-        }
-
-        // 写真があれば配置
-        if (photoBuffer) {
-          const resizedPhoto = await sharp(photoBuffer)
-            .resize(Math.round(frameSize.width), Math.round(frameSize.height), { fit: 'cover' })
-            .toBuffer();
-
-          composites.push({
-            input: resizedPhoto,
-            left: Math.round(frame.x),
-            top: Math.round(frame.y),
-          });
-        }
-
-        // 名前テキストを生成して配置
-        const nameBuffer = generateNameText(cast.name, Math.round(frameSize.width), nameStyle);
-        if (nameBuffer) {
-          composites.push({
-            input: nameBuffer,
-            left: Math.round(frame.x),
-            top: Math.round(frame.y + frameSize.height + nameStyle.offset_y),
-          });
         }
       }
 
-      // 画像を合成
-      const resultBuffer = await sharp(templateBuffer)
-        .composite(composites)
-        .png()
-        .toBuffer();
+      // プレースホルダーがある場合はそのサイズも考慮
+      if (photoWidth === 300 && photoHeight === 400 && placeholderBuffer) {
+        const metadata = await sharp(placeholderBuffer).metadata();
+        if (metadata.width && metadata.height) {
+          photoWidth = metadata.width;
+          photoHeight = metadata.height;
+        }
+      }
 
-      // Base64で追加
-      const base64 = resultBuffer.toString('base64');
-      images.push(`data:image/png;base64,${base64}`);
+      const castsPerPage = gridSettings.columns * gridSettings.rows;
+      totalPages = Math.ceil(orderedCasts.length / castsPerPage);
+
+      // 名前表示時の追加高さ
+      const nameHeight = gridSettings.show_names ? nameStyle.font_size + 20 + nameStyle.offset_y : 0;
+
+      // キャンバスサイズを計算（写真サイズは自動取得した値を使用）
+      const canvasWidth = gridSettings.columns * photoWidth + (gridSettings.columns + 1) * gridSettings.gap;
+      const canvasHeight = gridSettings.rows * (photoHeight + nameHeight) + (gridSettings.rows + 1) * gridSettings.gap;
+
+      // 各ページを生成
+      for (let page = 0; page < totalPages; page++) {
+        const startIndex = page * castsPerPage;
+        const pageCasts = orderedCasts.slice(startIndex, startIndex + castsPerPage);
+
+        // 合成用の配列を準備
+        const composites: sharp.OverlayOptions[] = [];
+
+        for (let i = 0; i < pageCasts.length; i++) {
+          const cast = pageCasts[i];
+          const col = i % gridSettings.columns;
+          const row = Math.floor(i / gridSettings.columns);
+
+          // 位置を計算
+          const x = gridSettings.gap + col * (photoWidth + gridSettings.gap);
+          const y = gridSettings.gap + row * (photoHeight + nameHeight + gridSettings.gap);
+
+          let photoBuffer: Buffer | null = null;
+
+          // キャスト写真を取得
+          if (cast.photo_path) {
+            const photoUrl = `${SUPABASE_URL}/storage/v1/object/public/cast-photos/${cast.photo_path}`;
+            const photoResponse = await fetch(photoUrl);
+            if (photoResponse.ok) {
+              photoBuffer = Buffer.from(await photoResponse.arrayBuffer());
+            }
+          }
+
+          // 写真がなければプレースホルダーを使用
+          if (!photoBuffer && placeholderBuffer) {
+            photoBuffer = placeholderBuffer;
+          }
+
+          // 写真があれば配置
+          if (photoBuffer) {
+            // グリッドモードでは元画像をリサイズして使用（切り抜き設定は無視）
+            const processedPhoto = await sharp(photoBuffer)
+              .resize(photoWidth, photoHeight, { fit: 'cover' })
+              .toBuffer();
+
+            composites.push({
+              input: processedPhoto,
+              left: x,
+              top: y,
+            });
+          }
+
+          // 名前表示が有効なら名前を配置
+          if (gridSettings.show_names) {
+            const nameBuffer = generateNameText(cast.name, photoWidth, nameStyle);
+            if (nameBuffer) {
+              composites.push({
+                input: nameBuffer,
+                left: x,
+                top: y + photoHeight + nameStyle.offset_y,
+              });
+            }
+          }
+        }
+
+        // 背景色でキャンバスを作成し、写真を合成
+        const resultBuffer = await sharp({
+          create: {
+            width: canvasWidth,
+            height: canvasHeight,
+            channels: 3,
+            background: hexToRgb(gridSettings.background_color),
+          },
+        })
+          .composite(composites)
+          .png()
+          .toBuffer();
+
+        const base64 = resultBuffer.toString('base64');
+        images.push(`data:image/png;base64,${base64}`);
+      }
+    } else {
+      // カスタムモード（既存処理）
+      const templateUrl = `${SUPABASE_URL}/storage/v1/object/public/schedule-templates/${template.image_path}`;
+      const templateResponse = await fetch(templateUrl);
+      if (!templateResponse.ok) {
+        return NextResponse.json(
+          { error: 'Failed to fetch template image' },
+          { status: 500 }
+        );
+      }
+      const templateBuffer = Buffer.from(await templateResponse.arrayBuffer());
+
+      const frames: Frame[] = template.frames || [];
+      const frameSize: FrameSize = template.frame_size || { width: 150, height: 200 };
+
+      // 枠数が0の場合はエラー
+      if (frames.length === 0) {
+        return NextResponse.json(
+          { error: 'No frames configured in template' },
+          { status: 400 }
+        );
+      }
+
+      totalPages = Math.ceil(orderedCasts.length / frames.length);
+
+      // 各ページを生成
+      for (let page = 0; page < totalPages; page++) {
+        const startIndex = page * frames.length;
+        const pageCasts = orderedCasts.slice(startIndex, startIndex + frames.length);
+
+        // 合成用の配列を準備
+        const composites: sharp.OverlayOptions[] = [];
+
+        // 各枠にキャスト写真を配置
+        for (let i = 0; i < frames.length && i < pageCasts.length; i++) {
+          const frame = frames[i];
+          const cast = pageCasts[i];
+
+          let photoBuffer: Buffer | null = null;
+
+          // キャスト写真を取得
+          if (cast.photo_path) {
+            const photoUrl = `${SUPABASE_URL}/storage/v1/object/public/cast-photos/${cast.photo_path}`;
+            const photoResponse = await fetch(photoUrl);
+            if (photoResponse.ok) {
+              photoBuffer = Buffer.from(await photoResponse.arrayBuffer());
+            }
+          }
+
+          // 写真がなければプレースホルダーを使用
+          if (!photoBuffer && placeholderBuffer) {
+            photoBuffer = placeholderBuffer;
+          }
+
+          // 写真があれば配置
+          if (photoBuffer) {
+            // photo_cropがあれば適用
+            let processedPhoto: Buffer;
+            if (cast.photo_crop) {
+              processedPhoto = await sharp(photoBuffer)
+                .extract({
+                  left: Math.round(cast.photo_crop.x),
+                  top: Math.round(cast.photo_crop.y),
+                  width: Math.round(cast.photo_crop.width),
+                  height: Math.round(cast.photo_crop.height),
+                })
+                .resize(Math.round(frameSize.width), Math.round(frameSize.height), { fit: 'cover' })
+                .toBuffer();
+            } else {
+              processedPhoto = await sharp(photoBuffer)
+                .resize(Math.round(frameSize.width), Math.round(frameSize.height), { fit: 'cover' })
+                .toBuffer();
+            }
+
+            composites.push({
+              input: processedPhoto,
+              left: Math.round(frame.x),
+              top: Math.round(frame.y),
+            });
+          }
+
+          // 名前テキストを生成して配置
+          const nameBuffer = generateNameText(cast.name, Math.round(frameSize.width), nameStyle);
+          if (nameBuffer) {
+            composites.push({
+              input: nameBuffer,
+              left: Math.round(frame.x),
+              top: Math.round(frame.y + frameSize.height + nameStyle.offset_y),
+            });
+          }
+        }
+
+        // 画像を合成
+        const resultBuffer = await sharp(templateBuffer)
+          .composite(composites)
+          .png()
+          .toBuffer();
+
+        // Base64で追加
+        const base64 = resultBuffer.toString('base64');
+        images.push(`data:image/png;base64,${base64}`);
+      }
     }
 
     return NextResponse.json({
       success: true,
       images,
       totalPages,
+      mode,
       // 後方互換性のため、1枚目をimageとしても返す
       image: images[0],
     });
