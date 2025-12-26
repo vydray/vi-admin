@@ -24,8 +24,7 @@ interface DashboardData {
   todayCredit: number
   todayGroups: number
   // 人件費関連
-  monthlyNetPayment: number      // 差引支給額合計
-  monthlyDailyPayment: number    // 日払い合計
+  monthlyGrossTotal: number      // 総支給額合計（人件費）
   monthlyWithholdingTax: number  // 源泉徴収合計
 }
 
@@ -88,8 +87,7 @@ export default function Home() {
     todayCardSales: 0,
     todayCredit: 0,
     todayGroups: 0,
-    monthlyNetPayment: 0,
-    monthlyDailyPayment: 0,
+    monthlyGrossTotal: 0,
     monthlyWithholdingTax: 0,
   })
   const [dailySales, setDailySales] = useState<DailySalesData[]>([])
@@ -416,25 +414,17 @@ export default function Home() {
       const yearMonth = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}`
       const { data: payslips } = await supabase
         .from('payslips')
-        .select('net_payment, daily_details, deduction_details')
+        .select('gross_total, deduction_details')
         .eq('store_id', storeId)
         .eq('year_month', yearMonth)
 
-      let monthlyNetPayment = 0
-      let monthlyDailyPayment = 0
+      let monthlyGrossTotal = 0
       let monthlyWithholdingTax = 0
 
       if (payslips) {
         for (const payslip of payslips) {
-          monthlyNetPayment += payslip.net_payment || 0
-
-          // 日払い合計を計算
-          const dailyDetails = payslip.daily_details as { daily_payment?: number }[] | null
-          if (dailyDetails) {
-            for (const detail of dailyDetails) {
-              monthlyDailyPayment += detail.daily_payment || 0
-            }
-          }
+          // 総支給額（人件費）
+          monthlyGrossTotal += payslip.gross_total || 0
 
           // 源泉徴収を取得
           const deductionDetails = payslip.deduction_details as { name?: string; amount?: number }[] | null
@@ -461,8 +451,7 @@ export default function Home() {
         todayCardSales,
         todayCredit,
         todayGroups,
-        monthlyNetPayment,
-        monthlyDailyPayment,
+        monthlyGrossTotal,
         monthlyWithholdingTax,
       })
 
@@ -590,7 +579,7 @@ export default function Home() {
             { label: '来店人数', value: data.monthlyCustomers + '人' },
             { label: '来店組数', value: data.monthlyGroups + '組' },
             { label: '客単価', value: '¥' + avgMonthly.toLocaleString() },
-            { label: '人件費', value: '¥' + (data.monthlyNetPayment + data.monthlyDailyPayment).toLocaleString() },
+            { label: '人件費', value: '¥' + data.monthlyGrossTotal.toLocaleString() },
             { label: '源泉徴収', value: '¥' + data.monthlyWithholdingTax.toLocaleString() },
           ]}
         />
