@@ -3459,11 +3459,13 @@ function CompensationSettingsPageContent() {
 
               {/* 最終支給額 */}
               {(() => {
-                // 実績データがある場合の合計計算ヘルパー
-                const getAdjustedTotal = (r: typeof compensationResults[0]) =>
-                  wageStats
-                    ? wageStats.totalWageAmount + r.salesBack + r.selfProductBack + r.helpProductBack
-                    : r.total
+                // 実績データがある場合の合計計算ヘルパー（時給オンの場合のみ時給実績を含める）
+                const getAdjustedTotal = (r: typeof compensationResults[0]) => {
+                  const useWage = wageStats && r.type.hourly_rate > 0
+                  return useWage
+                    ? wageStats.totalWageAmount + r.fixed + r.salesBack + r.selfProductBack + r.helpProductBack
+                    : r.fixed + r.salesBack + r.selfProductBack + r.helpProductBack
+                }
 
                 let selectedPay = 0
                 if (compensationResults.length > 0) {
