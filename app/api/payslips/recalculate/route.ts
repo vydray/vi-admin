@@ -340,18 +340,29 @@ async function calculatePayslipForCast(
       id: string
       name: string
       commission_rate: number
+      fixed_amount: number
+      hourly_rate: number
       use_sliding_rate: boolean
       sliding_rates: { min: number; max: number; rate: number }[] | null
+      is_enabled: boolean
     }
+    // is_enabled でフィルター
+    const enabledTypes = compensationTypes.filter((t: CompType) => t.is_enabled)
+
     let activeCompType: CompType | undefined = undefined
     if (compensationSettings?.payment_selection_method === 'specific' && compensationSettings?.selected_compensation_type_id) {
-      activeCompType = compensationTypes.find(t => t.id === compensationSettings.selected_compensation_type_id)
-    } else if (compensationTypes.length > 0) {
+      activeCompType = enabledTypes.find((t: CompType) => t.id === compensationSettings.selected_compensation_type_id)
+    } else if (enabledTypes.length > 0) {
       // highest: 最高額を計算して選択（簡易版：最初のタイプを使用）
-      activeCompType = compensationTypes[0]
+      activeCompType = enabledTypes[0]
     }
 
+    let fixedAmount = 0
     if (activeCompType) {
+      // 固定額
+      fixedAmount = activeCompType.fixed_amount || 0
+
+      // 売上バック計算
       if (activeCompType.use_sliding_rate && activeCompType.sliding_rates) {
         const rate = activeCompType.sliding_rates.find(
           r => totalSales >= r.min && (r.max === 0 || totalSales <= r.max)
@@ -364,7 +375,9 @@ async function calculatePayslipForCast(
       }
     }
 
-    const grossEarnings = totalWageAmount + salesBack + totalProductBack
+    // 時給を使用するかどうか（hourly_rateが設定されている場合のみ）
+    const useWageData = activeCompType?.hourly_rate && activeCompType.hourly_rate > 0
+    const grossEarnings = (useWageData ? totalWageAmount : 0) + salesBack + totalProductBack + fixedAmount
 
     // ===== 控除計算 =====
     const deductions: Array<{ name: string; type: string; count?: number; percentage?: number; amount: number }> = []
@@ -506,11 +519,12 @@ async function calculatePayslipForCast(
       year_month: yearMonth,
       status: 'draft',
       work_days: workDays,
-      total_hours: Math.round(totalWorkHours * 100) / 100,
-      average_hourly_wage: averageHourlyWage,
-      hourly_income: totalWageAmount,
+      total_hours: useWageData ? Math.round(totalWorkHours * 100) / 100 : 0,
+      average_hourly_wage: useWageData ? averageHourlyWage : 0,
+      hourly_income: useWageData ? totalWageAmount : 0,
       sales_back: salesBack,
       product_back: totalProductBack,
+      fixed_amount: fixedAmount,
       gross_total: grossEarnings,
       total_deduction: totalDeduction,
       net_payment: netEarnings,
