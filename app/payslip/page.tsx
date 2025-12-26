@@ -1023,8 +1023,11 @@ function PayslipPageContent() {
     // 固定額（月額固定報酬）
     const fixedAmount = activeCompensationType?.fixed_amount || 0
 
+    // 時給がオンの場合のみ時給収入を含める
+    const useWageData = activeCompensationType?.hourly_rate && activeCompensationType.hourly_rate > 0
+
     // 総支給額
-    const grossEarnings = totalWageAmount + salesBack + totalProductBack + fixedAmount
+    const grossEarnings = (useWageData ? totalWageAmount : 0) + salesBack + totalProductBack + fixedAmount
 
     return {
       totalWorkHours: Math.round(totalWorkHours * 100) / 100,
@@ -1033,7 +1036,8 @@ function PayslipPageContent() {
       salesBack,
       totalProductBack,
       fixedAmount,
-      grossEarnings
+      grossEarnings,
+      useWageData: !!useWageData
     }
   }, [dailyStats, dailySalesData, activeCompensationType])
 
@@ -1219,7 +1223,7 @@ function PayslipPageContent() {
     try {
       const yearMonth = format(selectedMonth, 'yyyy-MM')
       const workDays = dailyDetails.filter(d => d.workHours > 0).length
-      const averageHourlyWage = summary.totalWorkHours > 0
+      const averageHourlyWage = summary.useWageData && summary.totalWorkHours > 0
         ? Math.round(summary.totalWageAmount / summary.totalWorkHours)
         : 0
 
@@ -1228,9 +1232,9 @@ function PayslipPageContent() {
         .filter(d => d.workHours > 0)
         .map(d => ({
           date: d.date,
-          hours: d.workHours,
-          hourly_wage: d.workHours > 0 ? Math.round(d.wageAmount / d.workHours) : 0,
-          hourly_income: d.wageAmount,
+          hours: summary.useWageData ? d.workHours : 0,
+          hourly_wage: summary.useWageData && d.workHours > 0 ? Math.round(d.wageAmount / d.workHours) : 0,
+          hourly_income: summary.useWageData ? d.wageAmount : 0,
           sales: d.sales,
           back: d.productBack,
           daily_payment: d.dailyPayment
@@ -1251,9 +1255,9 @@ function PayslipPageContent() {
         year_month: yearMonth,
         status: finalize ? 'finalized' : 'draft',
         work_days: workDays,
-        total_hours: summary.totalWorkHours,
+        total_hours: summary.useWageData ? summary.totalWorkHours : 0,
         average_hourly_wage: averageHourlyWage,
-        hourly_income: summary.totalWageAmount,
+        hourly_income: summary.useWageData ? summary.totalWageAmount : 0,
         sales_back: summary.salesBack,
         product_back: summary.totalProductBack,
         fixed_amount: summary.fixedAmount,
@@ -1557,28 +1561,32 @@ function PayslipPageContent() {
           {/* サマリーカード */}
           <div style={styles.summarySection}>
             <div style={styles.summaryGrid}>
-              <div
-                style={{ ...styles.summaryCard, cursor: 'pointer' }}
-                onClick={() => setShowDailyWageModal(true)}
-              >
-                <div style={styles.summaryLabel}>勤務時間 / 平均時給 ▶</div>
-                <div style={styles.summaryValue}>
-                  {summary.totalWorkHours}h / {summary.totalWorkHours > 0
-                    ? currencyFormatter.format(Math.round(summary.totalWageAmount / summary.totalWorkHours))
-                    : '—'}
+              {summary.useWageData && (
+                <div
+                  style={{ ...styles.summaryCard, cursor: 'pointer' }}
+                  onClick={() => setShowDailyWageModal(true)}
+                >
+                  <div style={styles.summaryLabel}>勤務時間 / 平均時給 ▶</div>
+                  <div style={styles.summaryValue}>
+                    {summary.totalWorkHours}h / {summary.totalWorkHours > 0
+                      ? currencyFormatter.format(Math.round(summary.totalWageAmount / summary.totalWorkHours))
+                      : '—'}
+                  </div>
                 </div>
-              </div>
+              )}
               <div
-                style={{ ...styles.summaryCard, cursor: 'pointer' }}
-                onClick={() => setShowDailyWageModal(true)}
+                style={{ ...styles.summaryCard, cursor: summary.useWageData ? 'pointer' : 'default' }}
+                onClick={() => summary.useWageData && setShowDailyWageModal(true)}
               >
-                <div style={styles.summaryLabel}>出勤日数 ▶</div>
+                <div style={styles.summaryLabel}>出勤日数{summary.useWageData ? ' ▶' : ''}</div>
                 <div style={styles.summaryValue}>{dailyDetails.filter(d => d.workHours > 0).length}日</div>
               </div>
-              <div style={styles.summaryCard}>
-                <div style={styles.summaryLabel}>時給収入</div>
-                <div style={styles.summaryValue}>{currencyFormatter.format(summary.totalWageAmount)}</div>
-              </div>
+              {summary.useWageData && (
+                <div style={styles.summaryCard}>
+                  <div style={styles.summaryLabel}>時給収入</div>
+                  <div style={styles.summaryValue}>{currencyFormatter.format(summary.totalWageAmount)}</div>
+                </div>
+              )}
             </div>
             <div style={styles.summaryGrid}>
               <div style={styles.summaryCard}>
@@ -1617,8 +1625,8 @@ function PayslipPageContent() {
                   <thead>
                     <tr style={styles.tableHeader}>
                       <th style={styles.th}>日付</th>
-                      <th style={{ ...styles.th, textAlign: 'right' }}>時間</th>
-                      <th style={{ ...styles.th, textAlign: 'right' }}>時給額</th>
+                      {summary.useWageData && <th style={{ ...styles.th, textAlign: 'right' }}>時間</th>}
+                      {summary.useWageData && <th style={{ ...styles.th, textAlign: 'right' }}>時給額</th>}
                       <th style={{ ...styles.th, textAlign: 'right' }}>売上</th>
                       <th style={{ ...styles.th, textAlign: 'right' }}>商品バック</th>
                       <th style={{ ...styles.th, textAlign: 'right' }}>日払い</th>
@@ -1647,8 +1655,8 @@ function PayslipPageContent() {
                         }}
                       >
                         <td style={styles.td}>{day.dayOfMonth}日({day.dayOfWeek})</td>
-                        <td style={{ ...styles.td, textAlign: 'right' }}>{day.workHours > 0 ? `${day.workHours}h` : '-'}</td>
-                        <td style={{ ...styles.td, textAlign: 'right' }}>{day.wageAmount > 0 ? currencyFormatter.format(day.wageAmount) : '-'}</td>
+                        {summary.useWageData && <td style={{ ...styles.td, textAlign: 'right' }}>{day.workHours > 0 ? `${day.workHours}h` : '-'}</td>}
+                        {summary.useWageData && <td style={{ ...styles.td, textAlign: 'right' }}>{day.wageAmount > 0 ? currencyFormatter.format(day.wageAmount) : '-'}</td>}
                         <td style={{ ...styles.td, textAlign: 'right' }}>{day.sales > 0 ? currencyFormatter.format(day.sales) : '-'}</td>
                         <td style={{ ...styles.td, textAlign: 'right', color: '#FF9500' }}>{day.productBack > 0 ? currencyFormatter.format(day.productBack) : '-'}</td>
                         <td style={{ ...styles.td, textAlign: 'right', color: day.dailyPayment > 0 ? '#e74c3c' : undefined }}>
@@ -1659,8 +1667,8 @@ function PayslipPageContent() {
                     {/* 合計行 */}
                     <tr style={styles.tableTotal}>
                       <td style={{ ...styles.td, fontWeight: 'bold' }}>合計</td>
-                      <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold' }}>{summary.totalWorkHours}h</td>
-                      <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold' }}>{currencyFormatter.format(summary.totalWageAmount)}</td>
+                      {summary.useWageData && <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold' }}>{summary.totalWorkHours}h</td>}
+                      {summary.useWageData && <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold' }}>{currencyFormatter.format(summary.totalWageAmount)}</td>}
                       <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold' }}>{currencyFormatter.format(summary.totalSales)}</td>
                       <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold', color: '#FF9500' }}>{currencyFormatter.format(summary.totalProductBack)}</td>
                       <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold', color: '#e74c3c' }}>
@@ -2287,24 +2295,28 @@ function PayslipPageContent() {
                   <div style={styles.modalSummaryLabel}>出勤日数</div>
                   <div style={styles.modalSummaryValue}>{dailyDetails.filter(d => d.workHours > 0).length}日</div>
                 </div>
-                <div style={styles.modalSummaryItem}>
-                  <div style={styles.modalSummaryLabel}>勤務時間</div>
-                  <div style={styles.modalSummaryValue}>{summary.totalWorkHours}h</div>
-                </div>
-                <div style={styles.modalSummaryItem}>
-                  <div style={styles.modalSummaryLabel}>平均時給</div>
-                  <div style={{ ...styles.modalSummaryValue, color: '#34C759' }}>
-                    {summary.totalWorkHours > 0
-                      ? currencyFormatter.format(Math.round(summary.totalWageAmount / summary.totalWorkHours))
-                      : '—'}
-                  </div>
-                </div>
-                <div style={styles.modalSummaryItem}>
-                  <div style={styles.modalSummaryLabel}>時給収入</div>
-                  <div style={styles.modalSummaryValue}>
-                    {currencyFormatter.format(summary.totalWageAmount)}
-                  </div>
-                </div>
+                {summary.useWageData && (
+                  <>
+                    <div style={styles.modalSummaryItem}>
+                      <div style={styles.modalSummaryLabel}>勤務時間</div>
+                      <div style={styles.modalSummaryValue}>{summary.totalWorkHours}h</div>
+                    </div>
+                    <div style={styles.modalSummaryItem}>
+                      <div style={styles.modalSummaryLabel}>平均時給</div>
+                      <div style={{ ...styles.modalSummaryValue, color: '#34C759' }}>
+                        {summary.totalWorkHours > 0
+                          ? currencyFormatter.format(Math.round(summary.totalWageAmount / summary.totalWorkHours))
+                          : '—'}
+                      </div>
+                    </div>
+                    <div style={styles.modalSummaryItem}>
+                      <div style={styles.modalSummaryLabel}>時給収入</div>
+                      <div style={styles.modalSummaryValue}>
+                        {currencyFormatter.format(summary.totalWageAmount)}
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* 日別一覧 */}
