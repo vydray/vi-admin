@@ -100,17 +100,16 @@ function CompensationListContent() {
   const getCompensationSummary = (type: CompensationType): string => {
     const parts: string[] = []
 
-    if (type.hourly_rate > 0) {
-      parts.push(`時給¥${type.hourly_rate.toLocaleString()}`)
-    }
-    if (type.commission_rate > 0) {
-      parts.push(`歩合${type.commission_rate}%`)
-    }
     if (type.fixed_amount > 0) {
       parts.push(`固定¥${type.fixed_amount.toLocaleString()}`)
     }
+    if (type.hourly_rate > 0) {
+      parts.push(`時給¥${type.hourly_rate.toLocaleString()}`)
+    }
     if (type.use_sliding_rate) {
       parts.push('スライド')
+    } else if (type.commission_rate > 0) {
+      parts.push(`歩合${type.commission_rate}%`)
     }
     if (type.use_product_back) {
       parts.push('商品バック')
