@@ -7,7 +7,7 @@ import { useStore } from '@/contexts/StoreContext'
 import { exportToPDF } from '@/lib/pdfExport'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import ProtectedPage from '@/components/ProtectedPage'
-import type { CompensationType, CompensationSettings } from '@/types'
+import type { CompensationType, CompensationSettings, SlidingRate } from '@/types'
 
 interface Cast {
   id: number
@@ -96,26 +96,42 @@ function CompensationListContent() {
     }
   }
 
-  // 報酬形態の概要を生成
-  const getCompensationSummary = (type: CompensationType): string => {
-    const parts: string[] = []
+  // スライドレートのフォーマット
+  const formatSlidingRates = (rates: SlidingRate[]): string => {
+    return rates.map(r => {
+      const min = `¥${r.min.toLocaleString()}`
+      const max = r.max > 0 ? `¥${r.max.toLocaleString()}` : '〜'
+      return `${min}〜${max}: ${r.rate}%`
+    }).join(', ')
+  }
+
+  // 報酬形態の詳細を生成
+  const getCompensationDetails = (type: CompensationType): { main: string, details: string[] } => {
+    const mainParts: string[] = []
+    const details: string[] = []
 
     if (type.fixed_amount > 0) {
-      parts.push(`固定¥${type.fixed_amount.toLocaleString()}`)
+      mainParts.push(`固定 ¥${type.fixed_amount.toLocaleString()}`)
     }
     if (type.hourly_rate > 0) {
-      parts.push(`時給¥${type.hourly_rate.toLocaleString()}`)
+      mainParts.push(`時給 ¥${type.hourly_rate.toLocaleString()}`)
     }
     if (type.use_sliding_rate) {
-      parts.push('スライド')
+      mainParts.push('スライド歩合')
+      if (type.sliding_rates && type.sliding_rates.length > 0) {
+        details.push(`└ ${formatSlidingRates(type.sliding_rates)}`)
+      }
     } else if (type.commission_rate > 0) {
-      parts.push(`歩合${type.commission_rate}%`)
+      mainParts.push(`歩合 ${type.commission_rate}%`)
     }
     if (type.use_product_back) {
-      parts.push('商品バック')
+      mainParts.push('商品バック')
     }
 
-    return parts.length > 0 ? parts.join(' / ') : '未設定'
+    return {
+      main: mainParts.length > 0 ? mainParts.join(' + ') : '未設定',
+      details
+    }
   }
 
   if (loading) {
@@ -192,13 +208,23 @@ function CompensationListContent() {
                   <td style={{ ...tdStyle, fontWeight: '500', width: '150px' }}>{cast.name}</td>
                   <td style={tdStyle}>
                     {types.length > 0 ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        {types.map((type, index) => (
-                          <div key={type.id} style={{ fontSize: '12px', color: '#1e293b' }}>
-                            {types.length > 1 && <span style={{ color: '#64748b' }}>{index + 1}. </span>}
-                            {getCompensationSummary(type)}
-                          </div>
-                        ))}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {types.map((type, index) => {
+                          const { main, details } = getCompensationDetails(type)
+                          return (
+                            <div key={type.id}>
+                              <div style={{ fontSize: '13px', color: '#1e293b', fontWeight: '500' }}>
+                                {types.length > 1 && <span style={{ color: '#64748b', fontWeight: '400' }}>{index + 1}. </span>}
+                                {main}
+                              </div>
+                              {details.map((detail, i) => (
+                                <div key={i} style={{ fontSize: '11px', color: '#64748b', marginTop: '2px', marginLeft: '12px' }}>
+                                  {detail}
+                                </div>
+                              ))}
+                            </div>
+                          )
+                        })}
                       </div>
                     ) : (
                       <span style={{ color: '#94a3b8', fontSize: '12px' }}>未設定</span>
