@@ -84,7 +84,7 @@ function CompensationListContent() {
     try {
       await exportToPDF(printRef.current, {
         filename: `報酬形態一覧_${storeName}_${new Date().toISOString().split('T')[0]}.pdf`,
-        orientation: 'landscape',
+        orientation: 'portrait',
         margin: 10
       })
       toast.success('PDFをダウンロードしました')
@@ -119,18 +119,6 @@ function CompensationListContent() {
     return parts.length > 0 ? parts.join(' / ') : '未設定'
   }
 
-  // 選択方法のラベル
-  const getSelectionMethodLabel = (method: string): string => {
-    switch (method) {
-      case 'highest':
-        return '最高額'
-      case 'specific':
-        return '指定'
-      default:
-        return method
-    }
-  }
-
   if (loading) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
@@ -140,7 +128,7 @@ function CompensationListContent() {
   }
 
   return (
-    <div style={{ padding: '24px', maxWidth: '1400px', margin: '0 auto' }}>
+    <div style={{ padding: '24px', maxWidth: '1000px', margin: '0 auto' }}>
       {/* ヘッダー */}
       <div style={{
         display: 'flex',
@@ -193,79 +181,28 @@ function CompensationListContent() {
           <thead>
             <tr style={{ backgroundColor: '#f8fafc' }}>
               <th style={thStyle}>キャスト名</th>
-              <th style={thStyle}>選択方法</th>
-              <th style={thStyle}>報酬形態1</th>
-              <th style={thStyle}>報酬形態2</th>
-              <th style={thStyle}>報酬形態3</th>
-              <th style={thStyle}>状態</th>
+              <th style={thStyle}>報酬形態</th>
             </tr>
           </thead>
           <tbody>
             {castsWithCompensation.map(({ cast, settings }) => {
               const types = settings?.compensation_types?.filter(t => t.is_enabled) || []
-              const selectedId = settings?.selected_compensation_type_id
 
               return (
                 <tr key={cast.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                  <td style={{ ...tdStyle, fontWeight: '500' }}>{cast.name}</td>
+                  <td style={{ ...tdStyle, fontWeight: '500', width: '150px' }}>{cast.name}</td>
                   <td style={tdStyle}>
-                    {settings ? (
-                      <span style={{
-                        padding: '2px 8px',
-                        backgroundColor: settings.payment_selection_method === 'highest' ? '#dbeafe' : '#fef3c7',
-                        borderRadius: '4px',
-                        fontSize: '12px'
-                      }}>
-                        {getSelectionMethodLabel(settings.payment_selection_method)}
-                      </span>
-                    ) : '-'}
-                  </td>
-                  {[0, 1, 2].map(index => {
-                    const type = types[index]
-                    const isSelected = type && selectedId === type.id
-                    return (
-                      <td key={index} style={tdStyle}>
-                        {type ? (
-                          <div>
-                            <div style={{
-                              fontWeight: isSelected ? '600' : '400',
-                              color: isSelected ? '#2563eb' : '#1e293b',
-                              marginBottom: '2px'
-                            }}>
-                              {type.name}
-                              {isSelected && <span style={{ marginLeft: '4px', color: '#2563eb' }}>★</span>}
-                            </div>
-                            <div style={{ fontSize: '11px', color: '#64748b' }}>
-                              {getCompensationSummary(type)}
-                            </div>
+                    {types.length > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        {types.map((type, index) => (
+                          <div key={type.id} style={{ fontSize: '12px', color: '#1e293b' }}>
+                            {types.length > 1 && <span style={{ color: '#64748b' }}>{index + 1}. </span>}
+                            {getCompensationSummary(type)}
                           </div>
-                        ) : (
-                          <span style={{ color: '#94a3b8' }}>-</span>
-                        )}
-                      </td>
-                    )
-                  })}
-                  <td style={tdStyle}>
-                    {settings ? (
-                      <span style={{
-                        padding: '2px 8px',
-                        backgroundColor: '#dcfce7',
-                        color: '#166534',
-                        borderRadius: '4px',
-                        fontSize: '12px'
-                      }}>
-                        設定済
-                      </span>
+                        ))}
+                      </div>
                     ) : (
-                      <span style={{
-                        padding: '2px 8px',
-                        backgroundColor: '#fee2e2',
-                        color: '#991b1b',
-                        borderRadius: '4px',
-                        fontSize: '12px'
-                      }}>
-                        未設定
-                      </span>
+                      <span style={{ color: '#94a3b8', fontSize: '12px' }}>未設定</span>
                     )}
                   </td>
                 </tr>
@@ -273,23 +210,6 @@ function CompensationListContent() {
             })}
           </tbody>
         </table>
-
-        {/* 凡例 */}
-        <div style={{
-          marginTop: '20px',
-          padding: '12px',
-          backgroundColor: '#f8fafc',
-          borderRadius: '8px',
-          fontSize: '12px',
-          color: '#64748b'
-        }}>
-          <div style={{ fontWeight: '500', marginBottom: '8px' }}>凡例</div>
-          <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
-            <span>★ = 指定された報酬形態</span>
-            <span>最高額 = 複数の報酬形態から最高額を支給</span>
-            <span>指定 = 特定の報酬形態を固定支給</span>
-          </div>
-        </div>
       </div>
     </div>
   )
