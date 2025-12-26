@@ -335,6 +335,10 @@ async function calculatePayslipForCast(
     const enabledDeductionIds = compensationSettings?.enabled_deduction_ids || []
     const compensationTypes = compensationSettings?.compensation_types || []
 
+    if (!compensationSettings) {
+      console.log(`[Payslip] Cast ${cast.id} (${cast.name}): No compensation_settings found`)
+    }
+
     // アクティブな報酬タイプを取得
     type CompType = {
       id: string
@@ -346,8 +350,8 @@ async function calculatePayslipForCast(
       sliding_rates: { min: number; max: number; rate: number }[] | null
       is_enabled: boolean
     }
-    // is_enabled でフィルター
-    const enabledTypes = compensationTypes.filter((t: CompType) => t.is_enabled)
+    // is_enabled でフィルター（undefinedは有効として扱う - 後方互換性）
+    const enabledTypes = compensationTypes.filter((t: CompType) => t.is_enabled !== false)
 
     let activeCompType: CompType | undefined = undefined
     if (compensationSettings?.payment_selection_method === 'specific' && compensationSettings?.selected_compensation_type_id) {
@@ -358,9 +362,12 @@ async function calculatePayslipForCast(
     }
 
     let fixedAmount = 0
+    console.log(`[Payslip] Cast ${cast.id} (${cast.name}): compensationTypes count=${compensationTypes.length}, enabledTypes count=${enabledTypes.length}, activeCompType=${activeCompType?.id}`)
+
     if (activeCompType) {
-      // 固定額
-      fixedAmount = activeCompType.fixed_amount || 0
+      // 固定額（文字列の場合も考慮）
+      fixedAmount = Number(activeCompType.fixed_amount) || 0
+      console.log(`[Payslip] Cast ${cast.id} (${cast.name}): fixedAmount=${fixedAmount}, hourly_rate=${activeCompType.hourly_rate}`)
 
       // 売上バック計算
       if (activeCompType.use_sliding_rate && activeCompType.sliding_rates) {
@@ -376,8 +383,10 @@ async function calculatePayslipForCast(
     }
 
     // 時給を使用するかどうか（hourly_rateが設定されている場合のみ）
-    const useWageData = activeCompType?.hourly_rate && activeCompType.hourly_rate > 0
+    const hourlyRate = Number(activeCompType?.hourly_rate) || 0
+    const useWageData = hourlyRate > 0
     const grossEarnings = (useWageData ? totalWageAmount : 0) + salesBack + totalProductBack + fixedAmount
+    console.log(`[Payslip] Cast ${cast.id} (${cast.name}): grossEarnings=${grossEarnings} (wage=${useWageData ? totalWageAmount : 0}, salesBack=${salesBack}, productBack=${totalProductBack}, fixed=${fixedAmount})`)
 
     // ===== 控除計算 =====
     const deductions: Array<{ name: string; type: string; count?: number; percentage?: number; amount: number }> = []
@@ -576,10 +585,12 @@ export async function POST(request: NextRequest) {
         .eq('store_id', targetStoreId)
         .eq('is_active', true)
 
+      console.log(`[Payslip] Processing ${(casts || []).length} casts for store ${targetStoreId}`)
       for (const cast of casts || []) {
         const result = await calculatePayslipForCast(targetStoreId, cast, month)
         if (result.success) {
           totalProcessed++
+          console.log(`[Payslip] Cast ${cast.id} (${cast.name}): saved successfully`)
         } else {
           totalErrors++
           console.error(`Payslip error for cast ${cast.id}:`, result.error)
@@ -612,6 +623,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'store_id is required' }, { status: 400 })
     }
 
+    console.log(`[Payslip] Completed: processed=${totalProcessed}, errors=${totalErrors}`)
     return NextResponse.json({
       success: true,
       processed: totalProcessed,
