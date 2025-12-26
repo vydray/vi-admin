@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import Image from 'next/image'
 import { usePathname } from 'next/navigation'
 import { useStore } from '@/contexts/StoreContext'
 import { useAuth } from '@/contexts/AuthContext'
@@ -140,16 +139,7 @@ export default function Sidebar() {
   return (
     <div style={styles.sidebar}>
       <div style={styles.header}>
-        <div style={styles.logoContainer}>
-          <Image
-            src="/logo-small.png"
-            alt="VI Admin"
-            width={120}
-            height={60}
-            style={{ objectFit: 'contain' }}
-            priority
-          />
-        </div>
+        <h2 style={styles.logo}>VI Admin</h2>
 
         {/* ユーザー情報 */}
         {user && (
@@ -286,10 +276,11 @@ const styles: { [key: string]: React.CSSProperties } = {
     padding: '30px 20px',
     borderBottom: '1px solid rgba(255,255,255,0.1)',
   },
-  logoContainer: {
-    display: 'flex',
-    justifyContent: 'center',
-    marginBottom: '15px',
+  logo: {
+    fontSize: '24px',
+    fontWeight: '700',
+    margin: 0,
+    textAlign: 'center' as const,
   },
   userInfo: {
     marginTop: '15px',

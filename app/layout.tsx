@@ -9,6 +9,13 @@ import './globals.css'
 export const metadata = {
   title: 'VI Admin Dashboard',
   description: 'キャバクラ管理システム',
+  icons: {
+    icon: [
+      { url: '/favicon.png', sizes: '256x256', type: 'image/png' },
+      { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+    ],
+    apple: '/apple-touch-icon.png',
+  },
 }
 
 export default function RootLayout({
