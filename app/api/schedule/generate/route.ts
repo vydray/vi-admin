@@ -291,8 +291,9 @@ export async function POST(request: NextRequest) {
         // 合成用の配列を準備
         const composites: sharp.OverlayOptions[] = [];
 
-        for (let i = 0; i < pageCasts.length; i++) {
-          const cast = pageCasts[i];
+        // グリッド全体をループ（空きスロットもプレースホルダーで埋める）
+        for (let i = 0; i < castsPerPage; i++) {
+          const cast = pageCasts[i]; // undefinedの場合もある
           const col = i % gridSettings.columns;
           const row = Math.floor(i / gridSettings.columns);
 
@@ -302,8 +303,8 @@ export async function POST(request: NextRequest) {
 
           let photoBuffer: Buffer | null = null;
 
-          // キャスト写真を取得
-          if (cast.photo_path) {
+          // キャストがいる場合は写真を取得
+          if (cast && cast.photo_path) {
             const photoUrl = `${SUPABASE_URL}/storage/v1/object/public/cast-photos/${cast.photo_path}`;
             const photoResponse = await fetch(photoUrl);
             if (photoResponse.ok) {
@@ -311,7 +312,7 @@ export async function POST(request: NextRequest) {
             }
           }
 
-          // 写真がなければプレースホルダーを使用
+          // 写真がなければプレースホルダーを使用（キャストがいない空きスロットも含む）
           if (!photoBuffer && placeholderBuffer) {
             photoBuffer = placeholderBuffer;
           }
@@ -330,8 +331,8 @@ export async function POST(request: NextRequest) {
             });
           }
 
-          // 名前表示が有効なら名前を配置
-          if (gridSettings.show_names) {
+          // 名前表示が有効でキャストがいる場合のみ名前を配置
+          if (gridSettings.show_names && cast) {
             const nameBuffer = generateNameText(cast.name, photoWidth, nameStyle);
             if (nameBuffer) {
               composites.push({
