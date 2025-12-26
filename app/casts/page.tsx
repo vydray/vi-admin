@@ -468,6 +468,12 @@ function CastsPageContent() {
     }
 
     try {
+      // 自己参照の外部キー（primary_cast_id）を解除
+      await supabase
+        .from('casts')
+        .update({ primary_cast_id: null })
+        .eq('primary_cast_id', castId)
+
       // 関連データを全て削除（外部キー制約の順序で削除）
       await Promise.all([
         supabase.from('shift_locks').delete().eq('cast_id', castId),
@@ -481,6 +487,7 @@ function CastsPageContent() {
         supabase.from('requests').delete().eq('cast_id', castId),
         supabase.from('base_variations').delete().eq('cast_id', castId),
         supabase.from('base_orders').delete().eq('cast_id', castId),
+        supabase.from('visitor_reservations').delete().eq('cast_id', castId),
       ])
 
       const { error } = await supabase
@@ -490,11 +497,11 @@ function CastsPageContent() {
         .eq('store_id', storeId)
 
       if (error) {
-        console.error('Error deleting cast:', error)
+        console.error('Error deleting cast:', error, JSON.stringify(error))
         if (error.code === '23503') {
-          toast.error('関連データがあるため削除できません: ' + error.details)
+          toast.error('関連データがあるため削除できません: ' + (error.details || error.message))
         } else {
-          toast.error('削除に失敗しました')
+          toast.error('削除に失敗しました: ' + (error.message || '不明なエラー'))
         }
       } else {
         toast.success('削除しました')
