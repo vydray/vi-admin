@@ -3259,9 +3259,11 @@ function CompensationSettingsPageContent() {
                     const { type, hourly, fixed, salesBack, selfProductBack, helpProductBack, itemsWithSelfBack, itemsWithHelpBack, total, salesAmount, mode } = selectedResult
 
                     // 実績データ使用時は実際の時給収入で合計を再計算（固定額も含める）
-                    const actualTotal = wageStats
+                    // 時給がオンの場合のみ時給実績を含める
+                    const useWageStats = wageStats && type.hourly_rate > 0
+                    const actualTotal = useWageStats
                       ? wageStats.totalWageAmount + fixed + salesBack + selfProductBack + helpProductBack
-                      : total
+                      : fixed + salesBack + selfProductBack + helpProductBack
 
                     return (
                       <div style={{
@@ -3287,8 +3289,8 @@ function CompensationSettingsPageContent() {
                         </div>
 
                         {/* 時給・固定セクション */}
-                        {wageStats && (
-                          /* 実績データ使用時 */
+                        {useWageStats && (
+                          /* 実績データ使用時（時給がオンの場合のみ） */
                           <div style={{ backgroundColor: '#dcfce7', borderLeft: '3px solid #22c55e', padding: '8px 10px', marginBottom: '8px', borderRadius: '0 4px 4px 0' }}>
                             <div style={{ fontSize: '11px', color: '#166534', marginBottom: '4px', fontWeight: 'bold' }}>時給実績</div>
                             <div style={styles.slipRow}>
@@ -3299,7 +3301,7 @@ function CompensationSettingsPageContent() {
                             </div>
                           </div>
                         )}
-                        {!wageStats && hourly > 0 && (
+                        {!useWageStats && hourly > 0 && (
                           <div style={{ backgroundColor: '#f8fafc', borderLeft: '3px solid #3b82f6', padding: '8px 10px', marginBottom: '8px', borderRadius: '0 4px 4px 0' }}>
                             <div style={{ fontSize: '11px', color: '#3b82f6', marginBottom: '4px', fontWeight: 'bold' }}>時給</div>
                             <div style={styles.slipRow}>
