@@ -63,6 +63,7 @@ const menuGroups: MenuGroup[] = [
     icon: '👥',
     items: [
       { name: 'キャスト管理', path: '/casts', icon: '👥' },
+      { name: '報酬形態一覧', path: '/compensation-list', icon: '📋' },
       { name: '報酬計算設定', path: '/compensation-settings', icon: '💳' },
       { name: 'バック率設定', path: '/cast-back-rates', icon: '💵' },
       { name: 'キャスト別時給', path: '/cast-wage-settings', icon: '👤' },
