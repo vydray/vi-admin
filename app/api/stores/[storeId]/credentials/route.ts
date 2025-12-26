@@ -198,6 +198,7 @@ export async function POST(
       // vi-adminユーザー作成（パスワードはbcryptハッシュ化）
       const saltRounds = 10
       const passwordHash = await bcrypt.hash(password, saltRounds)
+      const { permissions } = body
 
       const { error } = await supabase
         .from('admin_users')
@@ -206,7 +207,8 @@ export async function POST(
           username: username.trim(),
           password_hash: passwordHash,
           role: role || 'store_admin',
-          is_active: true
+          is_active: true,
+          permissions: permissions || null
         })
 
       if (error) {

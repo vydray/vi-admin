@@ -74,6 +74,19 @@ function StoresPageContent() {
     userId: number
     permissions: Permissions
   } | null>(null)
+  const [showAddUserForm, setShowAddUserForm] = useState(false)
+  const [newUser, setNewUser] = useState<{
+    username: string
+    password: string
+    permissions: Permissions
+  }>({
+    username: '',
+    password: '',
+    permissions: ALL_PERMISSION_KEYS.reduce((acc, key) => {
+      acc[key] = true
+      return acc
+    }, {} as Permissions)
+  })
   const [newStore, setNewStore] = useState<NewStoreForm>({
     store_name: '',
     pos_username: '',
@@ -326,6 +339,65 @@ function StoresPageContent() {
       toast.error('権限の更新に失敗しました')
     }
     setSaving(false)
+  }
+
+  const createNewUser = async () => {
+    if (!selectedStoreId) return
+    if (!newUser.username.trim()) {
+      toast.error('ユーザー名を入力してください')
+      return
+    }
+    if (!newUser.password.trim()) {
+      toast.error('パスワードを入力してください')
+      return
+    }
+
+    setSaving(true)
+    try {
+      const response = await fetch(`/api/stores/${selectedStoreId}/credentials`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'admin',
+          username: newUser.username.trim(),
+          password: newUser.password,
+          role: 'store_admin',
+          permissions: newUser.permissions
+        })
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        toast.success('ユーザーを作成しました')
+        setShowAddUserForm(false)
+        setNewUser({
+          username: '',
+          password: '',
+          permissions: ALL_PERMISSION_KEYS.reduce((acc, key) => {
+            acc[key] = true
+            return acc
+          }, {} as Permissions)
+        })
+        await loadCredentials(selectedStoreId)
+      } else {
+        toast.error(data.error || 'ユーザー作成に失敗しました')
+      }
+    } catch (error) {
+      console.error('Error creating user:', error)
+      toast.error('ユーザー作成に失敗しました')
+    }
+    setSaving(false)
+  }
+
+  const toggleNewUserPermission = (key: PermissionKey) => {
+    setNewUser({
+      ...newUser,
+      permissions: {
+        ...newUser.permissions,
+        [key]: !newUser.permissions[key]
+      }
+    })
   }
 
   if (user?.role !== 'super_admin') {
@@ -686,17 +758,118 @@ function StoresPageContent() {
                   padding: '20px',
                   boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
                 }}>
-                  <h3 style={{
-                    fontSize: '16px',
-                    fontWeight: '600',
-                    color: '#7c3aed',
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
                     marginBottom: '16px',
                     paddingBottom: '12px',
                     borderBottom: '2px solid #e9d5ff'
                   }}>
-                    vi-adminユーザー
-                  </h3>
-                  {storeCredentials.adminUsers.length === 0 ? (
+                    <h3 style={{
+                      fontSize: '16px',
+                      fontWeight: '600',
+                      color: '#7c3aed',
+                      margin: 0
+                    }}>
+                      vi-adminユーザー
+                    </h3>
+                    <Button
+                      onClick={() => setShowAddUserForm(!showAddUserForm)}
+                      variant={showAddUserForm ? 'secondary' : 'primary'}
+                    >
+                      {showAddUserForm ? 'キャンセル' : '+ 追加'}
+                    </Button>
+                  </div>
+
+                  {/* 新規ユーザー追加フォーム */}
+                  {showAddUserForm && (
+                    <div style={{
+                      backgroundColor: '#faf5ff',
+                      padding: '16px',
+                      borderRadius: '8px',
+                      marginBottom: '16px',
+                      border: '1px solid #e9d5ff'
+                    }}>
+                      <div style={{ fontSize: '14px', fontWeight: '600', color: '#7c3aed', marginBottom: '12px' }}>
+                        新規ユーザー作成
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                        <div>
+                          <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: '500', color: '#374151' }}>
+                            ユーザー名 <span style={{ color: '#ef4444' }}>*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={newUser.username}
+                            onChange={(e) => setNewUser({ ...newUser, username: e.target.value })}
+                            placeholder="例: staff1"
+                            style={{ width: '100%', padding: '10px', fontSize: '14px', border: '1px solid #e2e8f0', borderRadius: '6px', boxSizing: 'border-box' }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: '500', color: '#374151' }}>
+                            パスワード <span style={{ color: '#ef4444' }}>*</span>
+                          </label>
+                          <input
+                            type="password"
+                            value={newUser.password}
+                            onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
+                            placeholder="パスワード"
+                            style={{ width: '100%', padding: '10px', fontSize: '14px', border: '1px solid #e2e8f0', borderRadius: '6px', boxSizing: 'border-box' }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* 権限設定 */}
+                      <div style={{
+                        backgroundColor: '#fff',
+                        padding: '14px',
+                        borderRadius: '8px',
+                        border: '1px solid #e9d5ff',
+                        marginBottom: '12px'
+                      }}>
+                        <div style={{ fontSize: '13px', fontWeight: '600', color: '#7c3aed', marginBottom: '12px' }}>
+                          アクセス権限設定
+                        </div>
+                        {PERMISSION_CATEGORIES.map(category => (
+                          <div key={category} style={{ marginBottom: '12px' }}>
+                            <div style={{ fontSize: '11px', fontWeight: '600', color: '#6b7280', marginBottom: '6px' }}>
+                              {category}
+                            </div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                              {ALL_PERMISSION_KEYS
+                                .filter(key => PERMISSION_CONFIG[key].category === category)
+                                .map(key => (
+                                  <button
+                                    key={key}
+                                    onClick={() => toggleNewUserPermission(key)}
+                                    style={{
+                                      padding: '5px 10px',
+                                      fontSize: '12px',
+                                      borderRadius: '4px',
+                                      border: 'none',
+                                      cursor: 'pointer',
+                                      backgroundColor: newUser.permissions[key] ? '#dcfce7' : '#fee2e2',
+                                      color: newUser.permissions[key] ? '#166534' : '#991b1b',
+                                      fontWeight: '500'
+                                    }}
+                                  >
+                                    {PERMISSION_CONFIG[key].label}
+                                  </button>
+                                ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <Button onClick={createNewUser} disabled={saving} variant="success">
+                        {saving ? '作成中...' : 'ユーザーを作成'}
+                      </Button>
+                    </div>
+                  )}
+
+                  {storeCredentials.adminUsers.length === 0 && !showAddUserForm ? (
                     <div style={{ color: '#94a3b8', fontSize: '14px' }}>ユーザーなし</div>
                   ) : (
                     storeCredentials.adminUsers.map(adminUser => (
