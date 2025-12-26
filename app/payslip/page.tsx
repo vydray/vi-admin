@@ -105,6 +105,7 @@ interface SavedPayslip {
   hourly_income: number
   sales_back: number
   product_back: number
+  fixed_amount: number
   gross_total: number
   total_deduction: number
   net_payment: number
@@ -1019,8 +1020,11 @@ function PayslipPageContent() {
       }
     }
 
+    // 固定額（月額固定報酬）
+    const fixedAmount = activeCompensationType?.fixed_amount || 0
+
     // 総支給額
-    const grossEarnings = totalWageAmount + salesBack + totalProductBack
+    const grossEarnings = totalWageAmount + salesBack + totalProductBack + fixedAmount
 
     return {
       totalWorkHours: Math.round(totalWorkHours * 100) / 100,
@@ -1028,6 +1032,7 @@ function PayslipPageContent() {
       totalSales,
       salesBack,
       totalProductBack,
+      fixedAmount,
       grossEarnings
     }
   }, [dailyStats, dailySalesData, activeCompensationType])
@@ -1251,6 +1256,7 @@ function PayslipPageContent() {
         hourly_income: summary.totalWageAmount,
         sales_back: summary.salesBack,
         product_back: summary.totalProductBack,
+        fixed_amount: summary.fixedAmount,
         gross_total: summary.grossEarnings,
         total_deduction: totalDeduction,
         net_payment: netEarnings,
@@ -1540,6 +1546,9 @@ function PayslipPageContent() {
                     : `売上バック${activeCompensationType.commission_rate}%`)
                 }
                 if (activeCompensationType.use_product_back) parts.push('商品バック')
+                if (activeCompensationType.fixed_amount > 0) {
+                  parts.push(`固定額${currencyFormatter.format(activeCompensationType.fixed_amount)}`)
+                }
                 return parts.length > 0 ? `（${parts.join(' + ')}）` : ''
               })()}
             </div>
@@ -1585,6 +1594,14 @@ function PayslipPageContent() {
                 <div style={{ ...styles.summaryValue, color: '#FF9500' }}>{currencyFormatter.format(summary.totalProductBack)}</div>
               </div>
             </div>
+            {summary.fixedAmount > 0 && (
+              <div style={styles.summaryGrid}>
+                <div style={styles.summaryCard}>
+                  <div style={styles.summaryLabel}>固定額</div>
+                  <div style={{ ...styles.summaryValue, color: '#34C759' }}>{currencyFormatter.format(summary.fixedAmount)}</div>
+                </div>
+              </div>
+            )}
             <div style={styles.grossEarningsCard}>
               <div style={styles.grossLabel}>総支給額</div>
               <div style={styles.grossValue}>{currencyFormatter.format(summary.grossEarnings)}</div>
