@@ -7,6 +7,7 @@ import { ja } from 'date-fns/locale'
 import { useStore } from '@/contexts/StoreContext'
 import { SalesSettings, CompensationType, CastBackRate } from '@/types'
 import { calculateCastSalesByPublishedMethod, getDefaultSalesSettings, applyRoundingNew } from '@/lib/salesCalculation'
+import { exportToPDF } from '@/lib/pdfExport'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import ProtectedPage from '@/components/ProtectedPage'
 
@@ -201,6 +202,8 @@ function PayslipPageContent() {
   const [savedPayslip, setSavedPayslip] = useState<SavedPayslip | null>(null)
   const [saving, setSaving] = useState(false)
   const [recalculating, setRecalculating] = useState(false)
+  const [exporting, setExporting] = useState(false)
+  const printRef = useRef<HTMLDivElement>(null)
   const [selectedDayDetail, setSelectedDayDetail] = useState<string | null>(null) // 日別詳細モーダル用
   const [showDailyWageModal, setShowDailyWageModal] = useState(false) // 日別時給モーダル用
   const [selectedProductDetail, setSelectedProductDetail] = useState<{
@@ -1354,6 +1357,28 @@ function PayslipPageContent() {
     }
   }, [storeId, selectedCastId, selectedMonth, loadPayslip])
 
+  // PDF出力
+  const handleExportPDF = useCallback(async () => {
+    if (!printRef.current || !selectedCastId) return
+
+    const cast = casts.find(c => c.id === selectedCastId)
+    if (!cast) return
+
+    setExporting(true)
+    try {
+      await exportToPDF(printRef.current, {
+        filename: `報酬明細_${cast.name}_${format(selectedMonth, 'yyyy年MM月')}.pdf`,
+        orientation: 'portrait',
+        margin: 10
+      })
+    } catch (error) {
+      console.error('PDF出力エラー:', error)
+      alert('PDF出力に失敗しました')
+    } finally {
+      setExporting(false)
+    }
+  }, [selectedCastId, casts, selectedMonth])
+
   if (loading && casts.length === 0) {
     return (
       <div style={styles.container}>
@@ -1484,6 +1509,24 @@ function PayslipPageContent() {
             >
               {recalculating ? '計算中...' : '全キャスト再計算'}
             </button>
+            {/* PDF出力ボタン */}
+            <button
+              onClick={handleExportPDF}
+              disabled={exporting || !selectedCastId}
+              style={{
+                padding: '8px 16px',
+                backgroundColor: exporting ? '#94a3b8' : '#8b5cf6',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '8px',
+                fontSize: '14px',
+                fontWeight: '500',
+                cursor: exporting || !selectedCastId ? 'not-allowed' : 'pointer',
+                opacity: exporting || !selectedCastId ? 0.7 : 1
+              }}
+            >
+              {exporting ? '出力中...' : 'PDF出力'}
+            </button>
             {/* 月次確定 / 確定解除ボタン */}
             {savedPayslip?.status === 'finalized' ? (
               <button
@@ -1536,7 +1579,7 @@ function PayslipPageContent() {
       {loading ? (
         <LoadingSpinner />
       ) : (
-        <>
+        <div ref={printRef} style={{ backgroundColor: 'white' }}>
           {/* 報酬形態表示 */}
           {activeCompensationType && (
             <div style={styles.compensationTypeLabel}>
@@ -1837,7 +1880,7 @@ function PayslipPageContent() {
             <div style={styles.netEarningsLabel}>差引支給額</div>
             <div style={styles.netEarningsValue}>{currencyFormatter.format(netEarnings)}</div>
           </div>
-        </>
+        </div>
       )}
 
       {/* 日別詳細モーダル */}
