@@ -5,11 +5,13 @@ export const PERMISSION_CONFIG: Record<PermissionKey, { label: string; category:
   casts: { label: 'キャスト管理', category: 'キャスト' },
   attendance: { label: '勤怠管理', category: 'キャスト' },
   payslip: { label: '給与明細', category: 'キャスト' },
+  payslip_list: { label: '報酬明細一覧', category: 'キャスト' },
   cast_sales: { label: 'キャスト売上', category: 'キャスト' },
   cast_back_rates: { label: 'バック率設定', category: 'キャスト' },
   cast_wage_settings: { label: 'キャスト時給設定', category: 'キャスト' },
   wage_settings: { label: '時給ステータス設定', category: '設定' },
   compensation_settings: { label: '手当設定', category: '設定' },
+  compensation_list: { label: '報酬形態一覧', category: '設定' },
   deduction_settings: { label: '控除設定', category: '設定' },
   sales_settings: { label: '売上設定', category: '設定' },
   products: { label: '商品管理', category: '商品' },
@@ -19,6 +21,8 @@ export const PERMISSION_CONFIG: Record<PermissionKey, { label: string; category:
   settings: { label: 'システム設定', category: 'その他' },
   shifts: { label: 'シフト管理', category: 'その他' },
   base_settings: { label: 'BASE連携設定', category: 'その他' },
+  schedule: { label: '出勤表作成', category: 'その他' },
+  twitter: { label: 'Twitter管理', category: 'その他' },
 }
 
 // カテゴリ順
@@ -55,11 +59,13 @@ export function getPermissionKeyFromPath(path: string): PermissionKey | null {
     '/casts': 'casts',
     '/attendance': 'attendance',
     '/payslip': 'payslip',
+    '/payslip-list': 'payslip_list',
     '/cast-sales': 'cast_sales',
     '/cast-back-rates': 'cast_back_rates',
     '/cast-wage-settings': 'cast_wage_settings',
     '/wage-settings': 'wage_settings',
     '/compensation-settings': 'compensation_settings',
+    '/compensation-list': 'compensation_list',
     '/deduction-settings': 'deduction_settings',
     '/sales-settings': 'sales_settings',
     '/products': 'products',
@@ -69,6 +75,13 @@ export function getPermissionKeyFromPath(path: string): PermissionKey | null {
     '/settings': 'settings',
     '/shifts/manage': 'shifts',
     '/base-settings': 'base_settings',
+    // 出勤表作成
+    '/schedule/photos': 'schedule',
+    '/schedule/template': 'schedule',
+    '/schedule/generate': 'schedule',
+    // Twitter
+    '/twitter-posts': 'twitter',
+    '/twitter-settings': 'twitter',
   }
 
   return pathMap[path] || null

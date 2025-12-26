@@ -12,11 +12,13 @@ export type PermissionKey =
   | 'casts'              // キャスト管理
   | 'attendance'         // 勤怠管理
   | 'payslip'            // 給与明細
+  | 'payslip_list'       // 報酬明細一覧
   | 'cast_sales'         // キャスト売上
   | 'cast_back_rates'    // バック率設定
   | 'cast_wage_settings' // キャスト時給設定
   | 'wage_settings'      // 時給ステータス設定
   | 'compensation_settings' // 手当設定
+  | 'compensation_list'  // 報酬形態一覧
   | 'deduction_settings' // 控除設定
   | 'sales_settings'     // 売上設定
   | 'products'           // 商品管理
@@ -26,6 +28,8 @@ export type PermissionKey =
   | 'settings'           // システム設定
   | 'shifts'             // シフト管理
   | 'base_settings'      // BASE連携設定
+  | 'schedule'           // 出勤表作成
+  | 'twitter'            // Twitter管理
 
 export type Permissions = Partial<Record<PermissionKey, boolean>>
 

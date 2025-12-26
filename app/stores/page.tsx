@@ -299,12 +299,18 @@ function StoresPageContent() {
   }
 
   const startEditingPermissions = (adminUser: AdminUser) => {
+    // 全キーをtrueでデフォルト設定し、既存の権限をマージ（未定義のキーはtrueになる）
+    const defaultPermissions = ALL_PERMISSION_KEYS.reduce((acc, key) => {
+      acc[key] = true
+      return acc
+    }, {} as Permissions)
+
     setEditingPermissions({
       userId: adminUser.id,
-      permissions: adminUser.permissions || ALL_PERMISSION_KEYS.reduce((acc, key) => {
-        acc[key] = true
-        return acc
-      }, {} as Permissions)
+      permissions: {
+        ...defaultPermissions,
+        ...adminUser.permissions
+      }
     })
   }
 
