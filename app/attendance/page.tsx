@@ -15,7 +15,7 @@ import Button from '@/components/Button'
 import ProtectedPage from '@/components/ProtectedPage'
 import type { CastBasic, Attendance, AttendanceStatus, AttendanceHistory } from '@/types'
 
-// 再計算API呼び出し
+// 再計算API呼び出し（月全体）
 async function recalculateMonth(storeId: number, year: number, month: number): Promise<{ success: boolean; results?: { date: string; castsProcessed: number }[]; error?: string }> {
   const dateFrom = `${year}-${String(month).padStart(2, '0')}-01`
   const lastDay = new Date(year, month, 0).getDate()
@@ -25,6 +25,17 @@ async function recalculateMonth(storeId: number, year: number, month: number): P
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ store_id: storeId, date_from: dateFrom, date_to: dateTo })
+  })
+
+  return response.json()
+}
+
+// 再計算API呼び出し（単一日付）
+async function recalculateDate(storeId: number, date: string): Promise<{ success: boolean; castsProcessed?: number; error?: string }> {
+  const response = await fetch('/api/cast-stats/recalculate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ store_id: storeId, date })
   })
 
   return response.json()
@@ -446,6 +457,8 @@ function AttendancePageContent() {
           toast.success('保存しました')
           await loadAttendances()
           setEditingCell(null)
+          // 統計データを自動更新
+          recalculateDate(storeId, dateStr).catch(console.error)
         }
       } else {
         // 新規作成
@@ -471,6 +484,8 @@ function AttendancePageContent() {
           toast.success('保存しました')
           await loadAttendances()
           setEditingCell(null)
+          // 統計データを自動更新
+          recalculateDate(storeId, dateStr).catch(console.error)
         }
       }
     } catch (error) {
@@ -505,6 +520,8 @@ function AttendancePageContent() {
           } else {
             await loadAttendances()
             setEditingCell(null)
+            // 統計データを自動更新
+            recalculateDate(storeId, dateStr).catch(console.error)
           }
         } catch (error) {
           handleUnexpectedError(error, { operation: '勤怠データの削除' })
