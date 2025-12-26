@@ -42,6 +42,7 @@ export default function CastPhotosPage() {
   const [templateMode, setTemplateMode] = useState<'custom' | 'grid'>('custom') // テンプレートモード
   const [settingsModalOpen, setSettingsModalOpen] = useState(false) // 切り抜き設定モーダル
   const [frameSize, setFrameSize] = useState({ width: 150, height: 200 }) // カスタムモードの枠サイズ
+  const [imageRefreshKey, setImageRefreshKey] = useState(Date.now()) // 画像キャッシュ対策
 
   // フィルター用state
   const [searchName, setSearchName] = useState('')
@@ -118,7 +119,8 @@ export default function CastPhotosPage() {
 
   const getPhotoUrl = (photoPath: string | null) => {
     if (!photoPath) return null
-    return `${SUPABASE_URL}/storage/v1/object/public/cast-photos/${photoPath}`
+    // キャッシュ対策のためタイムスタンプを付与
+    return `${SUPABASE_URL}/storage/v1/object/public/cast-photos/${photoPath}?t=${imageRefreshKey}`
   }
 
   const handleCastClick = (cast: Cast) => {
@@ -231,6 +233,7 @@ export default function CastPhotosPage() {
         toast.success('写真をアップロードしました')
         setUploadModalOpen(false)
         setSelectedFile(null)
+        setImageRefreshKey(Date.now()) // キャッシュをクリア
         loadCasts()
       } else {
         toast.error('アップロードに失敗しました')
@@ -256,6 +259,7 @@ export default function CastPhotosPage() {
       if (response.ok) {
         toast.success('写真を削除しました')
         setUploadModalOpen(false)
+        setImageRefreshKey(Date.now()) // キャッシュをクリア
         loadCasts()
       } else {
         toast.error('削除に失敗しました')
