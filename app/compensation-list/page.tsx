@@ -32,6 +32,7 @@ function CompensationListContent() {
   const { storeId, storeName } = useStore()
   const [loading, setLoading] = useState(true)
   const [exporting, setExporting] = useState(false)
+  const [showExportModal, setShowExportModal] = useState(false)
   const [castsWithCompensation, setCastsWithCompensation] = useState<CastWithCompensation[]>([])
   const printRef = useRef<HTMLDivElement>(null)
 
@@ -81,6 +82,7 @@ function CompensationListContent() {
     if (!printRef.current) return
 
     setExporting(true)
+    setShowExportModal(false)
     try {
       await exportToPDF(printRef.current, {
         filename: `報酬形態一覧_${storeName}_${new Date().toISOString().split('T')[0]}.pdf`,
@@ -91,6 +93,45 @@ function CompensationListContent() {
     } catch (error) {
       console.error('PDF出力エラー:', error)
       toast.error('PDF出力に失敗しました')
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  const handleExportCSV = async () => {
+    setExporting(true)
+    setShowExportModal(false)
+    try {
+      const headers = ['キャスト名', '報酬形態']
+
+      const rows = castsWithCompensation.map(({ cast, settings }) => {
+        const types = settings?.compensation_types?.filter(t => t.is_enabled) || []
+        const compensationText = types.length > 0
+          ? types.map(type => {
+              const { main } = getCompensationDetails(type)
+              return main
+            }).join(' / ')
+          : '未設定'
+        return [cast.name, compensationText]
+      })
+
+      const csvContent = [
+        headers.join(','),
+        ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+      ].join('\n')
+
+      const bom = '\uFEFF'
+      const blob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `報酬形態一覧_${storeName}_${new Date().toISOString().split('T')[0]}.csv`
+      link.click()
+      URL.revokeObjectURL(url)
+      toast.success('CSVをダウンロードしました')
+    } catch (error) {
+      console.error('CSV出力エラー:', error)
+      toast.error('CSV出力に失敗しました')
     } finally {
       setExporting(false)
     }
@@ -155,7 +196,7 @@ function CompensationListContent() {
           報酬形態一覧
         </h1>
         <button
-          onClick={handleExportPDF}
+          onClick={() => setShowExportModal(true)}
           disabled={exporting}
           style={{
             padding: '10px 20px',
@@ -171,7 +212,7 @@ function CompensationListContent() {
             gap: '8px'
           }}
         >
-          {exporting ? '出力中...' : 'PDFダウンロード'}
+          {exporting ? '出力中...' : 'ダウンロード'}
         </button>
       </div>
 
@@ -236,6 +277,89 @@ function CompensationListContent() {
           </tbody>
         </table>
       </div>
+
+      {/* エクスポートモーダル */}
+      {showExportModal && (
+        <>
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0, 0, 0, 0.5)',
+              zIndex: 1000,
+            }}
+            onClick={() => setShowExportModal(false)}
+          />
+          <div style={{
+            position: 'fixed',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            backgroundColor: 'white',
+            borderRadius: '12px',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
+            zIndex: 1001,
+            minWidth: '320px',
+          }}>
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              padding: '16px 20px',
+              borderBottom: '1px solid #e2e8f0',
+            }}>
+              <h3 style={{ margin: 0, fontSize: '18px' }}>ダウンロード形式を選択</h3>
+              <button
+                onClick={() => setShowExportModal(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '18px',
+                  cursor: 'pointer',
+                  color: '#64748b',
+                }}
+              >
+                ✕
+              </button>
+            </div>
+            <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <button
+                onClick={handleExportPDF}
+                style={{
+                  padding: '14px 20px',
+                  backgroundColor: '#8b5cf6',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  fontSize: '15px',
+                  fontWeight: '500',
+                  cursor: 'pointer',
+                }}
+              >
+                PDF形式でダウンロード
+              </button>
+              <button
+                onClick={handleExportCSV}
+                style={{
+                  padding: '14px 20px',
+                  backgroundColor: '#10b981',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  fontSize: '15px',
+                  fontWeight: '500',
+                  cursor: 'pointer',
+                }}
+              >
+                CSV形式でダウンロード
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   )
 }

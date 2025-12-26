@@ -29,6 +29,7 @@ const mainItems: MenuItem[] = [
   { name: 'シフト管理', path: '/shifts/manage', icon: '📅' },
   { name: '伝票管理', path: '/receipts', icon: '🧾' },
   { name: '報酬明細', path: '/payslip', icon: '📄' },
+  { name: 'キャスト管理', path: '/casts', icon: '👥' },
 ]
 
 // グループ化されたメニュー
@@ -59,23 +60,23 @@ const menuGroups: MenuGroup[] = [
     ]
   },
   {
-    name: 'キャスト',
-    icon: '👥',
+    name: '売上&報酬',
+    icon: '💰',
     items: [
-      { name: 'キャスト管理', path: '/casts', icon: '👥' },
+      { name: '売上設定', path: '/sales-settings', icon: '📊' },
+      { name: '報酬明細一覧', path: '/payslip-list', icon: '📄' },
       { name: '報酬形態一覧', path: '/compensation-list', icon: '📋' },
       { name: '報酬計算設定', path: '/compensation-settings', icon: '💳' },
-      { name: 'バック率設定', path: '/cast-back-rates', icon: '💵' },
-      { name: 'キャスト別時給', path: '/cast-wage-settings', icon: '👤' },
+      { name: 'キャスト別時給設定', path: '/cast-wage-settings', icon: '👤' },
+      { name: '時給設定', path: '/wage-settings', icon: '⏱️' },
+      { name: 'バック設定', path: '/cast-back-rates', icon: '💵' },
+      { name: '控除設定', path: '/deduction-settings', icon: '➖' },
     ]
   },
   {
     name: '設定',
     icon: '⚙️',
     items: [
-      { name: '時給設定', path: '/wage-settings', icon: '⏱️' },
-      { name: '控除設定', path: '/deduction-settings', icon: '➖' },
-      { name: '売上設定', path: '/sales-settings', icon: '📊' },
       { name: 'BASE連携', path: '/base-settings', icon: '🛒' },
       { name: '店舗設定', path: '/store-settings', icon: '🏪' },
       { name: '設定', path: '/settings', icon: '⚙️' },

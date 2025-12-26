@@ -203,6 +203,8 @@ function PayslipPageContent() {
   const [saving, setSaving] = useState(false)
   const [recalculating, setRecalculating] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const [csvExporting, setCsvExporting] = useState(false)
+  const [showExportModal, setShowExportModal] = useState(false)
   const printRef = useRef<HTMLDivElement>(null)
   const [selectedDayDetail, setSelectedDayDetail] = useState<string | null>(null) // 日別詳細モーダル用
   const [showDailyWageModal, setShowDailyWageModal] = useState(false) // 日別時給モーダル用
@@ -1379,6 +1381,249 @@ function PayslipPageContent() {
     }
   }, [selectedCastId, casts, selectedMonth])
 
+  // 全キャストCSV一括出力
+  const handleExportAllCSV = useCallback(async () => {
+    setCsvExporting(true)
+    try {
+      const yearMonth = format(selectedMonth, 'yyyy-MM')
+
+      // 全キャストの報酬明細を取得
+      const { data: allPayslips, error } = await supabase
+        .from('payslips')
+        .select('*, casts!inner(name, status)')
+        .eq('store_id', storeId)
+        .eq('year_month', yearMonth)
+        .order('casts(name)')
+
+      if (error) throw error
+
+      if (!allPayslips || allPayslips.length === 0) {
+        alert('エクスポートするデータがありません')
+        return
+      }
+
+      // CSVヘッダー
+      const headers = [
+        'キャスト名',
+        'ステータス',
+        '出勤日数',
+        '総勤務時間',
+        '平均時給',
+        '時給収入',
+        '売上バック',
+        '商品バック',
+        '固定給',
+        '総支給額',
+        '日払い',
+        '源泉徴収',
+        'その他控除',
+        '控除合計',
+        '差引支給額',
+      ]
+
+      // データ行を作成
+      const rows = allPayslips.map(payslip => {
+        const cast = payslip.casts as { name: string; status: string }
+        const deductions = (payslip.deduction_details || []) as { name: string; type: string; amount: number }[]
+
+        // 日払い
+        const dailyPayment = deductions
+          .filter(d => d.type === 'daily_payment' || d.name?.includes('日払い'))
+          .reduce((sum, d) => sum + (d.amount || 0), 0)
+
+        // 源泉徴収
+        const withholdingTax = deductions
+          .filter(d => d.name?.includes('源泉') || d.name?.includes('所得税'))
+          .reduce((sum, d) => sum + (d.amount || 0), 0)
+
+        // その他控除
+        const otherDeductions = deductions
+          .filter(d => d.type !== 'daily_payment' && !d.name?.includes('日払い') && !d.name?.includes('源泉') && !d.name?.includes('所得税'))
+          .reduce((sum, d) => sum + (d.amount || 0), 0)
+
+        return [
+          cast.name,
+          cast.status || '',
+          payslip.work_days || 0,
+          payslip.total_hours || 0,
+          payslip.average_hourly_wage || 0,
+          payslip.hourly_income || 0,
+          payslip.sales_back || 0,
+          payslip.product_back || 0,
+          payslip.fixed_amount || 0,
+          payslip.gross_total || 0,
+          dailyPayment,
+          withholdingTax,
+          otherDeductions,
+          payslip.total_deduction || 0,
+          payslip.net_payment || 0,
+        ]
+      })
+
+      // CSV文字列生成
+      const csvContent = [
+        headers.join(','),
+        ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+      ].join('\n')
+
+      // BOM付きUTF-8でダウンロード
+      const bom = '\uFEFF'
+      const blob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `報酬明細一覧_${format(selectedMonth, 'yyyy年MM月')}.csv`
+      link.click()
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      console.error('CSV出力エラー:', error)
+      alert('CSV出力に失敗しました')
+    } finally {
+      setCsvExporting(false)
+    }
+  }, [storeId, selectedMonth])
+
+  // 個人CSV出力
+  const handleExportIndividualCSV = useCallback(async () => {
+    if (!selectedCastId || !savedPayslip) {
+      alert('キャストを選択してください')
+      return
+    }
+
+    const cast = casts.find(c => c.id === selectedCastId)
+    if (!cast) return
+
+    setCsvExporting(true)
+    setShowExportModal(false)
+    try {
+      const payslip = savedPayslip
+      const deductions = (payslip.deduction_details || []) as { name: string; type: string; amount: number }[]
+
+      // 日払い
+      const dailyPayment = deductions
+        .filter(d => d.type === 'daily_payment' || d.name?.includes('日払い'))
+        .reduce((sum, d) => sum + (d.amount || 0), 0)
+
+      // 源泉徴収
+      const withholdingTax = deductions
+        .filter(d => d.name?.includes('源泉') || d.name?.includes('所得税'))
+        .reduce((sum, d) => sum + (d.amount || 0), 0)
+
+      // その他控除
+      const otherDeductions = deductions
+        .filter(d => d.type !== 'daily_payment' && !d.name?.includes('日払い') && !d.name?.includes('源泉') && !d.name?.includes('所得税'))
+        .reduce((sum, d) => sum + (d.amount || 0), 0)
+
+      // CSVヘッダー
+      const headers = [
+        'キャスト名',
+        'ステータス',
+        '出勤日数',
+        '総勤務時間',
+        '平均時給',
+        '時給収入',
+        '売上バック',
+        '商品バック',
+        '固定給',
+        '総支給額',
+        '日払い',
+        '源泉徴収',
+        'その他控除',
+        '控除合計',
+        '差引支給額',
+      ]
+
+      const row = [
+        cast.name,
+        cast.status || '',
+        payslip.work_days || 0,
+        payslip.total_hours || 0,
+        payslip.average_hourly_wage || 0,
+        payslip.hourly_income || 0,
+        payslip.sales_back || 0,
+        payslip.product_back || 0,
+        payslip.fixed_amount || 0,
+        payslip.gross_total || 0,
+        dailyPayment,
+        withholdingTax,
+        otherDeductions,
+        payslip.total_deduction || 0,
+        payslip.net_payment || 0,
+      ]
+
+      // CSV文字列生成
+      const csvContent = [
+        headers.join(','),
+        row.map(cell => `"${cell}"`).join(',')
+      ].join('\n')
+
+      // BOM付きUTF-8でダウンロード
+      const bom = '\uFEFF'
+      const blob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `報酬明細_${cast.name}_${format(selectedMonth, 'yyyy年MM月')}.csv`
+      link.click()
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      console.error('CSV出力エラー:', error)
+      alert('CSV出力に失敗しました')
+    } finally {
+      setCsvExporting(false)
+    }
+  }, [selectedCastId, savedPayslip, casts, selectedMonth])
+
+  // 全キャストPDF出力
+  const handleExportAllPDF = useCallback(async () => {
+    setExporting(true)
+    setShowExportModal(false)
+    try {
+      const yearMonth = format(selectedMonth, 'yyyy-MM')
+
+      // 全キャストの報酬明細を取得
+      const { data: allPayslips, error } = await supabase
+        .from('payslips')
+        .select('*, casts!inner(name, status)')
+        .eq('store_id', storeId)
+        .eq('year_month', yearMonth)
+        .order('casts(name)')
+
+      if (error) throw error
+
+      if (!allPayslips || allPayslips.length === 0) {
+        alert('エクスポートするデータがありません')
+        return
+      }
+
+      // 各キャストごとにPDF出力を実行
+      for (const payslip of allPayslips) {
+        // そのキャストを選択して表示
+        setSelectedCastId(payslip.cast_id)
+        // 少し待機してDOM更新を待つ
+        await new Promise(resolve => setTimeout(resolve, 500))
+
+        if (printRef.current) {
+          const castName = (payslip.casts as { name: string }).name
+          await exportToPDF(printRef.current, {
+            filename: `報酬明細_${castName}_${format(selectedMonth, 'yyyy年MM月')}.pdf`,
+            orientation: 'portrait',
+            margin: 10
+          })
+          // 連続ダウンロード間隔
+          await new Promise(resolve => setTimeout(resolve, 300))
+        }
+      }
+
+      alert(`${allPayslips.length}件のPDFをダウンロードしました`)
+    } catch (error) {
+      console.error('全PDF出力エラー:', error)
+      alert('PDF出力に失敗しました')
+    } finally {
+      setExporting(false)
+    }
+  }, [storeId, selectedMonth])
+
   if (loading && casts.length === 0) {
     return (
       <div style={styles.container}>
@@ -1509,23 +1754,23 @@ function PayslipPageContent() {
             >
               {recalculating ? '計算中...' : '全キャスト再計算'}
             </button>
-            {/* PDF出力ボタン */}
+            {/* エクスポートボタン */}
             <button
-              onClick={handleExportPDF}
-              disabled={exporting || !selectedCastId}
+              onClick={() => setShowExportModal(true)}
+              disabled={exporting || csvExporting}
               style={{
                 padding: '8px 16px',
-                backgroundColor: exporting ? '#94a3b8' : '#8b5cf6',
+                backgroundColor: exporting || csvExporting ? '#94a3b8' : '#8b5cf6',
                 color: '#fff',
                 border: 'none',
                 borderRadius: '8px',
                 fontSize: '14px',
                 fontWeight: '500',
-                cursor: exporting || !selectedCastId ? 'not-allowed' : 'pointer',
-                opacity: exporting || !selectedCastId ? 0.7 : 1
+                cursor: exporting || csvExporting ? 'wait' : 'pointer',
+                opacity: exporting || csvExporting ? 0.7 : 1
               }}
             >
-              {exporting ? '出力中...' : 'PDF出力'}
+              {exporting || csvExporting ? '出力中...' : 'エクスポート'}
             </button>
             {/* 月次確定 / 確定解除ボタン */}
             {savedPayslip?.status === 'finalized' ? (
@@ -1881,6 +2126,123 @@ function PayslipPageContent() {
             <div style={styles.netEarningsValue}>{currencyFormatter.format(netEarnings)}</div>
           </div>
         </div>
+      )}
+
+      {/* エクスポートモーダル */}
+      {showExportModal && (
+        <>
+          <div
+            style={styles.modalOverlay}
+            onClick={() => setShowExportModal(false)}
+          />
+          <div style={{
+            ...styles.modal,
+            maxWidth: '400px',
+            width: '90%'
+          }}>
+            <div style={styles.modalHeader}>
+              <h3 style={styles.modalTitle}>エクスポート</h3>
+              <button
+                onClick={() => setShowExportModal(false)}
+                style={styles.modalCloseBtn}
+              >
+                ✕
+              </button>
+            </div>
+            <div style={{
+              padding: '20px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px'
+            }}>
+              {/* PDF出力オプション */}
+              <div style={{ marginBottom: '8px' }}>
+                <div style={{ fontSize: '13px', fontWeight: '600', color: '#64748b', marginBottom: '8px' }}>PDF出力</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <button
+                    onClick={() => {
+                      setShowExportModal(false)
+                      handleExportPDF()
+                    }}
+                    disabled={!selectedCastId}
+                    style={{
+                      padding: '12px 16px',
+                      backgroundColor: !selectedCastId ? '#e2e8f0' : '#8b5cf6',
+                      color: !selectedCastId ? '#94a3b8' : '#fff',
+                      border: 'none',
+                      borderRadius: '8px',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      cursor: !selectedCastId ? 'not-allowed' : 'pointer',
+                      textAlign: 'left'
+                    }}
+                  >
+                    選択中のキャスト（{casts.find(c => c.id === selectedCastId)?.name || '未選択'}）
+                  </button>
+                  <button
+                    onClick={handleExportAllPDF}
+                    style={{
+                      padding: '12px 16px',
+                      backgroundColor: '#8b5cf6',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: '8px',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      cursor: 'pointer',
+                      textAlign: 'left'
+                    }}
+                  >
+                    全キャスト（個別ファイル）
+                  </button>
+                </div>
+              </div>
+
+              {/* CSV出力オプション */}
+              <div>
+                <div style={{ fontSize: '13px', fontWeight: '600', color: '#64748b', marginBottom: '8px' }}>CSV出力</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <button
+                    onClick={handleExportIndividualCSV}
+                    disabled={!selectedCastId}
+                    style={{
+                      padding: '12px 16px',
+                      backgroundColor: !selectedCastId ? '#e2e8f0' : '#10b981',
+                      color: !selectedCastId ? '#94a3b8' : '#fff',
+                      border: 'none',
+                      borderRadius: '8px',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      cursor: !selectedCastId ? 'not-allowed' : 'pointer',
+                      textAlign: 'left'
+                    }}
+                  >
+                    選択中のキャスト（{casts.find(c => c.id === selectedCastId)?.name || '未選択'}）
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowExportModal(false)
+                      handleExportAllCSV()
+                    }}
+                    style={{
+                      padding: '12px 16px',
+                      backgroundColor: '#10b981',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: '8px',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      cursor: 'pointer',
+                      textAlign: 'left'
+                    }}
+                  >
+                    全キャスト一覧
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
       )}
 
       {/* 日別詳細モーダル */}
