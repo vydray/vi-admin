@@ -3258,9 +3258,9 @@ function CompensationSettingsPageContent() {
                     if (!selectedResult) return null
                     const { type, hourly, fixed, salesBack, selfProductBack, helpProductBack, itemsWithSelfBack, itemsWithHelpBack, total, salesAmount, mode } = selectedResult
 
-                    // 実績データ使用時は実際の時給収入で合計を再計算
+                    // 実績データ使用時は実際の時給収入で合計を再計算（固定額も含める）
                     const actualTotal = wageStats
-                      ? wageStats.totalWageAmount + salesBack + selfProductBack + helpProductBack
+                      ? wageStats.totalWageAmount + fixed + salesBack + selfProductBack + helpProductBack
                       : total
 
                     return (
@@ -3287,7 +3287,7 @@ function CompensationSettingsPageContent() {
                         </div>
 
                         {/* 時給・固定セクション */}
-                        {wageStats ? (
+                        {wageStats && (
                           /* 実績データ使用時 */
                           <div style={{ backgroundColor: '#dcfce7', borderLeft: '3px solid #22c55e', padding: '8px 10px', marginBottom: '8px', borderRadius: '0 4px 4px 0' }}>
                             <div style={{ fontSize: '11px', color: '#166534', marginBottom: '4px', fontWeight: 'bold' }}>時給実績</div>
@@ -3298,21 +3298,23 @@ function CompensationSettingsPageContent() {
                               <span style={{ ...styles.slipRowValue, fontSize: '11px', color: '#166534' }}>¥{wageStats.totalWageAmount.toLocaleString()}</span>
                             </div>
                           </div>
-                        ) : (hourly > 0 || fixed > 0) && (
+                        )}
+                        {!wageStats && hourly > 0 && (
                           <div style={{ backgroundColor: '#f8fafc', borderLeft: '3px solid #3b82f6', padding: '8px 10px', marginBottom: '8px', borderRadius: '0 4px 4px 0' }}>
-                            <div style={{ fontSize: '11px', color: '#3b82f6', marginBottom: '4px', fontWeight: 'bold' }}>時給・固定</div>
-                            {hourly > 0 && (
-                              <div style={styles.slipRow}>
-                                <span style={{ ...styles.slipRowLabel, fontSize: '11px' }}>時給（{simWorkHours}h × ¥{type.hourly_rate.toLocaleString()}）</span>
-                                <span style={{ ...styles.slipRowValue, fontSize: '11px' }}>¥{hourly.toLocaleString()}</span>
-                              </div>
-                            )}
-                            {fixed > 0 && (
-                              <div style={styles.slipRow}>
-                                <span style={{ ...styles.slipRowLabel, fontSize: '11px' }}>固定額</span>
-                                <span style={{ ...styles.slipRowValue, fontSize: '11px' }}>¥{fixed.toLocaleString()}</span>
-                              </div>
-                            )}
+                            <div style={{ fontSize: '11px', color: '#3b82f6', marginBottom: '4px', fontWeight: 'bold' }}>時給</div>
+                            <div style={styles.slipRow}>
+                              <span style={{ ...styles.slipRowLabel, fontSize: '11px' }}>時給（{simWorkHours}h × ¥{type.hourly_rate.toLocaleString()}）</span>
+                              <span style={{ ...styles.slipRowValue, fontSize: '11px' }}>¥{hourly.toLocaleString()}</span>
+                            </div>
+                          </div>
+                        )}
+                        {fixed > 0 && (
+                          <div style={{ backgroundColor: '#e0f2fe', borderLeft: '3px solid #0ea5e9', padding: '8px 10px', marginBottom: '8px', borderRadius: '0 4px 4px 0' }}>
+                            <div style={{ fontSize: '11px', color: '#0369a1', marginBottom: '4px', fontWeight: 'bold' }}>固定額</div>
+                            <div style={styles.slipRow}>
+                              <span style={{ ...styles.slipRowLabel, fontSize: '11px' }}>月額固定</span>
+                              <span style={{ ...styles.slipRowValue, fontSize: '11px', color: '#0369a1' }}>¥{fixed.toLocaleString()}</span>
+                            </div>
                           </div>
                         )}
 
