@@ -889,141 +889,154 @@ export default function TemplateEditorPage() {
       {/* グリッドモード設定 */}
       {template.mode === 'grid' && (
         <div style={styles.gridModeContent}>
-          <div style={styles.section}>
-            <h3 style={styles.sectionTitle}>グリッド設定</h3>
-            <p style={styles.description}>写真を横並びで配置するシンプルなレイアウト</p>
+          {/* 左側: プレビュー */}
+          <div style={styles.gridPreviewSection}>
+            <h4 style={styles.gridPreviewTitle}>
+              プレビュー（{template.grid_settings.columns * template.grid_settings.rows}人/1画像）
+            </h4>
+            <div
+              style={{
+                ...styles.gridPreview,
+                backgroundColor: template.grid_settings.background_color,
+                gap: `${template.grid_settings.gap}px`,
+                gridTemplateColumns: `repeat(${template.grid_settings.columns}, 1fr)`,
+              }}
+            >
+              {Array.from({ length: template.grid_settings.columns * template.grid_settings.rows }, (_, i) => {
+                const cast = castPhotos[i % castPhotos.length]
+                return (
+                  <div
+                    key={i}
+                    style={{
+                      aspectRatio: '3/4',
+                      backgroundColor: '#e2e8f0',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      overflow: 'hidden',
+                      position: 'relative',
+                    }}
+                  >
+                    {cast?.photoUrl ? (
+                      <img
+                        src={cast.photoUrl}
+                        alt={cast.name}
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'cover',
+                        }}
+                      />
+                    ) : (
+                      <span style={{ color: '#94a3b8', fontSize: '12px' }}>{i + 1}</span>
+                    )}
+                    {template.grid_settings.show_names && cast?.name && (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          bottom: '4px',
+                          left: 0,
+                          right: 0,
+                          textAlign: 'center',
+                          color: '#fff',
+                          fontSize: '10px',
+                          fontWeight: 'bold',
+                          textShadow: '1px 1px 2px rgba(0,0,0,0.8)',
+                        }}
+                      >
+                        {cast.name}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+            <p style={styles.gridPreviewNote}>
+              ※出力サイズは写真のサイズに応じて自動計算されます
+              {castPhotos.length > 0 && ' ／ 実際のキャスト写真を使用'}
+            </p>
+          </div>
 
-            <div style={styles.gridSettingsForm}>
-              <label style={styles.gridSettingLabel}>
-                列数
-                <input
-                  type="number"
-                  min="1"
-                  max="10"
-                  value={template.grid_settings.columns}
-                  onChange={(e) => updateGridSettings({ columns: parseInt(e.target.value) || 4 })}
-                  style={styles.gridSettingInput}
-                />
-              </label>
+          {/* 右側: 設定パネル */}
+          <div style={styles.gridSettingsPanel}>
+            {/* グリッド設定 */}
+            <div style={styles.section}>
+              <h3 style={styles.sectionTitle}>グリッド設定</h3>
+              <div style={styles.gridSettingsForm}>
+                <label style={styles.gridSettingLabel}>
+                  列数
+                  <input
+                    type="number"
+                    min="1"
+                    max="10"
+                    value={template.grid_settings.columns}
+                    onChange={(e) => updateGridSettings({ columns: parseInt(e.target.value) || 4 })}
+                    style={styles.gridSettingInput}
+                  />
+                </label>
 
-              <label style={styles.gridSettingLabel}>
-                行数（1画像あたり）
-                <input
-                  type="number"
-                  min="1"
-                  max="10"
-                  value={template.grid_settings.rows}
-                  onChange={(e) => updateGridSettings({ rows: parseInt(e.target.value) || 2 })}
-                  style={styles.gridSettingInput}
-                />
-              </label>
+                <label style={styles.gridSettingLabel}>
+                  行数（1画像あたり）
+                  <input
+                    type="number"
+                    min="1"
+                    max="10"
+                    value={template.grid_settings.rows}
+                    onChange={(e) => updateGridSettings({ rows: parseInt(e.target.value) || 2 })}
+                    style={styles.gridSettingInput}
+                  />
+                </label>
 
-              <label style={styles.gridSettingLabel}>
-                写真間の隙間 (px)
-                <input
-                  type="number"
-                  min="0"
-                  value={template.grid_settings.gap}
-                  onChange={(e) => updateGridSettings({ gap: parseInt(e.target.value) || 0 })}
-                  style={styles.gridSettingInput}
-                />
-              </label>
+                <label style={styles.gridSettingLabel}>
+                  写真間の隙間 (px)
+                  <input
+                    type="number"
+                    min="0"
+                    value={template.grid_settings.gap}
+                    onChange={(e) => updateGridSettings({ gap: parseInt(e.target.value) || 0 })}
+                    style={styles.gridSettingInput}
+                  />
+                </label>
 
-              <label style={styles.gridSettingLabel}>
-                背景色
-                <input
-                  type="color"
-                  value={template.grid_settings.background_color}
-                  onChange={(e) => updateGridSettings({ background_color: e.target.value })}
-                  style={styles.colorInput}
-                />
-              </label>
+                <label style={styles.gridSettingLabel}>
+                  背景色
+                  <input
+                    type="color"
+                    value={template.grid_settings.background_color}
+                    onChange={(e) => updateGridSettings({ background_color: e.target.value })}
+                    style={styles.colorInput}
+                  />
+                </label>
 
-              <label style={styles.gridSettingLabel}>
-                名前を表示
-                <button
-                  onClick={() => updateGridSettings({ show_names: !template.grid_settings.show_names })}
-                  style={{
-                    ...styles.toggleButtonSmall,
-                    backgroundColor: template.grid_settings.show_names ? '#22c55e' : '#94a3b8',
-                  }}
-                >
-                  {template.grid_settings.show_names ? 'ON' : 'OFF'}
-                </button>
-              </label>
+                <label style={styles.gridSettingLabel}>
+                  名前を表示
+                  <button
+                    onClick={() => updateGridSettings({ show_names: !template.grid_settings.show_names })}
+                    style={{
+                      ...styles.toggleButtonSmall,
+                      backgroundColor: template.grid_settings.show_names ? '#22c55e' : '#94a3b8',
+                    }}
+                  >
+                    {template.grid_settings.show_names ? 'ON' : 'OFF'}
+                  </button>
+                </label>
+              </div>
             </div>
 
-            {/* グリッドプレビュー */}
-            <div style={styles.gridPreviewSection}>
-              <h4 style={styles.gridPreviewTitle}>
-                プレビュー（{template.grid_settings.columns * template.grid_settings.rows}人/1画像）
-                {castPhotos.length > 0 && (
-                  <span style={{ fontWeight: 'normal', color: '#64748b', marginLeft: '8px' }}>
-                    ※実際のキャスト写真を使用
-                  </span>
-                )}
-              </h4>
-              <div
-                style={{
-                  ...styles.gridPreview,
-                  backgroundColor: template.grid_settings.background_color,
-                  gap: `${template.grid_settings.gap}px`,
-                  gridTemplateColumns: `repeat(${template.grid_settings.columns}, 1fr)`,
-                }}
-              >
-                {Array.from({ length: template.grid_settings.columns * template.grid_settings.rows }, (_, i) => {
-                  const cast = castPhotos[i % castPhotos.length]
-                  return (
-                    <div
-                      key={i}
-                      style={{
-                        aspectRatio: '3/4',
-                        backgroundColor: '#e2e8f0',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        overflow: 'hidden',
-                        position: 'relative',
-                      }}
-                    >
-                      {cast?.photoUrl ? (
-                        <img
-                          src={cast.photoUrl}
-                          alt={cast.name}
-                          style={{
-                            width: '100%',
-                            height: '100%',
-                            objectFit: 'cover',
-                          }}
-                        />
-                      ) : (
-                        <span style={{ color: '#94a3b8', fontSize: '12px' }}>{i + 1}</span>
-                      )}
-                      {template.grid_settings.show_names && cast?.name && (
-                        <div
-                          style={{
-                            position: 'absolute',
-                            bottom: '4px',
-                            left: 0,
-                            right: 0,
-                            textAlign: 'center',
-                            color: '#fff',
-                            fontSize: '10px',
-                            fontWeight: 'bold',
-                            textShadow: '1px 1px 2px rgba(0,0,0,0.8)',
-                          }}
-                        >
-                          {cast.name}
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-              <p style={styles.gridPreviewNote}>
-                ※出力サイズは写真のサイズに応じて自動計算されます
+            {/* プレースホルダー設定 */}
+            <div style={styles.section}>
+              <h3 style={styles.sectionTitle}>プレースホルダー画像</h3>
+              <p style={styles.description}>
+                写真未登録のキャスト用、または空きスロットを埋める画像
               </p>
+              {placeholderImageUrl && (
+                <img src={placeholderImageUrl} alt="placeholder" style={styles.placeholderPreview} />
+              )}
+              <label style={styles.fileLabel}>
+                <input type="file" accept="image/*" onChange={handlePlaceholderUpload} style={styles.fileInput} />
+                {placeholderImageUrl ? '変更' : 'アップロード'}
+              </label>
             </div>
           </div>
         </div>
@@ -1348,7 +1361,14 @@ const styles: { [key: string]: React.CSSProperties } = {
     color: '#1d4ed8',
   },
   gridModeContent: {
-    maxWidth: '600px',
+    display: 'flex',
+    gap: '24px',
+  },
+  gridSettingsPanel: {
+    flex: '0 0 320px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '20px',
   },
   gridSettingsForm: {
     display: 'flex',
@@ -1371,9 +1391,11 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '14px',
   },
   gridPreviewSection: {
-    backgroundColor: '#f8fafc',
+    flex: 1,
+    backgroundColor: '#fff',
     padding: '16px',
     borderRadius: '8px',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
   },
   gridPreviewTitle: {
     fontSize: '14px',
@@ -1386,7 +1408,6 @@ const styles: { [key: string]: React.CSSProperties } = {
     padding: '16px',
     borderRadius: '6px',
     marginBottom: '8px',
-    maxWidth: '500px',
   },
   gridPreviewNote: {
     fontSize: '12px',
