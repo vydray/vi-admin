@@ -185,13 +185,18 @@ async function calculatePayslipForCast(
       latePenaltyRules = rules || []
     }
 
-    // 報酬設定を取得
-    const { data: compensationSettings } = await supabaseAdmin
+    // 報酬設定を取得（store_idが一致するものだけ使用）
+    const { data: compensationSettingsArray } = await supabaseAdmin
       .from('compensation_settings')
-      .select('enabled_deduction_ids, compensation_types, payment_selection_method, selected_compensation_type_id')
+      .select('enabled_deduction_ids, compensation_types, payment_selection_method, selected_compensation_type_id, store_id')
       .eq('cast_id', cast.id)
-      .eq('store_id', storeId)
-      .single()
+
+    // store_idが一致するもののみ使用（異なるstore_idのデータは使わない）
+    const compensationSettings = compensationSettingsArray?.find(s => s.store_id === storeId) || null
+
+    if (compensationSettingsArray && compensationSettingsArray.length > 0 && !compensationSettings) {
+      console.log(`[Payslip] Cast ${cast.id} (${cast.name}): compensation_settings found but store_id mismatch. Expected ${storeId}, found store_ids:`, compensationSettingsArray.map(s => s.store_id))
+    }
 
     // 日別売上データを取得（cast_daily_itemsから）
     const { data: dailyItems } = await supabaseAdmin

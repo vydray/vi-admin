@@ -24,7 +24,9 @@ interface DashboardData {
   todayCredit: number
   todayGroups: number
   // 人件費関連
-  monthlyGrossTotal: number      // 総支給額合計（人件費）
+  monthlyGrossTotal: number      // 総支給額合計
+  monthlyNetPayment: number      // 差引支給額合計
+  monthlyDailyPayment: number    // 日払い合計
   monthlyWithholdingTax: number  // 源泉徴収合計
 }
 
@@ -88,6 +90,8 @@ export default function Home() {
     todayCredit: 0,
     todayGroups: 0,
     monthlyGrossTotal: 0,
+    monthlyNetPayment: 0,
+    monthlyDailyPayment: 0,
     monthlyWithholdingTax: 0,
   })
   const [dailySales, setDailySales] = useState<DailySalesData[]>([])
@@ -414,22 +418,31 @@ export default function Home() {
       const yearMonth = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}`
       const { data: payslips } = await supabase
         .from('payslips')
-        .select('gross_total, deduction_details')
+        .select('gross_total, net_payment, deduction_details')
         .eq('store_id', storeId)
         .eq('year_month', yearMonth)
 
       let monthlyGrossTotal = 0
+      let monthlyNetPayment = 0
+      let monthlyDailyPayment = 0
       let monthlyWithholdingTax = 0
 
       if (payslips) {
         for (const payslip of payslips) {
-          // 総支給額（人件費）
+          // 総支給額
           monthlyGrossTotal += payslip.gross_total || 0
+          // 差引支給額
+          monthlyNetPayment += payslip.net_payment || 0
 
-          // 源泉徴収を取得
-          const deductionDetails = payslip.deduction_details as { name?: string; amount?: number }[] | null
+          // 控除詳細から日払いと源泉徴収を取得
+          const deductionDetails = payslip.deduction_details as { name?: string; type?: string; amount?: number }[] | null
           if (deductionDetails) {
             for (const deduction of deductionDetails) {
+              // 日払い
+              if (deduction.type === 'daily_payment' || deduction.name?.includes('日払い')) {
+                monthlyDailyPayment += deduction.amount || 0
+              }
+              // 源泉徴収
               if (deduction.name?.includes('源泉') || deduction.name?.includes('所得税')) {
                 monthlyWithholdingTax += deduction.amount || 0
               }
@@ -452,6 +465,8 @@ export default function Home() {
         todayCredit,
         todayGroups,
         monthlyGrossTotal,
+        monthlyNetPayment,
+        monthlyDailyPayment,
         monthlyWithholdingTax,
       })
 
@@ -579,7 +594,7 @@ export default function Home() {
             { label: '来店人数', value: data.monthlyCustomers + '人' },
             { label: '来店組数', value: data.monthlyGroups + '組' },
             { label: '客単価', value: '¥' + avgMonthly.toLocaleString() },
-            { label: '人件費', value: '¥' + data.monthlyGrossTotal.toLocaleString() },
+            { label: '人件費', value: '¥' + (data.monthlyNetPayment + data.monthlyDailyPayment).toLocaleString() },
             { label: '源泉徴収', value: '¥' + data.monthlyWithholdingTax.toLocaleString() },
           ]}
         />
