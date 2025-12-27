@@ -124,6 +124,10 @@ export async function GET(request: NextRequest) {
 
       if (result.success) {
         successCount++
+        // 投稿成功後、Storageから画像を削除（容量節約）
+        if (imageUrls.length > 0) {
+          await deleteImagesFromStorage(imageUrls)
+        }
       } else {
         failCount++
       }
@@ -141,6 +145,29 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Cron job error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
+// Supabase Storageから画像を削除
+async function deleteImagesFromStorage(imageUrls: string[]) {
+  const bucketUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/twitter-images/`
+
+  for (const url of imageUrls) {
+    // URLからパスを抽出
+    if (url.startsWith(bucketUrl)) {
+      const path = url.replace(bucketUrl, '')
+      try {
+        const { error } = await supabase.storage
+          .from('twitter-images')
+          .remove([path])
+
+        if (error) {
+          console.error('Failed to delete image:', path, error)
+        }
+      } catch (err) {
+        console.error('Delete image error:', err)
+      }
+    }
   }
 }
 

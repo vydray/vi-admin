@@ -8,7 +8,81 @@ import LoadingSpinner from '@/components/LoadingSpinner'
 import Link from 'next/link'
 
 const MAX_IMAGES = 4 // Twitterの最大画像枚数
+const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB
+const TARGET_FILE_SIZE = 4 * 1024 * 1024 // 圧縮後の目標サイズ 4MB
 
+// 画像を圧縮する関数
+async function compressImage(file: File, maxSize: number = TARGET_FILE_SIZE): Promise<File> {
+  return new Promise((resolve) => {
+    // GIFは圧縮しない
+    if (file.type === 'image/gif') {
+      resolve(file)
+      return
+    }
+
+    const img = new Image()
+    const canvas = document.createElement('canvas')
+    const ctx = canvas.getContext('2d')
+
+    img.onload = () => {
+      let width = img.width
+      let height = img.height
+
+      // 大きすぎる場合は縮小（最大2048px）
+      const maxDimension = 2048
+      if (width > maxDimension || height > maxDimension) {
+        if (width > height) {
+          height = Math.round((height * maxDimension) / width)
+          width = maxDimension
+        } else {
+          width = Math.round((width * maxDimension) / height)
+          height = maxDimension
+        }
+      }
+
+      canvas.width = width
+      canvas.height = height
+      ctx?.drawImage(img, 0, 0, width, height)
+
+      // 品質を調整しながら圧縮
+      let quality = 0.9
+      const compress = () => {
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              if (blob.size <= maxSize || quality <= 0.5) {
+                const compressedFile = new File([blob], file.name, {
+                  type: 'image/jpeg',
+                  lastModified: Date.now(),
+                })
+                resolve(compressedFile)
+              } else {
+                quality -= 0.1
+                compress()
+              }
+            } else {
+              resolve(file)
+            }
+          },
+          'image/jpeg',
+          quality
+        )
+      }
+      compress()
+    }
+
+    img.onerror = () => resolve(file)
+    img.src = URL.createObjectURL(file)
+  })
+}
+
+// ローカルプレビュー用（アップロード前）
+interface LocalImage {
+  file: File
+  previewUrl: string
+}
+
+// アップロード済み画像（編集時）
 interface UploadedImage {
   url: string
   path: string
@@ -61,7 +135,8 @@ export default function TwitterPostsPage() {
   const [showForm, setShowForm] = useState(false)
   const [content, setContent] = useState('')
   const [scheduledAt, setScheduledAt] = useState('')
-  const [images, setImages] = useState<UploadedImage[]>([])
+  const [localImages, setLocalImages] = useState<LocalImage[]>([]) // 新規追加時のローカル画像
+  const [uploadedImages, setUploadedImages] = useState<UploadedImage[]>([]) // 編集時の既存画像
   const [editingId, setEditingId] = useState<number | null>(null)
   const [uploading, setUploading] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
@@ -219,12 +294,13 @@ export default function TwitterPostsPage() {
     return `${start.getFullYear()}年${start.getMonth() + 1}月${start.getDate()}日〜${end.getMonth() + 1}月${end.getDate()}日`
   }
 
-  // 画像アップロード処理
-  const uploadImages = async (files: FileList | File[]) => {
-    if (!storeId) return
+  // 合計画像数を計算
+  const totalImageCount = localImages.length + uploadedImages.length
 
+  // 画像選択処理（ローカルに保持、アップロードはsubmit時）
+  const selectImages = async (files: FileList | File[]) => {
     const fileArray = Array.from(files)
-    const remainingSlots = MAX_IMAGES - images.length
+    const remainingSlots = MAX_IMAGES - totalImageCount
 
     if (fileArray.length > remainingSlots) {
       toast.error(`画像は最大${MAX_IMAGES}枚までです`)
@@ -232,7 +308,7 @@ export default function TwitterPostsPage() {
     }
 
     setUploading(true)
-    const newImages: UploadedImage[] = []
+    const newLocalImages: LocalImage[] = []
 
     for (const file of fileArray) {
       // ファイルタイプチェック
@@ -241,14 +317,40 @@ export default function TwitterPostsPage() {
         continue
       }
 
-      // ファイルサイズチェック (5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        toast.error(`${file.name}: 5MB以下にしてください`)
-        continue
+      // 大きいファイルは圧縮する
+      let processedFile = file
+      if (file.size > MAX_FILE_SIZE) {
+        toast(`${file.name}: 圧縮中...`, { icon: '🔄' })
+        processedFile = await compressImage(file)
+
+        // 圧縮後もサイズオーバーの場合はスキップ
+        if (processedFile.size > MAX_FILE_SIZE) {
+          toast.error(`${file.name}: 圧縮後も5MB以下になりませんでした`)
+          continue
+        }
+        toast.success(`${file.name}: 圧縮完了`)
       }
 
+      // ローカルプレビュー用URLを生成
+      const previewUrl = URL.createObjectURL(processedFile)
+      newLocalImages.push({ file: processedFile, previewUrl })
+    }
+
+    if (newLocalImages.length > 0) {
+      setLocalImages(prev => [...prev, ...newLocalImages])
+    }
+    setUploading(false)
+  }
+
+  // 実際のアップロード処理（submit時に呼ばれる）
+  const uploadImagesToStorage = async (): Promise<UploadedImage[]> => {
+    if (!storeId || localImages.length === 0) return []
+
+    const uploaded: UploadedImage[] = []
+
+    for (const localImg of localImages) {
       const formData = new FormData()
-      formData.append('file', file)
+      formData.append('file', localImg.file)
       formData.append('storeId', storeId.toString())
 
       try {
@@ -259,37 +361,48 @@ export default function TwitterPostsPage() {
 
         if (response.ok) {
           const data = await response.json()
-          newImages.push({ url: data.url, path: data.path })
+          uploaded.push({ url: data.url, path: data.path })
         } else {
           const err = await response.json()
-          toast.error(`${file.name}: ${err.error}`)
+          toast.error(`アップロードエラー: ${err.error}`)
         }
       } catch {
-        toast.error(`${file.name}: アップロードに失敗しました`)
+        toast.error('画像のアップロードに失敗しました')
       }
     }
 
-    if (newImages.length > 0) {
-      setImages(prev => [...prev, ...newImages])
-      toast.success(`${newImages.length}枚の画像をアップロードしました`)
-    }
-    setUploading(false)
+    return uploaded
   }
 
-  // 画像削除処理
-  const removeImage = async (index: number) => {
-    const image = images[index]
+  // 画像削除処理（ローカル画像 or アップロード済み画像）
+  const removeLocalImage = (index: number) => {
+    const image = localImages[index]
+    // blob URLを解放
+    URL.revokeObjectURL(image.previewUrl)
+    setLocalImages(prev => prev.filter((_, i) => i !== index))
+  }
 
-    // Storageから削除
-    try {
-      await fetch(`/api/twitter/upload-image?path=${encodeURIComponent(image.path)}`, {
-        method: 'DELETE',
-      })
-    } catch {
-      // 削除に失敗しても続行
+  const removeUploadedImage = async (index: number) => {
+    const image = uploadedImages[index]
+
+    // Storageから削除（pathがある場合のみ）
+    if (image.path) {
+      try {
+        await fetch(`/api/twitter/upload-image?path=${encodeURIComponent(image.path)}`, {
+          method: 'DELETE',
+        })
+      } catch {
+        // 削除に失敗しても続行
+      }
     }
 
-    setImages(prev => prev.filter((_, i) => i !== index))
+    setUploadedImages(prev => prev.filter((_, i) => i !== index))
+  }
+
+  // モーダルを閉じる時にローカル画像のblob URLを解放
+  const cleanupLocalImages = () => {
+    localImages.forEach(img => URL.revokeObjectURL(img.previewUrl))
+    setLocalImages([])
   }
 
   // ドラッグ&ドロップハンドラー
@@ -309,14 +422,14 @@ export default function TwitterPostsPage() {
 
     const files = e.dataTransfer.files
     if (files.length > 0) {
-      uploadImages(files)
+      selectImages(files)
     }
   }
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (files && files.length > 0) {
-      uploadImages(files)
+      selectImages(files)
     }
     // inputをリセット（同じファイルを再選択可能に）
     e.target.value = ''
@@ -340,11 +453,23 @@ export default function TwitterPostsPage() {
       return
     }
 
-    // 画像URLの配列をJSON文字列として保存
-    const imageUrlsJson = images.length > 0 ? JSON.stringify(images.map(img => img.url)) : null
-
     setSaving(true)
     try {
+      // ローカル画像をアップロード
+      let allImageUrls: string[] = []
+
+      if (localImages.length > 0) {
+        toast('画像をアップロード中...', { icon: '📤' })
+        const newlyUploaded = await uploadImagesToStorage()
+        allImageUrls = newlyUploaded.map(img => img.url)
+      }
+
+      // 既存のアップロード済み画像も含める
+      allImageUrls = [...uploadedImages.map(img => img.url), ...allImageUrls]
+
+      // 画像URLの配列をJSON文字列として保存
+      const imageUrlsJson = allImageUrls.length > 0 ? JSON.stringify(allImageUrls) : null
+
       if (editingId) {
         const { error } = await supabase
           .from('scheduled_posts')
@@ -386,18 +511,19 @@ export default function TwitterPostsPage() {
   const handleEdit = (post: ScheduledPost) => {
     setContent(post.content)
     setScheduledAt(formatDateTimeLocal(post.scheduled_at))
-    // JSON配列として保存された画像URLをパース
+    // JSON配列として保存された画像URLをパース（編集時は既存画像として扱う）
     if (post.image_url) {
       try {
         const urls = JSON.parse(post.image_url) as string[]
-        setImages(urls.map(url => ({ url, path: '' })))
+        setUploadedImages(urls.map(url => ({ url, path: '' })))
       } catch {
         // 旧形式（単一URL）の場合
-        setImages([{ url: post.image_url, path: '' }])
+        setUploadedImages([{ url: post.image_url, path: '' }])
       }
     } else {
-      setImages([])
+      setUploadedImages([])
     }
+    setLocalImages([]) // 新規追加分はクリア
     setEditingId(post.id)
     setShowForm(true)
   }
@@ -434,7 +560,9 @@ export default function TwitterPostsPage() {
   const resetForm = () => {
     setContent('')
     setScheduledAt('')
-    setImages([])
+    // ローカル画像のblob URLを解放
+    cleanupLocalImages()
+    setUploadedImages([])
     setEditingId(null)
     setShowForm(false)
   }
@@ -902,7 +1030,7 @@ export default function TwitterPostsPage() {
                     style={{
                       ...styles.dropZone,
                       ...(isDragging ? styles.dropZoneActive : {}),
-                      ...(images.length >= MAX_IMAGES ? styles.dropZoneDisabled : {}),
+                      ...(totalImageCount >= MAX_IMAGES ? styles.dropZoneDisabled : {}),
                     }}
                   >
                     <input
@@ -912,11 +1040,11 @@ export default function TwitterPostsPage() {
                       multiple
                       onChange={handleFileSelect}
                       style={{ display: 'none' }}
-                      disabled={images.length >= MAX_IMAGES}
+                      disabled={totalImageCount >= MAX_IMAGES}
                     />
                     {uploading ? (
-                      <span style={styles.dropZoneText}>アップロード中...</span>
-                    ) : images.length >= MAX_IMAGES ? (
+                      <span style={styles.dropZoneText}>処理中...</span>
+                    ) : totalImageCount >= MAX_IMAGES ? (
                       <span style={styles.dropZoneText}>最大{MAX_IMAGES}枚まで</span>
                     ) : (
                       <>
@@ -935,14 +1063,27 @@ export default function TwitterPostsPage() {
                     )}
                   </div>
 
-                  {/* アップロード済み画像のプレビュー */}
-                  {images.length > 0 && (
+                  {/* 画像プレビュー（アップロード済み + ローカル） */}
+                  {totalImageCount > 0 && (
                     <div style={styles.imageGrid}>
-                      {images.map((img, index) => (
-                        <div key={index} style={styles.imagePreviewItem}>
+                      {/* アップロード済み画像（編集時の既存画像） */}
+                      {uploadedImages.map((img, index) => (
+                        <div key={`uploaded-${index}`} style={styles.imagePreviewItem}>
                           <img src={img.url} alt={`画像${index + 1}`} style={styles.imagePreviewImg} />
                           <button
-                            onClick={() => removeImage(index)}
+                            onClick={() => removeUploadedImage(index)}
+                            style={styles.imageRemoveBtn}
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                      {/* ローカル画像（新規追加分、まだアップロードされていない） */}
+                      {localImages.map((img, index) => (
+                        <div key={`local-${index}`} style={styles.imagePreviewItem}>
+                          <img src={img.previewUrl} alt={`新規画像${index + 1}`} style={styles.imagePreviewImg} />
+                          <button
+                            onClick={() => removeLocalImage(index)}
                             style={styles.imageRemoveBtn}
                           >
                             ×
@@ -1047,21 +1188,35 @@ export default function TwitterPostsPage() {
                         </span>
                       )) : <span style={styles.tweetPlaceholder}>ツイート内容がここに表示されます...</span>}
                     </div>
-                    {images.length > 0 && (
+                    {totalImageCount > 0 && (
                       <div style={{
                         ...styles.tweetImageContainer,
                         display: 'grid',
-                        gridTemplateColumns: images.length === 1 ? '1fr' : '1fr 1fr',
+                        gridTemplateColumns: totalImageCount === 1 ? '1fr' : '1fr 1fr',
                         gap: '2px',
                       }}>
-                        {images.map((img, index) => (
+                        {/* アップロード済み画像 */}
+                        {uploadedImages.map((img, index) => (
                           <img
-                            key={index}
+                            key={`preview-uploaded-${index}`}
                             src={img.url}
                             alt=""
                             style={{
                               ...styles.tweetImage,
-                              aspectRatio: images.length === 1 ? 'auto' : '1',
+                              aspectRatio: totalImageCount === 1 ? 'auto' : '1',
+                              objectFit: 'cover',
+                            }}
+                          />
+                        ))}
+                        {/* ローカル画像 */}
+                        {localImages.map((img, index) => (
+                          <img
+                            key={`preview-local-${index}`}
+                            src={img.previewUrl}
+                            alt=""
+                            style={{
+                              ...styles.tweetImage,
+                              aspectRatio: totalImageCount === 1 ? 'auto' : '1',
                               objectFit: 'cover',
                             }}
                           />
