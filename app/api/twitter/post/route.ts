@@ -47,13 +47,80 @@ function generateOAuthHeader(params: Record<string, string>): string {
   return `OAuth ${headerParams}`
 }
 
-// ツイートを投稿
+// 画像をTwitterにアップロードしてmedia_idを取得
+async function uploadMediaToTwitter(
+  imageUrl: string,
+  apiKey: string,
+  apiSecret: string,
+  accessToken: string,
+  accessTokenSecret: string
+): Promise<string | null> {
+  const uploadUrl = 'https://upload.twitter.com/1.1/media/upload.json'
+
+  try {
+    // 画像をダウンロード
+    const imageResponse = await fetch(imageUrl)
+    if (!imageResponse.ok) {
+      console.error('Failed to fetch image:', imageUrl)
+      return null
+    }
+
+    const imageBuffer = await imageResponse.arrayBuffer()
+    const base64Image = Buffer.from(imageBuffer).toString('base64')
+
+    // OAuth署名のためのパラメータ（media_dataは署名に含めない）
+    const oauthParams: Record<string, string> = {
+      oauth_consumer_key: apiKey,
+      oauth_nonce: crypto.randomBytes(16).toString('hex'),
+      oauth_signature_method: 'HMAC-SHA1',
+      oauth_timestamp: Math.floor(Date.now() / 1000).toString(),
+      oauth_token: accessToken,
+      oauth_version: '1.0',
+    }
+
+    oauthParams.oauth_signature = generateOAuthSignature(
+      'POST',
+      uploadUrl,
+      oauthParams,
+      apiSecret,
+      accessTokenSecret
+    )
+
+    // FormDataでアップロード
+    const formData = new URLSearchParams()
+    formData.append('media_data', base64Image)
+
+    const response = await fetch(uploadUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': generateOAuthHeader(oauthParams),
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: formData.toString(),
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error('Media upload error:', errorText)
+      return null
+    }
+
+    const data = await response.json()
+    return data.media_id_string || null
+  } catch (error) {
+    console.error('Upload media error:', error)
+    return null
+  }
+}
+
+// ツイートを投稿（画像対応）
 async function postTweet(
   text: string,
   apiKey: string,
   apiSecret: string,
   accessToken: string,
-  accessTokenSecret: string
+  accessTokenSecret: string,
+  mediaIds?: string[]
 ): Promise<{ success: boolean; tweetId?: string; error?: string }> {
   const tweetUrl = 'https://api.twitter.com/2/tweets'
 
@@ -74,6 +141,12 @@ async function postTweet(
     accessTokenSecret
   )
 
+  // リクエストボディを構築
+  const tweetBody: { text: string; media?: { media_ids: string[] } } = { text }
+  if (mediaIds && mediaIds.length > 0) {
+    tweetBody.media = { media_ids: mediaIds }
+  }
+
   try {
     const response = await fetch(tweetUrl, {
       method: 'POST',
@@ -81,7 +154,7 @@ async function postTweet(
         'Authorization': generateOAuthHeader(oauthParams),
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ text }),
+      body: JSON.stringify(tweetBody),
     })
 
     const data = await response.json()
@@ -139,13 +212,40 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Twitter not connected' }, { status: 400 })
     }
 
-    // ツイートを投稿
+    // 画像URLをパース（JSON配列または単一URL）
+    let imageUrls: string[] = []
+    if (post.image_url) {
+      try {
+        imageUrls = JSON.parse(post.image_url)
+      } catch {
+        // 旧形式（単一URL）の場合
+        imageUrls = [post.image_url]
+      }
+    }
+
+    // 画像をTwitterにアップロード
+    const mediaIds: string[] = []
+    for (const imageUrl of imageUrls) {
+      const mediaId = await uploadMediaToTwitter(
+        imageUrl,
+        settings.api_key,
+        settings.api_secret,
+        settings.access_token,
+        settings.refresh_token
+      )
+      if (mediaId) {
+        mediaIds.push(mediaId)
+      }
+    }
+
+    // ツイートを投稿（画像付き）
     const result = await postTweet(
       post.content,
       settings.api_key,
       settings.api_secret,
       settings.access_token,
-      settings.refresh_token // OAuth 1.0aではaccess_token_secret
+      settings.refresh_token, // OAuth 1.0aではaccess_token_secret
+      mediaIds.length > 0 ? mediaIds : undefined
     )
 
     // 結果を保存

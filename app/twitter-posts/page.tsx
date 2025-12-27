@@ -1,17 +1,24 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
 import { toast } from 'react-hot-toast'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Link from 'next/link'
 
+const MAX_IMAGES = 4 // Twitterの最大画像枚数
+
+interface UploadedImage {
+  url: string
+  path: string
+}
+
 interface ScheduledPost {
   id: number
   store_id: number
   content: string
-  image_url: string | null
+  image_url: string | null  // JSON配列として保存
   scheduled_at: string
   status: 'pending' | 'posted' | 'failed'
   posted_at: string | null
@@ -54,8 +61,11 @@ export default function TwitterPostsPage() {
   const [showForm, setShowForm] = useState(false)
   const [content, setContent] = useState('')
   const [scheduledAt, setScheduledAt] = useState('')
-  const [imageUrl, setImageUrl] = useState('')
+  const [images, setImages] = useState<UploadedImage[]>([])
   const [editingId, setEditingId] = useState<number | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const [isDragging, setIsDragging] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // 定期投稿モーダル
   const [showRecurringForm, setShowRecurringForm] = useState(false)
@@ -209,6 +219,109 @@ export default function TwitterPostsPage() {
     return `${start.getFullYear()}年${start.getMonth() + 1}月${start.getDate()}日〜${end.getMonth() + 1}月${end.getDate()}日`
   }
 
+  // 画像アップロード処理
+  const uploadImages = async (files: FileList | File[]) => {
+    if (!storeId) return
+
+    const fileArray = Array.from(files)
+    const remainingSlots = MAX_IMAGES - images.length
+
+    if (fileArray.length > remainingSlots) {
+      toast.error(`画像は最大${MAX_IMAGES}枚までです`)
+      return
+    }
+
+    setUploading(true)
+    const newImages: UploadedImage[] = []
+
+    for (const file of fileArray) {
+      // ファイルタイプチェック
+      if (!['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(file.type)) {
+        toast.error(`${file.name}: 対応していない画像形式です`)
+        continue
+      }
+
+      // ファイルサイズチェック (5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error(`${file.name}: 5MB以下にしてください`)
+        continue
+      }
+
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('storeId', storeId.toString())
+
+      try {
+        const response = await fetch('/api/twitter/upload-image', {
+          method: 'POST',
+          body: formData,
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          newImages.push({ url: data.url, path: data.path })
+        } else {
+          const err = await response.json()
+          toast.error(`${file.name}: ${err.error}`)
+        }
+      } catch {
+        toast.error(`${file.name}: アップロードに失敗しました`)
+      }
+    }
+
+    if (newImages.length > 0) {
+      setImages(prev => [...prev, ...newImages])
+      toast.success(`${newImages.length}枚の画像をアップロードしました`)
+    }
+    setUploading(false)
+  }
+
+  // 画像削除処理
+  const removeImage = async (index: number) => {
+    const image = images[index]
+
+    // Storageから削除
+    try {
+      await fetch(`/api/twitter/upload-image?path=${encodeURIComponent(image.path)}`, {
+        method: 'DELETE',
+      })
+    } catch {
+      // 削除に失敗しても続行
+    }
+
+    setImages(prev => prev.filter((_, i) => i !== index))
+  }
+
+  // ドラッグ&ドロップハンドラー
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(true)
+  }
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(false)
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(false)
+
+    const files = e.dataTransfer.files
+    if (files.length > 0) {
+      uploadImages(files)
+    }
+  }
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (files && files.length > 0) {
+      uploadImages(files)
+    }
+    // inputをリセット（同じファイルを再選択可能に）
+    e.target.value = ''
+  }
+
   // 通常投稿の処理
   const handleSubmit = async () => {
     if (!storeId) return
@@ -227,6 +340,9 @@ export default function TwitterPostsPage() {
       return
     }
 
+    // 画像URLの配列をJSON文字列として保存
+    const imageUrlsJson = images.length > 0 ? JSON.stringify(images.map(img => img.url)) : null
+
     setSaving(true)
     try {
       if (editingId) {
@@ -234,7 +350,7 @@ export default function TwitterPostsPage() {
           .from('scheduled_posts')
           .update({
             content: content.trim(),
-            image_url: imageUrl.trim() || null,
+            image_url: imageUrlsJson,
             scheduled_at: scheduledDate.toISOString(),
             updated_at: new Date().toISOString(),
           })
@@ -248,7 +364,7 @@ export default function TwitterPostsPage() {
           .insert({
             store_id: storeId,
             content: content.trim(),
-            image_url: imageUrl.trim() || null,
+            image_url: imageUrlsJson,
             scheduled_at: scheduledDate.toISOString(),
             status: 'pending',
           })
@@ -270,7 +386,18 @@ export default function TwitterPostsPage() {
   const handleEdit = (post: ScheduledPost) => {
     setContent(post.content)
     setScheduledAt(formatDateTimeLocal(post.scheduled_at))
-    setImageUrl(post.image_url || '')
+    // JSON配列として保存された画像URLをパース
+    if (post.image_url) {
+      try {
+        const urls = JSON.parse(post.image_url) as string[]
+        setImages(urls.map(url => ({ url, path: '' })))
+      } catch {
+        // 旧形式（単一URL）の場合
+        setImages([{ url: post.image_url, path: '' }])
+      }
+    } else {
+      setImages([])
+    }
     setEditingId(post.id)
     setShowForm(true)
   }
@@ -307,7 +434,7 @@ export default function TwitterPostsPage() {
   const resetForm = () => {
     setContent('')
     setScheduledAt('')
-    setImageUrl('')
+    setImages([])
     setEditingId(null)
     setShowForm(false)
   }
@@ -764,23 +891,64 @@ export default function TwitterPostsPage() {
                 </div>
 
                 <div style={styles.inputGroup}>
-                  <label style={styles.label}>画像URL（任意）</label>
-                  <input
-                    type="url"
-                    value={imageUrl}
-                    onChange={(e) => setImageUrl(e.target.value)}
-                    style={styles.input}
-                    placeholder="https://..."
-                  />
-                  {imageUrl && (
-                    <div style={styles.imagePreviewSmall}>
-                      <img src={imageUrl} alt="プレビュー" style={styles.imagePreviewImg} />
-                      <button
-                        onClick={() => setImageUrl('')}
-                        style={styles.imageRemoveBtn}
-                      >
-                        ×
-                      </button>
+                  <label style={styles.label}>画像（最大{MAX_IMAGES}枚）</label>
+
+                  {/* ドラッグ&ドロップエリア */}
+                  <div
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                    onClick={() => fileInputRef.current?.click()}
+                    style={{
+                      ...styles.dropZone,
+                      ...(isDragging ? styles.dropZoneActive : {}),
+                      ...(images.length >= MAX_IMAGES ? styles.dropZoneDisabled : {}),
+                    }}
+                  >
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/gif,image/webp"
+                      multiple
+                      onChange={handleFileSelect}
+                      style={{ display: 'none' }}
+                      disabled={images.length >= MAX_IMAGES}
+                    />
+                    {uploading ? (
+                      <span style={styles.dropZoneText}>アップロード中...</span>
+                    ) : images.length >= MAX_IMAGES ? (
+                      <span style={styles.dropZoneText}>最大{MAX_IMAGES}枚まで</span>
+                    ) : (
+                      <>
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5">
+                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                          <polyline points="17 8 12 3 7 8" />
+                          <line x1="12" y1="3" x2="12" y2="15" />
+                        </svg>
+                        <span style={styles.dropZoneText}>
+                          ドラッグ&ドロップ または クリックして選択
+                        </span>
+                        <span style={styles.dropZoneHint}>
+                          JPEG, PNG, GIF, WebP（各5MB以下）
+                        </span>
+                      </>
+                    )}
+                  </div>
+
+                  {/* アップロード済み画像のプレビュー */}
+                  {images.length > 0 && (
+                    <div style={styles.imageGrid}>
+                      {images.map((img, index) => (
+                        <div key={index} style={styles.imagePreviewItem}>
+                          <img src={img.url} alt={`画像${index + 1}`} style={styles.imagePreviewImg} />
+                          <button
+                            onClick={() => removeImage(index)}
+                            style={styles.imageRemoveBtn}
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -879,9 +1047,25 @@ export default function TwitterPostsPage() {
                         </span>
                       )) : <span style={styles.tweetPlaceholder}>ツイート内容がここに表示されます...</span>}
                     </div>
-                    {imageUrl && (
-                      <div style={styles.tweetImageContainer}>
-                        <img src={imageUrl} alt="" style={styles.tweetImage} />
+                    {images.length > 0 && (
+                      <div style={{
+                        ...styles.tweetImageContainer,
+                        display: 'grid',
+                        gridTemplateColumns: images.length === 1 ? '1fr' : '1fr 1fr',
+                        gap: '2px',
+                      }}>
+                        {images.map((img, index) => (
+                          <img
+                            key={index}
+                            src={img.url}
+                            alt=""
+                            style={{
+                              ...styles.tweetImage,
+                              aspectRatio: images.length === 1 ? 'auto' : '1',
+                              objectFit: 'cover',
+                            }}
+                          />
+                        ))}
                       </div>
                     )}
                     <div style={styles.tweetActions}>
@@ -1819,5 +2003,48 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '13px',
     cursor: 'pointer',
     color: '#374151',
+  },
+  // ドラッグ&ドロップエリア
+  dropZone: {
+    border: '2px dashed #d1d5db',
+    borderRadius: '12px',
+    padding: '24px',
+    textAlign: 'center',
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '8px',
+    backgroundColor: '#fafafa',
+  },
+  dropZoneActive: {
+    borderColor: '#3b82f6',
+    backgroundColor: '#eff6ff',
+  },
+  dropZoneDisabled: {
+    opacity: 0.5,
+    cursor: 'not-allowed',
+  },
+  dropZoneText: {
+    fontSize: '14px',
+    color: '#6b7280',
+  },
+  dropZoneHint: {
+    fontSize: '12px',
+    color: '#9ca3af',
+  },
+  // 画像グリッド
+  imageGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(4, 1fr)',
+    gap: '8px',
+    marginTop: '12px',
+  },
+  imagePreviewItem: {
+    position: 'relative',
+    aspectRatio: '1',
+    borderRadius: '8px',
+    overflow: 'hidden',
   },
 }
