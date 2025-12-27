@@ -177,6 +177,7 @@ function LineSettingsPageContent() {
           .from('store_line_configs')
           .insert({
             store_id: selectedStoreId,
+            store_name: selectedStore?.store_name || '',
             line_channel_id: editForm.line_channel_id.trim(),
             line_channel_secret: editForm.line_channel_secret.trim(),
             line_channel_access_token: editForm.line_channel_access_token.trim(),
