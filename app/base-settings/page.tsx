@@ -52,6 +52,7 @@ function BaseSettingsPageContent() {
   const [showAddProductModal, setShowAddProductModal] = useState(false)
   const [newProductName, setNewProductName] = useState('')
   const [newBasePrice, setNewBasePrice] = useState(0)
+  const [productSearchQuery, setProductSearchQuery] = useState('')
 
   // バリエーション追加モーダル
   const [showAddVariationModal, setShowAddVariationModal] = useState(false)
@@ -196,12 +197,9 @@ function BaseSettingsPageContent() {
       return
     }
 
-    // ローカル商品と一致するか確認
-    const matchingProduct = localProducts.find(p => p.name === newProductName.trim())
-    if (!matchingProduct) {
-      toast.error('商品管理に登録されている商品名と一致しません')
-      return
-    }
+    // ローカル商品と一致するか確認（BASE item_idも取得）
+    const matchingLocalProduct = localProducts.find(p => p.name === newProductName.trim())
+    const matchingBaseItem = baseApiItems.find(item => item.title === newProductName.trim())
 
     setSaving(true)
     try {
@@ -210,8 +208,9 @@ function BaseSettingsPageContent() {
         .insert({
           store_id: storeId,
           base_product_name: newProductName.trim(),
-          local_product_name: newProductName.trim(),
+          local_product_name: matchingLocalProduct ? newProductName.trim() : null,
           base_price: newBasePrice,
+          base_item_id: matchingBaseItem?.item_id || null,
           is_active: true,
         })
 
@@ -221,6 +220,7 @@ function BaseSettingsPageContent() {
       setShowAddProductModal(false)
       setNewProductName('')
       setNewBasePrice(0)
+      setProductSearchQuery('')
       loadData()
     } catch (err) {
       console.error('商品追加エラー:', err)
@@ -1410,38 +1410,86 @@ function BaseSettingsPageContent() {
 
       {/* 商品マッピング追加モーダル */}
       {showAddProductModal && (
-        <div style={styles.modalOverlay} onClick={() => setShowAddProductModal(false)}>
+        <div style={styles.modalOverlay} onClick={() => {
+          setShowAddProductModal(false)
+          setProductSearchQuery('')
+        }}>
           <div style={styles.modal} onClick={e => e.stopPropagation()}>
             <h3 style={styles.modalTitle}>BASE商品マッピング追加</h3>
 
             <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '16px' }}>
-              ※ BASE管理画面で先に同じ商品名の商品を作成してください
+              商品管理にある商品、またはBASEにある商品から選択してください
             </p>
 
             <div style={styles.formGroup}>
-              <label style={styles.label}>商品名</label>
-              <select
-                value={newProductName}
-                onChange={e => {
-                  setNewProductName(e.target.value)
-                  const product = localProducts.find(p => p.name === e.target.value)
-                  if (product) {
-                    setNewBasePrice(product.price)
-                  }
-                }}
-                style={styles.select}
-              >
-                <option value="">商品を選択...</option>
+              <label style={styles.label}>商品名を検索</label>
+              <input
+                type="text"
+                value={productSearchQuery}
+                onChange={e => setProductSearchQuery(e.target.value)}
+                placeholder="商品名で絞り込み..."
+                style={styles.textInput}
+              />
+            </div>
+
+            <div style={styles.formGroup}>
+              <label style={styles.label}>商品を選択</label>
+              <div style={styles.productSelectList}>
+                {/* ローカル商品 */}
                 {localProducts
                   .filter(p => !baseProducts.some(bp => bp.local_product_name === p.name))
+                  .filter(p => !productSearchQuery || p.name.toLowerCase().includes(productSearchQuery.toLowerCase()))
                   .map(p => (
-                    <option key={p.id} value={p.name}>
-                      {p.name} (¥{p.price.toLocaleString()})
-                    </option>
+                    <div
+                      key={`local-${p.id}`}
+                      style={{
+                        ...styles.productSelectItem,
+                        ...(newProductName === p.name ? styles.productSelectItemActive : {}),
+                      }}
+                      onClick={() => {
+                        setNewProductName(p.name)
+                        setNewBasePrice(p.price)
+                      }}
+                    >
+                      <span style={styles.productSelectName}>{p.name}</span>
+                      <span style={styles.productSelectPrice}>¥{p.price.toLocaleString()}</span>
+                      <span style={styles.productSelectBadgeLocal}>商品管理</span>
+                    </div>
                   ))}
-              </select>
+                {/* BASE商品（ローカルにない商品のみ） */}
+                {baseApiItems
+                  .filter(item => !baseProducts.some(bp => bp.base_product_name === item.title))
+                  .filter(item => !localProducts.some(p => p.name === item.title))
+                  .filter(item => !productSearchQuery || item.title.toLowerCase().includes(productSearchQuery.toLowerCase()))
+                  .map(item => (
+                    <div
+                      key={`base-${item.item_id}`}
+                      style={{
+                        ...styles.productSelectItem,
+                        ...(newProductName === item.title ? styles.productSelectItemActive : {}),
+                      }}
+                      onClick={() => {
+                        setNewProductName(item.title)
+                        setNewBasePrice(item.price)
+                      }}
+                    >
+                      <span style={styles.productSelectName}>{item.title}</span>
+                      <span style={styles.productSelectPrice}>¥{item.price.toLocaleString()}</span>
+                      <span style={styles.productSelectBadgeBase}>BASEのみ</span>
+                    </div>
+                  ))}
+                {/* 検索結果なし */}
+                {productSearchQuery &&
+                  localProducts.filter(p => !baseProducts.some(bp => bp.local_product_name === p.name))
+                    .filter(p => p.name.toLowerCase().includes(productSearchQuery.toLowerCase())).length === 0 &&
+                  baseApiItems.filter(item => !baseProducts.some(bp => bp.base_product_name === item.title))
+                    .filter(item => !localProducts.some(p => p.name === item.title))
+                    .filter(item => item.title.toLowerCase().includes(productSearchQuery.toLowerCase())).length === 0 && (
+                    <p style={styles.noProductMatch}>一致する商品がありません</p>
+                  )}
+              </div>
               <p style={styles.fieldHint}>
-                商品管理に登録されている商品から選択してください
+                商品管理またはBASEから選択してください
               </p>
             </div>
 
@@ -1462,7 +1510,10 @@ function BaseSettingsPageContent() {
 
             <div style={styles.modalActions}>
               <Button
-                onClick={() => setShowAddProductModal(false)}
+                onClick={() => {
+                  setShowAddProductModal(false)
+                  setProductSearchQuery('')
+                }}
                 variant="outline"
                 size="medium"
               >
@@ -2113,5 +2164,57 @@ const styles: { [key: string]: React.CSSProperties } = {
     textAlign: 'center' as const,
     width: '100%',
     display: 'block',
+  },
+  // 商品選択リスト
+  productSelectList: {
+    maxHeight: '250px',
+    overflowY: 'auto' as const,
+    border: '1px solid #e5e7eb',
+    borderRadius: '6px',
+  },
+  productSelectItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    padding: '10px 12px',
+    cursor: 'pointer',
+    borderBottom: '1px solid #f3f4f6',
+    transition: 'background-color 0.2s',
+  },
+  productSelectItemActive: {
+    backgroundColor: '#eff6ff',
+    borderLeft: '3px solid #3b82f6',
+  },
+  productSelectName: {
+    flex: 1,
+    fontSize: '14px',
+    color: '#2c3e50',
+  },
+  productSelectPrice: {
+    fontSize: '13px',
+    color: '#10b981',
+    fontWeight: '500',
+  },
+  productSelectBadgeLocal: {
+    fontSize: '10px',
+    backgroundColor: '#e0f2fe',
+    color: '#0369a1',
+    padding: '2px 6px',
+    borderRadius: '10px',
+    fontWeight: '500',
+  },
+  productSelectBadgeBase: {
+    fontSize: '10px',
+    backgroundColor: '#fef3c7',
+    color: '#92400e',
+    padding: '2px 6px',
+    borderRadius: '10px',
+    fontWeight: '500',
+  },
+  noProductMatch: {
+    padding: '20px',
+    textAlign: 'center' as const,
+    color: '#94a3b8',
+    fontSize: '13px',
   },
 }
