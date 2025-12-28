@@ -645,7 +645,7 @@ function BaseSettingsPageContent() {
     }
   }
 
-  // BASEから商品を読み込み
+  // BASEから商品を読み込み＆自動マッピング
   const handleLoadBaseItems = async () => {
     if (!isConnected) {
       toast.error('BASEとの連携が必要です')
@@ -661,8 +661,94 @@ function BaseSettingsPageContent() {
         throw new Error(data.error || 'Failed to fetch items')
       }
 
-      setBaseApiItems(data.items || [])
-      toast.success(`${data.items?.length || 0}件の商品を読み込みました`)
+      const items = data.items || []
+      setBaseApiItems(items)
+
+      // 自動マッピング処理
+      let addedProducts = 0
+      let addedVariations = 0
+
+      for (const item of items) {
+        // 既にマッピング済みかチェック
+        const existingProduct = baseProducts.find(bp => bp.base_product_name === item.title)
+
+        if (!existingProduct) {
+          // 商品をマッピング追加
+          const { data: newProduct, error: productError } = await supabase
+            .from('base_products')
+            .insert({
+              store_id: storeId,
+              base_product_name: item.title,
+              local_product_name: item.title,
+              base_price: item.price,
+              base_item_id: item.item_id,
+              is_active: true,
+            })
+            .select('id')
+            .single()
+
+          if (productError) {
+            console.error('商品追加エラー:', productError)
+            continue
+          }
+
+          addedProducts++
+
+          // 全キャストをバリエーションとして追加
+          if (newProduct && casts.length > 0) {
+            const variationsToAdd = casts.map(cast => ({
+              base_product_id: newProduct.id,
+              store_id: storeId,
+              variation_name: cast.name,
+              cast_id: cast.id,
+              is_synced: false,
+              is_active: true,
+            }))
+
+            const { error: varsError } = await supabase
+              .from('base_variations')
+              .insert(variationsToAdd)
+
+            if (!varsError) {
+              addedVariations += variationsToAdd.length
+            }
+          }
+        } else {
+          // 既存商品に未登録のキャストを追加
+          const existingVariationNames = existingProduct.variations.map(v => v.variation_name)
+          const newCasts = casts.filter(c => !existingVariationNames.includes(c.name))
+
+          if (newCasts.length > 0) {
+            const variationsToAdd = newCasts.map(cast => ({
+              base_product_id: existingProduct.id,
+              store_id: storeId,
+              variation_name: cast.name,
+              cast_id: cast.id,
+              is_synced: false,
+              is_active: true,
+            }))
+
+            const { error: varsError } = await supabase
+              .from('base_variations')
+              .insert(variationsToAdd)
+
+            if (!varsError) {
+              addedVariations += variationsToAdd.length
+            }
+          }
+        }
+      }
+
+      // 結果表示
+      const messages: string[] = []
+      messages.push(`${items.length}件の商品を取得`)
+      if (addedProducts > 0) messages.push(`${addedProducts}件の商品を追加`)
+      if (addedVariations > 0) messages.push(`${addedVariations}件のバリエーションを追加`)
+
+      toast.success(messages.join('、'))
+
+      // データ再読み込み
+      loadData()
     } catch (err) {
       console.error('商品読み込みエラー:', err)
       toast.error(err instanceof Error ? err.message : '商品の読み込みに失敗しました')
