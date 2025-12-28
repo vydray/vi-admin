@@ -82,6 +82,10 @@ function BaseSettingsPageContent() {
   const [fetchingOrders, setFetchingOrders] = useState(false)
   const [syncingProductId, setSyncingProductId] = useState<number | null>(null)
 
+  // BASE商品（API取得）
+  const [baseApiItems, setBaseApiItems] = useState<any[]>([])
+  const [loadingBaseItems, setLoadingBaseItems] = useState(false)
+
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
@@ -641,6 +645,32 @@ function BaseSettingsPageContent() {
     }
   }
 
+  // BASEから商品を読み込み
+  const handleLoadBaseItems = async () => {
+    if (!isConnected) {
+      toast.error('BASEとの連携が必要です')
+      return
+    }
+
+    setLoadingBaseItems(true)
+    try {
+      const response = await fetch(`/api/base/items?store_id=${storeId}`)
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to fetch items')
+      }
+
+      setBaseApiItems(data.items || [])
+      toast.success(`${data.items?.length || 0}件の商品を読み込みました`)
+    } catch (err) {
+      console.error('商品読み込みエラー:', err)
+      toast.error(err instanceof Error ? err.message : '商品の読み込みに失敗しました')
+    } finally {
+      setLoadingBaseItems(false)
+    }
+  }
+
   // バリエーションをBASEに同期
   const handleSyncVariations = async (productId: number) => {
     if (!isConnected) {
@@ -746,13 +776,25 @@ function BaseSettingsPageContent() {
         <div style={styles.content}>
           <div style={styles.sectionHeader}>
             <h2 style={styles.sectionTitle}>BASE商品設定</h2>
-            <Button
-              onClick={() => setShowAddProductModal(true)}
-              variant="primary"
-              size="small"
-            >
-              + マッピング追加
-            </Button>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              {isConnected && (
+                <Button
+                  onClick={handleLoadBaseItems}
+                  variant="primary"
+                  size="small"
+                  disabled={loadingBaseItems}
+                >
+                  {loadingBaseItems ? '読み込み中...' : 'BASEから商品読み込み'}
+                </Button>
+              )}
+              <Button
+                onClick={() => setShowAddProductModal(true)}
+                variant="outline"
+                size="small"
+              >
+                + 手動追加
+              </Button>
+            </div>
           </div>
 
           <p style={styles.hint}>
@@ -764,7 +806,60 @@ function BaseSettingsPageContent() {
             POS表示をOFFにすると、同期時にBASEからも削除されます。
           </p>
 
-          {baseProducts.length === 0 ? (
+          {/* BASE商品一覧（API取得） */}
+          {baseApiItems.length > 0 && (
+            <div style={styles.baseItemsSection}>
+              <h3 style={styles.baseItemsTitle}>BASE上の商品一覧</h3>
+              <p style={styles.baseItemsHint}>
+                マッピングしたい商品の「マッピング追加」をクリックしてください
+              </p>
+              <div style={styles.baseItemsGrid}>
+                {baseApiItems.map((item) => {
+                  const alreadyMapped = baseProducts.some(
+                    bp => bp.base_product_name === item.title
+                  )
+                  return (
+                    <div key={item.item_id} style={styles.baseItemCard}>
+                      {item.img1_origin && (
+                        <img
+                          src={item.img1_origin}
+                          alt={item.title}
+                          style={styles.baseItemImage}
+                        />
+                      )}
+                      <div style={styles.baseItemInfo}>
+                        <h4 style={styles.baseItemName}>{item.title}</h4>
+                        <p style={styles.baseItemPrice}>¥{item.price.toLocaleString()}</p>
+                        {item.variations && item.variations.length > 0 && (
+                          <p style={styles.baseItemVariations}>
+                            バリエーション: {item.variations.length}件
+                          </p>
+                        )}
+                      </div>
+                      <div style={styles.baseItemActions}>
+                        {alreadyMapped ? (
+                          <span style={styles.mappedBadge}>マッピング済</span>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              setNewProductName(item.title)
+                              setNewBasePrice(item.price)
+                              setShowAddProductModal(true)
+                            }}
+                            style={styles.mapBtn}
+                          >
+                            マッピング追加
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {baseProducts.length === 0 && baseApiItems.length === 0 ? (
             <div style={styles.emptyState}>
               <p>BASE商品が登録されていません</p>
               <p style={styles.emptyHint}>「商品を追加」から登録してください</p>
@@ -1846,5 +1941,91 @@ const styles: { [key: string]: React.CSSProperties } = {
   helpList: {
     margin: '8px 0',
     paddingLeft: '20px',
+  },
+  // BASE商品一覧スタイル
+  baseItemsSection: {
+    backgroundColor: '#f0f9ff',
+    border: '1px solid #bae6fd',
+    borderRadius: '8px',
+    padding: '16px',
+    marginBottom: '20px',
+  },
+  baseItemsTitle: {
+    fontSize: '16px',
+    fontWeight: '600',
+    color: '#0369a1',
+    margin: '0 0 8px 0',
+  },
+  baseItemsHint: {
+    fontSize: '13px',
+    color: '#64748b',
+    marginBottom: '12px',
+  },
+  baseItemsGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+    gap: '12px',
+  },
+  baseItemCard: {
+    backgroundColor: 'white',
+    borderRadius: '8px',
+    padding: '12px',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+  },
+  baseItemImage: {
+    width: '100%',
+    height: '120px',
+    objectFit: 'cover' as const,
+    borderRadius: '6px',
+    marginBottom: '8px',
+  },
+  baseItemInfo: {
+    marginBottom: '8px',
+  },
+  baseItemName: {
+    fontSize: '14px',
+    fontWeight: '600',
+    color: '#2c3e50',
+    margin: '0 0 4px 0',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap' as const,
+  },
+  baseItemPrice: {
+    fontSize: '14px',
+    color: '#10b981',
+    fontWeight: '600',
+    margin: 0,
+  },
+  baseItemVariations: {
+    fontSize: '12px',
+    color: '#64748b',
+    margin: '4px 0 0 0',
+  },
+  baseItemActions: {
+    display: 'flex',
+    justifyContent: 'center',
+  },
+  mapBtn: {
+    padding: '6px 12px',
+    backgroundColor: '#3b82f6',
+    color: 'white',
+    border: 'none',
+    borderRadius: '6px',
+    fontSize: '12px',
+    fontWeight: '500',
+    cursor: 'pointer',
+    width: '100%',
+  },
+  mappedBadge: {
+    padding: '6px 12px',
+    backgroundColor: '#d1fae5',
+    color: '#065f46',
+    borderRadius: '6px',
+    fontSize: '12px',
+    fontWeight: '500',
+    textAlign: 'center' as const,
+    width: '100%',
+    display: 'block',
   },
 }

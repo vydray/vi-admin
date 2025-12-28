@@ -3,7 +3,7 @@ import { getSupabaseServerClient } from '@/lib/supabase'
 import { fetchItems, refreshAccessToken } from '@/lib/baseApi'
 
 /**
- * BASE商品を取得
+ * BASE商品一覧を取得
  * GET /api/base/items?store_id=1
  */
 export async function GET(request: NextRequest) {
