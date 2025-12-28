@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
       path: '/',
     })
 
-    const redirectUri = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/base/callback`
+    const redirectUri = `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/base/callback`
     const authUrl = getAuthorizationUrl(settings.client_id, redirectUri, state)
 
     return NextResponse.redirect(authUrl)

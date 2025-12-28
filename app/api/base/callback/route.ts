@@ -18,13 +18,13 @@ export async function GET(request: NextRequest) {
     if (error) {
       const errorDescription = searchParams.get('error_description') || 'Unknown error'
       return NextResponse.redirect(
-        `${process.env.NEXT_PUBLIC_APP_URL}/base-settings?error=${encodeURIComponent(errorDescription)}`
+        `${process.env.NEXT_PUBLIC_SITE_URL}/base-settings?error=${encodeURIComponent(errorDescription)}`
       )
     }
 
     if (!code || !state) {
       return NextResponse.redirect(
-        `${process.env.NEXT_PUBLIC_APP_URL}/base-settings?error=${encodeURIComponent('Missing code or state')}`
+        `${process.env.NEXT_PUBLIC_SITE_URL}/base-settings?error=${encodeURIComponent('Missing code or state')}`
       )
     }
 
@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
 
     if (!savedState || savedState !== state) {
       return NextResponse.redirect(
-        `${process.env.NEXT_PUBLIC_APP_URL}/base-settings?error=${encodeURIComponent('Invalid state')}`
+        `${process.env.NEXT_PUBLIC_SITE_URL}/base-settings?error=${encodeURIComponent('Invalid state')}`
       )
     }
 
@@ -53,12 +53,12 @@ export async function GET(request: NextRequest) {
 
     if (settingsError || !settings?.client_id || !settings?.client_secret) {
       return NextResponse.redirect(
-        `${process.env.NEXT_PUBLIC_APP_URL}/base-settings?error=${encodeURIComponent('API credentials not found')}`
+        `${process.env.NEXT_PUBLIC_SITE_URL}/base-settings?error=${encodeURIComponent('API credentials not found')}`
       )
     }
 
     // 認可コードをトークンに交換
-    const redirectUri = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/base/callback`
+    const redirectUri = `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/base/callback`
     const tokens = await exchangeCodeForToken(
       settings.client_id,
       settings.client_secret,
@@ -81,7 +81,7 @@ export async function GET(request: NextRequest) {
     if (updateError) {
       console.error('Token save error:', updateError)
       return NextResponse.redirect(
-        `${process.env.NEXT_PUBLIC_APP_URL}/base-settings?error=${encodeURIComponent('Failed to save tokens')}`
+        `${process.env.NEXT_PUBLIC_SITE_URL}/base-settings?error=${encodeURIComponent('Failed to save tokens')}`
       )
     }
 
@@ -90,12 +90,12 @@ export async function GET(request: NextRequest) {
 
     // 成功
     return NextResponse.redirect(
-      `${process.env.NEXT_PUBLIC_APP_URL}/base-settings?success=true`
+      `${process.env.NEXT_PUBLIC_SITE_URL}/base-settings?success=true`
     )
   } catch (error) {
     console.error('BASE callback error:', error)
     return NextResponse.redirect(
-      `${process.env.NEXT_PUBLIC_APP_URL}/base-settings?error=${encodeURIComponent('Internal server error')}`
+      `${process.env.NEXT_PUBLIC_SITE_URL}/base-settings?error=${encodeURIComponent('Internal server error')}`
     )
   }
 }
