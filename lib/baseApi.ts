@@ -75,7 +75,7 @@ export function getAuthorizationUrl(
     response_type: 'code',
     client_id: clientId,
     redirect_uri: redirectUri,
-    scope: 'read_users read_items read_orders write_items',
+    scope: 'read_users read_items read_orders',
     state,
   })
   return `${BASE_API_URL}/1/oauth/authorize?${params.toString()}`
