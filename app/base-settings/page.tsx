@@ -709,113 +709,108 @@ function BaseSettingsPageContent() {
             POS表示をOFFにすると、同期時にBASEからも削除されます。
           </p>
 
-          {/* BASE商品一覧（API取得） */}
+          {/* BASE商品一覧（API取得） - 問題がある商品のみ表示 */}
           {baseApiItems.length > 0 ? (
-            <div style={styles.productList}>
-              {baseApiItems.map((item) => {
-                // BASEに登録されているバリエーション名のリスト
+            (() => {
+              // 問題がある商品をフィルタリング
+              const castNames = casts.map(cast => cast.name)
+              const itemsWithIssues = baseApiItems.filter(item => {
                 const baseVariationNames = (item.variations || []).map((v: any) => v.variation)
-                // POS表示ONのキャスト名のリスト
-                const castNames = casts.map(cast => cast.name)
-                // POS表示ONのキャストでBASEに未登録の人
                 const missingCasts = casts.filter(cast => !baseVariationNames.includes(cast.name))
-                // BASEに登録されているがPOS表示ONのキャストに該当しないバリエーション
                 const orphanedVariations = baseVariationNames.filter((name: string) => !castNames.includes(name))
+                return missingCasts.length > 0 || orphanedVariations.length > 0
+              })
 
+              if (itemsWithIssues.length === 0) {
                 return (
-                  <div key={item.item_id} style={styles.productCard}>
-                    <div style={styles.productHeader}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        {item.img1_origin && (
-                          <img
-                            src={item.img1_origin}
-                            alt={item.title}
-                            style={{
-                              width: '50px',
-                              height: '50px',
-                              objectFit: 'cover' as const,
-                              borderRadius: '6px',
-                            }}
-                          />
-                        )}
-                        <div>
-                          <h3 style={styles.productName}>{item.title}</h3>
-                          <span style={styles.productPrice}>
-                            ¥{item.price.toLocaleString()} ・ バリエーション: {baseVariationNames.length}件
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* BASEに登録済みのバリエーション */}
-                    <div style={styles.variationList}>
-                      <div style={styles.variationHeader}>
-                        <span>BASE登録済み（{baseVariationNames.length}人）</span>
-                      </div>
-                      {baseVariationNames.length === 0 ? (
-                        <p style={styles.noVariations}>バリエーションがありません</p>
-                      ) : (
-                        <div style={styles.variationTags}>
-                          {baseVariationNames.map((name: string, idx: number) => {
-                            const isOrphaned = !castNames.includes(name)
-                            return (
-                              <span
-                                key={idx}
-                                style={isOrphaned ? styles.variationTagOrphaned : styles.variationTag}
-                                title={isOrphaned ? 'POS表示ONのキャストに該当なし' : ''}
-                              >
-                                {name}
-                                {isOrphaned && <span style={styles.orphanedMark}>?</span>}
-                              </span>
-                            )
-                          })}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* 未登録のキャスト（POS表示ONだがBASEに未登録） */}
-                    {missingCasts.length > 0 && (
-                      <div style={styles.missingSection}>
-                        <div style={styles.missingHeader}>
-                          <span style={styles.missingIcon}>!</span>
-                          <span>未登録のキャスト（{missingCasts.length}人）</span>
-                        </div>
-                        <div style={styles.missingTags}>
-                          {missingCasts.map(cast => (
-                            <span key={cast.id} style={styles.missingTag}>
-                              {cast.name}
-                            </span>
-                          ))}
-                        </div>
-                        <p style={styles.missingHint}>
-                          ※ BASEの商品編集画面でバリエーションを追加してください
-                        </p>
-                      </div>
-                    )}
-
-                    {/* 該当なしのバリエーション（BASEにあるがPOS表示ONのキャストに該当しない） */}
-                    {orphanedVariations.length > 0 && (
-                      <div style={styles.orphanedSection}>
-                        <div style={styles.orphanedHeader}>
-                          <span style={styles.orphanedIcon}>?</span>
-                          <span>該当なしのバリエーション（{orphanedVariations.length}件）</span>
-                        </div>
-                        <div style={styles.orphanedTags}>
-                          {orphanedVariations.map((name: string, idx: number) => (
-                            <span key={idx} style={styles.orphanedTag}>
-                              {name}
-                            </span>
-                          ))}
-                        </div>
-                        <p style={styles.orphanedHint}>
-                          ※ POS表示がOFFのキャスト、退店したキャスト、または手動追加されたバリエーションです
-                        </p>
-                      </div>
-                    )}
+                  <div style={styles.successState}>
+                    <span style={styles.successIcon}>✓</span>
+                    <p style={styles.successText}>全ての商品が正しくマッピングされています</p>
+                    <p style={styles.successSubtext}>{baseApiItems.length}件のBASE商品をチェック済み</p>
                   </div>
                 )
-              })}
-            </div>
+              }
+
+              return (
+                <div style={styles.productList}>
+                  <p style={styles.issuesSummary}>
+                    {baseApiItems.length}件中 {itemsWithIssues.length}件の商品に問題があります
+                  </p>
+                  {itemsWithIssues.map((item) => {
+                    const baseVariationNames = (item.variations || []).map((v: any) => v.variation)
+                    const missingCasts = casts.filter(cast => !baseVariationNames.includes(cast.name))
+                    const orphanedVariations = baseVariationNames.filter((name: string) => !castNames.includes(name))
+
+                    return (
+                      <div key={item.item_id} style={styles.productCard}>
+                        <div style={styles.productHeader}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            {item.img1_origin && (
+                              <img
+                                src={item.img1_origin}
+                                alt={item.title}
+                                style={{
+                                  width: '50px',
+                                  height: '50px',
+                                  objectFit: 'cover' as const,
+                                  borderRadius: '6px',
+                                }}
+                              />
+                            )}
+                            <div>
+                              <h3 style={styles.productName}>{item.title}</h3>
+                              <span style={styles.productPrice}>
+                                ¥{item.price.toLocaleString()} ・ バリエーション: {baseVariationNames.length}件
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* 未登録のキャスト（POS表示ONだがBASEに未登録） */}
+                        {missingCasts.length > 0 && (
+                          <div style={styles.missingSection}>
+                            <div style={styles.missingHeader}>
+                              <span style={styles.missingIcon}>!</span>
+                              <span>未登録のキャスト（{missingCasts.length}人）</span>
+                            </div>
+                            <div style={styles.missingTags}>
+                              {missingCasts.map(cast => (
+                                <span key={cast.id} style={styles.missingTag}>
+                                  {cast.name}
+                                </span>
+                              ))}
+                            </div>
+                            <p style={styles.missingHint}>
+                              ※ BASEの商品編集画面でバリエーションを追加してください
+                            </p>
+                          </div>
+                        )}
+
+                        {/* 該当なしのバリエーション（BASEにあるがPOS表示ONのキャストに該当しない） */}
+                        {orphanedVariations.length > 0 && (
+                          <div style={styles.orphanedSection}>
+                            <div style={styles.orphanedHeader}>
+                              <span style={styles.orphanedIcon}>?</span>
+                              <span>該当なしのバリエーション（{orphanedVariations.length}件）</span>
+                            </div>
+                            <div style={styles.orphanedTags}>
+                              {orphanedVariations.map((name: string, idx: number) => (
+                                <span key={idx} style={styles.orphanedTag}>
+                                  {name}
+                                </span>
+                              ))}
+                            </div>
+                            <p style={styles.orphanedHint}>
+                              ※ POS表示がOFFのキャスト、退店したキャスト、または手動追加されたバリエーションです
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            })()
           ) : (
             <div style={styles.emptyState}>
               <p>BASE商品がありません</p>
@@ -1423,6 +1418,40 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '13px',
     marginTop: '10px',
   },
+  successState: {
+    textAlign: 'center' as const,
+    padding: '40px',
+    backgroundColor: '#f0fdf4',
+    borderRadius: '8px',
+    border: '1px solid #86efac',
+  },
+  successIcon: {
+    fontSize: '48px',
+    color: '#22c55e',
+    display: 'block',
+    marginBottom: '12px',
+  },
+  successText: {
+    fontSize: '16px',
+    fontWeight: '600',
+    color: '#166534',
+    margin: '0 0 8px 0',
+  },
+  successSubtext: {
+    fontSize: '13px',
+    color: '#4ade80',
+    margin: 0,
+  },
+  issuesSummary: {
+    fontSize: '14px',
+    color: '#dc2626',
+    fontWeight: '500',
+    marginBottom: '12px',
+    padding: '8px 12px',
+    backgroundColor: '#fef2f2',
+    borderRadius: '6px',
+    border: '1px solid #fecaca',
+  },
   productList: {
     display: 'flex',
     flexDirection: 'column' as const,
@@ -1481,37 +1510,6 @@ const styles: { [key: string]: React.CSSProperties } = {
     color: '#e74c3c',
     cursor: 'pointer',
     fontSize: '12px',
-  },
-  variationList: {
-    backgroundColor: '#f8fafc',
-    borderRadius: '6px',
-    padding: '12px',
-  },
-  variationHeader: {
-    fontSize: '13px',
-    fontWeight: '500',
-    color: '#64748b',
-    marginBottom: '8px',
-  },
-  noVariations: {
-    fontSize: '13px',
-    color: '#94a3b8',
-    margin: 0,
-  },
-  variationTags: {
-    display: 'flex',
-    flexWrap: 'wrap' as const,
-    gap: '8px',
-  },
-  variationTag: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: '6px',
-    padding: '4px 10px',
-    backgroundColor: '#e0f2fe',
-    color: '#0369a1',
-    borderRadius: '20px',
-    fontSize: '13px',
   },
   removeTagBtn: {
     background: 'none',
@@ -2103,30 +2101,5 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '11px',
     color: '#b45309',
     margin: 0,
-  },
-  // BASE登録済みタグの該当なしバージョン
-  variationTagOrphaned: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: '4px',
-    padding: '4px 10px',
-    backgroundColor: '#fef3c7',
-    color: '#92400e',
-    borderRadius: '20px',
-    fontSize: '13px',
-    border: '1px dashed #f59e0b',
-  },
-  orphanedMark: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: '14px',
-    height: '14px',
-    backgroundColor: '#f59e0b',
-    color: 'white',
-    borderRadius: '50%',
-    fontSize: '9px',
-    fontWeight: 'bold',
-    marginLeft: '2px',
   },
 }
