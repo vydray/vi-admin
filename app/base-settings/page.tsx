@@ -690,23 +690,14 @@ function BaseSettingsPageContent() {
                   {loadingBaseItems ? '同期中...' : 'BASEと同期'}
                 </Button>
               )}
-              <Button
-                onClick={() => setShowAddProductModal(true)}
-                variant="outline"
-                size="small"
-              >
-                + 手動追加
-              </Button>
             </div>
           </div>
 
           <p style={styles.hint}>
-            <strong>※ BASE側で先に商品を作成してください。</strong>このシステムではバリエーション（キャスト名）の同期のみ行います。
+            BASE商品のバリエーションとPOS表示ONのキャストのマッピング状況を確認できます。
             <br />
-            商品名は「商品管理」に登録されている商品名と完全一致させてください。
-            <br />
-            <strong>POS表示がONのキャストのみ</strong>がバリエーションとして追加されます。
-            POS表示をOFFにすると、同期時にBASEからも削除されます。
+            <span style={{ color: '#dc2626' }}>赤: BASEに未登録のキャスト</span>
+            <span style={{ color: '#b45309' }}>黄: 該当キャストなしのバリエーション</span>
           </p>
 
           {/* BASE商品一覧（API取得） */}
