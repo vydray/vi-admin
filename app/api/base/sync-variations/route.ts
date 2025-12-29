@@ -136,18 +136,28 @@ export async function POST(request: NextRequest) {
       baseVariationsMap.set(v.variation, v.variation_id)
     }
 
+    // デバッグ情報
+    console.log('[sync-variations] BASE item:', baseItem.item_id, baseItem.title)
+    console.log('[sync-variations] BASE existing variations:', Array.from(baseVariationsMap.keys()))
+    console.log('[sync-variations] Local variations count:', allVariations?.length || 0)
+
     let addedCount = 0
     let deletedCount = 0
     let errorCount = 0
+    let skippedCount = 0
     const errors: string[] = []
+    const debugInfo: string[] = []
 
     for (const variation of allVariations || []) {
       const cast = variation.cast as { id: number; name: string; show_in_pos: boolean; is_active: boolean } | null
       const shouldBeInBase = cast?.show_in_pos && cast?.is_active
       const existsInBase = baseVariationsMap.has(variation.variation_name)
 
+      console.log(`[sync-variations] ${variation.variation_name}: shouldBeInBase=${shouldBeInBase}, existsInBase=${existsInBase}, is_synced=${variation.is_synced}, cast=`, cast)
+
       if (shouldBeInBase && !existsInBase) {
         // POS表示ON & BASEに存在しない → 追加
+        debugInfo.push(`${variation.variation_name}: 追加試行`)
         try {
           await addItemVariation(
             accessToken,
@@ -162,20 +172,27 @@ export async function POST(request: NextRequest) {
             .eq('id', variation.id)
 
           addedCount++
+          debugInfo.push(`${variation.variation_name}: 追加成功`)
         } catch (err) {
           console.error(`Failed to add variation ${variation.variation_name}:`, err)
-          errors.push(`追加失敗: ${variation.variation_name}`)
+          errors.push(`追加失敗: ${variation.variation_name} - ${err instanceof Error ? err.message : 'Unknown error'}`)
           errorCount++
         }
       } else if (shouldBeInBase && existsInBase && !variation.is_synced) {
         // POS表示ON & BASEに既に存在 & 未同期 → 同期済みとしてマーク
+        debugInfo.push(`${variation.variation_name}: 既存・同期済みマーク`)
         await supabase
           .from('base_variations')
           .update({ is_synced: true })
           .eq('id', variation.id)
         addedCount++
+      } else if (shouldBeInBase && existsInBase && variation.is_synced) {
+        // 既に同期済み → スキップ
+        debugInfo.push(`${variation.variation_name}: 既に同期済み（スキップ）`)
+        skippedCount++
       } else if (!shouldBeInBase && existsInBase) {
         // POS表示OFF & BASEに存在する → 削除
+        debugInfo.push(`${variation.variation_name}: 削除試行`)
         try {
           const variationId = baseVariationsMap.get(variation.variation_name)!
           await deleteItemVariation(
@@ -198,20 +215,30 @@ export async function POST(request: NextRequest) {
         }
       } else if (!shouldBeInBase && !existsInBase) {
         // POS表示OFF & BASEに存在しない → ローカルのみ非アクティブに
+        debugInfo.push(`${variation.variation_name}: ローカル非アクティブ化`)
         await supabase
           .from('base_variations')
           .update({ is_active: false })
           .eq('id', variation.id)
         deletedCount++
+      } else {
+        debugInfo.push(`${variation.variation_name}: 条件に合致せず（スキップ）`)
+        skippedCount++
       }
     }
+
+    console.log('[sync-variations] Result:', { addedCount, deletedCount, errorCount, skippedCount })
 
     return NextResponse.json({
       success: true,
       added: addedCount,
       deleted: deletedCount,
+      skipped: skippedCount,
       errors: errorCount,
       errorDetails: errors.length > 0 ? errors : undefined,
+      debug: debugInfo,
+      baseVariationsInBASE: Array.from(baseVariationsMap.keys()),
+      localVariationsCount: allVariations?.length || 0,
     })
   } catch (error) {
     console.error('BASE sync-variations error:', error)

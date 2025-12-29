@@ -834,9 +834,14 @@ function BaseSettingsPageContent() {
       }
 
       if (data.errors > 0) {
-        toast.error(`追加${data.added}件、削除${data.deleted}件、エラー${data.errors}件`)
+        console.error('同期エラー詳細:', data.errorDetails)
+        console.log('デバッグ情報:', data.debug)
+        console.log('BASEの既存バリエーション:', data.baseVariationsInBASE)
+        const errorMsg = data.errorDetails?.[0] || 'Unknown error'
+        toast.error(`追加${data.added}件、削除${data.deleted}件、エラー${data.errors}件\n${errorMsg}`, { duration: 10000 })
       } else if (data.added === 0 && data.deleted === 0) {
-        toast.success('同期するバリエーションがありません')
+        console.log('デバッグ情報:', data.debug)
+        toast.success(`同期するバリエーションがありません（スキップ${data.skipped || 0}件）`)
       } else {
         const messages: string[] = []
         if (data.added > 0) messages.push(`${data.added}件追加`)
