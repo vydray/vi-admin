@@ -269,7 +269,8 @@ export async function addItemVariation(
     index++
   }
 
-  // 新規バリエーションを追加（variation_idは指定しない）
+  // 新規バリエーションを追加（variation_idは空文字で新規を示す）
+  params.set(`variation_id[${index}]`, '')
   params.set(`variation[${index}]`, variationName)
   params.set(`variation_stock[${index}]`, stock.toString())
 
