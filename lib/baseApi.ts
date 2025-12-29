@@ -4,6 +4,29 @@
  */
 
 const BASE_API_URL = 'https://api.thebase.in'
+const DEFAULT_TIMEOUT = 30000 // 30秒
+
+/**
+ * タイムアウト付きfetch
+ */
+async function fetchWithTimeout(
+  url: string,
+  options: RequestInit = {},
+  timeout: number = DEFAULT_TIMEOUT
+): Promise<Response> {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeout)
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    })
+    return response
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
 
 export interface BaseOAuthTokens {
   access_token: string
@@ -160,7 +183,7 @@ export async function fetchOrders(
   if (options?.offset) params.set('offset', options.offset.toString())
 
   const url = `${BASE_API_URL}/1/orders?${params.toString()}`
-  const response = await fetch(url, {
+  const response = await fetchWithTimeout(url, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },
@@ -217,40 +240,24 @@ export async function fetchItem(
 
 /**
  * 商品にバリエーションを追加
- * BASE APIには独立したadd_variationエンドポイントがないため、
- * items/editを使用して新規バリエーションを追加する
- * 既存のバリエーションを保持するため、先に商品詳細を取得してから追加する
- * https://docs.thebase.in/api/items/edit
+ * BASE APIのitems/add_variationを使用
+ * https://docs.thebase.in/api/items/add_variation
  */
 export async function addItemVariation(
   accessToken: string,
   itemId: number,
   variationName: string,
-  stock: number = 0
+  stock: number = 100
 ): Promise<{ item: BaseItem }> {
-  // まず現在の商品情報を取得して既存のバリエーションを取得
-  const currentItem = await fetchItem(accessToken, itemId)
-  const existingVariations = currentItem.item.variations || []
+  const params = new URLSearchParams({
+    item_id: itemId.toString(),
+    variation: variationName,
+    variation_stock: stock.toString(),
+  })
 
-  // items/editで既存バリエーション + 新規バリエーションを設定
-  const params = new URLSearchParams()
-  params.set('item_id', itemId.toString())
+  console.log('[BASE API] Adding variation:', { itemId, variationName, stock })
 
-  // 既存のバリエーションを追加
-  let index = 0
-  for (const v of existingVariations) {
-    params.set(`variation_id[${index}]`, v.variation_id.toString())
-    params.set(`variation[${index}]`, v.variation)
-    params.set(`variation_stock[${index}]`, v.variation_stock.toString())
-    index++
-  }
-
-  // 新規バリエーションを追加（variation_idを空文字にすると新規追加）
-  params.set(`variation_id[${index}]`, '')
-  params.set(`variation[${index}]`, variationName)
-  params.set(`variation_stock[${index}]`, stock.toString())
-
-  const response = await fetch(`${BASE_API_URL}/1/items/edit`, {
+  const response = await fetchWithTimeout(`${BASE_API_URL}/1/items/add_variation`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -259,12 +266,18 @@ export async function addItemVariation(
     body: params,
   })
 
+  const responseText = await response.text()
+  console.log('[BASE API] Add variation response:', response.status, responseText)
+
   if (!response.ok) {
-    const error = await response.text()
-    throw new Error(`Add variation failed: ${error}`)
+    throw new Error(`Add variation failed: ${responseText}`)
   }
 
-  return response.json()
+  try {
+    return JSON.parse(responseText)
+  } catch {
+    throw new Error(`Add variation failed: Invalid JSON response - ${responseText}`)
+  }
 }
 
 /**

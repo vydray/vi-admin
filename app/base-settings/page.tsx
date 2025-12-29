@@ -86,6 +86,7 @@ function BaseSettingsPageContent() {
   // BASE商品（API取得）
   const [baseApiItems, setBaseApiItems] = useState<any[]>([])
   const [loadingBaseItems, setLoadingBaseItems] = useState(false)
+  const [syncProgress, setSyncProgress] = useState<string | null>(null)
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -656,9 +657,9 @@ function BaseSettingsPageContent() {
     }
 
     setLoadingBaseItems(true)
+    setSyncProgress('BASEから商品を取得中...')
     try {
       // Step 1: BASE商品を取得
-      toast('BASEから商品を取得中...', { icon: '📦' })
       const response = await fetch(`/api/base/items?store_id=${storeId}`)
       const data = await response.json()
 
@@ -758,9 +759,10 @@ function BaseSettingsPageContent() {
       let syncErrorCount = 0
 
       if (productIdsToSync.length > 0) {
-        toast(`BASEにバリエーションを同期中... (${productIdsToSync.length}商品)`, { icon: '🔄' })
+        for (let i = 0; i < productIdsToSync.length; i++) {
+          const productId = productIdsToSync[i]
+          setSyncProgress(`BASEにバリエーションを同期中... (${i + 1}/${productIdsToSync.length})`)
 
-        for (const productId of productIdsToSync) {
           try {
             const syncResponse = await fetch('/api/base/sync-variations', {
               method: 'POST',
@@ -783,6 +785,8 @@ function BaseSettingsPageContent() {
         }
       }
 
+      setSyncProgress('完了処理中...')
+
       // 結果表示
       const messages: string[] = []
       messages.push(`${items.length}件の商品を取得`)
@@ -804,6 +808,7 @@ function BaseSettingsPageContent() {
       toast.error(err instanceof Error ? err.message : '商品の読み込みに失敗しました')
     } finally {
       setLoadingBaseItems(false)
+      setSyncProgress(null)
     }
   }
 
@@ -1641,6 +1646,17 @@ function BaseSettingsPageContent() {
           </div>
         </div>
       )}
+
+      {/* 同期中モーダル */}
+      {syncProgress && (
+        <div style={styles.syncOverlay}>
+          <div style={styles.syncModal}>
+            <div style={styles.syncSpinner} />
+            <p style={styles.syncText}>{syncProgress}</p>
+            <p style={styles.syncHint}>しばらくお待ちください...</p>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -2282,5 +2298,45 @@ const styles: { [key: string]: React.CSSProperties } = {
     textAlign: 'center' as const,
     color: '#94a3b8',
     fontSize: '13px',
+  },
+  // 同期中モーダル
+  syncOverlay: {
+    position: 'fixed' as const,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 3000,
+  },
+  syncModal: {
+    backgroundColor: 'white',
+    borderRadius: '16px',
+    padding: '40px 60px',
+    textAlign: 'center' as const,
+    boxShadow: '0 10px 40px rgba(0,0,0,0.3)',
+  },
+  syncSpinner: {
+    width: '50px',
+    height: '50px',
+    border: '4px solid #e5e7eb',
+    borderTop: '4px solid #3b82f6',
+    borderRadius: '50%',
+    margin: '0 auto 20px',
+    animation: 'spin 1s linear infinite',
+  },
+  syncText: {
+    fontSize: '18px',
+    fontWeight: '600',
+    color: '#2c3e50',
+    margin: '0 0 8px 0',
+  },
+  syncHint: {
+    fontSize: '14px',
+    color: '#64748b',
+    margin: 0,
   },
 }
