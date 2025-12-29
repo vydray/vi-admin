@@ -81,7 +81,6 @@ function BaseSettingsPageContent() {
   const [tokenExpiresAt, setTokenExpiresAt] = useState<string | null>(null)
   const [savingCredentials, setSavingCredentials] = useState(false)
   const [fetchingOrders, setFetchingOrders] = useState(false)
-  const [syncingProductId, setSyncingProductId] = useState<number | null>(null)
 
   // BASE商品（API取得）
   const [baseApiItems, setBaseApiItems] = useState<any[]>([])
@@ -285,7 +284,6 @@ function BaseSettingsPageContent() {
             store_id: storeId,
             variation_name: cast.name,
             cast_id: castId,
-            is_synced: false,
             is_active: true,
           }
         })
@@ -344,7 +342,6 @@ function BaseSettingsPageContent() {
         store_id: storeId,
         variation_name: cast.name,
         cast_id: cast.id,
-        is_synced: false,
         is_active: true,
       }))
 
@@ -673,7 +670,6 @@ function BaseSettingsPageContent() {
       // Step 2: 自動マッピング処理
       let addedProducts = 0
       let addedVariations = 0
-      const productIdsToSync: number[] = []
 
       for (const item of items) {
         // 既にマッピング済みかチェック
@@ -708,7 +704,6 @@ function BaseSettingsPageContent() {
               store_id: storeId,
               variation_name: cast.name,
               cast_id: cast.id,
-              is_synced: false,
               is_active: true,
             }))
 
@@ -718,7 +713,6 @@ function BaseSettingsPageContent() {
 
             if (!varsError) {
               addedVariations += variationsToAdd.length
-              productIdsToSync.push(newProduct.id)
             }
           }
         } else {
@@ -732,7 +726,6 @@ function BaseSettingsPageContent() {
               store_id: storeId,
               variation_name: cast.name,
               cast_id: cast.id,
-              is_synced: false,
               is_active: true,
             }))
 
@@ -742,45 +735,7 @@ function BaseSettingsPageContent() {
 
             if (!varsError) {
               addedVariations += variationsToAdd.length
-              productIdsToSync.push(existingProduct.id)
             }
-          } else {
-            // 新しいキャストはないが、未同期のバリエーションがあれば同期対象に
-            const hasUnsyncedVariations = existingProduct.variations.some(v => !v.is_synced)
-            if (hasUnsyncedVariations) {
-              productIdsToSync.push(existingProduct.id)
-            }
-          }
-        }
-      }
-
-      // Step 3: BASEへ同期
-      let syncedCount = 0
-      let syncErrorCount = 0
-
-      if (productIdsToSync.length > 0) {
-        for (let i = 0; i < productIdsToSync.length; i++) {
-          const productId = productIdsToSync[i]
-          setSyncProgress(`BASEにバリエーションを同期中... (${i + 1}/${productIdsToSync.length})`)
-
-          try {
-            const syncResponse = await fetch('/api/base/sync-variations', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ store_id: storeId, base_product_id: productId }),
-            })
-
-            const syncData = await syncResponse.json()
-
-            if (syncResponse.ok && syncData.success) {
-              syncedCount += syncData.added || 0
-            } else {
-              console.error('同期エラー:', syncData.error)
-              syncErrorCount++
-            }
-          } catch (syncErr) {
-            console.error('同期エラー:', syncErr)
-            syncErrorCount++
           }
         }
       }
@@ -792,14 +747,8 @@ function BaseSettingsPageContent() {
       messages.push(`${items.length}件の商品を取得`)
       if (addedProducts > 0) messages.push(`${addedProducts}件の商品を追加`)
       if (addedVariations > 0) messages.push(`${addedVariations}件のバリエーションを追加`)
-      if (syncedCount > 0) messages.push(`${syncedCount}件をBASEに同期`)
-      if (syncErrorCount > 0) messages.push(`${syncErrorCount}件の同期エラー`)
 
-      if (syncErrorCount > 0) {
-        toast.error(messages.join('、'))
-      } else {
-        toast.success(messages.join('、'))
-      }
+      toast.success(messages.join('、'))
 
       // データ再読み込み
       loadData()
@@ -809,51 +758,6 @@ function BaseSettingsPageContent() {
     } finally {
       setLoadingBaseItems(false)
       setSyncProgress(null)
-    }
-  }
-
-  // バリエーションをBASEに同期
-  const handleSyncVariations = async (productId: number) => {
-    if (!isConnected) {
-      toast.error('BASEとの連携が必要です')
-      return
-    }
-
-    setSyncingProductId(productId)
-    try {
-      const response = await fetch('/api/base/sync-variations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ store_id: storeId, base_product_id: productId }),
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to sync variations')
-      }
-
-      if (data.errors > 0) {
-        console.error('同期エラー詳細:', data.errorDetails)
-        console.log('デバッグ情報:', data.debug)
-        console.log('BASEの既存バリエーション:', data.baseVariationsInBASE)
-        const errorMsg = data.errorDetails?.[0] || 'Unknown error'
-        toast.error(`追加${data.added}件、削除${data.deleted}件、エラー${data.errors}件\n${errorMsg}`, { duration: 10000 })
-      } else if (data.added === 0 && data.deleted === 0) {
-        console.log('デバッグ情報:', data.debug)
-        toast.success(`同期するバリエーションがありません（スキップ${data.skipped || 0}件）`)
-      } else {
-        const messages: string[] = []
-        if (data.added > 0) messages.push(`${data.added}件追加`)
-        if (data.deleted > 0) messages.push(`${data.deleted}件削除`)
-        toast.success(`BASEに同期しました（${messages.join('、')}）`)
-      }
-      loadData()
-    } catch (err) {
-      console.error('同期エラー:', err)
-      toast.error(err instanceof Error ? err.message : 'BASEへの同期に失敗しました')
-    } finally {
-      setSyncingProductId(null)
     }
   }
 
@@ -1035,18 +939,6 @@ function BaseSettingsPageContent() {
                       >
                         + キャスト追加
                       </button>
-                      {isConnected && product.variations.length > 0 && (
-                        <button
-                          onClick={() => handleSyncVariations(product.id)}
-                          style={{
-                            ...styles.syncBtn,
-                            ...(product.variations.some(v => !v.is_synced) ? {} : styles.syncBtnSecondary),
-                          }}
-                          disabled={syncingProductId === product.id}
-                        >
-                          {syncingProductId === product.id ? '同期中...' : 'BASEに同期'}
-                        </button>
-                      )}
                       <button
                         onClick={() => handleDeleteProduct(product.id)}
                         style={styles.deleteBtn}
@@ -1067,9 +959,6 @@ function BaseSettingsPageContent() {
                         {product.variations.map(variation => (
                           <span key={variation.id} style={styles.variationTag}>
                             {variation.variation_name}
-                            {variation.is_synced && (
-                              <span style={styles.syncBadge}>同期済</span>
-                            )}
                             <button
                               onClick={() => handleDeleteVariation(variation.id)}
                               style={styles.removeTagBtn}
@@ -1790,20 +1679,6 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '12px',
     fontWeight: '500',
   },
-  syncBtn: {
-    padding: '6px 12px',
-    border: '1px solid #10b981',
-    borderRadius: '6px',
-    backgroundColor: '#10b981',
-    color: 'white',
-    cursor: 'pointer',
-    fontSize: '12px',
-    fontWeight: '500',
-  },
-  syncBtnSecondary: {
-    backgroundColor: 'white',
-    color: '#10b981',
-  },
   deleteBtn: {
     padding: '6px 12px',
     border: '1px solid #e74c3c',
@@ -1843,13 +1718,6 @@ const styles: { [key: string]: React.CSSProperties } = {
     color: '#0369a1',
     borderRadius: '20px',
     fontSize: '13px',
-  },
-  syncBadge: {
-    fontSize: '10px',
-    backgroundColor: '#10b981',
-    color: 'white',
-    padding: '2px 6px',
-    borderRadius: '10px',
   },
   removeTagBtn: {
     background: 'none',
