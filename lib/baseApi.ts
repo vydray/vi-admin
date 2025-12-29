@@ -240,8 +240,9 @@ export async function fetchItem(
 
 /**
  * 商品にバリエーションを追加
- * BASE APIのitems/add_variationを使用
- * https://docs.thebase.in/api/items/add_variation
+ * BASE APIには独立したadd_variationエンドポイントがないため、
+ * items/editを使用して既存バリエーション + 新規バリエーションを送信する
+ * https://docs.thebase.in/api/items/edit
  */
 export async function addItemVariation(
   accessToken: string,
@@ -249,15 +250,33 @@ export async function addItemVariation(
   variationName: string,
   stock: number = 100
 ): Promise<{ item: BaseItem }> {
-  const params = new URLSearchParams({
-    item_id: itemId.toString(),
-    variation: variationName,
-    variation_stock: stock.toString(),
-  })
+  // まず現在の商品情報を取得して既存のバリエーションを取得
+  const currentItem = await fetchItem(accessToken, itemId)
+  const existingVariations = currentItem.item.variations || []
 
-  console.log('[BASE API] Adding variation:', { itemId, variationName, stock })
+  console.log('[BASE API] Current variations:', existingVariations.map(v => v.variation))
 
-  const response = await fetchWithTimeout(`${BASE_API_URL}/1/items/add_variation`, {
+  // items/editで既存バリエーション + 新規バリエーションを設定
+  const params = new URLSearchParams()
+  params.set('item_id', itemId.toString())
+
+  // 既存のバリエーションを追加
+  let index = 0
+  for (const v of existingVariations) {
+    params.set(`variation_id[${index}]`, v.variation_id.toString())
+    params.set(`variation[${index}]`, v.variation)
+    params.set(`variation_stock[${index}]`, v.variation_stock.toString())
+    index++
+  }
+
+  // 新規バリエーションを追加（variation_idは指定しない）
+  params.set(`variation[${index}]`, variationName)
+  params.set(`variation_stock[${index}]`, stock.toString())
+
+  console.log('[BASE API] Adding variation:', { itemId, variationName, stock, totalVariations: index + 1 })
+  console.log('[BASE API] Request params:', params.toString())
+
+  const response = await fetchWithTimeout(`${BASE_API_URL}/1/items/edit`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -267,7 +286,7 @@ export async function addItemVariation(
   })
 
   const responseText = await response.text()
-  console.log('[BASE API] Add variation response:', response.status, responseText)
+  console.log('[BASE API] Add variation response:', response.status, responseText.substring(0, 500))
 
   if (!response.ok) {
     throw new Error(`Add variation failed: ${responseText}`)
