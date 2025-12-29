@@ -75,7 +75,7 @@ export function getAuthorizationUrl(
     response_type: 'code',
     client_id: clientId,
     redirect_uri: redirectUri,
-    scope: 'read_users read_items read_orders',
+    scope: 'read_users read_items write_items read_orders',
     state,
   })
   return `${BASE_API_URL}/1/oauth/authorize?${params.toString()}`
@@ -217,23 +217,40 @@ export async function fetchItem(
 
 /**
  * 商品にバリエーションを追加
- * https://docs.thebase.in/api/items/add_variation
+ * BASE APIには独立したadd_variationエンドポイントがないため、
+ * items/editを使用して新規バリエーションを追加する
+ * 既存のバリエーションを保持するため、先に商品詳細を取得してから追加する
+ * https://docs.thebase.in/api/items/edit
  */
 export async function addItemVariation(
   accessToken: string,
   itemId: number,
   variationName: string,
-  stock?: number
+  stock: number = 0
 ): Promise<{ item: BaseItem }> {
-  const params = new URLSearchParams({
-    item_id: itemId.toString(),
-    variation: variationName,
-  })
-  if (stock !== undefined) {
-    params.set('variation_stock', stock.toString())
+  // まず現在の商品情報を取得して既存のバリエーションを取得
+  const currentItem = await fetchItem(accessToken, itemId)
+  const existingVariations = currentItem.item.variations || []
+
+  // items/editで既存バリエーション + 新規バリエーションを設定
+  const params = new URLSearchParams()
+  params.set('item_id', itemId.toString())
+
+  // 既存のバリエーションを追加
+  let index = 0
+  for (const v of existingVariations) {
+    params.set(`variation_id[${index}]`, v.variation_id.toString())
+    params.set(`variation[${index}]`, v.variation)
+    params.set(`variation_stock[${index}]`, v.variation_stock.toString())
+    index++
   }
 
-  const response = await fetch(`${BASE_API_URL}/1/items/add_variation`, {
+  // 新規バリエーションを追加（variation_idを空文字にすると新規追加）
+  params.set(`variation_id[${index}]`, '')
+  params.set(`variation[${index}]`, variationName)
+  params.set(`variation_stock[${index}]`, stock.toString())
+
+  const response = await fetch(`${BASE_API_URL}/1/items/edit`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${accessToken}`,

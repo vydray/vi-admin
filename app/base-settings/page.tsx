@@ -1298,14 +1298,20 @@ function BaseSettingsPageContent() {
             {/* 接続状態 */}
             <div style={{ marginBottom: '16px' }}>
               {isConnected ? (
-                <div style={styles.connectedBadge}>
-                  ✓ BASE連携済み
-                  {tokenExpiresAt && (
-                    <span style={{ marginLeft: '8px', fontSize: '12px', opacity: 0.8 }}>
-                      (有効期限: {new Date(tokenExpiresAt).toLocaleString('ja-JP')})
-                    </span>
-                  )}
-                </div>
+                <>
+                  <div style={styles.connectedBadge}>
+                    ✓ BASE連携済み
+                    {tokenExpiresAt && (
+                      <span style={{ marginLeft: '8px', fontSize: '12px', opacity: 0.8 }}>
+                        (有効期限: {new Date(tokenExpiresAt).toLocaleString('ja-JP')})
+                      </span>
+                    )}
+                  </div>
+                  <div style={styles.scopeNotice}>
+                    ※ バリエーション同期機能を使用するには「商品情報を書き込む」権限が必要です。
+                    同期がエラーになる場合は「再認証」ボタンを押して権限を更新してください。
+                  </div>
+                </>
               ) : (
                 <div style={styles.disconnectedBadge}>
                   未接続
@@ -2105,6 +2111,16 @@ const styles: { [key: string]: React.CSSProperties } = {
     borderRadius: '20px',
     fontSize: '14px',
     fontWeight: '500',
+  },
+  scopeNotice: {
+    marginTop: '8px',
+    padding: '10px 14px',
+    backgroundColor: '#fef3c7',
+    border: '1px solid #f59e0b',
+    borderRadius: '6px',
+    fontSize: '12px',
+    color: '#92400e',
+    lineHeight: '1.5',
   },
   helpDetails: {
     backgroundColor: '#f0f9ff',
