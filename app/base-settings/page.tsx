@@ -83,6 +83,10 @@ function BaseSettingsPageContent() {
   const [loadingBaseItems, setLoadingBaseItems] = useState(false)
   const [syncProgress, setSyncProgress] = useState<string | null>(null)
 
+  // 店舗価格編集
+  const [editingStorePrices, setEditingStorePrices] = useState<{ [productName: string]: number | null }>({})
+  const [savingStorePrice, setSavingStorePrice] = useState<string | null>(null)
+
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
@@ -188,6 +192,58 @@ function BaseSettingsPageContent() {
       loadData()
     }
   }, [loadData, storeLoading, storeId])
+
+  // 店舗価格を保存
+  const handleSaveStorePrice = async (productName: string, storePrice: number | null) => {
+    setSavingStorePrice(productName)
+    try {
+      // base_productsに該当商品があるか確認
+      const existingProduct = baseProducts.find(bp => bp.base_product_name === productName)
+
+      if (existingProduct) {
+        // 既存商品を更新
+        const { error } = await supabase
+          .from('base_products')
+          .update({ store_price: storePrice })
+          .eq('id', existingProduct.id)
+
+        if (error) throw error
+      } else {
+        // 新規作成（BASE APIから取得した商品情報を使用）
+        const baseItem = baseApiItems.find(item => item.title === productName)
+        const { error } = await supabase
+          .from('base_products')
+          .insert({
+            store_id: storeId,
+            base_product_name: productName,
+            local_product_name: productName,
+            base_price: baseItem?.price || 0,
+            base_item_id: baseItem?.item_id || null,
+            store_price: storePrice,
+            is_active: true,
+          })
+
+        if (error) throw error
+      }
+
+      toast.success('店舗価格を保存しました')
+
+      // 編集状態をクリア
+      setEditingStorePrices(prev => {
+        const newState = { ...prev }
+        delete newState[productName]
+        return newState
+      })
+
+      // データ再読み込み
+      loadData()
+    } catch (err) {
+      console.error('店舗価格保存エラー:', err)
+      toast.error('保存に失敗しました')
+    } finally {
+      setSavingStorePrice(null)
+    }
+  }
 
   // 商品追加
   const handleAddProduct = async () => {
@@ -710,6 +766,12 @@ function BaseSettingsPageContent() {
                 const orphanedVariations = baseVariationNames.filter((name: string) => !castNames.includes(name))
                 const hasIssues = missingCasts.length > 0 || orphanedVariations.length > 0
 
+                // 店舗価格（base_productsから取得、または編集中の値）
+                const savedProduct = baseProducts.find(bp => bp.base_product_name === item.title)
+                const savedStorePrice = savedProduct?.store_price ?? null
+                const isEditing = editingStorePrices.hasOwnProperty(item.title)
+                const currentStorePrice = isEditing ? editingStorePrices[item.title] : savedStorePrice
+
                 return (
                   <div key={item.item_id} style={styles.productCard}>
                     <div style={styles.productHeader}>
@@ -729,11 +791,46 @@ function BaseSettingsPageContent() {
                         <div>
                           <h3 style={styles.productName}>{item.title}</h3>
                           <span style={styles.productPrice}>
-                            ¥{item.price.toLocaleString()} ・ バリエーション: {baseVariationNames.length}件
+                            BASE価格: ¥{item.price.toLocaleString()} ・ バリエーション: {baseVariationNames.length}件
                             {!hasIssues && <span style={styles.okBadge}>OK</span>}
                           </span>
                         </div>
                       </div>
+                    </div>
+
+                    {/* 店舗価格設定 */}
+                    <div style={styles.storePriceSection}>
+                      <label style={styles.storePriceLabel}>店舗価格（税抜）</label>
+                      <div style={styles.storePriceRow}>
+                        <span style={styles.storePriceYen}>¥</span>
+                        <input
+                          type="number"
+                          value={currentStorePrice ?? ''}
+                          onChange={(e) => {
+                            const value = e.target.value === '' ? null : parseInt(e.target.value)
+                            setEditingStorePrices(prev => ({ ...prev, [item.title]: value }))
+                          }}
+                          placeholder="未設定"
+                          style={styles.storePriceInput}
+                          min="0"
+                          step="100"
+                        />
+                        {isEditing && (
+                          <button
+                            onClick={() => handleSaveStorePrice(item.title, currentStorePrice)}
+                            disabled={savingStorePrice === item.title}
+                            style={styles.storePriceSaveBtn}
+                          >
+                            {savingStorePrice === item.title ? '...' : '保存'}
+                          </button>
+                        )}
+                        {!isEditing && savedStorePrice !== null && (
+                          <span style={styles.storePriceSaved}>設定済み</span>
+                        )}
+                      </div>
+                      <p style={styles.storePriceHint}>
+                        売上・バック計算に使用する税抜価格を設定
+                      </p>
                     </div>
 
                     {/* 未登録のキャスト（POS表示ONだがBASEに未登録） */}
@@ -2045,5 +2142,58 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '11px',
     color: '#b45309',
     margin: 0,
+  },
+  // 店舗価格セクション
+  storePriceSection: {
+    marginTop: '12px',
+    padding: '12px',
+    backgroundColor: '#f0fdf4',
+    borderRadius: '6px',
+    border: '1px solid #bbf7d0',
+  },
+  storePriceLabel: {
+    display: 'block',
+    fontSize: '13px',
+    fontWeight: '600',
+    color: '#166534',
+    marginBottom: '8px',
+  },
+  storePriceRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+  },
+  storePriceYen: {
+    fontSize: '16px',
+    fontWeight: '600',
+    color: '#166534',
+  },
+  storePriceInput: {
+    width: '120px',
+    padding: '8px 12px',
+    fontSize: '14px',
+    border: '1px solid #86efac',
+    borderRadius: '6px',
+    backgroundColor: 'white',
+  },
+  storePriceSaveBtn: {
+    padding: '8px 16px',
+    backgroundColor: '#16a34a',
+    color: 'white',
+    border: 'none',
+    borderRadius: '6px',
+    fontSize: '13px',
+    fontWeight: '500',
+    cursor: 'pointer',
+  },
+  storePriceSaved: {
+    fontSize: '12px',
+    color: '#16a34a',
+    fontWeight: '500',
+  },
+  storePriceHint: {
+    fontSize: '11px',
+    color: '#15803d',
+    margin: '8px 0 0 0',
   },
 }

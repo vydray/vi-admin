@@ -823,6 +823,7 @@ export interface BaseProduct {
   base_product_name: string
   local_product_name: string
   base_price: number
+  store_price: number | null  // 店舗価格（税抜）- 売上・バック計算用
   sync_variations: boolean
   is_active: boolean
   created_at: string
