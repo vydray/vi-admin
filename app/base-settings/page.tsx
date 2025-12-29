@@ -54,10 +54,6 @@ function BaseSettingsPageContent() {
   const [newBasePrice, setNewBasePrice] = useState(0)
   const [productSearchQuery, setProductSearchQuery] = useState('')
 
-  // バリエーション追加モーダル
-  const [showAddVariationModal, setShowAddVariationModal] = useState(false)
-  const [selectedProductId, setSelectedProductId] = useState<number | null>(null)
-  const [selectedCastIds, setSelectedCastIds] = useState<number[]>([])
 
   // CSVインポート
   const [csvData, setCsvData] = useState<ParsedCSVRow[]>([])
@@ -233,140 +229,6 @@ function BaseSettingsPageContent() {
     }
   }
 
-  // 商品削除
-  const handleDeleteProduct = async (productId: number) => {
-    if (!confirm('この商品を削除しますか？関連するバリエーションも削除されます。')) {
-      return
-    }
-
-    try {
-      const { error } = await supabase
-        .from('base_products')
-        .update({ is_active: false })
-        .eq('id', productId)
-
-      if (error) throw error
-
-      toast.success('商品を削除しました')
-      loadData()
-    } catch (err) {
-      console.error('商品削除エラー:', err)
-      toast.error('削除に失敗しました')
-    }
-  }
-
-  // バリエーション追加モーダルを開く
-  const openAddVariationModal = (productId: number) => {
-    setSelectedProductId(productId)
-    setSelectedCastIds([])
-    setShowAddVariationModal(true)
-  }
-
-  // バリエーション追加
-  const handleAddVariations = async () => {
-    if (!selectedProductId || selectedCastIds.length === 0) {
-      toast.error('キャストを選択してください')
-      return
-    }
-
-    setSaving(true)
-    try {
-      const product = baseProducts.find(p => p.id === selectedProductId)
-      const existingNames = product?.variations.map(v => v.variation_name) || []
-
-      // 選択されたキャストをバリエーションとして追加
-      const variationsToAdd = selectedCastIds
-        .map(castId => {
-          const cast = casts.find(c => c.id === castId)
-          if (!cast || existingNames.includes(cast.name)) return null
-          return {
-            base_product_id: selectedProductId,
-            store_id: storeId,
-            variation_name: cast.name,
-            cast_id: castId,
-            is_active: true,
-          }
-        })
-        .filter(Boolean)
-
-      if (variationsToAdd.length === 0) {
-        toast.error('追加できるキャストがありません')
-        return
-      }
-
-      const { error } = await supabase
-        .from('base_variations')
-        .insert(variationsToAdd)
-
-      if (error) throw error
-
-      toast.success(`${variationsToAdd.length}人のキャストを追加しました`)
-      setShowAddVariationModal(false)
-      setSelectedCastIds([])
-      loadData()
-    } catch (err) {
-      console.error('バリエーション追加エラー:', err)
-      toast.error('追加に失敗しました')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  // バリエーション削除
-  const handleDeleteVariation = async (variationId: number) => {
-    try {
-      const { error } = await supabase
-        .from('base_variations')
-        .update({ is_active: false })
-        .eq('id', variationId)
-
-      if (error) throw error
-
-      toast.success('バリエーションを削除しました')
-      loadData()
-    } catch (err) {
-      console.error('バリエーション削除エラー:', err)
-      toast.error('削除に失敗しました')
-    }
-  }
-
-  // 全キャストをバリエーションとして追加
-  const handleAddAllCasts = async (productId: number) => {
-    const product = baseProducts.find(p => p.id === productId)
-    const existingNames = product?.variations.map(v => v.variation_name) || []
-
-    const variationsToAdd = casts
-      .filter(cast => !existingNames.includes(cast.name))
-      .map(cast => ({
-        base_product_id: productId,
-        store_id: storeId,
-        variation_name: cast.name,
-        cast_id: cast.id,
-        is_active: true,
-      }))
-
-    if (variationsToAdd.length === 0) {
-      toast.error('追加できるキャストがありません')
-      return
-    }
-
-    setSaving(true)
-    try {
-      const { error } = await supabase
-        .from('base_variations')
-        .insert(variationsToAdd)
-
-      if (error) throw error
-
-      toast.success(`${variationsToAdd.length}人のキャストを追加しました`)
-      loadData()
-    } catch (err) {
-      console.error('一括追加エラー:', err)
-      toast.error('追加に失敗しました')
-    } finally {
-      setSaving(false)
-    }
-  }
 
   // CSVファイル選択
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -761,15 +623,6 @@ function BaseSettingsPageContent() {
     }
   }
 
-  // バリエーション追加モーダル内のキャスト一覧
-  const availableCasts = selectedProductId
-    ? casts.filter(cast => {
-        const product = baseProducts.find(p => p.id === selectedProductId)
-        const existingNames = product?.variations.map(v => v.variation_name) || []
-        return !existingNames.includes(cast.name)
-      })
-    : []
-
   if (storeLoading || loading) {
     return <LoadingSpinner />
   }
@@ -857,121 +710,84 @@ function BaseSettingsPageContent() {
           </p>
 
           {/* BASE商品一覧（API取得） */}
-          {baseApiItems.length > 0 && (
-            <div style={styles.baseItemsSection}>
-              <h3 style={styles.baseItemsTitle}>BASE上の商品一覧</h3>
-              <p style={styles.baseItemsHint}>
-                マッピングしたい商品の「マッピング追加」をクリックしてください
-              </p>
-              <div style={styles.baseItemsGrid}>
-                {baseApiItems.map((item) => {
-                  const alreadyMapped = baseProducts.some(
-                    bp => bp.base_product_name === item.title
-                  )
-                  return (
-                    <div key={item.item_id} style={styles.baseItemCard}>
-                      {item.img1_origin && (
-                        <img
-                          src={item.img1_origin}
-                          alt={item.title}
-                          style={styles.baseItemImage}
-                        />
-                      )}
-                      <div style={styles.baseItemInfo}>
-                        <h4 style={styles.baseItemName}>{item.title}</h4>
-                        <p style={styles.baseItemPrice}>¥{item.price.toLocaleString()}</p>
-                        {item.variations && item.variations.length > 0 && (
-                          <p style={styles.baseItemVariations}>
-                            バリエーション: {item.variations.length}件
-                          </p>
-                        )}
-                      </div>
-                      <div style={styles.baseItemActions}>
-                        {alreadyMapped ? (
-                          <span style={styles.mappedBadge}>マッピング済</span>
-                        ) : (
-                          <button
-                            onClick={() => {
-                              setNewProductName(item.title)
-                              setNewBasePrice(item.price)
-                              setShowAddProductModal(true)
-                            }}
-                            style={styles.mapBtn}
-                          >
-                            マッピング追加
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          )}
-
-          {baseProducts.length === 0 && baseApiItems.length === 0 ? (
-            <div style={styles.emptyState}>
-              <p>BASE商品が登録されていません</p>
-              <p style={styles.emptyHint}>「商品を追加」から登録してください</p>
-            </div>
-          ) : (
+          {baseApiItems.length > 0 ? (
             <div style={styles.productList}>
-              {baseProducts.map(product => (
-                <div key={product.id} style={styles.productCard}>
-                  <div style={styles.productHeader}>
-                    <div>
-                      <h3 style={styles.productName}>{product.base_product_name}</h3>
-                      <span style={styles.productPrice}>
-                        BASE価格: ¥{product.base_price.toLocaleString()}
-                      </span>
-                    </div>
-                    <div style={styles.productActions}>
-                      <button
-                        onClick={() => handleAddAllCasts(product.id)}
-                        style={styles.addAllBtn}
-                        disabled={saving}
-                      >
-                        全キャスト追加
-                      </button>
-                      <button
-                        onClick={() => openAddVariationModal(product.id)}
-                        style={styles.addBtn}
-                      >
-                        + キャスト追加
-                      </button>
-                      <button
-                        onClick={() => handleDeleteProduct(product.id)}
-                        style={styles.deleteBtn}
-                      >
-                        削除
-                      </button>
-                    </div>
-                  </div>
+              {baseApiItems.map((item) => {
+                // BASEに登録されているバリエーション名のリスト
+                const baseVariationNames = (item.variations || []).map((v: any) => v.variation)
+                // POS表示ONのキャストでBASEに未登録の人
+                const missingCasts = casts.filter(cast => !baseVariationNames.includes(cast.name))
 
-                  <div style={styles.variationList}>
-                    <div style={styles.variationHeader}>
-                      <span>バリエーション（{product.variations.length}人）</span>
-                    </div>
-                    {product.variations.length === 0 ? (
-                      <p style={styles.noVariations}>キャストが登録されていません</p>
-                    ) : (
-                      <div style={styles.variationTags}>
-                        {product.variations.map(variation => (
-                          <span key={variation.id} style={styles.variationTag}>
-                            {variation.variation_name}
-                            <button
-                              onClick={() => handleDeleteVariation(variation.id)}
-                              style={styles.removeTagBtn}
-                            >
-                              ×
-                            </button>
+                return (
+                  <div key={item.item_id} style={styles.productCard}>
+                    <div style={styles.productHeader}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        {item.img1_origin && (
+                          <img
+                            src={item.img1_origin}
+                            alt={item.title}
+                            style={{
+                              width: '50px',
+                              height: '50px',
+                              objectFit: 'cover' as const,
+                              borderRadius: '6px',
+                            }}
+                          />
+                        )}
+                        <div>
+                          <h3 style={styles.productName}>{item.title}</h3>
+                          <span style={styles.productPrice}>
+                            ¥{item.price.toLocaleString()} ・ バリエーション: {baseVariationNames.length}件
                           </span>
-                        ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* BASEに登録済みのバリエーション */}
+                    <div style={styles.variationList}>
+                      <div style={styles.variationHeader}>
+                        <span>BASE登録済み（{baseVariationNames.length}人）</span>
+                      </div>
+                      {baseVariationNames.length === 0 ? (
+                        <p style={styles.noVariations}>バリエーションがありません</p>
+                      ) : (
+                        <div style={styles.variationTags}>
+                          {baseVariationNames.map((name: string, idx: number) => (
+                            <span key={idx} style={styles.variationTag}>
+                              {name}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 未登録のキャスト */}
+                    {missingCasts.length > 0 && (
+                      <div style={styles.missingSection}>
+                        <div style={styles.missingHeader}>
+                          <span style={styles.missingIcon}>!</span>
+                          <span>未登録のキャスト（{missingCasts.length}人）</span>
+                        </div>
+                        <div style={styles.missingTags}>
+                          {missingCasts.map(cast => (
+                            <span key={cast.id} style={styles.missingTag}>
+                              {cast.name}
+                            </span>
+                          ))}
+                        </div>
+                        <p style={styles.missingHint}>
+                          ※ BASEの商品編集画面でバリエーションを追加してください
+                        </p>
                       </div>
                     )}
                   </div>
-                </div>
-              ))}
+                )
+              })}
+            </div>
+          ) : (
+            <div style={styles.emptyState}>
+              <p>BASE商品がありません</p>
+              <p style={styles.emptyHint}>「BASEと同期」ボタンで商品を取得してください</p>
             </div>
           )}
         </div>
@@ -1481,60 +1297,6 @@ function BaseSettingsPageContent() {
                 disabled={saving || !newProductName}
               >
                 {saving ? '追加中...' : '追加'}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* バリエーション追加モーダル */}
-      {showAddVariationModal && (
-        <div style={styles.modalOverlay} onClick={() => setShowAddVariationModal(false)}>
-          <div style={styles.modal} onClick={e => e.stopPropagation()}>
-            <h3 style={styles.modalTitle}>キャストをバリエーションとして追加</h3>
-
-            <div style={styles.formGroup}>
-              <label style={styles.label}>追加するキャスト</label>
-              {availableCasts.length === 0 ? (
-                <p style={styles.noAvailable}>追加できるキャストがいません</p>
-              ) : (
-                <div style={styles.castCheckList}>
-                  {availableCasts.map(cast => (
-                    <label key={cast.id} style={styles.checkboxLabel}>
-                      <input
-                        type="checkbox"
-                        checked={selectedCastIds.includes(cast.id)}
-                        onChange={e => {
-                          if (e.target.checked) {
-                            setSelectedCastIds([...selectedCastIds, cast.id])
-                          } else {
-                            setSelectedCastIds(selectedCastIds.filter(id => id !== cast.id))
-                          }
-                        }}
-                        style={styles.checkbox}
-                      />
-                      <span>{cast.name}</span>
-                    </label>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div style={styles.modalActions}>
-              <Button
-                onClick={() => setShowAddVariationModal(false)}
-                variant="outline"
-                size="medium"
-              >
-                キャンセル
-              </Button>
-              <Button
-                onClick={handleAddVariations}
-                variant="primary"
-                size="medium"
-                disabled={saving || selectedCastIds.length === 0}
-              >
-                {saving ? '追加中...' : `${selectedCastIds.length}人を追加`}
               </Button>
             </div>
           </div>
@@ -2210,6 +1972,55 @@ const styles: { [key: string]: React.CSSProperties } = {
   syncHint: {
     fontSize: '14px',
     color: '#64748b',
+    margin: 0,
+  },
+  // 未登録キャストセクション
+  missingSection: {
+    marginTop: '12px',
+    padding: '12px',
+    backgroundColor: '#fef2f2',
+    borderRadius: '6px',
+    border: '1px solid #fecaca',
+  },
+  missingHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    fontSize: '13px',
+    fontWeight: '600',
+    color: '#dc2626',
+    marginBottom: '8px',
+  },
+  missingIcon: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '18px',
+    height: '18px',
+    backgroundColor: '#dc2626',
+    color: 'white',
+    borderRadius: '50%',
+    fontSize: '11px',
+    fontWeight: 'bold',
+  },
+  missingTags: {
+    display: 'flex',
+    flexWrap: 'wrap' as const,
+    gap: '6px',
+    marginBottom: '8px',
+  },
+  missingTag: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: '4px 10px',
+    backgroundColor: '#fee2e2',
+    color: '#991b1b',
+    borderRadius: '20px',
+    fontSize: '12px',
+  },
+  missingHint: {
+    fontSize: '11px',
+    color: '#b91c1c',
     margin: 0,
   },
 }
