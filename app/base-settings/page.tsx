@@ -715,8 +715,12 @@ function BaseSettingsPageContent() {
               {baseApiItems.map((item) => {
                 // BASEに登録されているバリエーション名のリスト
                 const baseVariationNames = (item.variations || []).map((v: any) => v.variation)
+                // POS表示ONのキャスト名のリスト
+                const castNames = casts.map(cast => cast.name)
                 // POS表示ONのキャストでBASEに未登録の人
                 const missingCasts = casts.filter(cast => !baseVariationNames.includes(cast.name))
+                // BASEに登録されているがPOS表示ONのキャストに該当しないバリエーション
+                const orphanedVariations = baseVariationNames.filter((name: string) => !castNames.includes(name))
 
                 return (
                   <div key={item.item_id} style={styles.productCard}>
@@ -752,16 +756,24 @@ function BaseSettingsPageContent() {
                         <p style={styles.noVariations}>バリエーションがありません</p>
                       ) : (
                         <div style={styles.variationTags}>
-                          {baseVariationNames.map((name: string, idx: number) => (
-                            <span key={idx} style={styles.variationTag}>
-                              {name}
-                            </span>
-                          ))}
+                          {baseVariationNames.map((name: string, idx: number) => {
+                            const isOrphaned = !castNames.includes(name)
+                            return (
+                              <span
+                                key={idx}
+                                style={isOrphaned ? styles.variationTagOrphaned : styles.variationTag}
+                                title={isOrphaned ? 'POS表示ONのキャストに該当なし' : ''}
+                              >
+                                {name}
+                                {isOrphaned && <span style={styles.orphanedMark}>?</span>}
+                              </span>
+                            )
+                          })}
                         </div>
                       )}
                     </div>
 
-                    {/* 未登録のキャスト */}
+                    {/* 未登録のキャスト（POS表示ONだがBASEに未登録） */}
                     {missingCasts.length > 0 && (
                       <div style={styles.missingSection}>
                         <div style={styles.missingHeader}>
@@ -777,6 +789,26 @@ function BaseSettingsPageContent() {
                         </div>
                         <p style={styles.missingHint}>
                           ※ BASEの商品編集画面でバリエーションを追加してください
+                        </p>
+                      </div>
+                    )}
+
+                    {/* 該当なしのバリエーション（BASEにあるがPOS表示ONのキャストに該当しない） */}
+                    {orphanedVariations.length > 0 && (
+                      <div style={styles.orphanedSection}>
+                        <div style={styles.orphanedHeader}>
+                          <span style={styles.orphanedIcon}>?</span>
+                          <span>該当なしのバリエーション（{orphanedVariations.length}件）</span>
+                        </div>
+                        <div style={styles.orphanedTags}>
+                          {orphanedVariations.map((name: string, idx: number) => (
+                            <span key={idx} style={styles.orphanedTag}>
+                              {name}
+                            </span>
+                          ))}
+                        </div>
+                        <p style={styles.orphanedHint}>
+                          ※ POS表示がOFFのキャスト、退店したキャスト、または手動追加されたバリエーションです
                         </p>
                       </div>
                     )}
@@ -2022,5 +2054,79 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '11px',
     color: '#b91c1c',
     margin: 0,
+  },
+  // 該当なしバリエーションセクション（黄色/オレンジ系）
+  orphanedSection: {
+    marginTop: '12px',
+    padding: '12px',
+    backgroundColor: '#fffbeb',
+    borderRadius: '6px',
+    border: '1px solid #fcd34d',
+  },
+  orphanedHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    fontSize: '13px',
+    fontWeight: '600',
+    color: '#b45309',
+    marginBottom: '8px',
+  },
+  orphanedIcon: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '18px',
+    height: '18px',
+    backgroundColor: '#f59e0b',
+    color: 'white',
+    borderRadius: '50%',
+    fontSize: '11px',
+    fontWeight: 'bold',
+  },
+  orphanedTags: {
+    display: 'flex',
+    flexWrap: 'wrap' as const,
+    gap: '6px',
+    marginBottom: '8px',
+  },
+  orphanedTag: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: '4px 10px',
+    backgroundColor: '#fef3c7',
+    color: '#92400e',
+    borderRadius: '20px',
+    fontSize: '12px',
+  },
+  orphanedHint: {
+    fontSize: '11px',
+    color: '#b45309',
+    margin: 0,
+  },
+  // BASE登録済みタグの該当なしバージョン
+  variationTagOrphaned: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
+    padding: '4px 10px',
+    backgroundColor: '#fef3c7',
+    color: '#92400e',
+    borderRadius: '20px',
+    fontSize: '13px',
+    border: '1px dashed #f59e0b',
+  },
+  orphanedMark: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '14px',
+    height: '14px',
+    backgroundColor: '#f59e0b',
+    color: 'white',
+    borderRadius: '50%',
+    fontSize: '9px',
+    fontWeight: 'bold',
+    marginLeft: '2px',
   },
 }
