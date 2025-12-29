@@ -100,7 +100,20 @@ function BaseSettingsPageContent() {
 
       if (productsError) throw productsError
 
-      // バリエーション取得
+      // キャスト一覧（POS表示ONのみ）- 先に取得してバリエーションのフィルタに使用
+      const { data: castsData, error: castsError } = await supabase
+        .from('casts')
+        .select('id, name, is_active, show_in_pos')
+        .eq('store_id', storeId)
+        .eq('is_active', true)
+        .eq('show_in_pos', true)
+        .order('display_order', { ascending: true, nullsFirst: false })
+        .order('name')
+
+      if (castsError) throw castsError
+      const activeCastIds = (castsData || []).map(c => c.id)
+
+      // バリエーション取得（POS ONのキャストのみ）
       const productIds = (productsData || []).map(p => p.id)
       let variationsData: BaseVariation[] = []
 
@@ -113,7 +126,8 @@ function BaseSettingsPageContent() {
           .order('variation_name')
 
         if (varsError) throw varsError
-        variationsData = vars || []
+        // POS ONのキャストのみフィルタ
+        variationsData = (vars || []).filter(v => v.cast_id === null || activeCastIds.includes(v.cast_id))
       }
 
       // 商品とバリエーションを結合
@@ -134,16 +148,6 @@ function BaseSettingsPageContent() {
 
       if (localError) throw localError
       setLocalProducts(localData || [])
-
-      // キャスト一覧（POS表示ONのみ）
-      const { data: castsData, error: castsError } = await supabase
-        .from('casts')
-        .select('id, name, is_active, show_in_pos')
-        .eq('store_id', storeId)
-        .eq('is_active', true)
-        .eq('show_in_pos', true)
-        .order('display_order', { ascending: true, nullsFirst: false })
-        .order('name')
 
       // 締め時間設定を取得
       const { data: salesSettingsData } = await supabase
@@ -173,7 +177,6 @@ function BaseSettingsPageContent() {
         setTokenExpiresAt(baseSettingsData.token_expires_at)
       }
 
-      if (castsError) throw castsError
       setCasts(castsData || [])
 
     } catch (err) {
