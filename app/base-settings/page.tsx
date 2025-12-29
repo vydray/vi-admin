@@ -648,7 +648,7 @@ function BaseSettingsPageContent() {
     }
   }
 
-  // BASEから商品を読み込み＆自動マッピング
+  // BASEから商品を読み込み＆自動マッピング＆同期
   const handleLoadBaseItems = async () => {
     if (!isConnected) {
       toast.error('BASEとの連携が必要です')
@@ -657,6 +657,8 @@ function BaseSettingsPageContent() {
 
     setLoadingBaseItems(true)
     try {
+      // Step 1: BASE商品を取得
+      toast('BASEから商品を取得中...', { icon: '📦' })
       const response = await fetch(`/api/base/items?store_id=${storeId}`)
       const data = await response.json()
 
@@ -667,9 +669,10 @@ function BaseSettingsPageContent() {
       const items = data.items || []
       setBaseApiItems(items)
 
-      // 自動マッピング処理
+      // Step 2: 自動マッピング処理
       let addedProducts = 0
       let addedVariations = 0
+      const productIdsToSync: number[] = []
 
       for (const item of items) {
         // 既にマッピング済みかチェック
@@ -714,6 +717,7 @@ function BaseSettingsPageContent() {
 
             if (!varsError) {
               addedVariations += variationsToAdd.length
+              productIdsToSync.push(newProduct.id)
             }
           }
         } else {
@@ -737,7 +741,44 @@ function BaseSettingsPageContent() {
 
             if (!varsError) {
               addedVariations += variationsToAdd.length
+              productIdsToSync.push(existingProduct.id)
             }
+          } else {
+            // 新しいキャストはないが、未同期のバリエーションがあれば同期対象に
+            const hasUnsyncedVariations = existingProduct.variations.some(v => !v.is_synced)
+            if (hasUnsyncedVariations) {
+              productIdsToSync.push(existingProduct.id)
+            }
+          }
+        }
+      }
+
+      // Step 3: BASEへ同期
+      let syncedCount = 0
+      let syncErrorCount = 0
+
+      if (productIdsToSync.length > 0) {
+        toast(`BASEにバリエーションを同期中... (${productIdsToSync.length}商品)`, { icon: '🔄' })
+
+        for (const productId of productIdsToSync) {
+          try {
+            const syncResponse = await fetch('/api/base/sync-variations', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ store_id: storeId, base_product_id: productId }),
+            })
+
+            const syncData = await syncResponse.json()
+
+            if (syncResponse.ok && syncData.success) {
+              syncedCount += syncData.added || 0
+            } else {
+              console.error('同期エラー:', syncData.error)
+              syncErrorCount++
+            }
+          } catch (syncErr) {
+            console.error('同期エラー:', syncErr)
+            syncErrorCount++
           }
         }
       }
@@ -747,8 +788,14 @@ function BaseSettingsPageContent() {
       messages.push(`${items.length}件の商品を取得`)
       if (addedProducts > 0) messages.push(`${addedProducts}件の商品を追加`)
       if (addedVariations > 0) messages.push(`${addedVariations}件のバリエーションを追加`)
+      if (syncedCount > 0) messages.push(`${syncedCount}件をBASEに同期`)
+      if (syncErrorCount > 0) messages.push(`${syncErrorCount}件の同期エラー`)
 
-      toast.success(messages.join('、'))
+      if (syncErrorCount > 0) {
+        toast.error(messages.join('、'))
+      } else {
+        toast.success(messages.join('、'))
+      }
 
       // データ再読み込み
       loadData()
@@ -873,7 +920,7 @@ function BaseSettingsPageContent() {
                   size="small"
                   disabled={loadingBaseItems}
                 >
-                  {loadingBaseItems ? '読み込み中...' : 'BASEから商品読み込み'}
+                  {loadingBaseItems ? '同期中...' : 'BASEと同期'}
                 </Button>
               )}
               <Button
