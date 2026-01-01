@@ -75,9 +75,7 @@ interface OrderItemWithTax {
   cast_name: string[] | null  // 配列として保存されている
   quantity: number
   unit_price: number
-  unit_price_excl_tax: number
   subtotal: number
-  tax_amount: number
 }
 
 interface Order {
@@ -221,8 +219,7 @@ function PayslipPageContent() {
     staff_name: string | null
     table_number: string | null
     order_date: string
-    subtotal_excl_tax: number
-    tax_amount: number
+    subtotal_incl_tax: number
     service_charge: number
     total_incl_tax: number
     order_items: {
@@ -233,7 +230,6 @@ function PayslipPageContent() {
       quantity: number
       unit_price: number
       subtotal: number
-      tax_amount: number
     }[]
   } | null>(null)
 
@@ -521,9 +517,7 @@ function PayslipPageContent() {
           cast_name,
           quantity,
           unit_price,
-          unit_price_excl_tax,
-          subtotal,
-          tax_amount
+          subtotal
         )
       `)
       .eq('store_id', storeId)
@@ -950,8 +944,7 @@ function PayslipPageContent() {
           staff_name,
           table_number,
           order_date,
-          subtotal_excl_tax,
-          tax_amount,
+          subtotal_incl_tax,
           service_charge,
           total_incl_tax,
           order_items (
@@ -961,8 +954,7 @@ function PayslipPageContent() {
             cast_name,
             quantity,
             unit_price,
-            subtotal,
-            tax_amount
+            subtotal
           )
         `)
         .eq('id', selectedOrderId)
@@ -2635,8 +2627,8 @@ function PayslipPageContent() {
                 <div style={styles.modalSectionTitle}>金額明細</div>
                 <div style={styles.modalGrid}>
                   <div style={styles.modalGridItem}>
-                    <span>小計（税抜）</span>
-                    <span>{currencyFormatter.format(orderDetail.subtotal_excl_tax || 0)}</span>
+                    <span>メニュー合計</span>
+                    <span>{currencyFormatter.format(orderDetail.subtotal_incl_tax || 0)}</span>
                   </div>
                   {(orderDetail.service_charge || 0) > 0 && (
                     <div style={styles.modalGridItem}>
@@ -2644,10 +2636,6 @@ function PayslipPageContent() {
                       <span>{currencyFormatter.format(orderDetail.service_charge)}</span>
                     </div>
                   )}
-                  <div style={styles.modalGridItem}>
-                    <span>消費税</span>
-                    <span>{currencyFormatter.format(orderDetail.tax_amount || 0)}</span>
-                  </div>
                   <div style={{
                     ...styles.modalGridItem,
                     borderTop: '2px solid #e5e5e5',

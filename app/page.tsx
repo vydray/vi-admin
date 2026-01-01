@@ -59,7 +59,7 @@ interface OrderExport {
   table_number: string
   staff_name: string
   total_incl_tax: number
-  subtotal_excl_tax: number
+  subtotal_incl_tax: number
   order_items: OrderItemExport[]
   payments: Payment[]
 }

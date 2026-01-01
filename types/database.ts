@@ -107,8 +107,7 @@ export interface Receipt {
   table_number: string
   guest_name: string | null
   staff_name: string[] | string | null  // POS側で配列化対応
-  subtotal_excl_tax: number
-  tax_amount: number
+  subtotal_incl_tax: number
   service_charge: number
   rounding_adjustment: number
   total_incl_tax: number

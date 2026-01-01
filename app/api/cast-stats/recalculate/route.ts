@@ -41,9 +41,7 @@ interface OrderItemWithTax {
   cast_name: string[] | null
   quantity: number
   unit_price: number
-  unit_price_excl_tax: number
   subtotal: number
-  tax_amount: number
 }
 
 interface OrderWithStaff {
@@ -193,9 +191,7 @@ async function recalculateForDate(storeId: number, date: string): Promise<{
           cast_name,
           quantity,
           unit_price,
-          unit_price_excl_tax,
-          subtotal,
-          tax_amount
+          subtotal
         )
       `)
       .eq('store_id', storeId)

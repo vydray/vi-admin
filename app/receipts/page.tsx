@@ -37,8 +37,7 @@ interface OrderWithPayment {
   table_number: string
   guest_name: string | null
   staff_name: string[] | string | null  // POS側で配列化対応
-  subtotal_excl_tax: number
-  tax_amount: number
+  subtotal_incl_tax: number
   service_charge: number
   rounding_adjustment: number
   total_incl_tax: number
@@ -759,10 +758,6 @@ function ReceiptsPageContent() {
 
         const validItems = createItems.filter(item => item.product_name)
 
-        // 税抜き小計を計算（消費税10%として）
-        const subtotalExclTax = Math.round(itemsSubtotal / 1.1)
-        const taxAmount = itemsSubtotal - subtotalExclTax
-
         // 端数調整額を計算
         const roundingAdjustment = finalTotal - (itemsSubtotal + serviceFee + cardFee)
 
@@ -784,8 +779,7 @@ function ReceiptsPageContent() {
               ? (createFormData.staff_names.length === 1 ? createFormData.staff_names[0] : createFormData.staff_names.join(','))
               : null,
             visit_type: null,
-            subtotal_excl_tax: subtotalExclTax,
-            tax_amount: taxAmount,
+            subtotal_incl_tax: itemsSubtotal,
             service_charge: serviceFee,
             rounding_adjustment: roundingAdjustment,
             total_incl_tax: finalTotal
@@ -803,10 +797,7 @@ function ReceiptsPageContent() {
           cast_name: item.cast_name || null,
           quantity: item.quantity,
           unit_price: item.unit_price,
-          unit_price_excl_tax: Math.round(item.unit_price / 1.1),
-          tax_amount: item.unit_price - Math.round(item.unit_price / 1.1),
           subtotal: item.unit_price * item.quantity,
-          pack_number: 0,
           store_id: storeId
         }))
 
@@ -851,10 +842,6 @@ function ReceiptsPageContent() {
       // 注文明細から合計金額を計算
       const itemsSubtotal = selectedReceipt.order_items?.reduce((sum, item) => sum + item.subtotal, 0) || 0
 
-      // 税抜き小計を計算（消費税10%として）
-      const subtotalExclTax = Math.round(itemsSubtotal / 1.1)
-      const taxAmount = itemsSubtotal - subtotalExclTax
-
       // サービス料を計算
       const serviceFee = Math.floor(itemsSubtotal * (serviceChargeRate / 100))
       const subtotalBeforeRounding = itemsSubtotal + serviceFee
@@ -879,8 +866,7 @@ function ReceiptsPageContent() {
           guest_name: selectedReceipt.guest_name,
           staff_name: selectedReceipt.staff_name,
           visit_type: null,
-          subtotal_excl_tax: subtotalExclTax,
-          tax_amount: taxAmount,
+          subtotal_incl_tax: itemsSubtotal,
           service_charge: serviceFee,
           rounding_adjustment: roundingAdjustment,
           total_incl_tax: totalInclTax
@@ -899,10 +885,7 @@ function ReceiptsPageContent() {
           cast_name: item.cast_name,
           quantity: item.quantity,
           unit_price: item.unit_price,
-          unit_price_excl_tax: Math.round(item.unit_price / 1.1),
-          tax_amount: item.unit_price - Math.round(item.unit_price / 1.1),
           subtotal: item.unit_price * item.quantity,
-          pack_number: 0,
           store_id: selectedReceipt.store_id
         }))
 
@@ -990,10 +973,6 @@ function ReceiptsPageContent() {
       // 合計金額を計算（支払い情報なし）
       const itemsSubtotal = validItems.reduce((sum, item) => sum + (item.unit_price * item.quantity), 0)
 
-      // 税抜き小計を計算（消費税10%として）
-      const subtotalExclTax = Math.round(itemsSubtotal / 1.1)
-      const taxAmount = itemsSubtotal - subtotalExclTax
-
       const serviceFee = Math.floor(itemsSubtotal * (serviceChargeRate / 100))
       const subtotalBeforeRounding = itemsSubtotal + serviceFee
       const totalInclTax = getRoundedTotal(subtotalBeforeRounding, roundingUnit, roundingMethod)
@@ -1019,8 +998,7 @@ function ReceiptsPageContent() {
             ? (createFormData.staff_names.length === 1 ? createFormData.staff_names[0] : createFormData.staff_names.join(','))
             : null,
           visit_type: null,
-          subtotal_excl_tax: subtotalExclTax,
-          tax_amount: taxAmount,
+          subtotal_incl_tax: itemsSubtotal,
           service_charge: serviceFee,
           rounding_adjustment: roundingAdjustment,
           total_incl_tax: totalInclTax
@@ -1038,10 +1016,7 @@ function ReceiptsPageContent() {
         cast_name: item.cast_name || null,
         quantity: item.quantity,
         unit_price: item.unit_price,
-        unit_price_excl_tax: Math.round(item.unit_price / 1.1),
-        tax_amount: item.unit_price - Math.round(item.unit_price / 1.1),
         subtotal: item.unit_price * item.quantity,
-        pack_number: 0,
         store_id: storeId
       }))
 
@@ -1242,10 +1217,7 @@ function ReceiptsPageContent() {
           cast_name: newItemData.cast_names.length > 0 ? newItemData.cast_names : null,
           quantity: newItemData.quantity,
           unit_price: newItemData.unit_price,
-          unit_price_excl_tax: Math.round(newItemData.unit_price / 1.1), // 税抜き価格（仮で10%）
-          tax_amount: newItemData.unit_price - Math.round(newItemData.unit_price / 1.1), // 税額
           subtotal: newItemData.unit_price * newItemData.quantity,
-          pack_number: 0,
           store_id: selectedReceipt.store_id
         })
 
@@ -1484,7 +1456,7 @@ function ReceiptsPageContent() {
                   <td style={styles.td}>{receipt.guest_name || '-'}</td>
                   <td style={styles.td}>{formatCastName(receipt.staff_name)}</td>
                   <td style={styles.td}>{receipt.payment_methods || '-'}</td>
-                  <td style={styles.td}>{formatCurrency(receipt.subtotal_excl_tax)}</td>
+                  <td style={styles.td}>{formatCurrency(receipt.subtotal_incl_tax)}</td>
                   <td style={styles.td}>{formatCurrency(receipt.total_incl_tax)}</td>
                 </tr>
               ))

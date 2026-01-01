@@ -23,9 +23,7 @@ interface OrderItemWithTax {
   cast_name: string[] | null  // 配列として保存されている
   quantity: number
   unit_price: number
-  unit_price_excl_tax: number
   subtotal: number
-  tax_amount: number
 }
 
 // Order with staff_name
@@ -224,9 +222,9 @@ export function calculateCastSales(
       const castsOnItem = item.cast_name || []
       if (castsOnItem.length === 0) return // キャスト紐付けなしはスキップ
 
-      // 税抜き金額を使用するか判定
+      // 税抜き金額を使用するか判定（税率10%固定）
       const unitPrice = salesSettings.use_tax_excluded
-        ? item.unit_price_excl_tax
+        ? Math.round(item.unit_price / 1.1)
         : item.unit_price
 
       let subtotal = unitPrice * item.quantity

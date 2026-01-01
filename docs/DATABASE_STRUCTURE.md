@@ -353,8 +353,7 @@ store_id: 店舗ID (FK)
 table_number: 卓番号
 guest_name: 顧客名
 staff_name: 担当スタッフ（配列）
-subtotal_excl_tax: 税抜小計
-tax_amount: 税額
+subtotal_incl_tax: メニュー合計（税込）
 service_charge: サービス料
 total_incl_tax: 税込合計
 order_date: 営業日

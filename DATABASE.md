@@ -154,8 +154,7 @@
 | checkout_datetime | timestamp | ✓ |  |  |
 | table_number | varchar(10) |  |  |  |
 | staff_name | varchar(50) |  |  |  |
-| subtotal_excl_tax | numeric |  |  |  |
-| tax_amount | numeric |  |  |  |
+| subtotal_incl_tax | numeric |  |  | メニュー合計（税込） |
 | total_incl_tax | numeric | ✓ |  |  |
 | created_at | timestamp |  | CURRENT_TIMESTAMP |  |
 | guest_name | varchar(100) |  |  |  |
@@ -178,11 +177,8 @@
 | unit_price | numeric | ✓ |  |  |
 | quantity | integer | ✓ |  |  |
 | subtotal | numeric | ✓ |  |  |
-| pack_number | integer |  |  |  |
 | created_at | timestamp |  | CURRENT_TIMESTAMP |  |
 | cast_name | text[] |  |  |  |
-| unit_price_excl_tax | numeric |  |  |  |
-| tax_amount | numeric |  |  |  |
 | store_id | integer |  |  | FK → stores.id |
 
 ### payments
@@ -1000,11 +996,8 @@
 | unit_price | numeric | ✓ |  |  |
 | quantity | integer | ✓ |  |  |
 | subtotal | numeric | ✓ |  |  |
-| pack_number | integer |  |  |  |
 | created_at | timestamp |  | CURRENT_TIMESTAMP |  |
 | cast_name | text[] |  |  |  |
-| unit_price_excl_tax | numeric |  |  |  |
-| tax_amount | numeric |  |  |  |
 | store_id | integer |  |  | FK → stores.id |
 
 ### orders
@@ -1016,8 +1009,7 @@
 | checkout_datetime | timestamp | ✓ |  |  |
 | table_number | varchar(10) |  |  |  |
 | staff_name | varchar(50) |  |  |  |
-| subtotal_excl_tax | numeric |  |  |  |
-| tax_amount | numeric |  |  |  |
+| subtotal_incl_tax | numeric |  |  | メニュー合計（税込） |
 | total_incl_tax | numeric | ✓ |  |  |
 | created_at | timestamp |  | CURRENT_TIMESTAMP |  |
 | guest_name | varchar(100) |  |  |  |

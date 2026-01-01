@@ -45,9 +45,7 @@ interface OrderItemWithTax {
   cast_name: string[] | null  // 配列として保存されている
   quantity: number
   unit_price: number
-  unit_price_excl_tax: number
   subtotal: number
-  tax_amount: number
 }
 
 interface Order {
@@ -287,9 +285,7 @@ function CastSalesPageContent() {
             cast_name,
             quantity,
             unit_price,
-            unit_price_excl_tax,
-            subtotal,
-            tax_amount
+            subtotal
           )
         `)
         .eq('store_id', storeId)
