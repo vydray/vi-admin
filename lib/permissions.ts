@@ -16,7 +16,7 @@ export const PERMISSION_CONFIG: Record<PermissionKey, { label: string; category:
   sales_settings: { label: '売上設定', category: '設定' },
   products: { label: '商品管理', category: '商品' },
   categories: { label: 'カテゴリ管理', category: '商品' },
-  receipts: { label: 'レシート設定', category: 'その他' },
+  receipts: { label: '伝票管理', category: 'その他' },
   store_settings: { label: '店舗設定', category: 'その他' },
   settings: { label: 'システム設定', category: 'その他' },
   shifts: { label: 'シフト管理', category: 'その他' },
