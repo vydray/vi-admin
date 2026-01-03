@@ -345,8 +345,10 @@ export function calculateItemBased(
   const { position: roundingPosition, type: roundingType } = parseRoundingMethod(settings.item_rounding_method)
   const roundingTiming = settings.item_rounding_timing ?? 'per_item'
   const helpDistMethod = settings.item_help_distribution_method ?? 'all_to_nomination'
-  const includeHelpItems = settings.item_help_sales_inclusion === 'both'
-  const giveHelpSales = includeHelpItems
+  // ヘルプ商品も売上に含める（multi_cast_distributionが'all_equal'の場合）
+  const includeHelpItems = settings.item_multi_cast_distribution === 'all_equal'
+  // ヘルプにも売上をつける（help_sales_inclusionが'both'の場合）
+  const giveHelpSales = settings.item_help_sales_inclusion === 'both'
 
   // 税計算・端数処理を適用する関数
   const applyTaxAndRounding = (amount: number) => {
@@ -559,8 +561,10 @@ export function calculateReceiptBased(
   const { position: roundingPosition, type: roundingType } = parseRoundingMethod(settings.receipt_rounding_method)
   const roundingTiming = settings.receipt_rounding_timing ?? 'per_item'
   const helpDistMethod = settings.receipt_help_distribution_method ?? 'all_to_nomination'
-  const includeHelpItems = settings.receipt_help_sales_inclusion === 'both'
-  const giveHelpSales = includeHelpItems
+  // ヘルプ商品も売上に含める（multi_cast_distributionが'all_equal'の場合）
+  const includeHelpItems = settings.receipt_multi_cast_distribution === 'all_equal'
+  // ヘルプにも売上をつける（help_sales_inclusionが'both'の場合）
+  const giveHelpSales = settings.receipt_help_sales_inclusion === 'both'
   const helpRatio = settings.receipt_help_ratio ?? 50
 
   // 税計算・端数処理を適用する関数
