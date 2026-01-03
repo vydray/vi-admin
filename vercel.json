@@ -20,6 +20,10 @@
     {
       "path": "/api/cron/generate-recurring-posts",
       "schedule": "0 20 * * *"
+    },
+    {
+      "path": "/api/cron/refresh-base-tokens",
+      "schedule": "0 */12 * * *"
     }
   ]
 }
