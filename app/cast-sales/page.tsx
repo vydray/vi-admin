@@ -526,12 +526,10 @@ function CastSalesPageContent() {
 
   // 売上再計算
   const handleRecalculate = async () => {
-    console.log('handleRecalculate called')
     const confirmed = await confirm(
       `${format(selectedMonth, 'yyyy年M月', { locale: ja })}の売上データを再計算します。\n確定済みのデータは再計算されません。`
     )
 
-    console.log('confirm result:', confirmed)
     if (!confirmed) return
 
     setRecalculating(true)
@@ -540,7 +538,6 @@ function CastSalesPageContent() {
       const end = endOfMonth(selectedMonth)
       const dateFrom = format(start, 'yyyy-MM-dd')
       const dateTo = format(end, 'yyyy-MM-dd')
-      console.log('API request:', { store_id: storeId, date_from: dateFrom, date_to: dateTo })
 
       const response = await fetch('/api/cast-stats/recalculate', {
         method: 'POST',
@@ -552,9 +549,7 @@ function CastSalesPageContent() {
         }),
       })
 
-      console.log('API response status:', response.status)
       const result = await response.json()
-      console.log('API response data:', result)
 
       if (!response.ok) {
         throw new Error(result.error || '再計算に失敗しました')
