@@ -139,10 +139,72 @@ async function loadSystemSettings(storeId: number): Promise<{ tax_rate: number; 
   return settings
 }
 
+// 商品別キャスト売上を集計（cast_daily_items用）
+interface CastDailyItemData {
+  cast_id: number
+  store_id: number
+  date: string
+  category: string | null
+  product_name: string
+  quantity: number
+  subtotal: number
+  back_amount: number
+  is_self: boolean
+}
+
+function aggregateCastDailyItems(
+  orders: OrderWithStaff[],
+  castMap: Map<string, Cast>,
+  storeId: number,
+  date: string
+): CastDailyItemData[] {
+  // キャスト×商品×カテゴリ×is_self ごとに集計
+  const itemsMap = new Map<string, CastDailyItemData>()
+
+  for (const order of orders) {
+    const staffNames = order.staff_name?.split(', ').map(n => n.trim()) || []
+
+    for (const item of order.order_items || []) {
+      if (!item.cast_name || item.cast_name.length === 0) continue
+
+      for (const castName of item.cast_name) {
+        const cast = castMap.get(castName)
+        if (!cast) continue
+
+        // selfかどうかを判定（staff_nameに含まれていればself）
+        const isSelf = staffNames.includes(castName)
+
+        const key = `${cast.id}:${item.product_name}:${item.category || ''}:${isSelf}`
+
+        if (itemsMap.has(key)) {
+          const existing = itemsMap.get(key)!
+          existing.quantity += item.quantity
+          existing.subtotal += item.subtotal
+        } else {
+          itemsMap.set(key, {
+            cast_id: cast.id,
+            store_id: storeId,
+            date: date,
+            category: item.category,
+            product_name: item.product_name,
+            quantity: item.quantity,
+            subtotal: item.subtotal,
+            back_amount: 0, // バック計算は後で行う
+            is_self: isSelf
+          })
+        }
+      }
+    }
+  }
+
+  return Array.from(itemsMap.values())
+}
+
 // 指定店舗・日付の売上を再計算
 async function recalculateForStoreAndDate(storeId: number, date: string): Promise<{
   success: boolean
   castsProcessed: number
+  itemsProcessed: number
   error?: string
 }> {
   try {
@@ -385,7 +447,7 @@ async function recalculateForStoreAndDate(storeId: number, date: string): Promis
       }
     }
 
-    // UPSERT
+    // UPSERT cast_daily_stats
     if (statsToUpsert.length > 0) {
       const { error: upsertError } = await supabaseAdmin
         .from('cast_daily_stats')
@@ -396,10 +458,39 @@ async function recalculateForStoreAndDate(storeId: number, date: string): Promis
       if (upsertError) throw upsertError
     }
 
-    return { success: true, castsProcessed: statsToUpsert.length }
+    // cast_daily_items の集計と更新
+    const dailyItems = aggregateCastDailyItems(typedOrders, castMap, storeId, date)
+
+    // 既存データを削除してから挿入（日付・店舗単位で置き換え）
+    if (dailyItems.length > 0) {
+      // 確定済みキャストの商品データは除外
+      const itemsToUpsert = dailyItems.filter(item => !finalizedCastIds.has(item.cast_id))
+
+      if (itemsToUpsert.length > 0) {
+        // 既存の未確定データを削除
+        const castIdsToUpdate = [...new Set(itemsToUpsert.map(i => i.cast_id))]
+        await supabaseAdmin
+          .from('cast_daily_items')
+          .delete()
+          .eq('store_id', storeId)
+          .eq('date', date)
+          .in('cast_id', castIdsToUpdate)
+
+        // 新しいデータを挿入
+        const { error: itemsError } = await supabaseAdmin
+          .from('cast_daily_items')
+          .insert(itemsToUpsert)
+
+        if (itemsError) {
+          console.error('cast_daily_items insert error:', itemsError)
+        }
+      }
+    }
+
+    return { success: true, castsProcessed: statsToUpsert.length, itemsProcessed: dailyItems.length }
   } catch (error) {
     console.error('Recalculate error for store', storeId, ':', error)
-    return { success: false, castsProcessed: 0, error: String(error) }
+    return { success: false, castsProcessed: 0, itemsProcessed: 0, error: String(error) }
   }
 }
 
@@ -421,7 +512,7 @@ export async function GET(request: NextRequest) {
 
     if (storesError) throw storesError
 
-    const results: { store_id: number; success: boolean; castsProcessed: number; error?: string }[] = []
+    const results: { store_id: number; success: boolean; castsProcessed: number; itemsProcessed: number; error?: string }[] = []
 
     // 各店舗の今日の売上を再計算
     for (const store of stores || []) {
