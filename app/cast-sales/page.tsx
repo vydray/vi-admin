@@ -424,6 +424,7 @@ function CastSalesPageContent() {
         .from('orders')
         .select(`
           order_date,
+          staff_name,
           order_items (
             product_name,
             category,
@@ -439,34 +440,39 @@ function CastSalesPageContent() {
       // 登録済み商品名のセット
       const registeredProductNames = new Set(products.map(p => p.name))
 
-      // 商品別 → キャスト別 → 日別 の集計
+      // 商品別 → キャスト別 → 日別 の集計（推し/ヘルプ別）
       const productMap = new Map<string, ProductSalesData>()
       productOrders?.forEach(order => {
         const orderDate = format(new Date(order.order_date), 'yyyy-MM-dd')
+        // 伝票の担当キャスト（指名キャスト）
+        const staffNames = (order.staff_name as string | null)?.split(',').map(n => n.trim()) || []
         const items = order.order_items as { product_name: string; category: string | null; cast_name: string[] | null; quantity: number }[]
         items?.forEach(item => {
           // 登録済み商品かつneeds_castがtrueの商品のみ対象
           if (!registeredProductNames.has(item.product_name)) return
           if (!item.cast_name || item.cast_name.length === 0) return
 
-          const productKey = item.product_name
-          let productData = productMap.get(productKey)
-          if (!productData) {
-            const productInfo = products.find(p => p.name === item.product_name)
-            productData = {
-              productName: item.product_name,
-              category: productInfo?.categoryName || item.category,
-              castSales: []
-            }
-            productMap.set(productKey, productData)
-          }
-
-          // 各キャストに個数を分配
+          // 各キャストに個数を分配（推し/ヘルプ別に集計）
           item.cast_name.forEach(castName => {
-            let castSales = productData!.castSales.find(cs => cs.castName === castName)
+            const isSelf = staffNames.includes(castName)
+            const prefix = isSelf ? '推し ' : 'ヘルプ '
+            const productKey = `${prefix}${item.product_name}`
+
+            let productData = productMap.get(productKey)
+            if (!productData) {
+              const productInfo = products.find(p => p.name === item.product_name)
+              productData = {
+                productName: productKey,
+                category: productInfo?.categoryName || item.category,
+                castSales: []
+              }
+              productMap.set(productKey, productData)
+            }
+
+            let castSales = productData.castSales.find(cs => cs.castName === castName)
             if (!castSales) {
               castSales = { castName, dailyQuantity: {}, total: 0 }
-              productData!.castSales.push(castSales)
+              productData.castSales.push(castSales)
             }
             castSales.dailyQuantity[orderDate] = (castSales.dailyQuantity[orderDate] || 0) + item.quantity
             castSales.total += item.quantity
@@ -1066,6 +1072,11 @@ function CastSalesPageContent() {
             >
               {Array.from(productSalesData.entries())
                 .sort((a, b) => {
+                  // 推しを先に、ヘルプを後に
+                  const aIsSelf = a[0].startsWith('推し ')
+                  const bIsSelf = b[0].startsWith('推し ')
+                  if (aIsSelf !== bIsSelf) return aIsSelf ? -1 : 1
+                  // 同じ種類なら合計数量順
                   const totalA = a[1].castSales.reduce((sum, cs) => sum + cs.total, 0)
                   const totalB = b[1].castSales.reduce((sum, cs) => sum + cs.total, 0)
                   return totalB - totalA
