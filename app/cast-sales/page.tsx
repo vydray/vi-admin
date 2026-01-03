@@ -532,19 +532,26 @@ function CastSalesPageContent() {
     try {
       const start = startOfMonth(selectedMonth)
       const end = endOfMonth(selectedMonth)
+      const dateFrom = format(start, 'yyyy-MM-dd')
+      const dateTo = format(end, 'yyyy-MM-dd')
+      console.log('API request:', { store_id: storeId, date_from: dateFrom, date_to: dateTo })
 
       const response = await fetch('/api/cast-stats/recalculate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           store_id: storeId,
-          date_from: format(start, 'yyyy-MM-dd'),
-          date_to: format(end, 'yyyy-MM-dd'),
+          date_from: dateFrom,
+          date_to: dateTo,
         }),
       })
 
+      console.log('API response status:', response.status)
+      const result = await response.json()
+      console.log('API response data:', result)
+
       if (!response.ok) {
-        throw new Error('再計算に失敗しました')
+        throw new Error(result.error || '再計算に失敗しました')
       }
 
       await loadData()
