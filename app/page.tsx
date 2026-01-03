@@ -128,6 +128,12 @@ export default function Home() {
   } | null>(null)
   const [dailyPaymentTotal, setDailyPaymentTotal] = useState(0)
   const [cashCountLoading, setCashCountLoading] = useState(false)
+  // 業務日報データ（経費・未収金など）
+  const [dailyReportData, setDailyReportData] = useState<{
+    expense_amount: number
+    unpaid_amount: number
+    unknown_amount: number
+  } | null>(null)
 
   // レジ金データと日払いデータを取得
   const fetchCashCount = async (date: string) => {
@@ -155,9 +161,20 @@ export default function Home() {
         0
       )
       setDailyPaymentTotal(totalDailyPayment)
+
+      // 業務日報データ（経費・未収金・未送伝票額）
+      const { data: reportData } = await supabase
+        .from('daily_reports')
+        .select('expense_amount, unpaid_amount, unknown_amount')
+        .eq('store_id', storeId)
+        .eq('business_date', date)
+        .maybeSingle()
+
+      setDailyReportData(reportData)
     } catch {
       setCashCountData(null)
       setDailyPaymentTotal(0)
+      setDailyReportData(null)
     } finally {
       setCashCountLoading(false)
     }
@@ -844,8 +861,12 @@ export default function Home() {
                   <div style={{ padding: '20px', textAlign: 'center', color: '#999' }}>読み込み中...</div>
                 ) : cashCountData ? (
                   (() => {
-                    // 理論値 = 釣銭準備金 + 現金売上 - 日払い
-                    const theoreticalCash = cashCountData.register_amount + selectedDayData.cashSales - dailyPaymentTotal
+                    // 業務日報からの調整項目
+                    const expenseAmount = dailyReportData?.expense_amount || 0
+                    const unpaidAmount = dailyReportData?.unpaid_amount || 0
+                    const unknownAmount = dailyReportData?.unknown_amount || 0
+                    // 理論値 = 釣銭準備金 + 現金売上 - 日払い - 経費 - 未収金 - 未送伝票額
+                    const theoreticalCash = cashCountData.register_amount + selectedDayData.cashSales - dailyPaymentTotal - expenseAmount - unpaidAmount - unknownAmount
                     // 差額 = 実際の現金 - 理論値
                     const difference = cashCountData.total_amount - theoreticalCash
                     return (
@@ -883,6 +904,24 @@ export default function Home() {
                             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
                               <span style={{ color: '#e74c3c', fontSize: '13px' }}>日払い</span>
                               <span style={{ fontWeight: '600', color: '#e74c3c' }}>-¥{dailyPaymentTotal.toLocaleString()}</span>
+                            </div>
+                          )}
+                          {expenseAmount > 0 && (
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                              <span style={{ color: '#e74c3c', fontSize: '13px' }}>経費</span>
+                              <span style={{ fontWeight: '600', color: '#e74c3c' }}>-¥{expenseAmount.toLocaleString()}</span>
+                            </div>
+                          )}
+                          {unpaidAmount > 0 && (
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                              <span style={{ color: '#e74c3c', fontSize: '13px' }}>未収金</span>
+                              <span style={{ fontWeight: '600', color: '#e74c3c' }}>-¥{unpaidAmount.toLocaleString()}</span>
+                            </div>
+                          )}
+                          {unknownAmount > 0 && (
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                              <span style={{ color: '#e74c3c', fontSize: '13px' }}>未送伝票額</span>
+                              <span style={{ fontWeight: '600', color: '#e74c3c' }}>-¥{unknownAmount.toLocaleString()}</span>
                             </div>
                           )}
                           <div style={{
