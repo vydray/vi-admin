@@ -88,7 +88,6 @@ interface CastDailyItemData {
   quantity: number
   subtotal: number
   back_amount: number
-  is_self: boolean
 }
 
 // 商品別キャスト売上を集計（cast_daily_items用）
@@ -101,8 +100,6 @@ function aggregateCastDailyItems(
   const itemsMap = new Map<string, CastDailyItemData>()
 
   for (const order of orders) {
-    const staffNames = order.staff_name?.split(',').map(n => n.trim()) || []
-
     for (const item of order.order_items || []) {
       if (!item.cast_name || item.cast_name.length === 0) continue
 
@@ -110,8 +107,7 @@ function aggregateCastDailyItems(
         const cast = castMap.get(castName)
         if (!cast) continue
 
-        const isSelf = staffNames.includes(castName)
-        const key = `${cast.id}:${item.product_name}:${item.category || ''}:${isSelf}`
+        const key = `${cast.id}:${item.product_name}:${item.category || ''}`
 
         if (itemsMap.has(key)) {
           const existing = itemsMap.get(key)!
@@ -126,8 +122,7 @@ function aggregateCastDailyItems(
             product_name: item.product_name,
             quantity: item.quantity,
             subtotal: item.subtotal,
-            back_amount: 0,
-            is_self: isSelf
+            back_amount: 0
           })
         }
       }
@@ -531,6 +526,7 @@ async function recalculateForDate(storeId: number, date: string): Promise<{
 
         if (itemsError) {
           console.error('cast_daily_items insert error:', itemsError)
+          return { success: false, castsProcessed: statsToUpsert.length, itemsProcessed: 0, error: `cast_daily_items insert error: ${itemsError.message}` }
         }
       }
     }
