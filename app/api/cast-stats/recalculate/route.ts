@@ -79,6 +79,64 @@ interface SpecialWageDay {
   wage_adjustment: number
 }
 
+interface CastDailyItemData {
+  cast_id: number
+  store_id: number
+  date: string
+  category: string | null
+  product_name: string
+  quantity: number
+  subtotal: number
+  back_amount: number
+  is_self: boolean
+}
+
+// 商品別キャスト売上を集計（cast_daily_items用）
+function aggregateCastDailyItems(
+  orders: OrderWithStaff[],
+  castMap: Map<string, Cast>,
+  storeId: number,
+  date: string
+): CastDailyItemData[] {
+  const itemsMap = new Map<string, CastDailyItemData>()
+
+  for (const order of orders) {
+    const staffNames = order.staff_name?.split(',').map(n => n.trim()) || []
+
+    for (const item of order.order_items || []) {
+      if (!item.cast_name || item.cast_name.length === 0) continue
+
+      for (const castName of item.cast_name) {
+        const cast = castMap.get(castName)
+        if (!cast) continue
+
+        const isSelf = staffNames.includes(castName)
+        const key = `${cast.id}:${item.product_name}:${item.category || ''}:${isSelf}`
+
+        if (itemsMap.has(key)) {
+          const existing = itemsMap.get(key)!
+          existing.quantity += item.quantity
+          existing.subtotal += item.subtotal
+        } else {
+          itemsMap.set(key, {
+            cast_id: cast.id,
+            store_id: storeId,
+            date: date,
+            category: item.category,
+            product_name: item.product_name,
+            quantity: item.quantity,
+            subtotal: item.subtotal,
+            back_amount: 0,
+            is_self: isSelf
+          })
+        }
+      }
+    }
+  }
+
+  return Array.from(itemsMap.values())
+}
+
 // 勤務時間を計算（時間単位）- 深夜勤務（日をまたぐ）対応
 function calculateWorkHours(clockIn: string | null, clockOut: string | null): number {
   if (!clockIn || !clockOut) return 0
@@ -155,6 +213,7 @@ async function loadSystemSettings(storeId: number): Promise<{ tax_rate: number; 
 async function recalculateForDate(storeId: number, date: string): Promise<{
   success: boolean
   castsProcessed: number
+  itemsProcessed?: number
   error?: string
 }> {
   try {
@@ -444,7 +503,39 @@ async function recalculateForDate(storeId: number, date: string): Promise<{
       if (upsertError) throw upsertError
     }
 
-    return { success: true, castsProcessed: statsToUpsert.length }
+    // 10. cast_daily_itemsも更新（cron jobと同様）
+    const dailyItems = aggregateCastDailyItems(typedOrders, castMap, storeId, date)
+    if (dailyItems.length > 0) {
+      // 確定済みのキャストは除外
+      const itemsToUpsert = dailyItems.filter(item => !finalizedCastIds.has(item.cast_id))
+      if (itemsToUpsert.length > 0) {
+        // 更新対象のキャストIDリスト
+        const castIdsToUpdate = [...new Set(itemsToUpsert.map(i => i.cast_id))]
+
+        // 既存のcast_daily_itemsを削除
+        const { error: deleteError } = await supabaseAdmin
+          .from('cast_daily_items')
+          .delete()
+          .eq('store_id', storeId)
+          .eq('date', date)
+          .in('cast_id', castIdsToUpdate)
+
+        if (deleteError) {
+          console.error('cast_daily_items delete error:', deleteError)
+        }
+
+        // 新しいデータを挿入
+        const { error: itemsError } = await supabaseAdmin
+          .from('cast_daily_items')
+          .insert(itemsToUpsert)
+
+        if (itemsError) {
+          console.error('cast_daily_items insert error:', itemsError)
+        }
+      }
+    }
+
+    return { success: true, castsProcessed: statsToUpsert.length, itemsProcessed: dailyItems.length }
   } catch (error) {
     console.error('Recalculate error:', error)
     return { success: false, castsProcessed: 0, error: String(error) }
@@ -466,7 +557,7 @@ export async function POST(request: NextRequest) {
 
     // 日付範囲が指定されている場合
     if (date_from && date_to) {
-      const results: { date: string; success: boolean; castsProcessed: number; error?: string }[] = []
+      const results: { date: string; success: boolean; castsProcessed: number; itemsProcessed?: number; error?: string }[] = []
 
       const startDate = new Date(date_from)
       const endDate = new Date(date_to)
@@ -494,7 +585,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       date: targetDate,
-      castsProcessed: result.castsProcessed
+      castsProcessed: result.castsProcessed,
+      itemsProcessed: result.itemsProcessed
     })
   } catch (error) {
     console.error('API Error:', error)
