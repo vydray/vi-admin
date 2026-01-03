@@ -106,9 +106,6 @@ export default function Home() {
   const [showExportModal, setShowExportModal] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
 
-  // 月間再計算
-  const [isRecalculating, setIsRecalculating] = useState(false)
-
   // 業務日報モーダル
   const [showDailyReportModal, setShowDailyReportModal] = useState(false)
   const [selectedDayData, setSelectedDayData] = useState<DailySalesData | null>(null)
@@ -347,46 +344,6 @@ export default function Home() {
     }
   }
 
-  // 月間再計算
-  const recalculateMonth = async () => {
-    if (!storeId) return
-
-    setIsRecalculating(true)
-    try {
-      // 選択された年月の開始日と終了日
-      const monthStr = String(selectedMonth).padStart(2, '0')
-      const dateFrom = `${selectedYear}-${monthStr}-01`
-      const lastDay = new Date(selectedYear, selectedMonth, 0).getDate()
-      const dateTo = `${selectedYear}-${monthStr}-${String(lastDay).padStart(2, '0')}`
-
-      const response = await fetch('/api/cast-stats/recalculate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          store_id: storeId,
-          date_from: dateFrom,
-          date_to: dateTo,
-        }),
-      })
-
-      const result = await response.json()
-
-      if (!response.ok) {
-        throw new Error(result.error || '再計算に失敗しました')
-      }
-
-      toast.success(`${selectedYear}年${selectedMonth}月の再計算が完了しました（${result.processed_dates?.length || 0}日分）`)
-
-      // データを再取得
-      await fetchDashboardData()
-    } catch (error) {
-      console.error('Recalculate error:', error)
-      toast.error(error instanceof Error ? error.message : '再計算に失敗しました')
-    } finally {
-      setIsRecalculating(false)
-    }
-  }
-
   const fetchDashboardData = async () => {
     setLoading(true)
     try {
@@ -622,14 +579,6 @@ export default function Home() {
               </option>
             ))}
           </select>
-
-          <Button
-            onClick={recalculateMonth}
-            disabled={isRecalculating}
-            variant="secondary"
-          >
-            {isRecalculating ? '再計算中...' : '月間再計算'}
-          </Button>
 
           <Button
             onClick={() => setShowExportModal(true)}
