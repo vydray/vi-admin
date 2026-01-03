@@ -520,10 +520,12 @@ function CastSalesPageContent() {
 
   // 売上再計算
   const handleRecalculate = async () => {
+    console.log('handleRecalculate called')
     const confirmed = await confirm(
       `${format(selectedMonth, 'yyyy年M月', { locale: ja })}の売上データを再計算します。\n確定済みのデータは再計算されません。`
     )
 
+    console.log('confirm result:', confirmed)
     if (!confirmed) return
 
     setRecalculating(true)
