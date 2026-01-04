@@ -1003,9 +1003,21 @@ function BaseSettingsPageContent() {
         <div style={styles.content}>
           <div style={styles.sectionHeader}>
             <h2 style={styles.sectionTitle}>BASE注文履歴</h2>
-            <Button onClick={loadOrders} variant="outline" size="small">
-              更新
-            </Button>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              {isConnected && (
+                <Button
+                  onClick={handleFetchOrdersFromApi}
+                  variant="primary"
+                  size="small"
+                  disabled={fetchingOrders}
+                >
+                  {fetchingOrders ? '取得中...' : 'BASEから注文を取得'}
+                </Button>
+              )}
+              <Button onClick={loadOrders} variant="outline" size="small">
+                更新
+              </Button>
+            </div>
           </div>
 
           {ordersLoading ? (
