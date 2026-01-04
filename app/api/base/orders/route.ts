@@ -130,10 +130,6 @@ export async function POST(request: NextRequest) {
       const detailResults = await Promise.allSettled(
         batch.map(async (orderSummary) => {
           const detailResponse = await fetchOrderDetail(accessToken, orderSummary.unique_key)
-          // デバッグ: 最初の注文詳細の構造を確認
-          if (i === 0) {
-            console.log('Order detail response:', JSON.stringify(detailResponse, null, 2))
-          }
           return { orderSummary, orderDetail: detailResponse.order }
         })
       )
@@ -165,7 +161,7 @@ export async function POST(request: NextRequest) {
         // 各商品アイテムを保存
         for (const item of orderDetail.order_items || []) {
           const cast = casts?.find(c => c.name === item.variation)
-          const baseProduct = baseProducts?.find(p => p.base_product_name === item.item_title)
+          const baseProduct = baseProducts?.find(p => p.base_product_name === item.title)
 
           const { error: upsertError } = await supabase
             .from('base_orders')
@@ -173,7 +169,7 @@ export async function POST(request: NextRequest) {
               store_id,
               base_order_id: orderSummary.unique_key,
               order_datetime: orderDatetime,
-              product_name: item.item_title,
+              product_name: item.title,
               variation_name: item.variation || null,
               cast_id: cast?.id || null,
               local_product_id: baseProduct?.id || null,

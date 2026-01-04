@@ -68,7 +68,7 @@ export interface BaseOrderDetail {
 export interface BaseOrderItem {
   order_item_id: number
   item_id: number
-  item_title: string
+  title: string  // 商品名（APIは「title」を使用）
   variation_id: number | null
   variation: string | null
   price: number
