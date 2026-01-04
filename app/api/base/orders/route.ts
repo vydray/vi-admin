@@ -117,10 +117,14 @@ export async function POST(request: NextRequest) {
       .select('id, name')
       .eq('store_id', store_id)
 
+    // キャンセル済み注文を除外
+    const activeOrders = (ordersResponse.orders || []).filter(order => !order.cancelled)
+    console.log(`Total orders: ${ordersResponse.orders?.length || 0}, Active (non-cancelled): ${activeOrders.length}`)
+
     // 注文詳細を並列取得（5件ずつ）
     let successCount = 0
     let errorCount = 0
-    const orders = ordersResponse.orders || []
+    const orders = activeOrders
     const BATCH_SIZE = 5
 
     for (let i = 0; i < orders.length; i += BATCH_SIZE) {
