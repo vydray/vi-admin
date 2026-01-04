@@ -1050,9 +1050,6 @@ function BaseSettingsPageContent() {
                   {fetchingOrders ? '取得中...' : 'BASEから注文を取得'}
                 </Button>
               )}
-              <Button onClick={loadOrders} variant="outline" size="small">
-                更新
-              </Button>
             </div>
           </div>
 
