@@ -117,15 +117,32 @@ export async function POST(request: NextRequest) {
       .select('id, name')
       .eq('store_id', store_id)
 
-    // 注文をDBに保存
+    // 注文詳細を並列取得（5件ずつ）
     let successCount = 0
     let errorCount = 0
+    const orders = ordersResponse.orders || []
+    const BATCH_SIZE = 5
 
-    for (const orderSummary of ordersResponse.orders || []) {
-      try {
-        // 注文詳細を取得（商品情報を含む）
-        const detailResponse = await fetchOrderDetail(accessToken, orderSummary.unique_key)
-        const orderDetail = detailResponse.order
+    for (let i = 0; i < orders.length; i += BATCH_SIZE) {
+      const batch = orders.slice(i, i + BATCH_SIZE)
+
+      // バッチ内を並列で取得
+      const detailResults = await Promise.allSettled(
+        batch.map(async (orderSummary) => {
+          const detailResponse = await fetchOrderDetail(accessToken, orderSummary.unique_key)
+          return { orderSummary, orderDetail: detailResponse.order }
+        })
+      )
+
+      // 各結果を処理
+      for (const result of detailResults) {
+        if (result.status === 'rejected') {
+          console.error('Failed to fetch order detail:', result.reason)
+          errorCount++
+          continue
+        }
+
+        const { orderSummary, orderDetail } = result.value
 
         // Unix timestamp（秒）をDateに変換
         const orderDate = new Date(orderSummary.ordered * 1000)
@@ -143,7 +160,6 @@ export async function POST(request: NextRequest) {
 
         // 各商品アイテムを保存
         for (const item of orderDetail.order_items || []) {
-          // キャストとBASE商品をマッチング
           const cast = casts?.find(c => c.name === item.variation)
           const baseProduct = baseProducts?.find(p => p.base_product_name === item.item_title)
 
@@ -173,9 +189,6 @@ export async function POST(request: NextRequest) {
             successCount++
           }
         }
-      } catch (detailError) {
-        console.error('Failed to fetch order detail:', orderSummary.unique_key, detailError)
-        errorCount++
       }
     }
 
