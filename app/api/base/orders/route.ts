@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseServerClient } from '@/lib/supabase'
-import { fetchOrders, refreshAccessToken } from '@/lib/baseApi'
+import { fetchOrders, fetchOrderDetail, refreshAccessToken } from '@/lib/baseApi'
 
 /**
  * BASE注文を取得してDBに保存
@@ -121,47 +121,61 @@ export async function POST(request: NextRequest) {
     let successCount = 0
     let errorCount = 0
 
-    for (const order of ordersResponse.orders || []) {
-      // 営業日を計算
-      const orderDate = new Date(order.ordered)
-      let businessDate = orderDate.toISOString().split('T')[0]
+    for (const orderSummary of ordersResponse.orders || []) {
+      try {
+        // 注文詳細を取得（商品情報を含む）
+        const detailResponse = await fetchOrderDetail(accessToken, orderSummary.unique_key)
+        const orderDetail = detailResponse.order
 
-      if (cutoffEnabled) {
-        const hour = orderDate.getHours()
-        if (hour < cutoffHour) {
-          orderDate.setDate(orderDate.getDate() - 1)
-          businessDate = orderDate.toISOString().split('T')[0]
+        // Unix timestamp（秒）をDateに変換
+        const orderDate = new Date(orderSummary.ordered * 1000)
+        const orderDatetime = orderDate.toISOString()
+
+        // 営業日を計算
+        let businessDateObj = new Date(orderDate)
+        if (cutoffEnabled) {
+          const hour = orderDate.getHours()
+          if (hour < cutoffHour) {
+            businessDateObj.setDate(businessDateObj.getDate() - 1)
+          }
         }
-      }
+        const businessDate = businessDateObj.toISOString().split('T')[0]
 
-      // キャストとBASE商品をマッチング
-      const cast = casts?.find(c => c.name === order.variation)
-      const baseProduct = baseProducts?.find(p => p.base_product_name === order.item_title)
+        // 各商品アイテムを保存
+        for (const item of orderDetail.order_items || []) {
+          // キャストとBASE商品をマッチング
+          const cast = casts?.find(c => c.name === item.variation)
+          const baseProduct = baseProducts?.find(p => p.base_product_name === item.item_title)
 
-      const { error: upsertError } = await supabase
-        .from('base_orders')
-        .upsert({
-          store_id,
-          base_order_id: order.unique_key,
-          order_datetime: order.ordered,
-          product_name: order.item_title,
-          variation_name: order.variation || null,
-          cast_id: cast?.id || null,
-          local_product_id: baseProduct?.id || null,
-          base_price: order.price,
-          actual_price: baseProduct?.store_price || null,
-          quantity: order.amount,
-          business_date: businessDate,
-          is_processed: false,
-        }, {
-          onConflict: 'store_id,base_order_id,product_name,variation_name'
-        })
+          const { error: upsertError } = await supabase
+            .from('base_orders')
+            .upsert({
+              store_id,
+              base_order_id: orderSummary.unique_key,
+              order_datetime: orderDatetime,
+              product_name: item.item_title,
+              variation_name: item.variation || null,
+              cast_id: cast?.id || null,
+              local_product_id: baseProduct?.id || null,
+              base_price: item.price,
+              actual_price: baseProduct?.store_price || null,
+              quantity: item.amount,
+              business_date: businessDate,
+              is_processed: false,
+            }, {
+              onConflict: 'store_id,base_order_id,product_name,variation_name'
+            })
 
-      if (upsertError) {
-        console.error('Order upsert error:', upsertError)
+          if (upsertError) {
+            console.error('Order upsert error:', upsertError)
+            errorCount++
+          } else {
+            successCount++
+          }
+        }
+      } catch (detailError) {
+        console.error('Failed to fetch order detail:', orderSummary.unique_key, detailError)
         errorCount++
-      } else {
-        successCount++
       }
     }
 

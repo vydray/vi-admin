@@ -36,29 +36,44 @@ export interface BaseOAuthTokens {
   scope: string
 }
 
-export interface BaseOrder {
+// 注文一覧のレスポンス（要約情報のみ）
+export interface BaseOrderSummary {
   unique_key: string
+  ordered: number // Unix timestamp (seconds)
+  cancelled: number | null
+  dispatched: number | null
+  payment: string
+  first_name: string
+  last_name: string
+  total: number
+  terminated: boolean
+  dispatch_status: string
+}
+
+export interface BaseOrdersResponse {
+  orders: BaseOrderSummary[]
+}
+
+// 注文詳細のレスポンス（商品情報を含む）
+export interface BaseOrderDetail {
+  unique_key: string
+  ordered: number // Unix timestamp (seconds)
+  payment: string
+  first_name: string
+  last_name: string
+  total: number
+  order_items: BaseOrderItem[]
+}
+
+export interface BaseOrderItem {
   order_item_id: number
-  ordered: string // ISO datetime
-  order_discount: number
   item_id: number
   item_title: string
   variation_id: number | null
   variation: string | null
-  variation_option: string | null
   price: number
   amount: number
   total: number
-  status: string
-  payment: string
-  delivery: string
-  c_name: string
-  c_address: string
-  remark: string
-}
-
-export interface BaseOrdersResponse {
-  orders: BaseOrder[]
 }
 
 export interface BaseItem {
@@ -192,6 +207,27 @@ export async function fetchOrders(
   if (!response.ok) {
     const error = await response.text()
     throw new Error(`Fetch orders failed: ${error}`)
+  }
+
+  return response.json()
+}
+
+/**
+ * 注文詳細を取得
+ */
+export async function fetchOrderDetail(
+  accessToken: string,
+  uniqueKey: string
+): Promise<{ order: BaseOrderDetail }> {
+  const response = await fetchWithTimeout(`${BASE_API_URL}/1/orders/detail/${uniqueKey}`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  })
+
+  if (!response.ok) {
+    const error = await response.text()
+    throw new Error(`Fetch order detail failed: ${error}`)
   }
 
   return response.json()
