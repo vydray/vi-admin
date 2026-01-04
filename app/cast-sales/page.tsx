@@ -899,55 +899,6 @@ function CastSalesPageContent() {
         </div>
       </div>
 
-      {/* 指名本数ランキング */}
-      {salesData.some(d => d.nominationCount > 0) && (
-        <div style={{
-          backgroundColor: '#fff',
-          borderRadius: '12px',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-          padding: '16px 20px',
-          marginBottom: '20px'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
-            <span style={{ fontWeight: '600', color: '#be185d', fontSize: '14px' }}>
-              🏆 指名本数ランキング
-            </span>
-            {[...salesData]
-              .filter(d => d.nominationCount > 0)
-              .sort((a, b) => b.nominationCount - a.nominationCount)
-              .slice(0, 5)
-              .map((cast, index) => (
-                <div
-                  key={cast.castId}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    padding: '6px 12px',
-                    backgroundColor: index === 0 ? '#fdf2f8' : '#f8fafc',
-                    borderRadius: '8px',
-                    border: index === 0 ? '1px solid #fbcfe8' : '1px solid #e2e8f0'
-                  }}
-                >
-                  <span style={{
-                    fontWeight: '600',
-                    color: index === 0 ? '#be185d' : index === 1 ? '#6b7280' : index === 2 ? '#92400e' : '#64748b',
-                    fontSize: '14px'
-                  }}>
-                    {index + 1}位
-                  </span>
-                  <span style={{ fontWeight: '500', color: '#1a1a1a', fontSize: '14px' }}>
-                    {cast.castName}
-                  </span>
-                  <span style={{ fontWeight: '600', color: '#be185d', fontSize: '14px' }}>
-                    {cast.nominationCount}本
-                  </span>
-                </div>
-              ))}
-          </div>
-        </div>
-      )}
-
       {/* 売上テーブル */}
       <div style={{
         backgroundColor: '#fff',
