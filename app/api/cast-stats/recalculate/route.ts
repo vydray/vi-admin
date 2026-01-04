@@ -264,6 +264,30 @@ async function recalculateForDate(storeId: number, date: string): Promise<{
 
     const typedOrders = (orders || []) as unknown as OrderWithStaff[]
 
+    // 2.5. BASE注文を取得（未処理のもの）
+    const { data: baseOrders, error: baseOrdersError } = await supabaseAdmin
+      .from('base_orders')
+      .select('id, cast_id, actual_price, quantity')
+      .eq('store_id', storeId)
+      .eq('business_date', date)
+      .eq('is_processed', false)
+      .not('cast_id', 'is', null)
+      .not('actual_price', 'is', null)
+
+    if (baseOrdersError) {
+      console.warn('BASE orders fetch error:', baseOrdersError)
+    }
+
+    // BASE売上をキャストIDごとに集計
+    const baseSalesByCast = new Map<number, number>()
+    for (const order of baseOrders || []) {
+      if (order.cast_id && order.actual_price) {
+        const current = baseSalesByCast.get(order.cast_id) || 0
+        baseSalesByCast.set(order.cast_id, current + (order.actual_price * order.quantity))
+      }
+    }
+    console.log(`BASE orders for ${date}: ${baseOrders?.length || 0} items, casts with sales: ${baseSalesByCast.size}`)
+
     // 3. キャスト情報を取得
     const { data: casts, error: castsError } = await supabaseAdmin
       .from('casts')
@@ -416,19 +440,24 @@ async function recalculateForDate(storeId: number, date: string): Promise<{
       // published_aggregationに基づいて値を設定
       const method = salesSettings.published_aggregation ?? 'item_based'
 
+      // BASE売上を加算（設定に応じて）
+      const baseSales = baseSalesByCast.get(summary.cast_id) || 0
+      const includeBaseInItem = salesSettings.include_base_in_item_sales ?? false
+      const includeBaseInReceipt = salesSettings.include_base_in_receipt_sales ?? false
+
       statsToUpsert.push({
         cast_id: summary.cast_id,
         store_id: storeId,
         date: date,
         // 公表設定に応じてどちらのカラムに値を入れるか決定
-        // どちらの計算方法でも同じ値を両方に入れる（後方互換性のため）
-        self_sales_item_based: method === 'item_based' ? summary.self_sales : 0,
+        // BASE売上は推し売上（self_sales）に加算
+        self_sales_item_based: (method === 'item_based' ? summary.self_sales : 0) + (includeBaseInItem ? baseSales : 0),
         help_sales_item_based: method === 'item_based' ? summary.help_sales : 0,
-        total_sales_item_based: method === 'item_based' ? summary.total_sales : 0,
+        total_sales_item_based: (method === 'item_based' ? summary.total_sales : 0) + (includeBaseInItem ? baseSales : 0),
         product_back_item_based: Math.round(summary.total_back),
-        self_sales_receipt_based: method === 'receipt_based' ? summary.self_sales : 0,
+        self_sales_receipt_based: (method === 'receipt_based' ? summary.self_sales : 0) + (includeBaseInReceipt ? baseSales : 0),
         help_sales_receipt_based: method === 'receipt_based' ? summary.help_sales : 0,
-        total_sales_receipt_based: method === 'receipt_based' ? summary.total_sales : 0,
+        total_sales_receipt_based: (method === 'receipt_based' ? summary.total_sales : 0) + (includeBaseInReceipt ? baseSales : 0),
         product_back_receipt_based: method === 'receipt_based' ? Math.round(summary.total_back) : 0,
         work_hours: workHours,
         base_hourly_wage: baseHourlyWage,
@@ -468,17 +497,22 @@ async function recalculateForDate(storeId: number, date: string): Promise<{
         const totalHourlyWage = baseHourlyWage + specialDayBonus + costumeBonus
         const wageAmount = Math.round(totalHourlyWage * workHours)
 
+        // BASE売上を加算（設定に応じて）
+        const baseSales = baseSalesByCast.get(cast.id) || 0
+        const includeBaseInItem = salesSettings.include_base_in_item_sales ?? false
+        const includeBaseInReceipt = salesSettings.include_base_in_receipt_sales ?? false
+
         statsToUpsert.push({
           cast_id: cast.id,
           store_id: storeId,
           date: date,
-          self_sales_item_based: 0,
+          self_sales_item_based: includeBaseInItem ? baseSales : 0,
           help_sales_item_based: 0,
-          total_sales_item_based: 0,
+          total_sales_item_based: includeBaseInItem ? baseSales : 0,
           product_back_item_based: 0,
-          self_sales_receipt_based: 0,
+          self_sales_receipt_based: includeBaseInReceipt ? baseSales : 0,
           help_sales_receipt_based: 0,
-          total_sales_receipt_based: 0,
+          total_sales_receipt_based: includeBaseInReceipt ? baseSales : 0,
           product_back_receipt_based: 0,
           work_hours: workHours,
           base_hourly_wage: baseHourlyWage,
@@ -491,7 +525,41 @@ async function recalculateForDate(storeId: number, date: string): Promise<{
           is_finalized: false,
           updated_at: new Date().toISOString()
         })
+        processedCastIds.add(cast.id)
       }
+    }
+
+    // 8.5. BASE売上があるがPOS/勤怠データがないキャストを処理
+    const includeBaseInItem = salesSettings.include_base_in_item_sales ?? false
+    const includeBaseInReceipt = salesSettings.include_base_in_receipt_sales ?? false
+
+    for (const [castId, baseSales] of baseSalesByCast) {
+      if (processedCastIds.has(castId)) continue
+      if (finalizedCastIds.has(castId)) continue
+
+      statsToUpsert.push({
+        cast_id: castId,
+        store_id: storeId,
+        date: date,
+        self_sales_item_based: includeBaseInItem ? baseSales : 0,
+        help_sales_item_based: 0,
+        total_sales_item_based: includeBaseInItem ? baseSales : 0,
+        product_back_item_based: 0,
+        self_sales_receipt_based: includeBaseInReceipt ? baseSales : 0,
+        help_sales_receipt_based: 0,
+        total_sales_receipt_based: includeBaseInReceipt ? baseSales : 0,
+        product_back_receipt_based: 0,
+        work_hours: 0,
+        base_hourly_wage: 0,
+        special_day_bonus: 0,
+        costume_bonus: 0,
+        total_hourly_wage: 0,
+        wage_amount: 0,
+        costume_id: null,
+        wage_status_id: null,
+        is_finalized: false,
+        updated_at: new Date().toISOString()
+      })
     }
 
     // 9. cast_daily_statsにUPSERT
@@ -535,6 +603,21 @@ async function recalculateForDate(storeId: number, date: string): Promise<{
           console.error('cast_daily_items insert error:', itemsError)
           return { success: false, castsProcessed: statsToUpsert.length, itemsProcessed: 0, error: `cast_daily_items insert error: ${itemsError.message}` }
         }
+      }
+    }
+
+    // 11. BASE注文を処理済みにマーク
+    if (baseOrders && baseOrders.length > 0) {
+      const baseOrderIds = baseOrders.map(o => o.id)
+      const { error: baseUpdateError } = await supabaseAdmin
+        .from('base_orders')
+        .update({ is_processed: true })
+        .in('id', baseOrderIds)
+
+      if (baseUpdateError) {
+        console.error('BASE orders update error:', baseUpdateError)
+      } else {
+        console.log(`Marked ${baseOrderIds.length} BASE orders as processed`)
       }
     }
 
