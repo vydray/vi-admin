@@ -97,11 +97,12 @@ export async function POST(request: NextRequest) {
     const cutoffHour = salesSettings?.base_cutoff_hour ?? 6
     const cutoffEnabled = salesSettings?.base_cutoff_enabled ?? true
 
-    // ローカル商品とキャストを取得
-    const { data: localProducts } = await supabase
-      .from('products')
-      .select('id, name, price')
+    // BASE商品マッピングとキャストを取得
+    const { data: baseProducts } = await supabase
+      .from('base_products')
+      .select('id, base_product_name, local_product_name, store_price')
       .eq('store_id', store_id)
+      .eq('is_active', true)
 
     const { data: casts } = await supabase
       .from('casts')
@@ -125,9 +126,9 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // キャストとローカル商品をマッチング
+      // キャストとBASE商品をマッチング
       const cast = casts?.find(c => c.name === order.variation)
-      const product = localProducts?.find(p => p.name === order.item_title)
+      const baseProduct = baseProducts?.find(p => p.base_product_name === order.item_title)
 
       const { error: upsertError } = await supabase
         .from('base_orders')
@@ -138,9 +139,9 @@ export async function POST(request: NextRequest) {
           product_name: order.item_title,
           variation_name: order.variation || null,
           cast_id: cast?.id || null,
-          local_product_id: product?.id || null,
+          local_product_id: baseProduct?.id || null,
           base_price: order.price,
-          actual_price: product?.price || null,
+          actual_price: baseProduct?.store_price || null,
           quantity: order.amount,
           business_date: businessDate,
           is_processed: false,
