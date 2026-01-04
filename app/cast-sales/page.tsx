@@ -35,6 +35,7 @@ interface CastSalesData {
   totalBack: number
   totalBase: number
   grandTotal: number  // totalSales + totalBase
+  nominationCount: number  // 指名本数（guest_countの合計）
 }
 
 interface OrderItemWithTax {
@@ -52,6 +53,7 @@ interface Order {
   id: string
   staff_name: string | null
   order_date: string
+  guest_count: number | null
   order_items: OrderItemWithTax[]
 }
 
@@ -266,6 +268,7 @@ function CastSalesPageContent() {
           id,
           staff_name,
           order_date,
+          guest_count,
           order_items (
             id,
             product_name,
@@ -304,7 +307,21 @@ function CastSalesPageContent() {
         totalBack: 0,
         totalBase: 0,
         grandTotal: 0,
+        nominationCount: 0,
       })
+    })
+
+    // 指名本数を集計（staff_nameがキャスト名と一致する伝票のguest_countを合計）
+    typedOrders.forEach(order => {
+      if (!order.staff_name || !order.guest_count) return
+      // staff_nameからキャストを検索
+      const cast = loadedCasts.find(c => c.name === order.staff_name)
+      if (cast) {
+        const castData = salesMap.get(cast.id)
+        if (castData) {
+          castData.nominationCount += order.guest_count
+        }
+      }
     })
 
     // 日別にオーダーをグループ化して処理
@@ -813,6 +830,55 @@ function CastSalesPageContent() {
         </div>
       </div>
 
+      {/* 指名本数ランキング */}
+      {salesData.some(d => d.nominationCount > 0) && (
+        <div style={{
+          backgroundColor: '#fff',
+          borderRadius: '12px',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+          padding: '16px 20px',
+          marginBottom: '20px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+            <span style={{ fontWeight: '600', color: '#be185d', fontSize: '14px' }}>
+              🏆 指名本数ランキング
+            </span>
+            {[...salesData]
+              .filter(d => d.nominationCount > 0)
+              .sort((a, b) => b.nominationCount - a.nominationCount)
+              .slice(0, 5)
+              .map((cast, index) => (
+                <div
+                  key={cast.castId}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '6px 12px',
+                    backgroundColor: index === 0 ? '#fdf2f8' : '#f8fafc',
+                    borderRadius: '8px',
+                    border: index === 0 ? '1px solid #fbcfe8' : '1px solid #e2e8f0'
+                  }}
+                >
+                  <span style={{
+                    fontWeight: '600',
+                    color: index === 0 ? '#be185d' : index === 1 ? '#6b7280' : index === 2 ? '#92400e' : '#64748b',
+                    fontSize: '14px'
+                  }}>
+                    {index + 1}位
+                  </span>
+                  <span style={{ fontWeight: '500', color: '#1a1a1a', fontSize: '14px' }}>
+                    {cast.castName}
+                  </span>
+                  <span style={{ fontWeight: '600', color: '#be185d', fontSize: '14px' }}>
+                    {cast.nominationCount}本
+                  </span>
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
+
       {/* 売上テーブル */}
       <div style={{
         backgroundColor: '#fff',
@@ -901,6 +967,21 @@ function CastSalesPageContent() {
                 <th style={{
                   position: 'sticky',
                   top: 0,
+                  backgroundColor: '#fce7f3',
+                  padding: '12px',
+                  borderBottom: '2px solid #e2e8f0',
+                  borderRight: '1px solid #e2e8f0',
+                  fontWeight: '600',
+                  color: '#be185d',
+                  minWidth: '80px',
+                  zIndex: 10,
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+                }}>
+                  指名本数
+                </th>
+                <th style={{
+                  position: 'sticky',
+                  top: 0,
                   right: 0,
                   backgroundColor: '#fef3c7',
                   padding: '12px',
@@ -918,7 +999,7 @@ function CastSalesPageContent() {
             <tbody>
               {salesData.length === 0 ? (
                 <tr>
-                  <td colSpan={days.length + 4} style={{
+                  <td colSpan={days.length + 5} style={{
                     padding: '40px',
                     textAlign: 'center',
                     color: '#64748b'
@@ -989,6 +1070,20 @@ function CastSalesPageContent() {
                       whiteSpace: 'nowrap'
                     }}>
                       {formatCurrency(castSales.totalBase)}
+                    </td>
+                    {/* 指名本数 */}
+                    <td style={{
+                      backgroundColor: '#fce7f3',
+                      padding: '12px',
+                      borderBottom: '1px solid #e2e8f0',
+                      borderRight: '1px solid #e2e8f0',
+                      textAlign: 'right',
+                      fontWeight: '500',
+                      color: castSales.nominationCount > 0 ? '#be185d' : '#f9a8d4',
+                      fontSize: '13px',
+                      whiteSpace: 'nowrap'
+                    }}>
+                      {castSales.nominationCount}本
                     </td>
                     {/* 売上合計 */}
                     <td style={{
