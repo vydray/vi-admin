@@ -19,6 +19,7 @@ interface DailySalesData {
   totalSales: number
   backAmount: number
   baseSales: number
+  nominationCount: number  // その日の指名本数
 }
 
 interface DailySales {
@@ -91,6 +92,7 @@ function CastSalesPageContent() {
   const [isFinalized, setIsFinalized] = useState(false)
   const [productSalesData, setProductSalesData] = useState<Map<string, ProductSalesData>>(new Map())
   const [selectedProduct, setSelectedProduct] = useState<string | null>(null)
+  const [viewMode, setViewMode] = useState<'sales' | 'nomination'>('sales')
 
   const currencyFormatter = useMemo(() => {
     return new Intl.NumberFormat('ja-JP', {
@@ -312,6 +314,8 @@ function CastSalesPageContent() {
     })
 
     // 指名本数を集計（staff_nameがキャスト名と一致する伝票のguest_countを合計）
+    // 日別・キャスト別のマップも作成
+    const dailyNominationMap = new Map<number, { [date: string]: number }>()
     typedOrders.forEach(order => {
       if (!order.staff_name || !order.guest_count) return
       // staff_nameからキャストを検索
@@ -321,6 +325,13 @@ function CastSalesPageContent() {
         if (castData) {
           castData.nominationCount += order.guest_count
         }
+        // 日別の指名本数も記録
+        const dateStr = format(new Date(order.order_date), 'yyyy-MM-dd')
+        if (!dailyNominationMap.has(cast.id)) {
+          dailyNominationMap.set(cast.id, {})
+        }
+        const castDailyNom = dailyNominationMap.get(cast.id)!
+        castDailyNom[dateStr] = (castDailyNom[dateStr] || 0) + order.guest_count
       }
     })
 
@@ -362,6 +373,7 @@ function CastSalesPageContent() {
             totalSales: summary.total_sales,
             backAmount: summary.total_back,
             baseSales: baseSales,
+            nominationCount: dailyNominationMap.get(summary.cast_id)?.[dateStr] || 0,
           }
           castData.totalSelf += summary.self_sales
           castData.totalHelp += summary.help_sales
@@ -384,6 +396,7 @@ function CastSalesPageContent() {
               totalSales: 0,
               backAmount: 0,
               baseSales: baseSales,
+              nominationCount: dailyNominationMap.get(castId)?.[dateStr] || 0,
             }
             castData.totalBase += baseSales
           }
@@ -396,12 +409,11 @@ function CastSalesPageContent() {
       castData.grandTotal = castData.totalSales + castData.totalBase
     })
 
-    // 総売上順にソート（店舗売上 or BASE売上があるもの）
-    const sortedData = Array.from(salesMap.values())
-      .filter(d => d.totalSales > 0 || d.totalBase > 0)
-      .sort((a, b) => b.grandTotal - a.grandTotal)
+    // 売上 or 指名本数があるキャストのみ保持（ソートは表示時に行う）
+    const filteredData = Array.from(salesMap.values())
+      .filter(d => d.totalSales > 0 || d.totalBase > 0 || d.nominationCount > 0)
 
-    setSalesData(sortedData)
+    setSalesData(filteredData)
   }, [storeId, selectedMonth, loadBaseOrders])
 
   const loadData = useCallback(async () => {
@@ -645,12 +657,29 @@ function CastSalesPageContent() {
     return eachDayOfInterval({ start, end })
   }, [selectedMonth])
 
+  // 表示モードに応じてソート・フィルタしたデータ
+  const displaySalesData = useMemo(() => {
+    if (viewMode === 'nomination') {
+      // 指名本数モード: 指名本数順にソート、指名本数があるキャストのみ
+      return [...salesData]
+        .filter(d => d.nominationCount > 0)
+        .sort((a, b) => b.nominationCount - a.nominationCount)
+    }
+    // 売上モード: 総売上順にソート
+    return [...salesData]
+      .filter(d => d.totalSales > 0 || d.totalBase > 0)
+      .sort((a, b) => b.grandTotal - a.grandTotal)
+  }, [salesData, viewMode])
+
   const formatCurrency = (amount: number) => {
     return currencyFormatter.format(amount)
   }
 
   const getDisplayValue = (data: DailySalesData | undefined): string => {
-    if (!data) return '¥0'
+    if (!data) return viewMode === 'sales' ? '¥0' : '0'
+    if (viewMode === 'nomination') {
+      return data.nominationCount > 0 ? `${data.nominationCount}本` : '-'
+    }
     return formatCurrency(data.totalSales)
   }
 
@@ -755,6 +784,46 @@ function CastSalesPageContent() {
           }}>
             設定変更
           </Link>
+        </div>
+
+        {/* 表示モード切り替え */}
+        <div style={{
+          display: 'flex',
+          gap: '8px',
+          marginBottom: '16px'
+        }}>
+          <button
+            onClick={() => setViewMode('sales')}
+            style={{
+              padding: '10px 20px',
+              fontSize: '14px',
+              fontWeight: '600',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              backgroundColor: viewMode === 'sales' ? '#3b82f6' : '#f1f5f9',
+              color: viewMode === 'sales' ? '#fff' : '#64748b',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            売上表示
+          </button>
+          <button
+            onClick={() => setViewMode('nomination')}
+            style={{
+              padding: '10px 20px',
+              fontSize: '14px',
+              fontWeight: '600',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              backgroundColor: viewMode === 'nomination' ? '#be185d' : '#f1f5f9',
+              color: viewMode === 'nomination' ? '#fff' : '#64748b',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            指名本数表示
+          </button>
         </div>
 
         <div style={{
@@ -934,72 +1003,93 @@ function CastSalesPageContent() {
                     {format(day, 'M/d', { locale: ja })}
                   </th>
                 ))}
-                <th style={{
-                  position: 'sticky',
-                  top: 0,
-                  backgroundColor: '#f8fafc',
-                  padding: '12px',
-                  borderBottom: '2px solid #e2e8f0',
-                  borderRight: '1px solid #e2e8f0',
-                  fontWeight: '600',
-                  color: '#475569',
-                  minWidth: '100px',
-                  zIndex: 10,
-                  boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
-                }}>
-                  店舗売上
-                </th>
-                <th style={{
-                  position: 'sticky',
-                  top: 0,
-                  backgroundColor: '#ede9fe',
-                  padding: '12px',
-                  borderBottom: '2px solid #e2e8f0',
-                  borderRight: '1px solid #e2e8f0',
-                  fontWeight: '600',
-                  color: '#6d28d9',
-                  minWidth: '100px',
-                  zIndex: 10,
-                  boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
-                }}>
-                  BASE売上
-                </th>
-                <th style={{
-                  position: 'sticky',
-                  top: 0,
-                  backgroundColor: '#fce7f3',
-                  padding: '12px',
-                  borderBottom: '2px solid #e2e8f0',
-                  borderRight: '1px solid #e2e8f0',
-                  fontWeight: '600',
-                  color: '#be185d',
-                  minWidth: '80px',
-                  zIndex: 10,
-                  boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
-                }}>
-                  指名本数
-                </th>
-                <th style={{
-                  position: 'sticky',
-                  top: 0,
-                  right: 0,
-                  backgroundColor: '#fef3c7',
-                  padding: '12px',
-                  borderBottom: '2px solid #e2e8f0',
-                  fontWeight: '600',
-                  color: '#92400e',
-                  minWidth: '120px',
-                  zIndex: 20,
-                  boxShadow: '-2px 2px 4px rgba(0,0,0,0.05)'
-                }}>
-                  売上合計
-                </th>
+                {viewMode === 'sales' && (
+                  <>
+                    <th style={{
+                      position: 'sticky',
+                      top: 0,
+                      backgroundColor: '#f8fafc',
+                      padding: '12px',
+                      borderBottom: '2px solid #e2e8f0',
+                      borderRight: '1px solid #e2e8f0',
+                      fontWeight: '600',
+                      color: '#475569',
+                      minWidth: '100px',
+                      zIndex: 10,
+                      boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+                    }}>
+                      店舗売上
+                    </th>
+                    <th style={{
+                      position: 'sticky',
+                      top: 0,
+                      backgroundColor: '#ede9fe',
+                      padding: '12px',
+                      borderBottom: '2px solid #e2e8f0',
+                      borderRight: '1px solid #e2e8f0',
+                      fontWeight: '600',
+                      color: '#6d28d9',
+                      minWidth: '100px',
+                      zIndex: 10,
+                      boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+                    }}>
+                      BASE売上
+                    </th>
+                    <th style={{
+                      position: 'sticky',
+                      top: 0,
+                      backgroundColor: '#fce7f3',
+                      padding: '12px',
+                      borderBottom: '2px solid #e2e8f0',
+                      borderRight: '1px solid #e2e8f0',
+                      fontWeight: '600',
+                      color: '#be185d',
+                      minWidth: '80px',
+                      zIndex: 10,
+                      boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+                    }}>
+                      指名本数
+                    </th>
+                    <th style={{
+                      position: 'sticky',
+                      top: 0,
+                      right: 0,
+                      backgroundColor: '#fef3c7',
+                      padding: '12px',
+                      borderBottom: '2px solid #e2e8f0',
+                      fontWeight: '600',
+                      color: '#92400e',
+                      minWidth: '120px',
+                      zIndex: 20,
+                      boxShadow: '-2px 2px 4px rgba(0,0,0,0.05)'
+                    }}>
+                      売上合計
+                    </th>
+                  </>
+                )}
+                {viewMode === 'nomination' && (
+                  <th style={{
+                    position: 'sticky',
+                    top: 0,
+                    right: 0,
+                    backgroundColor: '#fce7f3',
+                    padding: '12px',
+                    borderBottom: '2px solid #e2e8f0',
+                    fontWeight: '600',
+                    color: '#be185d',
+                    minWidth: '100px',
+                    zIndex: 20,
+                    boxShadow: '-2px 2px 4px rgba(0,0,0,0.05)'
+                  }}>
+                    指名合計
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody>
-              {salesData.length === 0 ? (
+              {displaySalesData.length === 0 ? (
                 <tr>
-                  <td colSpan={days.length + 5} style={{
+                  <td colSpan={days.length + (viewMode === 'sales' ? 5 : 2)} style={{
                     padding: '40px',
                     textAlign: 'center',
                     color: '#64748b'
@@ -1008,7 +1098,7 @@ function CastSalesPageContent() {
                   </td>
                 </tr>
               ) : (
-                salesData.map((castSales) => (
+                displaySalesData.map((castSales) => (
                   <tr key={castSales.castId}>
                     <td style={{
                       position: 'sticky',
@@ -1027,15 +1117,21 @@ function CastSalesPageContent() {
                     {days.map(day => {
                       const dateStr = format(day, 'yyyy-MM-dd')
                       const dayData = castSales.dailySales[dateStr]
-                      const hasData = dayData && dayData.totalSales > 0
+                      const hasData = viewMode === 'sales'
+                        ? dayData && dayData.totalSales > 0
+                        : dayData && dayData.nominationCount > 0
                       return (
                         <td key={dateStr} style={{
                           padding: '8px',
                           borderBottom: '1px solid #e2e8f0',
                           borderRight: '1px solid #e2e8f0',
                           textAlign: 'right',
-                          backgroundColor: hasData ? '#f0fdf4' : '#fff',
-                          color: hasData ? '#166534' : '#94a3b8',
+                          backgroundColor: hasData
+                            ? (viewMode === 'sales' ? '#f0fdf4' : '#fdf2f8')
+                            : '#fff',
+                          color: hasData
+                            ? (viewMode === 'sales' ? '#166534' : '#be185d')
+                            : '#94a3b8',
                           fontSize: '13px',
                           whiteSpace: 'nowrap'
                         }}>
@@ -1043,65 +1139,87 @@ function CastSalesPageContent() {
                         </td>
                       )
                     })}
-                    {/* 店舗売上 */}
-                    <td style={{
-                      backgroundColor: '#f8fafc',
-                      padding: '12px',
-                      borderBottom: '1px solid #e2e8f0',
-                      borderRight: '1px solid #e2e8f0',
-                      textAlign: 'right',
-                      fontWeight: '500',
-                      color: castSales.totalSales > 0 ? '#1a1a1a' : '#94a3b8',
-                      fontSize: '13px',
-                      whiteSpace: 'nowrap'
-                    }}>
-                      {formatCurrency(castSales.totalSales)}
-                    </td>
-                    {/* BASE売上 */}
-                    <td style={{
-                      backgroundColor: '#ede9fe',
-                      padding: '12px',
-                      borderBottom: '1px solid #e2e8f0',
-                      borderRight: '1px solid #e2e8f0',
-                      textAlign: 'right',
-                      fontWeight: '500',
-                      color: castSales.totalBase > 0 ? '#6d28d9' : '#a5b4fc',
-                      fontSize: '13px',
-                      whiteSpace: 'nowrap'
-                    }}>
-                      {formatCurrency(castSales.totalBase)}
-                    </td>
-                    {/* 指名本数 */}
-                    <td style={{
-                      backgroundColor: '#fce7f3',
-                      padding: '12px',
-                      borderBottom: '1px solid #e2e8f0',
-                      borderRight: '1px solid #e2e8f0',
-                      textAlign: 'right',
-                      fontWeight: '500',
-                      color: castSales.nominationCount > 0 ? '#be185d' : '#f9a8d4',
-                      fontSize: '13px',
-                      whiteSpace: 'nowrap'
-                    }}>
-                      {castSales.nominationCount}本
-                    </td>
-                    {/* 売上合計 */}
-                    <td style={{
-                      position: 'sticky',
-                      right: 0,
-                      backgroundColor: '#fef3c7',
-                      padding: '12px',
-                      borderBottom: '1px solid #e2e8f0',
-                      textAlign: 'right',
-                      fontWeight: '600',
-                      color: '#92400e',
-                      zIndex: 5,
-                      boxShadow: '-2px 0 4px rgba(0,0,0,0.05)',
-                      fontSize: '14px',
-                      whiteSpace: 'nowrap'
-                    }}>
-                      {formatCurrency(castSales.grandTotal)}
-                    </td>
+                    {viewMode === 'sales' && (
+                      <>
+                        {/* 店舗売上 */}
+                        <td style={{
+                          backgroundColor: '#f8fafc',
+                          padding: '12px',
+                          borderBottom: '1px solid #e2e8f0',
+                          borderRight: '1px solid #e2e8f0',
+                          textAlign: 'right',
+                          fontWeight: '500',
+                          color: castSales.totalSales > 0 ? '#1a1a1a' : '#94a3b8',
+                          fontSize: '13px',
+                          whiteSpace: 'nowrap'
+                        }}>
+                          {formatCurrency(castSales.totalSales)}
+                        </td>
+                        {/* BASE売上 */}
+                        <td style={{
+                          backgroundColor: '#ede9fe',
+                          padding: '12px',
+                          borderBottom: '1px solid #e2e8f0',
+                          borderRight: '1px solid #e2e8f0',
+                          textAlign: 'right',
+                          fontWeight: '500',
+                          color: castSales.totalBase > 0 ? '#6d28d9' : '#a5b4fc',
+                          fontSize: '13px',
+                          whiteSpace: 'nowrap'
+                        }}>
+                          {formatCurrency(castSales.totalBase)}
+                        </td>
+                        {/* 指名本数 */}
+                        <td style={{
+                          backgroundColor: '#fce7f3',
+                          padding: '12px',
+                          borderBottom: '1px solid #e2e8f0',
+                          borderRight: '1px solid #e2e8f0',
+                          textAlign: 'right',
+                          fontWeight: '500',
+                          color: castSales.nominationCount > 0 ? '#be185d' : '#f9a8d4',
+                          fontSize: '13px',
+                          whiteSpace: 'nowrap'
+                        }}>
+                          {castSales.nominationCount}本
+                        </td>
+                        {/* 売上合計 */}
+                        <td style={{
+                          position: 'sticky',
+                          right: 0,
+                          backgroundColor: '#fef3c7',
+                          padding: '12px',
+                          borderBottom: '1px solid #e2e8f0',
+                          textAlign: 'right',
+                          fontWeight: '600',
+                          color: '#92400e',
+                          zIndex: 5,
+                          boxShadow: '-2px 0 4px rgba(0,0,0,0.05)',
+                          fontSize: '14px',
+                          whiteSpace: 'nowrap'
+                        }}>
+                          {formatCurrency(castSales.grandTotal)}
+                        </td>
+                      </>
+                    )}
+                    {viewMode === 'nomination' && (
+                      <td style={{
+                        position: 'sticky',
+                        right: 0,
+                        backgroundColor: '#fce7f3',
+                        padding: '12px',
+                        borderBottom: '1px solid #e2e8f0',
+                        textAlign: 'right',
+                        fontWeight: '600',
+                        color: castSales.nominationCount > 0 ? '#be185d' : '#f9a8d4',
+                        zIndex: 5,
+                        boxShadow: '-2px 0 4px rgba(0,0,0,0.05)',
+                        fontSize: '14px',
+                        whiteSpace: 'nowrap'
+                      }}>
+                        {castSales.nominationCount}本
+                      </td>
+                    )}
                   </tr>
                 ))
               )}

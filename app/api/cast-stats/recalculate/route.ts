@@ -48,6 +48,7 @@ interface OrderWithStaff {
   id: string
   staff_name: string | null
   order_date: string
+  guest_count: number | null
   order_items: OrderItemWithTax[]
 }
 
@@ -245,6 +246,7 @@ async function recalculateForDate(storeId: number, date: string): Promise<{
         id,
         staff_name,
         order_date,
+        guest_count,
         order_items (
           id,
           product_name,
@@ -376,6 +378,17 @@ async function recalculateForDate(storeId: number, date: string): Promise<{
       salesMap.set(summary.cast_id, summary)
     })
 
+    // 7.5. 指名本数を集計（staff_nameがキャスト名と一致する伝票のguest_countを合計）
+    const nominationCountByCast = new Map<number, number>()
+    for (const order of typedOrders) {
+      if (!order.staff_name || !order.guest_count) continue
+      const cast = castMap.get(order.staff_name)
+      if (cast) {
+        const current = nominationCountByCast.get(cast.id) || 0
+        nominationCountByCast.set(cast.id, current + order.guest_count)
+      }
+    }
+
     // 8. 時給関連データを計算してstatsToUpsertを作成
     const statsToUpsert: {
       cast_id: number
@@ -397,6 +410,7 @@ async function recalculateForDate(storeId: number, date: string): Promise<{
       wage_amount: number
       costume_id: number | null
       wage_status_id: number | null
+      nomination_count: number
       is_finalized: boolean
       updated_at: string
     }[] = []
@@ -467,6 +481,7 @@ async function recalculateForDate(storeId: number, date: string): Promise<{
         wage_amount: wageAmount,
         costume_id: costumeId,
         wage_status_id: wageStatusId,
+        nomination_count: nominationCountByCast.get(summary.cast_id) || 0,
         is_finalized: false,
         updated_at: new Date().toISOString()
       })
@@ -522,6 +537,7 @@ async function recalculateForDate(storeId: number, date: string): Promise<{
           wage_amount: wageAmount,
           costume_id: costumeId,
           wage_status_id: wageStatusId,
+          nomination_count: nominationCountByCast.get(cast.id) || 0,
           is_finalized: false,
           updated_at: new Date().toISOString()
         })
@@ -557,6 +573,7 @@ async function recalculateForDate(storeId: number, date: string): Promise<{
         wage_amount: 0,
         costume_id: null,
         wage_status_id: null,
+        nomination_count: nominationCountByCast.get(castId) || 0,
         is_finalized: false,
         updated_at: new Date().toISOString()
       })
