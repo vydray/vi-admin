@@ -65,6 +65,9 @@ function ReceiptsPageContent() {
   const [receipts, setReceipts] = useState<ReceiptWithDetails[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
+  const [itemSearchTerm, setItemSearchTerm] = useState('')
+  const [matchingOrderIds, setMatchingOrderIds] = useState<number[] | null>(null)
+  const [isSearchingItems, setIsSearchingItems] = useState(false)
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [filterStaffName, setFilterStaffName] = useState('')
@@ -322,6 +325,43 @@ function ReceiptsPageContent() {
       loadSystemSettings()
     }
   }, [loadReceipts, loadMasterData, loadSystemSettings, storeLoading, storeId])
+
+  // 商品名で伝票を検索（デバウンス付き）
+  useEffect(() => {
+    if (!storeId) return
+
+    // 検索語が空の場合はリセット
+    if (itemSearchTerm.trim() === '') {
+      setMatchingOrderIds(null)
+      setIsSearchingItems(false)
+      return
+    }
+
+    setIsSearchingItems(true)
+
+    const searchTimeout = setTimeout(async () => {
+      try {
+        // order_itemsテーブルで商品名を検索
+        const { data, error } = await supabase
+          .from('order_items')
+          .select('order_id')
+          .ilike('product_name', `%${itemSearchTerm}%`)
+
+        if (error) throw error
+
+        // マッチしたorder_idをユニークにして保存
+        const orderIds = [...new Set((data || []).map(item => item.order_id))]
+        setMatchingOrderIds(orderIds)
+      } catch (error) {
+        console.error('Error searching items:', error)
+        setMatchingOrderIds([])
+      } finally {
+        setIsSearchingItems(false)
+      }
+    }, 300) // 300msのデバウンス
+
+    return () => clearTimeout(searchTimeout)
+  }, [itemSearchTerm, storeId])
 
   const loadReceiptDetails = async (receipt: Receipt) => {
     try {
@@ -1261,9 +1301,12 @@ function ReceiptsPageContent() {
     const matchesMinAmount = filterMinAmount === '' || amount >= Number(filterMinAmount)
     const matchesMaxAmount = filterMaxAmount === '' || amount <= Number(filterMaxAmount)
 
+    // 商品名フィルター（order_items検索結果でフィルタ）
+    const matchesItemSearch = matchingOrderIds === null || matchingOrderIds.includes(receipt.id)
+
     return matchesSearch && matchesStartDate && matchesEndDate &&
            matchesStaffName && matchesPaymentMethod &&
-           matchesMinAmount && matchesMaxAmount
+           matchesMinAmount && matchesMaxAmount && matchesItemSearch
   })
 
   const formatDateTime = (dateString: string) => {
@@ -1324,6 +1367,30 @@ function ReceiptsPageContent() {
           onChange={(e) => setSearchTerm(e.target.value)}
           style={styles.searchInput}
         />
+        <div style={{ position: 'relative', display: 'inline-block' }}>
+          <input
+            type="text"
+            placeholder="商品名で検索..."
+            value={itemSearchTerm}
+            onChange={(e) => setItemSearchTerm(e.target.value)}
+            style={{
+              ...styles.searchInput,
+              width: '200px',
+              paddingRight: isSearchingItems ? '30px' : '10px'
+            }}
+          />
+          {isSearchingItems && (
+            <span style={{
+              position: 'absolute',
+              right: '10px',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              color: '#888'
+            }}>
+              🔍
+            </span>
+          )}
+        </div>
         <div style={styles.dateFilters}>
           <label style={styles.dateLabel}>
             開始日:
