@@ -267,7 +267,7 @@ async function recalculateForDate(storeId: number, date: string): Promise<{
     // 2.5. BASE注文を取得（未処理のもの）
     const { data: baseOrders, error: baseOrdersError } = await supabaseAdmin
       .from('base_orders')
-      .select('id, cast_id, actual_price, quantity')
+      .select('id, cast_id, actual_price, quantity, product_name')
       .eq('store_id', storeId)
       .eq('business_date', date)
       .eq('is_processed', false)
@@ -575,9 +575,38 @@ async function recalculateForDate(storeId: number, date: string): Promise<{
 
     // 10. cast_daily_itemsも更新（cron jobと同様）
     const dailyItems = aggregateCastDailyItems(typedOrders, castMap, storeId, date)
-    if (dailyItems.length > 0) {
+
+    // 10.5. BASE注文もcast_daily_itemsに追加（推し扱い、カテゴリは"BASE"）
+    const baseItemsMap = new Map<string, CastDailyItemData>()
+    for (const order of baseOrders || []) {
+      if (!order.cast_id || !order.product_name) continue
+      const key = `${order.cast_id}:${order.product_name}`
+      if (baseItemsMap.has(key)) {
+        const existing = baseItemsMap.get(key)!
+        existing.quantity += order.quantity
+        existing.subtotal += order.actual_price * order.quantity
+      } else {
+        baseItemsMap.set(key, {
+          cast_id: order.cast_id,
+          store_id: storeId,
+          date: date,
+          category: 'BASE',
+          product_name: order.product_name,
+          quantity: order.quantity,
+          subtotal: order.actual_price * order.quantity,
+          back_amount: 0,
+          is_self: true  // BASEは全て推し扱い
+        })
+      }
+    }
+    const baseItems = Array.from(baseItemsMap.values())
+
+    // POS + BASE を結合
+    const allDailyItems = [...dailyItems, ...baseItems]
+
+    if (allDailyItems.length > 0) {
       // 確定済みのキャストは除外
-      const itemsToUpsert = dailyItems.filter(item => !finalizedCastIds.has(item.cast_id))
+      const itemsToUpsert = allDailyItems.filter(item => !finalizedCastIds.has(item.cast_id))
       if (itemsToUpsert.length > 0) {
         // 更新対象のキャストIDリスト
         const castIdsToUpdate = [...new Set(itemsToUpsert.map(i => i.cast_id))]
@@ -621,7 +650,7 @@ async function recalculateForDate(storeId: number, date: string): Promise<{
       }
     }
 
-    return { success: true, castsProcessed: statsToUpsert.length, itemsProcessed: dailyItems.length }
+    return { success: true, castsProcessed: statsToUpsert.length, itemsProcessed: allDailyItems.length }
   } catch (error) {
     console.error('Recalculate error:', error)
     return { success: false, castsProcessed: 0, error: String(error) }

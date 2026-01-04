@@ -24,6 +24,10 @@
     {
       "path": "/api/cron/refresh-base-tokens",
       "schedule": "0 */12 * * *"
+    },
+    {
+      "path": "/api/cron/sync-base-orders",
+      "schedule": "*/15 * * * *"
     }
   ]
 }

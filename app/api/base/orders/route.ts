@@ -168,6 +168,9 @@ export async function POST(request: NextRequest) {
           const cast = casts?.find(c => c.name === item.variation)
           const baseProduct = baseProducts?.find(p => p.base_product_name === item.title)
 
+          // 店舗価格（税抜）を決定: store_priceがあればそれを使用、なければbase_priceを税抜換算
+          const actualPrice = baseProduct?.store_price ?? Math.floor(item.price / 1.1)
+
           const { error: upsertError } = await supabase
             .from('base_orders')
             .upsert({
@@ -179,7 +182,7 @@ export async function POST(request: NextRequest) {
               cast_id: cast?.id || null,
               local_product_id: baseProduct?.id || null,
               base_price: item.price,
-              actual_price: baseProduct?.store_price || null,
+              actual_price: actualPrice,
               quantity: item.amount,
               business_date: businessDate,
               is_processed: false,

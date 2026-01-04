@@ -214,11 +214,10 @@ function CastSalesPageContent() {
     })
   }, [storeId])
 
-  // BASE売上を取得（売上設定を適用）
+  // BASE売上を取得
   const loadBaseOrders = useCallback(async (
     startDate: string,
-    endDate: string,
-    settings: SalesSettings
+    endDate: string
   ) => {
     const { data, error } = await supabase
       .from('base_orders')
@@ -233,24 +232,13 @@ function CastSalesPageContent() {
       return new Map<number, { [date: string]: number }>()
     }
 
-    // 売上設定を適用（POS売上と同じ設定を使用）
-    const excludeTax = settings.item_exclude_consumption_tax ?? settings.use_tax_excluded ?? false
-    const excludeService = settings.item_exclude_service_charge ?? false
-    const taxPercent = 10 // 消費税率（10%）
-
     // キャスト別・日別のBASE売上をマップに集計
+    // 注: actual_priceは既に税抜価格（store_priceまたはbase_price/1.1）なので追加の税計算は不要
     const baseMap = new Map<number, { [date: string]: number }>()
     for (const order of data || []) {
       if (!order.cast_id || !order.business_date) continue
 
-      // 売上設定を適用した価格を計算
-      let calcPrice = order.actual_price || 0
-      if (excludeTax) {
-        calcPrice = Math.floor(calcPrice * 100 / (100 + taxPercent))
-      }
-      // サービス料は通常BASE商品には含まれないため除外処理は省略
-
-      const price = calcPrice * (order.quantity || 1)
+      const price = (order.actual_price || 0) * (order.quantity || 1)
       if (!baseMap.has(order.cast_id)) {
         baseMap.set(order.cast_id, {})
       }
@@ -292,7 +280,7 @@ function CastSalesPageContent() {
         .gte('order_date', startDate)
         .lte('order_date', endDate + 'T23:59:59')
         .is('deleted_at', null),
-      loadBaseOrders(startDate, endDate, settings)
+      loadBaseOrders(startDate, endDate)
     ])
 
     if (ordersResult.error) {
