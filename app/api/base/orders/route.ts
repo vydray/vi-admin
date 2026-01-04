@@ -130,6 +130,10 @@ export async function POST(request: NextRequest) {
       const detailResults = await Promise.allSettled(
         batch.map(async (orderSummary) => {
           const detailResponse = await fetchOrderDetail(accessToken, orderSummary.unique_key)
+          // デバッグ: 最初の注文詳細の構造を確認
+          if (i === 0) {
+            console.log('Order detail response:', JSON.stringify(detailResponse, null, 2))
+          }
           return { orderSummary, orderDetail: detailResponse.order }
         })
       )
