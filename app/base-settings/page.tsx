@@ -8,6 +8,8 @@ import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
 import ProtectedPage from '@/components/ProtectedPage'
 import toast from 'react-hot-toast'
+import { format, startOfMonth, endOfMonth, addMonths, subMonths } from 'date-fns'
+import { ja } from 'date-fns/locale'
 
 interface CastBasic {
   id: number
@@ -62,6 +64,7 @@ function BaseSettingsPageContent() {
   // 注文履歴
   const [orders, setOrders] = useState<any[]>([])
   const [ordersLoading, setOrdersLoading] = useState(false)
+  const [ordersMonth, setOrdersMonth] = useState(new Date())
 
   // 締め時間設定
   const [cutoffHour, setCutoffHour] = useState(6)
@@ -434,15 +437,20 @@ function BaseSettingsPageContent() {
   }
 
   // 注文履歴を読み込み
-  const loadOrders = async () => {
+  const loadOrders = useCallback(async () => {
     setOrdersLoading(true)
     try {
+      // 選択月の営業日範囲で取得
+      const startDate = format(startOfMonth(ordersMonth), 'yyyy-MM-dd')
+      const endDate = format(endOfMonth(ordersMonth), 'yyyy-MM-dd')
+
       const { data, error } = await supabase
         .from('base_orders')
         .select('*')
         .eq('store_id', storeId)
+        .gte('business_date', startDate)
+        .lte('business_date', endDate)
         .order('order_datetime', { ascending: false })
-        .limit(100)
 
       if (error) throw error
       setOrders(data || [])
@@ -452,13 +460,13 @@ function BaseSettingsPageContent() {
     } finally {
       setOrdersLoading(false)
     }
-  }
+  }, [storeId, ordersMonth])
 
   useEffect(() => {
     if (activeTab === 'orders') {
       loadOrders()
     }
-  }, [activeTab, storeId])
+  }, [activeTab, storeId, ordersMonth, loadOrders])
 
   // BASE設定を保存
   const handleSaveSettings = async () => {
@@ -542,10 +550,18 @@ function BaseSettingsPageContent() {
   const handleFetchOrdersFromApi = async () => {
     setFetchingOrders(true)
     try {
+      // 選択月の範囲でBASE APIから取得
+      const startDate = format(startOfMonth(ordersMonth), 'yyyy-MM-dd')
+      const endDate = format(endOfMonth(ordersMonth), 'yyyy-MM-dd')
+
       const response = await fetch('/api/base/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ store_id: storeId }),
+        body: JSON.stringify({
+          store_id: storeId,
+          start_date: startDate,
+          end_date: endDate,
+        }),
       })
 
       const data = await response.json()
@@ -1003,7 +1019,27 @@ function BaseSettingsPageContent() {
         <div style={styles.content}>
           <div style={styles.sectionHeader}>
             <h2 style={styles.sectionTitle}>BASE注文履歴</h2>
-            <div style={{ display: 'flex', gap: '8px' }}>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              {/* 月選択 */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Button
+                  onClick={() => setOrdersMonth(subMonths(ordersMonth, 1))}
+                  variant="outline"
+                  size="small"
+                >
+                  ◀
+                </Button>
+                <span style={{ fontWeight: 'bold', minWidth: '100px', textAlign: 'center' }}>
+                  {format(ordersMonth, 'yyyy年M月', { locale: ja })}
+                </span>
+                <Button
+                  onClick={() => setOrdersMonth(addMonths(ordersMonth, 1))}
+                  variant="outline"
+                  size="small"
+                >
+                  ▶
+                </Button>
+              </div>
               {isConnected && (
                 <Button
                   onClick={handleFetchOrdersFromApi}
