@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
       end_ordered: effectiveEndDate,
       limit: 100,
     })
-    console.log('BASE API response:', { ordersCount: ordersResponse.orders?.length || 0 })
+    console.log('BASE API full response:', JSON.stringify(ordersResponse, null, 2))
 
     // 売上設定から締め時間を取得
     const { data: salesSettings } = await supabase
