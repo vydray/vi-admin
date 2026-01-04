@@ -15,6 +15,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'store_id is required' }, { status: 400 })
     }
 
+    // 日付が指定されていない場合はデフォルトで過去30日
+    const defaultEndDate = new Date().toISOString().split('T')[0]
+    const defaultStartDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+    const effectiveStartDate = start_date || defaultStartDate
+    const effectiveEndDate = end_date || defaultEndDate
+
     const supabase = getSupabaseServerClient()
 
     // base_settingsを取得
@@ -81,11 +87,13 @@ export async function POST(request: NextRequest) {
     }
 
     // BASE APIから注文を取得
+    console.log('Fetching BASE orders:', { effectiveStartDate, effectiveEndDate })
     const ordersResponse = await fetchOrders(accessToken, {
-      start_ordered: start_date,
-      end_ordered: end_date,
+      start_ordered: effectiveStartDate,
+      end_ordered: effectiveEndDate,
       limit: 100,
     })
+    console.log('BASE API response:', { ordersCount: ordersResponse.orders?.length || 0 })
 
     // 売上設定から締め時間を取得
     const { data: salesSettings } = await supabase
