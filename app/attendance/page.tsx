@@ -7,6 +7,7 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, addMonths, subMont
 import { ja } from 'date-fns/locale'
 import { useStore } from '@/contexts/StoreContext'
 import { useConfirm } from '@/contexts/ConfirmContext'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import holidayJp from '@holiday-jp/holiday_jp'
 import { generateTimeOptions } from '@/lib/timeUtils'
 import { handleUnexpectedError, showErrorToast } from '@/lib/errorHandling'
@@ -52,6 +53,7 @@ export default function AttendancePage() {
 function AttendancePageContent() {
   const { storeId, isLoading: storeLoading } = useStore()
   const { confirm } = useConfirm()
+  const { isMobile, isLoading: mobileLoading } = useIsMobile()
   const [selectedMonth, setSelectedMonth] = useState(new Date())
   const [casts, setCasts] = useState<CastBasic[]>([])
   const [attendances, setAttendances] = useState<Attendance[]>([])
@@ -593,7 +595,7 @@ function AttendancePageContent() {
     return { castId, dateStr, cast, date, attendance }
   }, [editingCell, casts, attendances])
 
-  if (storeLoading || loading) {
+  if (storeLoading || loading || mobileLoading) {
     return <LoadingSpinner />
   }
 
@@ -607,39 +609,55 @@ function AttendancePageContent() {
       {/* ヘッダー */}
       <div style={{
         backgroundColor: '#fff',
-        padding: '20px',
-        marginBottom: '20px',
+        padding: isMobile ? '16px' : '20px',
+        marginBottom: isMobile ? '12px' : '20px',
         borderRadius: '12px',
         boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
       }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-          <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: 0, color: '#1a1a1a' }}>
+        <div style={{
+          display: 'flex',
+          flexDirection: isMobile ? 'column' : 'row',
+          justifyContent: 'space-between',
+          alignItems: isMobile ? 'stretch' : 'center',
+          gap: isMobile ? '12px' : '0',
+          marginBottom: isMobile ? '12px' : '20px'
+        }}>
+          <h1 style={{
+            fontSize: isMobile ? '20px' : '24px',
+            fontWeight: 'bold',
+            margin: 0,
+            color: '#1a1a1a',
+            paddingLeft: isMobile ? '50px' : '0'
+          }}>
             勤怠管理
           </h1>
-          <div style={{ display: 'flex', gap: '10px' }}>
-            <Button
-              onClick={handleRecalculate}
-              variant="secondary"
-              disabled={isRecalculating}
-            >
-              {isRecalculating ? '再計算中...' : '時給再計算'}
-            </Button>
-            <Button
-              onClick={() => setShowStatusModal(true)}
-              variant="primary"
-            >
-              ステータス管理
-            </Button>
-          </div>
+          {!isMobile && (
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <Button
+                onClick={handleRecalculate}
+                variant="secondary"
+                disabled={isRecalculating}
+              >
+                {isRecalculating ? '再計算中...' : '時給再計算'}
+              </Button>
+              <Button
+                onClick={() => setShowStatusModal(true)}
+                variant="primary"
+              >
+                ステータス管理
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* 月選択 */}
         <div style={{
           display: 'flex',
           alignItems: 'center',
+          justifyContent: isMobile ? 'center' : 'flex-start',
           gap: '20px'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '16px' : '12px' }}>
             <Button
               onClick={() => setSelectedMonth(subMonths(selectedMonth, 1))}
               variant="secondary"
@@ -647,7 +665,7 @@ function AttendancePageContent() {
             >
               ←
             </Button>
-            <span style={{ fontSize: '16px', fontWeight: '600' }}>
+            <span style={{ fontSize: isMobile ? '18px' : '16px', fontWeight: '600', minWidth: isMobile ? '120px' : 'auto', textAlign: 'center' }}>
               {format(selectedMonth, 'yyyy年M月', { locale: ja })}
             </span>
             <Button
@@ -669,14 +687,15 @@ function AttendancePageContent() {
         overflow: 'hidden'
       }}>
         <div style={{
-          maxHeight: 'calc(100vh - 250px)',
+          maxHeight: isMobile ? 'calc(100vh - 180px)' : 'calc(100vh - 250px)',
           overflow: 'auto',
-          position: 'relative'
+          position: 'relative',
+          WebkitOverflowScrolling: 'touch'
         }}>
           <table style={{
             width: '100%',
             borderCollapse: 'collapse',
-            fontSize: '14px',
+            fontSize: isMobile ? '14px' : '14px',
             position: 'relative'
           }}>
             <thead>
@@ -686,16 +705,16 @@ function AttendancePageContent() {
                   top: 0,
                   left: 0,
                   backgroundColor: '#f8fafc',
-                  padding: '12px',
+                  padding: isMobile ? '8px' : '12px',
                   borderBottom: '2px solid #e2e8f0',
                   borderRight: '1px solid #e2e8f0',
                   fontWeight: '600',
                   color: '#475569',
-                  minWidth: '120px',
+                  minWidth: isMobile ? '70px' : '120px',
                   zIndex: 20,
                   boxShadow: '2px 2px 4px rgba(0,0,0,0.05)'
                 }}>
-                  スタッフ名
+                  {isMobile ? '名前' : 'スタッフ名'}
                 </th>
                 {daysInMonth.map(date => {
                   const holiday = getHoliday(date)
@@ -707,20 +726,22 @@ function AttendancePageContent() {
                       style={{
                         position: 'sticky',
                         top: 0,
-                        padding: '8px',
+                        padding: isMobile ? '8px 4px' : '8px',
                         borderBottom: '2px solid #e2e8f0',
                         borderRight: '1px solid #e2e8f0',
                         textAlign: 'center',
                         backgroundColor: '#f8fafc',
                         color: isHolidayOrSunday ? '#dc2626' : date.getDay() === 6 ? '#2563eb' : '#475569',
                         fontWeight: '600',
-                        minWidth: '100px',
+                        minWidth: isMobile ? '70px' : '100px',
                         zIndex: 10,
                         boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
                       }}
                     >
-                      <div>{getDate(date)}日({getDayOfWeek(date)}){holiday && ' 祝'}</div>
-                      <div style={{ fontSize: '12px', fontWeight: '400', marginTop: '4px' }}>
+                      <div style={{ fontSize: isMobile ? '13px' : '14px' }}>
+                        {getDate(date)}{isMobile ? '' : '日'}({getDayOfWeek(date)}){holiday && !isMobile && ' 祝'}
+                      </div>
+                      <div style={{ fontSize: isMobile ? '12px' : '12px', fontWeight: '400', marginTop: isMobile ? '2px' : '4px' }}>
                         {getAttendanceCount(date)}人
                       </div>
                     </th>
@@ -736,13 +757,15 @@ function AttendancePageContent() {
                       position: 'sticky',
                       left: 0,
                       backgroundColor: '#fff',
-                      padding: '12px',
+                      padding: isMobile ? '8px' : '12px',
                       borderBottom: '1px solid #e2e8f0',
                       borderRight: '1px solid #e2e8f0',
                       fontWeight: '500',
                       color: '#1a1a1a',
                       zIndex: 5,
-                      boxShadow: '2px 0 4px rgba(0,0,0,0.05)'
+                      boxShadow: '2px 0 4px rgba(0,0,0,0.05)',
+                      fontSize: isMobile ? '13px' : '14px',
+                      whiteSpace: 'nowrap'
                     }}
                   >
                     {cast.name}
@@ -756,7 +779,7 @@ function AttendancePageContent() {
                         key={cellKey}
                         onClick={() => handleCellClick(cast.id, date)}
                         style={{
-                          padding: '8px',
+                          padding: isMobile ? '4px' : '8px',
                           borderBottom: '1px solid #e2e8f0',
                           borderRight: '1px solid #e2e8f0',
                           textAlign: 'center',
@@ -768,23 +791,23 @@ function AttendancePageContent() {
                           cursor: 'pointer',
                           position: 'relative',
                           transition: 'background-color 0.2s ease',
-                          minHeight: '60px'
+                          minHeight: isMobile ? '40px' : '60px'
                         }}
                         onMouseEnter={(e) => {
-                          if (!attendance) {
+                          if (!attendance && !isMobile) {
                             e.currentTarget.style.backgroundColor = '#f1f5f9'
                           }
                         }}
                         onMouseLeave={(e) => {
-                          if (!attendance) {
+                          if (!attendance && !isMobile) {
                             e.currentTarget.style.backgroundColor = '#fff'
                           }
                         }}
                       >
                         {attendance && (
-                          <div style={{ fontSize: '13px', color: '#1a1a1a' }}>
+                          <div style={{ fontSize: isMobile ? '12px' : '13px', color: '#1a1a1a' }}>
                             {/* 修正済みマーク */}
-                            {attendance.is_modified && (
+                            {attendance.is_modified && !isMobile && (
                               <div style={{
                                 position: 'absolute',
                                 top: '2px',
@@ -798,7 +821,7 @@ function AttendancePageContent() {
                             )}
                             {attendance.status && (
                               <div style={{
-                                fontSize: '11px',
+                                fontSize: isMobile ? '11px' : '11px',
                                 fontWeight: '600',
                                 color: attendanceStatuses.find(s => s.name === attendance.status)?.color || '#475569',
                                 marginBottom: attendance.check_in_datetime ? '2px' : '0'
@@ -806,7 +829,11 @@ function AttendancePageContent() {
                                 {attendance.status}
                               </div>
                             )}
-                            {attendance.check_in_datetime && formatAttendanceTime(attendance)}
+                            {attendance.check_in_datetime && (
+                              <div style={{ fontSize: isMobile ? '11px' : '13px' }}>
+                                {formatAttendanceTime(attendance)}
+                              </div>
+                            )}
                           </div>
                         )}
                       </td>
@@ -825,22 +852,24 @@ function AttendancePageContent() {
           onClick={(e) => e.stopPropagation()}
           style={{
             position: 'fixed',
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
+            top: isMobile ? '5%' : '50%',
+            left: isMobile ? '3%' : '50%',
+            right: isMobile ? '3%' : 'auto',
+            transform: isMobile ? 'none' : 'translate(-50%, -50%)',
             backgroundColor: '#fff',
-            padding: '24px',
+            padding: isMobile ? '16px' : '24px',
             borderRadius: '12px',
             boxShadow: '0 10px 40px rgba(0,0,0,0.2)',
             zIndex: 1000,
-            minWidth: '380px',
-            maxHeight: '90vh',
-            overflowY: 'auto'
+            minWidth: isMobile ? 'auto' : '380px',
+            maxHeight: isMobile ? '90vh' : '90vh',
+            overflowY: 'auto',
+            WebkitOverflowScrolling: 'touch'
           }}
         >
           <h3 style={{
             margin: '0 0 16px 0',
-            fontSize: '18px',
+            fontSize: isMobile ? '16px' : '18px',
             fontWeight: '600',
             color: '#1a1a1a'
           }}>
@@ -848,11 +877,11 @@ function AttendancePageContent() {
           </h3>
 
           <div style={{ marginBottom: '16px' }}>
-            <div style={{ fontSize: '14px', color: '#64748b', marginBottom: '4px' }}>
+            <div style={{ fontSize: isMobile ? '13px' : '14px', color: '#64748b', marginBottom: '4px' }}>
               スタッフ: {editingInfo.cast?.name || ''}
             </div>
-            <div style={{ fontSize: '14px', color: '#64748b' }}>
-              日付: {format(editingInfo.date, 'yyyy年M月d日(E)', { locale: ja })}
+            <div style={{ fontSize: isMobile ? '13px' : '14px', color: '#64748b' }}>
+              日付: {format(editingInfo.date, isMobile ? 'M月d日(E)' : 'yyyy年M月d日(E)', { locale: ja })}
             </div>
           </div>
 
@@ -1097,27 +1126,28 @@ function AttendancePageContent() {
           ) : (
             <div style={{
               marginBottom: '20px',
-              padding: '20px',
+              padding: isMobile ? '16px' : '20px',
               backgroundColor: '#f8fafc',
               borderRadius: '8px'
             }}>
-              <p style={{ fontSize: '14px', color: '#64748b', marginBottom: '12px', textAlign: 'center' }}>
+              <p style={{ fontSize: isMobile ? '13px' : '14px', color: '#64748b', marginBottom: '12px', textAlign: 'center' }}>
                 ステータスを選択してください
               </p>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'center' }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: isMobile ? '10px' : '8px', justifyContent: 'center' }}>
                 {attendanceStatuses.map(status => (
                   <button
                     key={status.id}
                     onClick={() => addAttendance(status.id)}
                     style={{
-                      padding: '8px 16px',
-                      fontSize: '13px',
+                      padding: isMobile ? '12px 20px' : '8px 16px',
+                      fontSize: isMobile ? '14px' : '13px',
                       fontWeight: '500',
                       backgroundColor: status.color,
                       color: '#fff',
                       border: 'none',
                       borderRadius: '6px',
-                      cursor: 'pointer'
+                      cursor: 'pointer',
+                      minWidth: isMobile ? '80px' : 'auto'
                     }}
                   >
                     {status.name}
@@ -1236,15 +1266,15 @@ function AttendancePageContent() {
           )}
 
           {/* アクションボタン */}
-          <div style={{ display: 'flex', gap: '8px' }}>
+          <div style={{ display: 'flex', gap: '8px', flexDirection: isMobile ? 'column' : 'row' }}>
             {tempTime.statusId && (
-              <>
+              <div style={{ display: 'flex', gap: '8px', flex: 1 }}>
                 <button
                   onClick={saveAttendance}
                   style={{
                     flex: 1,
-                    padding: '10px',
-                    fontSize: '14px',
+                    padding: isMobile ? '14px' : '10px',
+                    fontSize: isMobile ? '15px' : '14px',
                     fontWeight: '500',
                     backgroundColor: '#10b981',
                     color: '#fff',
@@ -1259,8 +1289,8 @@ function AttendancePageContent() {
                   <button
                     onClick={deleteAttendance}
                     style={{
-                      padding: '10px 16px',
-                      fontSize: '14px',
+                      padding: isMobile ? '14px 20px' : '10px 16px',
+                      fontSize: isMobile ? '15px' : '14px',
                       fontWeight: '500',
                       backgroundColor: '#dc2626',
                       color: '#fff',
@@ -1272,7 +1302,7 @@ function AttendancePageContent() {
                     削除
                   </button>
                 )}
-              </>
+              </div>
             )}
 
             <button
@@ -1282,14 +1312,15 @@ function AttendancePageContent() {
                 setHistoryData([])
               }}
               style={{
-                padding: '10px 16px',
-                fontSize: '14px',
+                padding: isMobile ? '14px 20px' : '10px 16px',
+                fontSize: isMobile ? '15px' : '14px',
                 fontWeight: '500',
                 backgroundColor: '#6b7280',
                 color: '#fff',
                 border: 'none',
                 borderRadius: '6px',
-                cursor: 'pointer'
+                cursor: 'pointer',
+                width: isMobile && !tempTime.statusId ? '100%' : 'auto'
               }}
             >
               キャンセル

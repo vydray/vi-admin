@@ -9,6 +9,7 @@ import toast from 'react-hot-toast'
 import { Payment } from '@/types'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
+import { useIsMobile } from '@/hooks/useIsMobile'
 
 interface DashboardData {
   todaySales: number
@@ -76,6 +77,7 @@ interface OrderWithPayment {
 
 export default function Home() {
   const { storeId, storeName, isLoading: storeLoading } = useStore()
+  const { isMobile } = useIsMobile()
   const [data, setData] = useState<DashboardData>({
     todaySales: 0,
     monthlySales: 0,
@@ -550,17 +552,36 @@ export default function Home() {
   const months = Array.from({ length: 12 }, (_, i) => i + 1)
 
   return (
-    <div>
-      <div style={styles.header}>
+    <div style={isMobile ? { padding: '60px 12px 20px' } : undefined}>
+      <div style={{
+        ...styles.header,
+        ...(isMobile ? {
+          flexDirection: 'column',
+          alignItems: 'flex-start',
+          gap: '12px',
+        } : {})
+      }}>
         <div>
-          <h1 style={styles.title}>ダッシュボード</h1>
-          <p style={styles.subtitle}>{storeName}</p>
+          <h1 style={{
+            ...styles.title,
+            ...(isMobile ? { fontSize: '22px' } : {})
+          }}>ダッシュボード</h1>
+          <p style={{
+            ...styles.subtitle,
+            ...(isMobile ? { fontSize: '14px', marginTop: '2px' } : {})
+          }}>{storeName}</p>
         </div>
-        <div style={styles.dateSelector}>
+        <div style={{
+          ...styles.dateSelector,
+          ...(isMobile ? { width: '100%', flexWrap: 'wrap' } : {})
+        }}>
           <select
             value={selectedYear}
             onChange={(e) => setSelectedYear(Number(e.target.value))}
-            style={styles.select}
+            style={{
+              ...styles.select,
+              ...(isMobile ? { padding: '10px 12px', fontSize: '15px', flex: '1' } : {})
+            }}
           >
             {years.map((year) => (
               <option key={year} value={year}>
@@ -571,7 +592,10 @@ export default function Home() {
           <select
             value={selectedMonth}
             onChange={(e) => setSelectedMonth(Number(e.target.value))}
-            style={styles.select}
+            style={{
+              ...styles.select,
+              ...(isMobile ? { padding: '10px 12px', fontSize: '15px', flex: '1' } : {})
+            }}
           >
             {months.map((month) => (
               <option key={month} value={month}>
@@ -580,17 +604,22 @@ export default function Home() {
             ))}
           </select>
 
-          <Button
-            onClick={() => setShowExportModal(true)}
-            disabled={isExporting}
-            variant="success"
-          >
-            {isExporting ? 'エクスポート中...' : 'CSVエクスポート'}
-          </Button>
+          {!isMobile && (
+            <Button
+              onClick={() => setShowExportModal(true)}
+              disabled={isExporting}
+              variant="success"
+            >
+              {isExporting ? 'エクスポート中...' : 'CSVエクスポート'}
+            </Button>
+          )}
         </div>
       </div>
 
-      <div style={styles.dateInfo}>
+      <div style={{
+        ...styles.dateInfo,
+        ...(isMobile ? { fontSize: '14px', marginBottom: '20px' } : {})
+      }}>
         {new Date().toLocaleDateString('ja-JP', {
           year: 'numeric',
           month: 'long',
@@ -599,10 +628,14 @@ export default function Home() {
         })}
       </div>
 
-      <div style={styles.grid}>
+      <div style={{
+        ...styles.grid,
+        ...(isMobile ? { gridTemplateColumns: '1fr', gap: '12px' } : {})
+      }}>
         <DashboardCard
           title="月間店舗集計"
           color="#3498db"
+          isMobile={isMobile}
           stats={[
             { label: '総売上', value: '¥' + data.monthlySales.toLocaleString() },
             { label: '現金売上', value: '¥' + data.monthlyCashSales.toLocaleString() },
@@ -619,6 +652,7 @@ export default function Home() {
         <DashboardCard
           title="本日店舗集計"
           color="#1abc9c"
+          isMobile={isMobile}
           stats={[
             { label: '総売上', value: '¥' + data.todaySales.toLocaleString() },
             { label: '現金売上', value: '¥' + data.todayCashSales.toLocaleString() },
@@ -631,40 +665,90 @@ export default function Home() {
         />
       </div>
 
-      <div style={styles.chartContainer}>
-        <h3 style={styles.chartTitle}>売上推移</h3>
-        <ResponsiveContainer width="100%" height={400}>
-          <ComposedChart data={dailySales} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="day" />
-            <YAxis yAxisId="left" orientation="left" stroke="#3498db" />
-            <YAxis yAxisId="right" orientation="right" stroke="#2ecc71" />
+      <div style={{
+        ...styles.chartContainer,
+        ...(isMobile ? { padding: '12px', marginTop: '12px' } : {})
+      }}>
+        <h3 style={{
+          ...styles.chartTitle,
+          ...(isMobile ? { fontSize: '16px', marginBottom: '8px' } : {})
+        }}>売上推移</h3>
+        <ResponsiveContainer width="100%" height={isMobile ? 200 : 400}>
+          <ComposedChart data={dailySales} margin={isMobile ? { top: 5, right: 5, left: 0, bottom: 5 } : { top: 20, right: 30, left: 20, bottom: 20 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+            <XAxis
+              dataKey="day"
+              tick={{ fontSize: isMobile ? 9 : 12 }}
+              interval={isMobile ? 6 : 0}
+              tickFormatter={isMobile ? (value: string) => value.replace('日', '') : undefined}
+            />
+            <YAxis
+              yAxisId="left"
+              orientation="left"
+              stroke="#3498db"
+              tick={{ fontSize: isMobile ? 9 : 12 }}
+              width={isMobile ? 40 : 60}
+              tickFormatter={(value: number) => {
+                if (isMobile) {
+                  if (value >= 1000000) return `${(value / 1000000).toFixed(0)}M`
+                  if (value >= 1000) return `${(value / 1000).toFixed(0)}k`
+                  return String(value)
+                }
+                return value.toLocaleString()
+              }}
+            />
+            {!isMobile && (
+              <YAxis yAxisId="right" orientation="right" stroke="#2ecc71" tick={{ fontSize: 12 }} width={60} />
+            )}
             <Tooltip
               formatter={(value: number) => '¥' + value.toLocaleString()}
-              contentStyle={{ backgroundColor: 'white', border: '1px solid #ccc' }}
+              contentStyle={{ backgroundColor: 'white', border: '1px solid #ccc', fontSize: isMobile ? '11px' : '14px', padding: isMobile ? '6px' : '10px' }}
+              labelStyle={{ fontSize: isMobile ? '11px' : '14px' }}
             />
-            <Legend />
-            <Bar yAxisId="left" dataKey="sales" fill="#3498db" name="売上" />
-            <Line yAxisId="right" type="monotone" dataKey="cumulative" stroke="#2ecc71" strokeWidth={2} name="累計(累積)" />
+            {!isMobile && <Legend />}
+            <Bar yAxisId="left" dataKey="sales" fill="#3498db" name="売上" radius={isMobile ? [2, 2, 0, 0] : [4, 4, 0, 0]} />
+            {!isMobile && <Line yAxisId="right" type="monotone" dataKey="cumulative" stroke="#2ecc71" strokeWidth={2} name="累計(累積)" />}
           </ComposedChart>
         </ResponsiveContainer>
       </div>
 
       {/* 日別データテーブル */}
-      <div style={styles.chartContainer}>
-        <h3 style={styles.chartTitle}>日別データ</h3>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={styles.dailyTable}>
+      <div style={{
+        ...styles.chartContainer,
+        ...(isMobile ? { padding: '12px', marginTop: '12px' } : {})
+      }}>
+        <h3 style={{
+          ...styles.chartTitle,
+          ...(isMobile ? { fontSize: '16px', marginBottom: '12px' } : {})
+        }}>日別データ</h3>
+        <div style={{
+          overflowX: 'auto',
+          ...(isMobile ? { WebkitOverflowScrolling: 'touch', margin: '0 -12px', padding: '0 12px' } : {})
+        }}>
+          <table style={{
+            ...styles.dailyTable,
+            ...(isMobile ? { fontSize: '12px', minWidth: '600px' } : {})
+          }}>
             <thead>
               <tr style={styles.dailyTableHeader}>
-                <th style={styles.dailyTableTh}>日付</th>
-                <th style={{ ...styles.dailyTableTh, textAlign: 'right' }}>総売上</th>
-                <th style={{ ...styles.dailyTableTh, textAlign: 'right' }}>会計数</th>
-                <th style={{ ...styles.dailyTableTh, textAlign: 'right' }}>組数</th>
-                <th style={{ ...styles.dailyTableTh, textAlign: 'right' }}>現金</th>
-                <th style={{ ...styles.dailyTableTh, textAlign: 'right' }}>カード</th>
-                <th style={{ ...styles.dailyTableTh, textAlign: 'right' }}>売掛</th>
-                <th style={{ ...styles.dailyTableTh, textAlign: 'right' }}>客単価</th>
+                <th style={{
+                  ...styles.dailyTableTh,
+                  ...(isMobile ? {
+                    position: 'sticky',
+                    left: 0,
+                    backgroundColor: '#f8f9fa',
+                    zIndex: 1,
+                    padding: '8px 6px',
+                    minWidth: '45px',
+                  } : {})
+                }}>日付</th>
+                <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>総売上</th>
+                <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>会計数</th>
+                <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>組数</th>
+                <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>現金</th>
+                <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>カード</th>
+                <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>売掛</th>
+                <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>客単価</th>
               </tr>
             </thead>
             <tbody>
@@ -685,52 +769,71 @@ export default function Home() {
                   onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f0f7ff'}
                   onMouseLeave={(e) => e.currentTarget.style.backgroundColor = day.orderCount === 0 ? '#f9f9f9' : 'white'}
                 >
-                  <td style={styles.dailyTableTd}>{day.day}</td>
-                  <td style={{ ...styles.dailyTableTd, textAlign: 'right' }}>
+                  <td style={{
+                    ...styles.dailyTableTd,
+                    ...(isMobile ? {
+                      position: 'sticky',
+                      left: 0,
+                      backgroundColor: day.orderCount === 0 ? '#f9f9f9' : 'white',
+                      zIndex: 1,
+                      padding: '8px 6px',
+                    } : {})
+                  }}>{day.day}</td>
+                  <td style={{ ...styles.dailyTableTd, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>
                     ¥{day.sales.toLocaleString()}
                   </td>
-                  <td style={{ ...styles.dailyTableTd, textAlign: 'right' }}>
+                  <td style={{ ...styles.dailyTableTd, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>
                     {day.orderCount}
                   </td>
-                  <td style={{ ...styles.dailyTableTd, textAlign: 'right' }}>
+                  <td style={{ ...styles.dailyTableTd, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>
                     {day.groups}
                   </td>
-                  <td style={{ ...styles.dailyTableTd, textAlign: 'right' }}>
+                  <td style={{ ...styles.dailyTableTd, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>
                     ¥{day.cashSales.toLocaleString()}
                   </td>
-                  <td style={{ ...styles.dailyTableTd, textAlign: 'right' }}>
+                  <td style={{ ...styles.dailyTableTd, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>
                     ¥{day.cardSales.toLocaleString()}
                   </td>
-                  <td style={{ ...styles.dailyTableTd, textAlign: 'right' }}>
+                  <td style={{ ...styles.dailyTableTd, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>
                     ¥{day.otherSales.toLocaleString()}
                   </td>
-                  <td style={{ ...styles.dailyTableTd, textAlign: 'right' }}>
+                  <td style={{ ...styles.dailyTableTd, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>
                     {day.orderCount > 0 ? `¥${Math.floor(day.sales / day.orderCount).toLocaleString()}` : '-'}
                   </td>
                 </tr>
               ))}
               {/* 合計行 */}
               <tr style={styles.dailyTableTotal}>
-                <td style={{ ...styles.dailyTableTd, fontWeight: 'bold' }}>合計</td>
-                <td style={{ ...styles.dailyTableTd, textAlign: 'right', fontWeight: 'bold' }}>
+                <td style={{
+                  ...styles.dailyTableTd,
+                  fontWeight: 'bold',
+                  ...(isMobile ? {
+                    position: 'sticky',
+                    left: 0,
+                    backgroundColor: '#f0f0f0',
+                    zIndex: 1,
+                    padding: '8px 6px',
+                  } : {})
+                }}>合計</td>
+                <td style={{ ...styles.dailyTableTd, textAlign: 'right', fontWeight: 'bold', ...(isMobile ? { padding: '8px 6px' } : {}) }}>
                   ¥{data.monthlySales.toLocaleString()}
                 </td>
-                <td style={{ ...styles.dailyTableTd, textAlign: 'right', fontWeight: 'bold' }}>
+                <td style={{ ...styles.dailyTableTd, textAlign: 'right', fontWeight: 'bold', ...(isMobile ? { padding: '8px 6px' } : {}) }}>
                   {data.monthlyCustomers}
                 </td>
-                <td style={{ ...styles.dailyTableTd, textAlign: 'right', fontWeight: 'bold' }}>
+                <td style={{ ...styles.dailyTableTd, textAlign: 'right', fontWeight: 'bold', ...(isMobile ? { padding: '8px 6px' } : {}) }}>
                   {data.monthlyGroups}
                 </td>
-                <td style={{ ...styles.dailyTableTd, textAlign: 'right', fontWeight: 'bold' }}>
+                <td style={{ ...styles.dailyTableTd, textAlign: 'right', fontWeight: 'bold', ...(isMobile ? { padding: '8px 6px' } : {}) }}>
                   ¥{data.monthlyCashSales.toLocaleString()}
                 </td>
-                <td style={{ ...styles.dailyTableTd, textAlign: 'right', fontWeight: 'bold' }}>
+                <td style={{ ...styles.dailyTableTd, textAlign: 'right', fontWeight: 'bold', ...(isMobile ? { padding: '8px 6px' } : {}) }}>
                   ¥{data.monthlyCardSales.toLocaleString()}
                 </td>
-                <td style={{ ...styles.dailyTableTd, textAlign: 'right', fontWeight: 'bold' }}>
+                <td style={{ ...styles.dailyTableTd, textAlign: 'right', fontWeight: 'bold', ...(isMobile ? { padding: '8px 6px' } : {}) }}>
                   ¥{data.monthlyCredit.toLocaleString()}
                 </td>
-                <td style={{ ...styles.dailyTableTd, textAlign: 'right', fontWeight: 'bold' }}>
+                <td style={{ ...styles.dailyTableTd, textAlign: 'right', fontWeight: 'bold', ...(isMobile ? { padding: '8px 6px' } : {}) }}>
                   ¥{avgMonthly.toLocaleString()}
                 </td>
               </tr>
@@ -746,9 +849,24 @@ export default function Home() {
             style={styles.modalOverlay}
             onClick={() => setShowExportModal(false)}
           />
-          <div style={styles.exportModal}>
-            <h3 style={styles.exportModalTitle}>CSVエクスポート</h3>
-            <p style={styles.exportModalSubtitle}>
+          <div style={{
+            ...styles.exportModal,
+            ...(isMobile ? {
+              width: 'calc(100% - 32px)',
+              minWidth: 'unset',
+              padding: '20px',
+              maxHeight: '80vh',
+              overflow: 'auto',
+            } : {})
+          }}>
+            <h3 style={{
+              ...styles.exportModalTitle,
+              ...(isMobile ? { fontSize: '18px' } : {})
+            }}>CSVエクスポート</h3>
+            <p style={{
+              ...styles.exportModalSubtitle,
+              ...(isMobile ? { fontSize: '13px', marginBottom: '16px' } : {})
+            }}>
               {selectedYear}年{selectedMonth}月のデータをエクスポートします
             </p>
             <div style={styles.exportModalButtons}>
@@ -785,9 +903,23 @@ export default function Home() {
             style={styles.modalOverlay}
             onClick={() => setShowDailyReportModal(false)}
           />
-          <div style={styles.dailyReportModal}>
-            <div style={styles.dailyReportHeader}>
-              <h3 style={styles.dailyReportTitle}>
+          <div style={{
+            ...styles.dailyReportModal,
+            ...(isMobile ? {
+              width: 'calc(100% - 24px)',
+              maxWidth: 'unset',
+              maxHeight: '85vh',
+              borderRadius: '12px',
+            } : {})
+          }}>
+            <div style={{
+              ...styles.dailyReportHeader,
+              ...(isMobile ? { padding: '14px 16px' } : {})
+            }}>
+              <h3 style={{
+                ...styles.dailyReportTitle,
+                ...(isMobile ? { fontSize: '15px' } : {})
+              }}>
                 {selectedYear}年{selectedMonth}月{selectedDayData.day} 業務日報
               </h3>
               <button
@@ -798,7 +930,10 @@ export default function Home() {
               </button>
             </div>
 
-            <div style={styles.dailyReportContent}>
+            <div style={{
+              ...styles.dailyReportContent,
+              ...(isMobile ? { padding: '14px', gap: '12px', maxHeight: 'calc(85vh - 130px)' } : {})
+            }}>
               {/* 売上サマリー */}
               <div style={styles.dailyReportCard}>
                 <div style={styles.dailyReportCardHeader}>総売上</div>
@@ -1008,20 +1143,35 @@ function DashboardCard({
   color,
   bigValue,
   stats,
+  isMobile = false,
 }: {
   title: string
   color: string
   bigValue?: string
   stats?: { label: string; value: string }[]
+  isMobile?: boolean
 }) {
   return (
-    <div style={{ ...styles.card, borderTop: '4px solid ' + color }}>
-      <h3 style={styles.cardTitle}>{title}</h3>
-      {bigValue && <div style={styles.bigValue}>{bigValue}</div>}
+    <div style={{
+      ...styles.card,
+      borderTop: '4px solid ' + color,
+      ...(isMobile ? { padding: '16px' } : {})
+    }}>
+      <h3 style={{
+        ...styles.cardTitle,
+        ...(isMobile ? { fontSize: '15px', marginBottom: '12px' } : {})
+      }}>{title}</h3>
+      {bigValue && <div style={{
+        ...styles.bigValue,
+        ...(isMobile ? { fontSize: '26px' } : {})
+      }}>{bigValue}</div>}
       {stats && (
         <div style={styles.statsContainer}>
           {stats.map((stat, idx) => (
-            <div key={idx} style={styles.statRow}>
+            <div key={idx} style={{
+              ...styles.statRow,
+              ...(isMobile ? { padding: '6px 0', fontSize: '14px' } : {})
+            }}>
               <span>{stat.label}</span>
               <span style={styles.statValue}>{stat.value}</span>
             </div>

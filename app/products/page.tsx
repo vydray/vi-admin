@@ -5,6 +5,7 @@ import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
 import { useConfirm } from '@/contexts/ConfirmContext'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import { handleSupabaseError, handleUnexpectedError } from '@/lib/errorHandling'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
@@ -23,6 +24,7 @@ export default function ProductsPage() {
 function ProductsPageContent() {
   const { storeId, isLoading: storeLoading } = useStore()
   const { confirm } = useConfirm()
+  const { isMobile, isLoading: mobileLoading } = useIsMobile()
   const [categories, setCategories] = useState<Category[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
@@ -276,10 +278,23 @@ function ProductsPageContent() {
   }
 
   const filteredProducts = useMemo(() => {
-    return selectedCategory
+    const filtered = selectedCategory
       ? products.filter(p => p.category_id === selectedCategory)
       : products
-  }, [selectedCategory, products])
+
+    // カテゴリのdisplay_order順 → 商品のdisplay_order順でソート
+    return [...filtered].sort((a, b) => {
+      const catA = categories.find(c => c.id === a.category_id)
+      const catB = categories.find(c => c.id === b.category_id)
+      const catOrderA = catA?.display_order ?? 999
+      const catOrderB = catB?.display_order ?? 999
+
+      if (catOrderA !== catOrderB) {
+        return catOrderA - catOrderB
+      }
+      return (a.display_order || 0) - (b.display_order || 0)
+    })
+  }, [selectedCategory, products, categories])
 
   const getCategoryName = (categoryId: number) => {
     return categories.find(c => c.id === categoryId)?.name || '不明'
@@ -520,7 +535,7 @@ function ProductsPageContent() {
     )
   }
 
-  if (storeLoading || loading) {
+  if (storeLoading || loading || mobileLoading) {
     return <LoadingSpinner />
   }
 
@@ -529,28 +544,44 @@ function ProductsPageContent() {
       backgroundColor: '#f7f9fc',
       minHeight: '100vh',
       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-      paddingBottom: '60px'
+      paddingBottom: '60px',
+      ...(isMobile ? { padding: '60px 12px 60px' } : {})
     }}>
       {/* ヘッダー */}
       <div style={{
         backgroundColor: '#fff',
-        padding: '20px',
-        marginBottom: '20px',
+        padding: isMobile ? '16px' : '20px',
+        marginBottom: isMobile ? '12px' : '20px',
         borderRadius: '12px',
         boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
       }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-          <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: 0, color: '#1a1a1a' }}>
+        <div style={{
+          display: 'flex',
+          flexDirection: isMobile ? 'column' : 'row',
+          justifyContent: 'space-between',
+          alignItems: isMobile ? 'stretch' : 'center',
+          gap: isMobile ? '12px' : '0',
+          marginBottom: isMobile ? '0' : '20px'
+        }}>
+          <h1 style={{
+            fontSize: isMobile ? '20px' : '24px',
+            fontWeight: 'bold',
+            margin: 0,
+            color: '#1a1a1a',
+            paddingLeft: isMobile ? '40px' : '0'
+          }}>
             商品管理
           </h1>
-          <div style={{ display: 'flex', gap: '10px' }}>
-            <Button onClick={() => setShowImportModal(true)} variant="primary">
-              CSV入力
-            </Button>
-            <Button onClick={exportToCSV} variant="success">
-              CSV出力
-            </Button>
-          </div>
+          {!isMobile && (
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <Button onClick={() => setShowImportModal(true)} variant="primary">
+                CSV入力
+              </Button>
+              <Button onClick={exportToCSV} variant="success">
+                CSV出力
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -564,10 +595,10 @@ function ProductsPageContent() {
         {/* 新規商品追加フォーム */}
         <div style={{
           backgroundColor: '#f8f9fa',
-          padding: '20px',
+          padding: isMobile ? '16px' : '20px',
           borderBottom: '1px solid #e2e8f0'
         }}>
-          <h3 style={{ margin: '0 0 15px 0', fontSize: '16px', fontWeight: '600', color: '#374151' }}>
+          <h3 style={{ margin: '0 0 15px 0', fontSize: isMobile ? '15px' : '16px', fontWeight: '600', color: '#374151' }}>
             新規商品追加
           </h3>
 
@@ -580,8 +611,8 @@ function ProductsPageContent() {
               onChange={(e) => setNewProductCategory(Number(e.target.value))}
               style={{
                 width: '100%',
-                padding: '10px',
-                fontSize: '14px',
+                padding: isMobile ? '12px' : '10px',
+                fontSize: isMobile ? '16px' : '14px',
                 border: '1px solid #e2e8f0',
                 borderRadius: '6px',
                 backgroundColor: 'white'
@@ -607,8 +638,8 @@ function ProductsPageContent() {
               onChange={(e) => setNewProductName(e.target.value)}
               style={{
                 width: '100%',
-                padding: '10px',
-                fontSize: '14px',
+                padding: isMobile ? '12px' : '10px',
+                fontSize: isMobile ? '16px' : '14px',
                 border: '1px solid #e2e8f0',
                 borderRadius: '6px',
                 boxSizing: 'border-box'
@@ -627,11 +658,12 @@ function ProductsPageContent() {
               onChange={(e) => setNewProductPrice(e.target.value)}
               min="0"
               style={{
-                width: '200px',
-                padding: '10px',
-                fontSize: '14px',
+                width: isMobile ? '100%' : '200px',
+                padding: isMobile ? '12px' : '10px',
+                fontSize: isMobile ? '16px' : '14px',
                 border: '1px solid #e2e8f0',
-                borderRadius: '6px'
+                borderRadius: '6px',
+                boxSizing: 'border-box'
               }}
             />
           </div>
@@ -643,8 +675,8 @@ function ProductsPageContent() {
                 checked={newProductNeedsCast}
                 onChange={(e) => setNewProductNeedsCast(e.target.checked)}
                 style={{
-                  width: '18px',
-                  height: '18px',
+                  width: isMobile ? '22px' : '18px',
+                  height: isMobile ? '22px' : '18px',
                   cursor: 'pointer'
                 }}
               />
@@ -654,13 +686,13 @@ function ProductsPageContent() {
             </label>
           </div>
 
-          <Button onClick={addProduct} variant="success">
+          <Button onClick={addProduct} variant="success" fullWidth={isMobile}>
             追加
           </Button>
         </div>
 
         {/* カテゴリーフィルター */}
-        <div style={{ padding: '20px', borderBottom: '1px solid #e2e8f0' }}>
+        <div style={{ padding: isMobile ? '16px' : '20px', borderBottom: '1px solid #e2e8f0' }}>
           <label style={{ display: 'block', marginBottom: '8px', fontSize: '13px', color: '#64748b', fontWeight: '500' }}>
             カテゴリーフィルター
           </label>
@@ -668,12 +700,13 @@ function ProductsPageContent() {
             value={selectedCategory || ''}
             onChange={(e) => setSelectedCategory(e.target.value ? Number(e.target.value) : null)}
             style={{
-              padding: '8px 12px',
-              fontSize: '14px',
+              padding: isMobile ? '12px' : '8px 12px',
+              fontSize: isMobile ? '16px' : '14px',
               border: '1px solid #e2e8f0',
               borderRadius: '6px',
               backgroundColor: 'white',
-              minWidth: '200px'
+              width: isMobile ? '100%' : 'auto',
+              minWidth: isMobile ? 'unset' : '200px'
             }}
           >
             <option value="">全てのカテゴリー</option>
@@ -686,7 +719,7 @@ function ProductsPageContent() {
         </div>
 
         {/* 商品リスト */}
-        <div style={{ overflowX: 'auto' }}>
+        <div style={{ overflowX: isMobile ? 'visible' : 'auto' }}>
           {loading ? (
             <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>
               読み込み中...
@@ -695,7 +728,97 @@ function ProductsPageContent() {
             <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>
               商品が登録されていません
             </div>
+          ) : isMobile ? (
+            // モバイル: カード形式
+            <div style={{ padding: '12px' }}>
+              {filteredProducts.map((product) => (
+                <div
+                  key={product.id}
+                  onClick={() => openEditModal(product)}
+                  style={{
+                    backgroundColor: product.is_active ? '#fff' : '#f8f9fa',
+                    borderRadius: '8px',
+                    padding: '14px',
+                    marginBottom: '10px',
+                    border: '1px solid #e2e8f0',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-start',
+                    marginBottom: '10px'
+                  }}>
+                    <div>
+                      <div style={{
+                        fontSize: '15px',
+                        fontWeight: '600',
+                        color: product.is_active ? '#1e293b' : '#94a3b8',
+                        marginBottom: '4px'
+                      }}>
+                        {product.name}
+                      </div>
+                      <div style={{
+                        fontSize: '16px',
+                        fontWeight: '600',
+                        color: '#3b82f6'
+                      }}>
+                        ¥{product.price.toLocaleString()}
+                      </div>
+                    </div>
+                    <div onClick={(e) => e.stopPropagation()}>
+                      {renderToggle(product.id, product.is_active || false)}
+                    </div>
+                  </div>
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    flexWrap: 'wrap'
+                  }}>
+                    <span style={{
+                      fontSize: '11px',
+                      padding: '3px 10px',
+                      backgroundColor: '#e0e7ff',
+                      color: '#4338ca',
+                      borderRadius: '10px',
+                      fontWeight: '500'
+                    }}>
+                      {getCategoryName(product.category_id)}
+                    </span>
+                    {product.needs_cast && (
+                      <span style={{
+                        fontSize: '11px',
+                        padding: '3px 10px',
+                        backgroundColor: '#fef3c7',
+                        color: '#92400e',
+                        borderRadius: '10px',
+                        fontWeight: '500'
+                      }}>
+                        指名必須
+                      </span>
+                    )}
+                    <div
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        deleteProduct(product.id)
+                      }}
+                      style={{
+                        marginLeft: 'auto',
+                        fontSize: '12px',
+                        color: '#dc2626',
+                        fontWeight: '500'
+                      }}
+                    >
+                      削除
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           ) : (
+            // PC: テーブル形式
             <table style={{
               width: '100%',
               borderCollapse: 'collapse',
@@ -876,8 +999,8 @@ function ProductsPageContent() {
                 onChange={(e) => setEditCategory(Number(e.target.value))}
                 style={{
                   width: '100%',
-                  padding: '10px',
-                  fontSize: '14px',
+                  padding: isMobile ? '12px' : '10px',
+                  fontSize: isMobile ? '16px' : '14px',
                   border: '1px solid #e2e8f0',
                   borderRadius: '6px',
                   backgroundColor: 'white'
@@ -903,8 +1026,8 @@ function ProductsPageContent() {
                 onChange={(e) => setEditName(e.target.value)}
                 style={{
                   width: '100%',
-                  padding: '10px',
-                  fontSize: '14px',
+                  padding: isMobile ? '12px' : '10px',
+                  fontSize: isMobile ? '16px' : '14px',
                   border: '1px solid #e2e8f0',
                   borderRadius: '6px',
                   boxSizing: 'border-box'
@@ -923,11 +1046,12 @@ function ProductsPageContent() {
                 onChange={(e) => setEditPrice(e.target.value)}
                 min="0"
                 style={{
-                  width: '200px',
-                  padding: '10px',
-                  fontSize: '14px',
+                  width: isMobile ? '100%' : '200px',
+                  padding: isMobile ? '12px' : '10px',
+                  fontSize: isMobile ? '16px' : '14px',
                   border: '1px solid #e2e8f0',
-                  borderRadius: '6px'
+                  borderRadius: '6px',
+                  boxSizing: 'border-box'
                 }}
               />
             </div>
@@ -939,8 +1063,8 @@ function ProductsPageContent() {
                   checked={editNeedsCast}
                   onChange={(e) => setEditNeedsCast(e.target.checked)}
                   style={{
-                    width: '18px',
-                    height: '18px',
+                    width: isMobile ? '22px' : '18px',
+                    height: isMobile ? '22px' : '18px',
                     cursor: 'pointer'
                   }}
                 />
@@ -950,11 +1074,16 @@ function ProductsPageContent() {
               </label>
             </div>
 
-        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-          <Button onClick={() => setShowEditModal(false)} variant="outline">
+        <div style={{
+          display: 'flex',
+          gap: '10px',
+          justifyContent: 'flex-end',
+          flexDirection: isMobile ? 'column-reverse' : 'row'
+        }}>
+          <Button onClick={() => setShowEditModal(false)} variant="outline" fullWidth={isMobile}>
             キャンセル
           </Button>
-          <Button onClick={updateProduct} variant="primary">
+          <Button onClick={updateProduct} variant="primary" fullWidth={isMobile}>
             更新
           </Button>
         </div>
@@ -975,7 +1104,7 @@ function ProductsPageContent() {
               marginBottom: '20px',
               border: '1px solid #fbbf24'
             }}>
-              <p style={{ margin: 0, fontSize: '13px', color: '#92400e', fontWeight: '500' }}>
+              <p style={{ margin: 0, fontSize: isMobile ? '12px' : '13px', color: '#92400e', fontWeight: '500' }}>
                 ⚠️ 既存の商品データを全て削除し、CSVのデータに置き換えます
               </p>
             </div>
@@ -987,28 +1116,32 @@ function ProductsPageContent() {
               style={{
                 border: `2px dashed ${isDragging ? '#3b82f6' : '#e2e8f0'}`,
                 borderRadius: '8px',
-                padding: '40px',
+                padding: isMobile ? '30px 20px' : '40px',
                 textAlign: 'center',
                 backgroundColor: isDragging ? '#eff6ff' : '#f8f9fa',
                 marginBottom: '20px',
                 transition: 'all 0.2s'
               }}
             >
-              <p style={{ margin: '0 0 15px 0', fontSize: '14px', color: '#64748b' }}>
-                CSVファイルをドラッグ&ドロップ
-              </p>
-              <p style={{ margin: '0 0 15px 0', fontSize: '12px', color: '#94a3b8' }}>
-                または
-              </p>
+              {!isMobile && (
+                <>
+                  <p style={{ margin: '0 0 15px 0', fontSize: '14px', color: '#64748b' }}>
+                    CSVファイルをドラッグ&ドロップ
+                  </p>
+                  <p style={{ margin: '0 0 15px 0', fontSize: '12px', color: '#94a3b8' }}>
+                    または
+                  </p>
+                </>
+              )}
               <label
                 style={{
                   display: 'inline-block',
-                  padding: '10px 20px',
+                  padding: isMobile ? '14px 24px' : '10px 20px',
                   backgroundColor: '#3b82f6',
                   color: 'white',
                   borderRadius: '6px',
                   cursor: 'pointer',
-                  fontSize: '14px',
+                  fontSize: isMobile ? '15px' : '14px',
                   fontWeight: '600'
                 }}
               >
@@ -1022,7 +1155,7 @@ function ProductsPageContent() {
               </label>
             </div>
 
-            <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '20px' }}>
+            <div style={{ fontSize: isMobile ? '11px' : '12px', color: '#64748b', marginBottom: '20px' }}>
               <p style={{ margin: '0 0 8px 0', fontWeight: '500' }}>CSV形式:</p>
               <p style={{ margin: '0 0 4px 0' }}>商品名, 価格, カテゴリー, 表示順, 有効, 指名必須</p>
               <p style={{ margin: '0 0 4px 0', fontSize: '11px', color: '#94a3b8' }}>

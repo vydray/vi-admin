@@ -22,6 +22,32 @@ interface MenuGroup {
   superAdminOnly?: boolean
 }
 
+// モバイルで制限するパス
+const mobileRestrictedPaths = [
+  '/receipts',              // 伝票管理
+  '/payslip',               // 報酬明細
+  '/settings',              // 設定
+  '/base-settings',         // BASE連携
+  '/stores',                // 店舗管理（管理者専用）
+  '/line-settings',         // LINE設定（管理者専用）
+  '/settings/ai',           // AI統合設定（管理者専用）
+  // Twitter
+  '/twitter-posts',         // 予約投稿
+  '/twitter-settings',      // Twitter設定
+  // 売上&報酬
+  '/sales-settings',        // 売上設定
+  '/payslip-list',          // 報酬明細一覧
+  '/compensation-list',     // 報酬形態一覧
+  '/compensation-settings', // 報酬計算設定
+  '/cast-wage-settings',    // キャスト別時給設定
+  '/wage-settings',         // 時給設定
+  '/cast-back-rates',       // バック設定
+  '/deduction-settings',    // 控除設定
+]
+
+// モバイルで制限するグループ名
+const mobileRestrictedGroups = ['管理者専用', 'Twitter', '売上&報酬']
+
 // メイン項目（常に表示）
 const mainItems: MenuItem[] = [
   { name: 'ホーム', path: '/', icon: '🏠' },
@@ -95,7 +121,11 @@ const menuGroups: MenuGroup[] = [
   },
 ]
 
-export default function Sidebar() {
+interface SidebarProps {
+  isMobileOverlay?: boolean
+}
+
+export default function Sidebar({ isMobileOverlay = false }: SidebarProps) {
   const pathname = usePathname()
   const { storeId, setStoreId, stores } = useStore()
   const { user, logout } = useAuth()
@@ -137,15 +167,28 @@ export default function Sidebar() {
     return group.items.some(item => pathname === item.path)
   }
 
+  // モバイルオーバーレイ時はposition: fixedを解除し、コンパクトに
+  const sidebarStyle = isMobileOverlay
+    ? { ...styles.sidebar, position: 'relative' as const, width: '100%', height: '100%', padding: '0' }
+    : styles.sidebar
+
+  const mobileHeaderStyle = isMobileOverlay
+    ? { ...styles.header, padding: '16px 12px' }
+    : styles.header
+
+  const mobileNavItemStyle = isMobileOverlay
+    ? { ...styles.navItem, padding: '10px 14px', fontSize: '13px' }
+    : styles.navItem
+
   return (
-    <div style={styles.sidebar}>
-      <div style={styles.header}>
+    <div style={sidebarStyle}>
+      <div style={mobileHeaderStyle}>
         <div style={styles.logoContainer}>
           <Image
             src="/vi-admin_icon4.png"
             alt="VI Admin"
-            width={200}
-            height={50}
+            width={isMobileOverlay ? 160 : 200}
+            height={isMobileOverlay ? 40 : 50}
             style={styles.logoImage}
             priority
           />
@@ -153,9 +196,18 @@ export default function Sidebar() {
 
         {/* ユーザー情報 */}
         {user && (
-          <div style={styles.userInfo}>
-            <div style={styles.username}>👤 {user.username}</div>
-            <div style={styles.role}>
+          <div style={{
+            ...styles.userInfo,
+            ...(isMobileOverlay ? { marginTop: '12px', padding: '12px', marginBottom: '8px' } : {})
+          }}>
+            <div style={{
+              ...styles.username,
+              ...(isMobileOverlay ? { fontSize: '15px' } : {})
+            }}>👤 {user.username}</div>
+            <div style={{
+              ...styles.role,
+              ...(isMobileOverlay ? { fontSize: '13px' } : {})
+            }}>
               {user.role === 'super_admin' ? '全店舗管理者' : '店舗管理者'}
             </div>
           </div>
@@ -163,11 +215,17 @@ export default function Sidebar() {
 
         {/* 店舗選択（super_adminのみ表示） */}
         {isSuperAdmin && (
-          <div style={styles.storeSelector}>
+          <div style={{
+            ...styles.storeSelector,
+            ...(isMobileOverlay ? { marginTop: '8px' } : {})
+          }}>
             <select
               value={storeId}
               onChange={(e) => setStoreId(Number(e.target.value))}
-              style={styles.select}
+              style={{
+                ...styles.select,
+                ...(isMobileOverlay ? { padding: '10px 12px', fontSize: '15px' } : {})
+              }}
             >
               {stores.map((store) => (
                 <option key={store.id} value={store.id}>
@@ -179,9 +237,15 @@ export default function Sidebar() {
         )}
       </div>
 
-      <nav style={styles.nav}>
+      <nav style={{
+        ...styles.nav,
+        ...(isMobileOverlay ? { padding: '12px 0', gap: '2px' } : {})
+      }}>
         {/* メイン項目 */}
-        {mainItems.filter(item => canAccessItem(item.path)).map((item) => {
+        {mainItems
+          .filter(item => canAccessItem(item.path))
+          .filter(item => !isMobileOverlay || !mobileRestrictedPaths.includes(item.path))
+          .map((item) => {
           const isActive = pathname === item.path
           return (
             <Link
@@ -190,9 +254,13 @@ export default function Sidebar() {
               style={{
                 ...styles.navItem,
                 ...(isActive ? styles.navItemActive : {}),
+                ...(isMobileOverlay ? { padding: '14px 16px', fontSize: '16px' } : {}),
               }}
             >
-              <span style={styles.icon}>{item.icon}</span>
+              <span style={{
+                ...styles.icon,
+                ...(isMobileOverlay ? { fontSize: '18px', marginRight: '12px' } : {})
+              }}>{item.icon}</span>
               <span>{item.name}</span>
             </Link>
           )
@@ -201,9 +269,12 @@ export default function Sidebar() {
         {/* グループ化されたメニュー */}
         {menuGroups
           .filter(group => !group.superAdminOnly || isSuperAdmin)
+          .filter(group => !isMobileOverlay || !mobileRestrictedGroups.includes(group.name))
           .map((group) => {
-            // グループ内のアクセス可能な項目のみをフィルタリング
-            const accessibleItems = group.items.filter(item => canAccessItem(item.path))
+            // グループ内のアクセス可能な項目のみをフィルタリング（モバイル制限も考慮）
+            const accessibleItems = group.items
+              .filter(item => canAccessItem(item.path))
+              .filter(item => !isMobileOverlay || !mobileRestrictedPaths.includes(item.path))
             // アクセス可能な項目がない場合はグループ自体を表示しない
             if (accessibleItems.length === 0) return null
 
@@ -217,10 +288,14 @@ export default function Sidebar() {
                   style={{
                     ...styles.groupHeader,
                     ...(isActive ? styles.groupHeaderActive : {}),
+                    ...(isMobileOverlay ? { padding: '14px 16px', marginTop: '6px', fontSize: '16px' } : {}),
                   }}
                 >
                   <div style={styles.groupHeaderLeft}>
-                    <span style={styles.icon}>{group.icon}</span>
+                    <span style={{
+                      ...styles.icon,
+                      ...(isMobileOverlay ? { fontSize: '18px', marginRight: '12px' } : {})
+                    }}>{group.icon}</span>
                     <span>{group.name}</span>
                   </div>
                   <span style={{
@@ -242,9 +317,13 @@ export default function Sidebar() {
                           style={{
                             ...styles.subNavItem,
                             ...(isItemActive ? styles.subNavItemActive : {}),
+                            ...(isMobileOverlay ? { padding: '12px 16px 12px 36px', fontSize: '15px' } : {}),
                           }}
                         >
-                          <span style={styles.subIcon}>{item.icon}</span>
+                          <span style={{
+                            ...styles.subIcon,
+                            ...(isMobileOverlay ? { fontSize: '16px', marginRight: '10px' } : {})
+                          }}>{item.icon}</span>
                           <span>{item.name}</span>
                         </Link>
                       )
@@ -258,9 +337,15 @@ export default function Sidebar() {
         {/* ログアウト */}
         <button
           onClick={logout}
-          style={styles.logoutButton}
+          style={{
+            ...styles.logoutButton,
+            ...(isMobileOverlay ? { padding: '14px 16px', fontSize: '16px', marginBottom: '80px' } : {})
+          }}
         >
-          <span style={styles.icon}>🚪</span>
+          <span style={{
+            ...styles.icon,
+            ...(isMobileOverlay ? { fontSize: '18px', marginRight: '12px' } : {})
+          }}>🚪</span>
           <span>ログアウト</span>
         </button>
       </nav>

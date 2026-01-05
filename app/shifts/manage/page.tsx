@@ -7,6 +7,7 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, addMonths, subMont
 import { ja } from 'date-fns/locale'
 import { useStore } from '@/contexts/StoreContext'
 import { useConfirm } from '@/contexts/ConfirmContext'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import holidayJp from '@holiday-jp/holiday_jp'
 import { generateTimeOptions, formatShiftTime as formatShiftTimeUtil } from '@/lib/timeUtils'
 import { handleUnexpectedError, showErrorToast } from '@/lib/errorHandling'
@@ -59,6 +60,7 @@ export default function ShiftManage() {
 function ShiftManageContent() {
   const { storeId, isLoading: storeLoading } = useStore()
   const { confirm } = useConfirm()
+  const { isMobile, isLoading: mobileLoading } = useIsMobile()
   const [selectedMonth, setSelectedMonth] = useState(new Date())
   const [isFirstHalf, setIsFirstHalf] = useState(true)
   const [casts, setCasts] = useState<Cast[]>([])
@@ -1154,7 +1156,7 @@ function ShiftManageContent() {
     }
   }
 
-  if (storeLoading || loading) {
+  if (storeLoading || loading || mobileLoading) {
     return <LoadingSpinner />
   }
 
@@ -1195,7 +1197,9 @@ function ShiftManageContent() {
       backgroundColor: '#f7f9fc',
       minHeight: '100vh',
       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-      paddingBottom: '60px'
+      paddingBottom: '60px',
+      paddingLeft: isMobile ? '0' : undefined,
+      paddingTop: isMobile ? '60px' : undefined
     }}>
       <style jsx>{`
         @keyframes spin {
@@ -1210,24 +1214,25 @@ function ShiftManageContent() {
       {/* ヘッダー */}
       <div style={{
         backgroundColor: '#fff',
-        padding: '20px',
-        marginBottom: '20px',
-        borderRadius: '12px',
+        padding: isMobile ? '12px' : '20px',
+        marginBottom: isMobile ? '12px' : '20px',
+        borderRadius: isMobile ? '0' : '12px',
         boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
       }}>
         {/* 店舗・月・期間選択 */}
         <div style={{
           display: 'flex',
-          alignItems: 'center',
-          gap: '20px',
-          marginBottom: '20px'
+          flexDirection: isMobile ? 'column' : 'row',
+          alignItems: isMobile ? 'stretch' : 'center',
+          gap: isMobile ? '12px' : '20px',
+          marginBottom: isMobile ? '12px' : '20px'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: isMobile ? 'center' : 'flex-start', gap: '12px' }}>
             <button
               onClick={() => setSelectedMonth(subMonths(selectedMonth, 1))}
               style={{
-                padding: '6px 12px',
-                fontSize: '14px',
+                padding: isMobile ? '8px 14px' : '6px 12px',
+                fontSize: isMobile ? '16px' : '14px',
                 backgroundColor: '#f1f5f9',
                 color: '#475569',
                 border: 'none',
@@ -1237,14 +1242,14 @@ function ShiftManageContent() {
             >
               ←
             </button>
-            <span style={{ fontSize: '16px', fontWeight: '600' }}>
+            <span style={{ fontSize: isMobile ? '18px' : '16px', fontWeight: '600' }}>
               {format(selectedMonth, 'yyyy年M月', { locale: ja })}
             </span>
             <button
               onClick={() => setSelectedMonth(addMonths(selectedMonth, 1))}
               style={{
-                padding: '6px 12px',
-                fontSize: '14px',
+                padding: isMobile ? '8px 14px' : '6px 12px',
+                fontSize: isMobile ? '16px' : '14px',
                 backgroundColor: '#f1f5f9',
                 color: '#475569',
                 border: 'none',
@@ -1256,39 +1261,42 @@ function ShiftManageContent() {
             </button>
           </div>
 
-          <div style={{ display: 'flex', gap: '8px' }}>
+          <div style={{ display: 'flex', gap: '8px', justifyContent: isMobile ? 'center' : 'flex-start' }}>
             <button
               onClick={() => setIsFirstHalf(true)}
               style={{
-                padding: '6px 16px',
-                fontSize: '14px',
+                padding: isMobile ? '10px 16px' : '6px 16px',
+                fontSize: isMobile ? '15px' : '14px',
                 backgroundColor: isFirstHalf ? '#2563eb' : '#fff',
                 color: isFirstHalf ? '#fff' : '#64748b',
                 border: `1px solid ${isFirstHalf ? '#2563eb' : '#e2e8f0'}`,
                 borderRadius: '6px',
-                cursor: 'pointer'
+                cursor: 'pointer',
+                flex: isMobile ? 1 : undefined
               }}
             >
-              前半（1日〜15日）
+              {isMobile ? '前半' : '前半（1日〜15日）'}
             </button>
             <button
               onClick={() => setIsFirstHalf(false)}
               style={{
-                padding: '6px 16px',
-                fontSize: '14px',
+                padding: isMobile ? '10px 16px' : '6px 16px',
+                fontSize: isMobile ? '15px' : '14px',
                 backgroundColor: !isFirstHalf ? '#2563eb' : '#fff',
                 color: !isFirstHalf ? '#fff' : '#64748b',
                 border: `1px solid ${!isFirstHalf ? '#2563eb' : '#e2e8f0'}`,
                 borderRadius: '6px',
-                cursor: 'pointer'
+                cursor: 'pointer',
+                flex: isMobile ? 1 : undefined
               }}
             >
-              後半（16日〜末日）
+              {isMobile ? '後半' : '後半（16日〜末日）'}
             </button>
           </div>
         </div>
 
-        {/* 全ボタン */}
+        {/* 全ボタン - モバイルでは非表示 */}
+        {!isMobile && (
         <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
           {/* モード切り替えボタン */}
           <button
@@ -1588,27 +1596,30 @@ function ShiftManageContent() {
             テンプレート
           </button>
         </div>
+        )}
       </div>
 
       {/* シフト表 */}
       <div style={{
         backgroundColor: '#fff',
-        borderRadius: '12px',
+        borderRadius: isMobile ? '0' : '12px',
         boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-        overflow: 'hidden'
+        overflow: 'hidden',
+        margin: isMobile ? '0' : undefined
       }}>
         <div
           ref={scrollContainerRef}
           style={{
-            maxHeight: 'calc(100vh - 300px)',
+            maxHeight: isMobile ? 'calc(100vh - 180px)' : 'calc(100vh - 300px)',
             overflow: 'auto',
-            position: 'relative'
+            position: 'relative',
+            WebkitOverflowScrolling: 'touch'
           }}
         >
           <table style={{
             width: '100%',
             borderCollapse: 'collapse',
-            fontSize: '14px',
+            fontSize: isMobile ? '13px' : '14px',
             position: 'relative'
           }}>
             <thead>
@@ -1618,16 +1629,17 @@ function ShiftManageContent() {
                   top: 0,
                   left: 0,
                   backgroundColor: '#f8fafc',
-                  padding: '12px',
+                  padding: isMobile ? '10px 8px' : '12px',
                   borderBottom: '2px solid #e2e8f0',
                   borderRight: '1px solid #e2e8f0',
                   fontWeight: '600',
                   color: '#475569',
-                  minWidth: '120px',
+                  minWidth: isMobile ? '80px' : '120px',
+                  fontSize: isMobile ? '14px' : '14px',
                   zIndex: 20,
                   boxShadow: '2px 2px 4px rgba(0,0,0,0.05)'
                 }}>
-                  スタッフ名
+                  {isMobile ? '名前' : 'スタッフ名'}
                 </th>
                 {getDaysInPeriod().map(date => {
                   const holiday = getHoliday(date)
@@ -1640,21 +1652,22 @@ function ShiftManageContent() {
                       style={{
                         position: 'sticky',
                         top: 0,
-                        padding: '8px',
+                        padding: isMobile ? '8px 6px' : '8px',
                         borderBottom: '2px solid #e2e8f0',
                         borderRight: '1px solid #e2e8f0',
                         textAlign: 'center',
                         backgroundColor: '#f8fafc',
                         color: isHolidayOrSunday ? '#dc2626' : date.getDay() === 6 ? '#2563eb' : '#475569',
                         fontWeight: '600',
-                        minWidth: '100px',
+                        minWidth: isMobile ? '65px' : '100px',
+                        fontSize: isMobile ? '13px' : '14px',
                         cursor: (isLockMode || isConfirmMode) ? 'pointer' : 'default',
                         zIndex: 10,
                         boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
                       }}
                     >
-                      <div>{getDate(date)}日({getDayOfWeek(date)}){holiday && ' 祝'}</div>
-                      <div style={{ fontSize: '12px', fontWeight: '400', marginTop: '4px' }}>
+                      <div>{getDate(date)}{isMobile ? '' : '日'}({getDayOfWeek(date)}){holiday && !isMobile && ' 祝'}</div>
+                      <div style={{ fontSize: isMobile ? '12px' : '12px', fontWeight: '400', marginTop: isMobile ? '2px' : '4px' }}>
                         {getAttendanceCount(date)}人
                       </div>
                     </th>
@@ -1666,34 +1679,40 @@ function ShiftManageContent() {
               {casts.map((cast) => (
                 <tr key={cast.id}>
                   <td
-                    draggable={!isLockMode && !isConfirmMode && !editingCell}
-                    onDragStart={(e) => handleDragStart(e, cast.id)}
-                    onDragOver={(e) => handleDragOver(e, cast.id)}
+                    draggable={!isMobile && !isLockMode && !isConfirmMode && !editingCell}
+                    onDragStart={(e) => !isMobile && handleDragStart(e, cast.id)}
+                    onDragOver={(e) => !isMobile && handleDragOver(e, cast.id)}
                     onDragLeave={handleDragLeave}
-                    onDrop={(e) => handleDrop(e, cast.id)}
+                    onDrop={(e) => !isMobile && handleDrop(e, cast.id)}
                     onDragEnd={handleDragEnd}
                     onClick={() => (isLockMode || isConfirmMode) && toggleLock('row', isLockMode ? 'locked' : 'confirmed', cast.id)}
                     style={{
                       position: 'sticky',
                       left: 0,
                       backgroundColor: dragOverCastId === cast.id ? '#e0f2fe' : draggedCastId === cast.id ? '#f0f0f0' : '#fff',
-                      padding: '12px',
+                      padding: isMobile ? '10px 8px' : '12px',
                       borderBottom: '1px solid #e2e8f0',
                       borderRight: '1px solid #e2e8f0',
                       fontWeight: '500',
                       color: '#1a1a1a',
+                      fontSize: isMobile ? '14px' : '14px',
                       zIndex: 5,
-                      cursor: (isLockMode || isConfirmMode) ? 'pointer' : (!editingCell ? 'grab' : 'default'),
+                      cursor: (isLockMode || isConfirmMode) ? 'pointer' : (!editingCell && !isMobile ? 'grab' : 'default'),
                       boxShadow: '2px 0 4px rgba(0,0,0,0.05)',
                       transition: 'background-color 0.2s',
                       borderTop: dragOverCastId === cast.id ? '2px solid #3b82f6' : undefined,
-                      userSelect: 'none'
+                      userSelect: 'none',
+                      minWidth: isMobile ? '80px' : undefined,
+                      maxWidth: isMobile ? '80px' : undefined,
+                      whiteSpace: isMobile ? 'nowrap' : undefined,
+                      overflow: isMobile ? 'hidden' : undefined,
+                      textOverflow: isMobile ? 'ellipsis' : undefined
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      {!isLockMode && !isConfirmMode && !editingCell && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '4px' : '8px' }}>
+                      {!isMobile && !isLockMode && !isConfirmMode && !editingCell && (
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ opacity: 0.4 }}>
-                          <path d="M3 15h18v-2H3v2zm0 4h18v-2H3v2zm0-8h18V9H3v2zm0-6v2h18V5H3z" fill="currentColor"/>
+                          <path d="M3 15h18v-2H3v2zm0 4h18v-2H3v4zm0-8h18V9H3v2zm0-6v2h18V5H3z" fill="currentColor"/>
                         </svg>
                       )}
                       {cast.name}
@@ -1715,7 +1734,7 @@ function ShiftManageContent() {
                         key={cellKey}
                         onClick={() => handleCellClick(cast.id, date)}
                         style={{
-                          padding: '8px',
+                          padding: isMobile ? '6px' : '8px',
                           borderBottom: '1px solid #e2e8f0',
                           borderRight: '1px solid #e2e8f0',
                           textAlign: 'center',
@@ -1725,18 +1744,19 @@ function ShiftManageContent() {
                           cursor: isSaving ? 'not-allowed' : 'pointer',
                           position: 'relative',
                           transition: 'background-color 0.2s ease',
-                          minHeight: '60px',
+                          minHeight: isMobile ? '48px' : '60px',
+                          minWidth: isMobile ? '65px' : undefined,
                           outline: hasPendingChange ? '2px dashed #f59e0b' : undefined,
                           outlineOffset: hasPendingChange ? '-2px' : undefined,
                           boxShadow: hasPendingChange ? '0 0 8px rgba(245, 158, 11, 0.3)' : undefined
                         }}
                         onMouseEnter={(e) => {
-                          if (!lock && !isLockMode && !isConfirmMode) {
+                          if (!lock && !isLockMode && !isConfirmMode && !isMobile) {
                             e.currentTarget.style.backgroundColor = '#f1f5f9'
                           }
                         }}
                         onMouseLeave={(e) => {
-                          if (!lock && !isLockMode && !isConfirmMode) {
+                          if (!lock && !isLockMode && !isConfirmMode && !isMobile) {
                             e.currentTarget.style.backgroundColor = request && !shift ? '#fef3c7' : '#fff'
                           }
                         }}
@@ -1744,29 +1764,29 @@ function ShiftManageContent() {
                         {!isEditing && (
                           <>
                             {shift && (
-                              <div style={{ fontSize: '13px', color: '#1a1a1a' }}>
+                              <div style={{ fontSize: isMobile ? '12px' : '13px', color: '#1a1a1a' }}>
                                 {formatShiftTime(shift)}
                               </div>
                             )}
                             {request && !shift && (
-                              <div style={{ fontSize: '12px', color: '#ea580c', fontStyle: 'italic' }}>
-                                申請: {formatShiftTime(request)}
+                              <div style={{ fontSize: isMobile ? '11px' : '12px', color: '#ea580c', fontStyle: 'italic' }}>
+                                {isMobile ? formatShiftTime(request) : `申請: ${formatShiftTime(request)}`}
                               </div>
                             )}
                             {lock && (
                               <div style={{
                                 position: 'absolute',
-                                top: '4px',
-                                right: '4px',
-                                width: '16px',
-                                height: '16px'
+                                top: isMobile ? '2px' : '4px',
+                                right: isMobile ? '2px' : '4px',
+                                width: isMobile ? '12px' : '16px',
+                                height: isMobile ? '12px' : '16px'
                               }}>
                                 {lock.lock_type === 'locked' ? (
-                                  <svg width="16" height="16" viewBox="0 0 24 24" fill="#dc2626">
+                                  <svg width={isMobile ? '12' : '16'} height={isMobile ? '12' : '16'} viewBox="0 0 24 24" fill="#dc2626">
                                     <path d="M12 2C9.243 2 7 4.243 7 7v3H6c-1.103 0-2 .897-2 2v8c0 1.103.897 2 2 2h12c1.103 0 2-.897 2-2v-8c0-1.103-.897-2-2-2h-1V7c0-2.757-2.243-5-5-5zM9 7c0-1.654 1.346-3 3-3s3 1.346 3 3v3H9V7z"/>
                                   </svg>
                                 ) : (
-                                  <svg width="16" height="16" viewBox="0 0 24 24" fill="#10b981">
+                                  <svg width={isMobile ? '12' : '16'} height={isMobile ? '12' : '16'} viewBox="0 0 24 24" fill="#10b981">
                                     <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
                                   </svg>
                                 )}
@@ -1796,7 +1816,8 @@ function ShiftManageContent() {
         </div>
       </div>
 
-      {/* 凡例 */}
+      {/* 凡例 - モバイルでは非表示 */}
+      {!isMobile && (
       <div style={{
         marginTop: '20px',
         padding: '16px',
@@ -1857,6 +1878,7 @@ function ShiftManageContent() {
           <span>確定アイコン</span>
         </div>
       </div>
+      )}
 
       {/* 編集モーダル */}
       {editingCell && editingInfo && (
@@ -1864,15 +1886,18 @@ function ShiftManageContent() {
           onClick={(e) => e.stopPropagation()}
           style={{
             position: 'fixed',
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
+            top: isMobile ? '5%' : '50%',
+            left: isMobile ? '3%' : '50%',
+            right: isMobile ? '3%' : 'auto',
+            transform: isMobile ? 'none' : 'translate(-50%, -50%)',
             backgroundColor: '#fff',
-            padding: '24px',
+            padding: isMobile ? '16px' : '24px',
             borderRadius: '12px',
             boxShadow: '0 10px 40px rgba(0,0,0,0.2)',
             zIndex: 1000,
-            minWidth: '380px'
+            minWidth: isMobile ? 'auto' : '380px',
+            maxHeight: isMobile ? '85vh' : 'auto',
+            overflowY: isMobile ? 'auto' : 'visible'
           }}
         >
           <h3 style={{
@@ -2204,16 +2229,17 @@ function ShiftManageContent() {
           <div
             style={{
               position: 'fixed',
-              top: '50%',
-              left: '50%',
-              transform: 'translate(-50%, -50%)',
+              top: isMobile ? '5%' : '50%',
+              left: isMobile ? '3%' : '50%',
+              right: isMobile ? '3%' : 'auto',
+              transform: isMobile ? 'none' : 'translate(-50%, -50%)',
               backgroundColor: '#fff',
-              padding: '24px',
+              padding: isMobile ? '16px' : '24px',
               borderRadius: '12px',
               boxShadow: '0 10px 40px rgba(0,0,0,0.2)',
               zIndex: 1101,
-              minWidth: '400px',
-              maxWidth: '600px',
+              minWidth: isMobile ? 'auto' : '400px',
+              maxWidth: isMobile ? 'auto' : '600px',
               maxHeight: '80vh',
               overflow: 'auto'
             }}

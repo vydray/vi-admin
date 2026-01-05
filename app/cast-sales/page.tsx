@@ -12,6 +12,7 @@ import Button from '@/components/Button'
 import Link from 'next/link'
 import { useConfirm } from '@/contexts/ConfirmContext'
 import ProtectedPage from '@/components/ProtectedPage'
+import { useIsMobile } from '@/hooks/useIsMobile'
 
 interface DailySalesData {
   selfSales: number
@@ -82,6 +83,7 @@ export default function CastSalesPage() {
 function CastSalesPageContent() {
   const { storeId, storeName, isLoading: storeLoading } = useStore()
   const { confirm } = useConfirm()
+  const { isMobile, isLoading: mobileLoading } = useIsMobile()
   const [selectedMonth, setSelectedMonth] = useState(new Date())
   const [salesData, setSalesData] = useState<CastSalesData[]>([])
   const [salesSettings, setSalesSettings] = useState<SalesSettings | null>(null)
@@ -92,7 +94,7 @@ function CastSalesPageContent() {
   const [isFinalized, setIsFinalized] = useState(false)
   const [productSalesData, setProductSalesData] = useState<Map<string, ProductSalesData>>(new Map())
   const [selectedProduct, setSelectedProduct] = useState<string | null>(null)
-  const [viewMode, setViewMode] = useState<'sales' | 'nomination'>('sales')
+  const [viewMode, setViewMode] = useState<'sales' | 'nomination' | 'product'>('sales')
 
   const currencyFormatter = useMemo(() => {
     return new Intl.NumberFormat('ja-JP', {
@@ -707,7 +709,7 @@ function CastSalesPageContent() {
     return parts.join(' / ')
   }, [salesSettings])
 
-  if (storeLoading || loading) {
+  if (storeLoading || loading || mobileLoading) {
     return <LoadingSpinner />
   }
 
@@ -746,6 +748,473 @@ function CastSalesPageContent() {
             売上設定へ
           </Button>
         </Link>
+      </div>
+    )
+  }
+
+  // モバイル表示（PC版と同じテーブル形式、横スクロール対応）
+  if (isMobile) {
+    return (
+      <div style={{
+        backgroundColor: '#f7f9fc',
+        minHeight: '100vh',
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+        padding: '8px',
+        paddingBottom: '40px'
+      }}>
+        {/* ヘッダー */}
+        <div style={{
+          backgroundColor: '#fff',
+          padding: '12px',
+          paddingLeft: '50px',
+          marginBottom: '8px',
+          borderRadius: '8px',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
+        }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: '8px'
+          }}>
+            <h1 style={{ margin: 0, fontSize: '15px', fontWeight: '600', color: '#1a1a1a' }}>
+              キャスト売上
+            </h1>
+            {/* 月選択 */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}>
+              <button
+                onClick={() => setSelectedMonth(subMonths(selectedMonth, 1))}
+                style={{
+                  padding: '4px 10px',
+                  fontSize: '14px',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '4px',
+                  backgroundColor: '#fff',
+                  cursor: 'pointer'
+                }}
+              >
+                ←
+              </button>
+              <span style={{ fontSize: '13px', fontWeight: '600', minWidth: '80px', textAlign: 'center' }}>
+                {format(selectedMonth, 'yyyy/M', { locale: ja })}
+              </span>
+              <button
+                onClick={() => setSelectedMonth(addMonths(selectedMonth, 1))}
+                style={{
+                  padding: '4px 10px',
+                  fontSize: '14px',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '4px',
+                  backgroundColor: '#fff',
+                  cursor: 'pointer'
+                }}
+              >
+                →
+              </button>
+            </div>
+          </div>
+
+          {/* 表示モード切り替え */}
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <select
+              value={viewMode}
+              onChange={(e) => setViewMode(e.target.value as 'sales' | 'nomination' | 'product')}
+              style={{
+                flex: 1,
+                padding: '8px 12px',
+                fontSize: '13px',
+                fontWeight: '600',
+                border: '1px solid #e2e8f0',
+                borderRadius: '6px',
+                backgroundColor: '#fff',
+                color: '#1a1a1a',
+                cursor: 'pointer'
+              }}
+            >
+              <option value="sales">売上</option>
+              <option value="nomination">指名本数</option>
+              <option value="product">商品別</option>
+            </select>
+            {viewMode === 'product' && productSalesData.size > 0 && (
+              <select
+                value={selectedProduct || ''}
+                onChange={(e) => setSelectedProduct(e.target.value)}
+                style={{
+                  flex: 2,
+                  padding: '8px 12px',
+                  fontSize: '12px',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '6px',
+                  backgroundColor: '#fff',
+                  cursor: 'pointer'
+                }}
+              >
+                {Array.from(productSalesData.entries())
+                  .sort((a, b) => {
+                    const aIsSelf = a[0].startsWith('推し ')
+                    const bIsSelf = b[0].startsWith('推し ')
+                    if (aIsSelf !== bIsSelf) return aIsSelf ? -1 : 1
+                    const totalA = a[1].castSales.reduce((sum, cs) => sum + cs.total, 0)
+                    const totalB = b[1].castSales.reduce((sum, cs) => sum + cs.total, 0)
+                    return totalB - totalA
+                  })
+                  .map(([productName]) => (
+                    <option key={productName} value={productName}>
+                      {productName}
+                    </option>
+                  ))}
+              </select>
+            )}
+          </div>
+        </div>
+
+        {/* 売上/指名本数テーブル */}
+        {(viewMode === 'sales' || viewMode === 'nomination') && (
+          <div style={{
+            backgroundColor: '#fff',
+            borderRadius: '8px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+            overflow: 'hidden'
+          }}>
+            <div style={{
+              overflow: 'auto',
+              WebkitOverflowScrolling: 'touch'
+            }}>
+              <table style={{
+                borderCollapse: 'collapse',
+                fontSize: '13px',
+                whiteSpace: 'nowrap'
+              }}>
+                <thead>
+                  <tr>
+                    <th style={{
+                      position: 'sticky',
+                      left: 0,
+                      backgroundColor: '#f8fafc',
+                      padding: '10px 12px',
+                      borderBottom: '2px solid #e2e8f0',
+                      borderRight: '1px solid #e2e8f0',
+                      fontWeight: '600',
+                      color: '#475569',
+                      minWidth: '80px',
+                      zIndex: 10
+                    }}>
+                      名前
+                    </th>
+                    {days.map(day => (
+                      <th key={format(day, 'yyyy-MM-dd')} style={{
+                        padding: '8px 6px',
+                        borderBottom: '2px solid #e2e8f0',
+                        borderRight: '1px solid #e2e8f0',
+                        textAlign: 'center',
+                        backgroundColor: '#f8fafc',
+                        color: day.getDay() === 0 ? '#dc2626' : day.getDay() === 6 ? '#2563eb' : '#475569',
+                        fontWeight: '600',
+                        minWidth: '70px',
+                        fontSize: '12px'
+                      }}>
+                        {format(day, 'M/d', { locale: ja })}
+                      </th>
+                    ))}
+                    {viewMode === 'sales' && (
+                      <>
+                        <th style={{
+                          backgroundColor: '#f8fafc',
+                          padding: '8px 6px',
+                          borderBottom: '2px solid #e2e8f0',
+                          borderRight: '1px solid #e2e8f0',
+                          fontWeight: '600',
+                          color: '#475569',
+                          minWidth: '80px',
+                          fontSize: '11px'
+                        }}>
+                          店舗
+                        </th>
+                        <th style={{
+                          backgroundColor: '#ede9fe',
+                          padding: '8px 6px',
+                          borderBottom: '2px solid #e2e8f0',
+                          borderRight: '1px solid #e2e8f0',
+                          fontWeight: '600',
+                          color: '#6d28d9',
+                          minWidth: '80px',
+                          fontSize: '11px'
+                        }}>
+                          BASE
+                        </th>
+                      </>
+                    )}
+                    <th style={{
+                      position: 'sticky',
+                      right: 0,
+                      backgroundColor: viewMode === 'sales' ? '#fef3c7' : '#fce7f3',
+                      padding: '10px 8px',
+                      borderBottom: '2px solid #e2e8f0',
+                      fontWeight: '600',
+                      color: viewMode === 'sales' ? '#92400e' : '#be185d',
+                      minWidth: '90px',
+                      zIndex: 10
+                    }}>
+                      {viewMode === 'sales' ? '合計' : '指名'}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {displaySalesData.length === 0 ? (
+                    <tr>
+                      <td colSpan={days.length + (viewMode === 'sales' ? 4 : 2)} style={{
+                        padding: '30px',
+                        textAlign: 'center',
+                        color: '#64748b'
+                      }}>
+                        データなし
+                      </td>
+                    </tr>
+                  ) : (
+                    displaySalesData.map((castSales) => (
+                      <tr key={castSales.castId}>
+                        <td style={{
+                          position: 'sticky',
+                          left: 0,
+                          backgroundColor: '#fff',
+                          padding: '10px 12px',
+                          borderBottom: '1px solid #e2e8f0',
+                          borderRight: '1px solid #e2e8f0',
+                          fontWeight: '500',
+                          color: '#1a1a1a',
+                          zIndex: 5,
+                          fontSize: '13px'
+                        }}>
+                          {castSales.castName}
+                        </td>
+                        {days.map(day => {
+                          const dateStr = format(day, 'yyyy-MM-dd')
+                          const dayData = castSales.dailySales[dateStr]
+                          const hasData = viewMode === 'sales'
+                            ? dayData && dayData.totalSales > 0
+                            : dayData && dayData.nominationCount > 0
+                          const displayValue = viewMode === 'sales'
+                            ? (dayData?.totalSales ? formatCurrency(dayData.totalSales) : '-')
+                            : (dayData?.nominationCount ? `${dayData.nominationCount}本` : '-')
+                          return (
+                            <td key={dateStr} style={{
+                              padding: '8px 6px',
+                              borderBottom: '1px solid #e2e8f0',
+                              borderRight: '1px solid #e2e8f0',
+                              textAlign: 'right',
+                              backgroundColor: hasData
+                                ? (viewMode === 'sales' ? '#f0fdf4' : '#fdf2f8')
+                                : '#fff',
+                              color: hasData
+                                ? (viewMode === 'sales' ? '#166534' : '#be185d')
+                                : '#d1d5db',
+                              fontSize: '12px'
+                            }}>
+                              {displayValue}
+                            </td>
+                          )
+                        })}
+                        {viewMode === 'sales' && (
+                          <>
+                            {/* 店舗売上 */}
+                            <td style={{
+                              backgroundColor: '#f8fafc',
+                              padding: '8px 6px',
+                              borderBottom: '1px solid #e2e8f0',
+                              borderRight: '1px solid #e2e8f0',
+                              textAlign: 'right',
+                              fontWeight: '500',
+                              color: castSales.totalSales > 0 ? '#1a1a1a' : '#d1d5db',
+                              fontSize: '12px'
+                            }}>
+                              {formatCurrency(castSales.totalSales)}
+                            </td>
+                            {/* BASE売上 */}
+                            <td style={{
+                              backgroundColor: '#ede9fe',
+                              padding: '8px 6px',
+                              borderBottom: '1px solid #e2e8f0',
+                              borderRight: '1px solid #e2e8f0',
+                              textAlign: 'right',
+                              fontWeight: '500',
+                              color: castSales.totalBase > 0 ? '#6d28d9' : '#c4b5fd',
+                              fontSize: '12px'
+                            }}>
+                              {formatCurrency(castSales.totalBase)}
+                            </td>
+                          </>
+                        )}
+                        <td style={{
+                          position: 'sticky',
+                          right: 0,
+                          backgroundColor: viewMode === 'sales' ? '#fef3c7' : '#fce7f3',
+                          padding: '10px 8px',
+                          borderBottom: '1px solid #e2e8f0',
+                          textAlign: 'right',
+                          fontWeight: '600',
+                          color: viewMode === 'sales' ? '#92400e' : '#be185d',
+                          zIndex: 5,
+                          fontSize: '13px'
+                        }}>
+                          {viewMode === 'sales'
+                            ? formatCurrency(castSales.grandTotal)
+                            : `${castSales.nominationCount}本`
+                          }
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* 商品別テーブル */}
+        {viewMode === 'product' && (
+          <div style={{
+            backgroundColor: '#fff',
+            borderRadius: '8px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+            overflow: 'hidden'
+          }}>
+            {productSalesData.size === 0 ? (
+              <div style={{
+                padding: '40px',
+                textAlign: 'center',
+                color: '#64748b'
+              }}>
+                商品データなし
+              </div>
+            ) : selectedProduct && productSalesData.get(selectedProduct) ? (
+              <div style={{
+                overflow: 'auto',
+                WebkitOverflowScrolling: 'touch'
+              }}>
+                <table style={{
+                  borderCollapse: 'collapse',
+                  fontSize: '13px',
+                  whiteSpace: 'nowrap'
+                }}>
+                  <thead>
+                    <tr>
+                      <th style={{
+                        position: 'sticky',
+                        left: 0,
+                        backgroundColor: '#f8fafc',
+                        padding: '10px 12px',
+                        borderBottom: '2px solid #e2e8f0',
+                        borderRight: '1px solid #e2e8f0',
+                        fontWeight: '600',
+                        color: '#475569',
+                        minWidth: '80px',
+                        zIndex: 10
+                      }}>
+                        名前
+                      </th>
+                      {days.map(day => (
+                        <th key={format(day, 'yyyy-MM-dd')} style={{
+                          padding: '8px 6px',
+                          borderBottom: '2px solid #e2e8f0',
+                          borderRight: '1px solid #e2e8f0',
+                          textAlign: 'center',
+                          backgroundColor: '#f8fafc',
+                          color: day.getDay() === 0 ? '#dc2626' : day.getDay() === 6 ? '#2563eb' : '#475569',
+                          fontWeight: '600',
+                          minWidth: '50px',
+                          fontSize: '12px'
+                        }}>
+                          {format(day, 'M/d', { locale: ja })}
+                        </th>
+                      ))}
+                      <th style={{
+                        position: 'sticky',
+                        right: 0,
+                        backgroundColor: '#fef3c7',
+                        padding: '10px 8px',
+                        borderBottom: '2px solid #e2e8f0',
+                        fontWeight: '600',
+                        color: '#92400e',
+                        minWidth: '60px',
+                        zIndex: 10
+                      }}>
+                        合計
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {productSalesData.get(selectedProduct)!.castSales.map((castSales, index) => (
+                      <tr key={castSales.castName}>
+                        <td style={{
+                          position: 'sticky',
+                          left: 0,
+                          backgroundColor: '#fff',
+                          padding: '10px 12px',
+                          borderBottom: '1px solid #e2e8f0',
+                          borderRight: '1px solid #e2e8f0',
+                          fontWeight: '500',
+                          color: '#1a1a1a',
+                          zIndex: 5,
+                          fontSize: '13px'
+                        }}>
+                          {index < 3 && (
+                            <span style={{ marginRight: '4px' }}>
+                              {index === 0 ? '🥇' : index === 1 ? '🥈' : '🥉'}
+                            </span>
+                          )}
+                          {castSales.castName}
+                        </td>
+                        {days.map(day => {
+                          const dateStr = format(day, 'yyyy-MM-dd')
+                          const quantity = castSales.dailyQuantity[dateStr] || 0
+                          return (
+                            <td key={dateStr} style={{
+                              padding: '8px 6px',
+                              borderBottom: '1px solid #e2e8f0',
+                              borderRight: '1px solid #e2e8f0',
+                              textAlign: 'center',
+                              backgroundColor: quantity > 0 ? '#f0fdf4' : '#fff',
+                              color: quantity > 0 ? '#166534' : '#d1d5db',
+                              fontSize: '12px'
+                            }}>
+                              {quantity > 0 ? quantity : '-'}
+                            </td>
+                          )
+                        })}
+                        <td style={{
+                          position: 'sticky',
+                          right: 0,
+                          backgroundColor: '#fef3c7',
+                          padding: '10px 8px',
+                          borderBottom: '1px solid #e2e8f0',
+                          textAlign: 'center',
+                          fontWeight: '600',
+                          color: '#92400e',
+                          zIndex: 5,
+                          fontSize: '13px'
+                        }}>
+                          {castSales.total}個
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div style={{
+                padding: '40px',
+                textAlign: 'center',
+                color: '#64748b'
+              }}>
+                商品を選択してください
+              </div>
+            )}
+          </div>
+        )}
       </div>
     )
   }
@@ -989,21 +1458,6 @@ function CastSalesPageContent() {
                     <th style={{
                       position: 'sticky',
                       top: 0,
-                      backgroundColor: '#fce7f3',
-                      padding: '12px',
-                      borderBottom: '2px solid #e2e8f0',
-                      borderRight: '1px solid #e2e8f0',
-                      fontWeight: '600',
-                      color: '#be185d',
-                      minWidth: '80px',
-                      zIndex: 10,
-                      boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
-                    }}>
-                      指名本数
-                    </th>
-                    <th style={{
-                      position: 'sticky',
-                      top: 0,
                       right: 0,
                       backgroundColor: '#fef3c7',
                       padding: '12px',
@@ -1040,7 +1494,7 @@ function CastSalesPageContent() {
             <tbody>
               {displaySalesData.length === 0 ? (
                 <tr>
-                  <td colSpan={days.length + (viewMode === 'sales' ? 5 : 2)} style={{
+                  <td colSpan={days.length + (viewMode === 'sales' ? 4 : 2)} style={{
                     padding: '40px',
                     textAlign: 'center',
                     color: '#64748b'
@@ -1119,20 +1573,6 @@ function CastSalesPageContent() {
                           whiteSpace: 'nowrap'
                         }}>
                           {formatCurrency(castSales.totalBase)}
-                        </td>
-                        {/* 指名本数 */}
-                        <td style={{
-                          backgroundColor: '#fce7f3',
-                          padding: '12px',
-                          borderBottom: '1px solid #e2e8f0',
-                          borderRight: '1px solid #e2e8f0',
-                          textAlign: 'right',
-                          fontWeight: '500',
-                          color: castSales.nominationCount > 0 ? '#be185d' : '#f9a8d4',
-                          fontSize: '13px',
-                          whiteSpace: 'nowrap'
-                        }}>
-                          {castSales.nominationCount}本
                         </td>
                         {/* 売上合計 */}
                         <td style={{

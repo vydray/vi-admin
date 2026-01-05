@@ -212,21 +212,69 @@ function StoreSettingsPageContent() {
     setSystemSettings(prev => ({ ...prev, [key]: value }))
   }
 
+  // 画像をリサイズする関数（vi-posと同じ仕様: 512x512, 品質80%）
+  const resizeImage = (file: File): Promise<Blob> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image()
+      img.onload = () => {
+        const maxWidth = 512
+        const maxHeight = 512
+        let { width, height } = img
+
+        // アスペクト比を維持してリサイズ
+        if (width > maxWidth || height > maxHeight) {
+          const ratio = Math.min(maxWidth / width, maxHeight / height)
+          width = Math.round(width * ratio)
+          height = Math.round(height * ratio)
+        }
+
+        const canvas = document.createElement('canvas')
+        canvas.width = width
+        canvas.height = height
+
+        const ctx = canvas.getContext('2d')
+        if (!ctx) {
+          reject(new Error('Canvas context not available'))
+          return
+        }
+
+        ctx.drawImage(img, 0, 0, width, height)
+
+        // JPEG形式で品質80%で出力
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              resolve(blob)
+            } else {
+              reject(new Error('Failed to create blob'))
+            }
+          },
+          'image/jpeg',
+          0.8
+        )
+      }
+      img.onerror = () => reject(new Error('Failed to load image'))
+      img.src = URL.createObjectURL(file)
+    })
+  }
+
   const uploadImage = async (file: File) => {
     try {
       setUploading(true)
 
-      // ファイル名を生成（タイムスタンプ + オリジナル名）
-      const fileExt = file.name.split('.').pop()
-      const fileName = `${storeId}_${Date.now()}.${fileExt}`
-      const filePath = `store-logos/${fileName}`
+      // 画像をリサイズ（512x512, 品質80%）
+      const resizedBlob = await resizeImage(file)
+
+      // ファイル名を生成（常にJPEG形式）
+      const fileName = `${storeId}_${Date.now()}.jpg`
 
       // Supabase Storageにアップロード
       const { error: uploadError } = await supabase.storage
-        .from('images')
-        .upload(filePath, file, {
+        .from('store-logos')
+        .upload(fileName, resizedBlob, {
           cacheControl: '3600',
-          upsert: false
+          upsert: false,
+          contentType: 'image/jpeg'
         })
 
       if (uploadError) {
@@ -235,8 +283,8 @@ function StoreSettingsPageContent() {
 
       // 公開URLを取得
       const { data } = supabase.storage
-        .from('images')
-        .getPublicUrl(filePath)
+        .from('store-logos')
+        .getPublicUrl(fileName)
 
       // 設定を更新
       updateSetting('logo_url', data.publicUrl)
@@ -244,7 +292,7 @@ function StoreSettingsPageContent() {
       toast.success('ロゴをアップロードしました')
     } catch (error) {
       console.error('Upload error:', error)
-      toast.success('ロゴのアップロードに失敗しました')
+      toast.error('ロゴのアップロードに失敗しました')
     } finally {
       setUploading(false)
     }

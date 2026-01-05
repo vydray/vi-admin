@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import { toast } from 'react-hot-toast'
 
 interface Cast {
@@ -19,6 +20,7 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
 
 export default function GeneratePage() {
   const { storeId, isLoading: storeLoading } = useStore()
+  const { isMobile, isLoading: mobileLoading } = useIsMobile()
   const [selectedDate, setSelectedDate] = useState<string>(() => {
     const today = new Date()
     return today.toISOString().split('T')[0]
@@ -295,7 +297,7 @@ export default function GeneratePage() {
     .filter((c): c is Cast => c !== undefined)
 
   // storeLoading中またはhasTemplateがnull（未確認）の場合はローディング表示
-  if (storeLoading || hasTemplate === null) {
+  if (storeLoading || mobileLoading || hasTemplate === null) {
     return (
       <div style={styles.container}>
         <div style={styles.loadingText}>読み込み中...</div>
@@ -304,18 +306,33 @@ export default function GeneratePage() {
   }
 
   return (
-    <div style={styles.container}>
-      <h1 style={styles.title}>出勤表生成</h1>
+    <div style={{
+      ...styles.container,
+      ...(isMobile ? { padding: '60px 12px 20px' } : {})
+    }}>
+      <h1 style={{
+        ...styles.title,
+        ...(isMobile ? { fontSize: '20px' } : {})
+      }}>出勤表生成</h1>
 
       {!hasTemplate && (
-        <div style={styles.warning}>
+        <div style={{
+          ...styles.warning,
+          ...(isMobile ? { fontSize: '13px', padding: '10px 12px' } : {})
+        }}>
           テンプレートが設定されていません。先に「テンプレート」画面で設定してください。
         </div>
       )}
 
-      <div style={styles.content}>
+      <div style={{
+        ...styles.content,
+        ...(isMobile ? { flexDirection: 'column', gap: '16px' } : {})
+      }}>
         {/* 左側: 設定 */}
-        <div style={styles.settingsSection}>
+        <div style={{
+          ...styles.settingsSection,
+          ...(isMobile ? { width: '100%' } : {})
+        }}>
           {/* 日付選択 */}
           <div style={styles.section}>
             <h3 style={styles.sectionTitle}>日付選択</h3>
@@ -330,13 +347,17 @@ export default function GeneratePage() {
           {/* 並び順 */}
           <div style={styles.section}>
             <h3 style={styles.sectionTitle}>並び順</h3>
-            <div style={styles.sortButtons}>
+            <div style={{
+              ...styles.sortButtons,
+              ...(isMobile ? { flexWrap: 'wrap' } : {})
+            }}>
               <button
                 onClick={() => setSortBy('order')}
                 style={{
                   ...styles.sortButton,
                   backgroundColor: sortBy === 'order' ? '#3b82f6' : '#e2e8f0',
                   color: sortBy === 'order' ? '#fff' : '#333',
+                  ...(isMobile ? { flex: '1 1 45%', fontSize: '13px' } : {}),
                 }}
               >
                 登録順
@@ -347,6 +368,7 @@ export default function GeneratePage() {
                   ...styles.sortButton,
                   backgroundColor: sortBy === 'time' ? '#3b82f6' : '#e2e8f0',
                   color: sortBy === 'time' ? '#fff' : '#333',
+                  ...(isMobile ? { flex: '1 1 45%', fontSize: '13px' } : {}),
                 }}
               >
                 時間順
@@ -357,6 +379,7 @@ export default function GeneratePage() {
                   ...styles.sortButton,
                   backgroundColor: sortBy === 'name' ? '#3b82f6' : '#e2e8f0',
                   color: sortBy === 'name' ? '#fff' : '#333',
+                  ...(isMobile ? { flex: '1 1 45%', fontSize: '13px' } : {}),
                 }}
               >
                 名前順
@@ -367,6 +390,7 @@ export default function GeneratePage() {
                   ...styles.sortButton,
                   backgroundColor: sortBy === 'manual' ? '#3b82f6' : '#e2e8f0',
                   color: sortBy === 'manual' ? '#fff' : '#333',
+                  ...(isMobile ? { flex: '1 1 45%', fontSize: '13px' } : {}),
                 }}
               >
                 手動
@@ -384,7 +408,10 @@ export default function GeneratePage() {
             ) : orderedCasts.length === 0 ? (
               <p style={styles.emptyText}>この日のシフトはありません</p>
             ) : (
-              <div style={styles.castList}>
+              <div style={{
+                ...styles.castList,
+                ...(isMobile ? { maxHeight: '250px' } : {})
+              }}>
                 {orderedCasts.map((cast, index) => (
                   <div
                     key={cast.id}
@@ -437,6 +464,7 @@ export default function GeneratePage() {
             style={{
               ...styles.generateButton,
               opacity: generating || orderedCasts.length === 0 || !hasTemplate ? 0.5 : 1,
+              ...(isMobile ? { padding: '12px', fontSize: '15px' } : {}),
             }}
           >
             {generating ? '生成中...' : '画像を生成'}
@@ -444,7 +472,10 @@ export default function GeneratePage() {
         </div>
 
         {/* 右側: プレビュー */}
-        <div style={styles.previewSection}>
+        <div style={{
+          ...styles.previewSection,
+          ...(isMobile ? { width: '100%' } : {})
+        }}>
           <h3 style={styles.sectionTitle}>プレビュー</h3>
           <div style={styles.previewContainer}>
             {generatedImages.length > 0 ? (
@@ -473,11 +504,20 @@ export default function GeneratePage() {
                 )}
 
                 {/* 画像とTwitter一覧を横並び */}
-                <div style={styles.previewRow}>
-                  <img src={generatedImages[currentPage]} alt={`Generated schedule page ${currentPage + 1}`} style={styles.previewImage} />
+                <div style={{
+                  ...styles.previewRow,
+                  ...(isMobile ? { flexDirection: 'column', gap: '12px' } : {})
+                }}>
+                  <img src={generatedImages[currentPage]} alt={`Generated schedule page ${currentPage + 1}`} style={{
+                    ...styles.previewImage,
+                    ...(isMobile ? { maxWidth: '100%', flex: 'none' } : {})
+                  }} />
 
                   {/* Twitter一覧 */}
-                  <div style={styles.twitterSection}>
+                  <div style={{
+                    ...styles.twitterSection,
+                    ...(isMobile ? { flex: 'none', width: '100%', minWidth: 'unset' } : {})
+                  }}>
                     <div style={styles.twitterHeader}>
                       <h4 style={styles.twitterTitle}>出勤キャスト一覧</h4>
                       <button onClick={handleCopyTwitterList} style={styles.copyButton}>
@@ -507,12 +547,21 @@ export default function GeneratePage() {
                   </div>
                 </div>
 
-                <div style={styles.downloadButtons}>
-                  <button onClick={() => handleDownload()} style={styles.downloadButton}>
+                <div style={{
+                  ...styles.downloadButtons,
+                  ...(isMobile ? { flexDirection: 'column', width: '100%' } : {})
+                }}>
+                  <button onClick={() => handleDownload()} style={{
+                    ...styles.downloadButton,
+                    ...(isMobile ? { width: '100%', padding: '12px', fontSize: '14px' } : {})
+                  }}>
                     {generatedImages.length > 1 ? `${currentPage + 1}枚目をダウンロード` : 'ダウンロード'}
                   </button>
                   {generatedImages.length > 1 && (
-                    <button onClick={handleDownloadAll} style={styles.downloadAllButton}>
+                    <button onClick={handleDownloadAll} style={{
+                      ...styles.downloadAllButton,
+                      ...(isMobile ? { width: '100%', padding: '12px', fontSize: '14px' } : {})
+                    }}>
                       全てダウンロード
                     </button>
                   )}

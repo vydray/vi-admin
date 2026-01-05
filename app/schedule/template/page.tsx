@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useStore } from '@/contexts/StoreContext'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import { toast } from 'react-hot-toast'
 
 // Canvas APIで名前プレビューを描画するコンポーネント
@@ -183,6 +184,7 @@ const CANVAS_HEIGHT = 600
 
 export default function TemplateEditorPage() {
   const { storeId, isLoading: storeLoading } = useStore()
+  const { isMobile, isLoading: mobileLoading } = useIsMobile()
   const canvasRef = useRef<HTMLDivElement>(null)
   const [template, setTemplate] = useState<Template | null>(null)
   const [loading, setLoading] = useState(true)
@@ -205,7 +207,6 @@ export default function TemplateEditorPage() {
 
   // 画像の実際のサイズとキャンバスのスケール
   const [imageSize, setImageSize] = useState({ width: 1200, height: 1200 })
-  const scale = CANVAS_WIDTH / imageSize.width
 
   // 最新のロードリクエストを追跡するref
   const latestLoadRef = useRef<number>(0)
@@ -550,26 +551,47 @@ export default function TemplateEditorPage() {
   }
 
   // template が null の場合もロード中として扱う（レースコンディション対策）
-  if (loading || storeLoading || !template) {
+  if (loading || storeLoading || mobileLoading || !template) {
     return <div style={styles.container}><div style={styles.loading}>読み込み中...</div></div>
   }
 
+  // モバイル用のキャンバスサイズとスケール計算
+  const mobileCanvasWidth = Math.min(typeof window !== 'undefined' ? window.innerWidth - 40 : 350, 400)
+  const actualCanvasWidth = isMobile ? mobileCanvasWidth : CANVAS_WIDTH
+  const scale = actualCanvasWidth / imageSize.width
+
   return (
-    <div style={styles.container}>
-      <div style={styles.header}>
-        <h1 style={styles.title}>テンプレート設定</h1>
-        <button onClick={handleSave} disabled={saving} style={styles.saveButton}>
+    <div style={{
+      ...styles.container,
+      ...(isMobile ? { padding: '60px 12px 20px' } : {})
+    }}>
+      <div style={{
+        ...styles.header,
+        ...(isMobile ? { flexDirection: 'column', alignItems: 'stretch', gap: '12px' } : {})
+      }}>
+        <h1 style={{
+          ...styles.title,
+          ...(isMobile ? { fontSize: '20px' } : {})
+        }}>テンプレート設定</h1>
+        <button onClick={handleSave} disabled={saving} style={{
+          ...styles.saveButton,
+          ...(isMobile ? { padding: '10px 20px', fontSize: '14px' } : {})
+        }}>
           {saving ? '保存中...' : '保存'}
         </button>
       </div>
 
       {/* モード切替タブ */}
-      <div style={styles.modeTabs}>
+      <div style={{
+        ...styles.modeTabs,
+        ...(isMobile ? { flexDirection: 'column', gap: '8px' } : {})
+      }}>
         <button
           onClick={() => setMode('custom')}
           style={{
             ...styles.modeTab,
             ...(template.mode === 'custom' ? styles.modeTabActive : {}),
+            ...(isMobile ? { padding: '10px 16px', fontSize: '13px' } : {}),
           }}
         >
           カスタム（背景+枠配置）
@@ -579,6 +601,7 @@ export default function TemplateEditorPage() {
           style={{
             ...styles.modeTab,
             ...(template.mode === 'grid' ? styles.modeTabActive : {}),
+            ...(isMobile ? { padding: '10px 16px', fontSize: '13px' } : {}),
           }}
         >
           グリッド（シンプル横並び）
@@ -587,15 +610,18 @@ export default function TemplateEditorPage() {
 
       {/* カスタムモードの設定 */}
       {template.mode === 'custom' && (
-      <div style={styles.content}>
+      <div style={{
+        ...styles.content,
+        ...(isMobile ? { flexDirection: 'column', gap: '16px' } : {})
+      }}>
         {/* 左側: キャンバス */}
         <div style={styles.canvasSection}>
           <div
             ref={canvasRef}
             style={{
               ...styles.canvas,
-              width: CANVAS_WIDTH,
-              height: CANVAS_HEIGHT * (imageSize.height / imageSize.width),
+              width: actualCanvasWidth,
+              height: actualCanvasWidth * (imageSize.height / imageSize.width),
               backgroundImage: templateImageUrl ? `url(${templateImageUrl})` : undefined,
             }}
             onMouseMove={handleMouseMove}
@@ -659,22 +685,32 @@ export default function TemplateEditorPage() {
             ))}
           </div>
 
-          <div style={styles.canvasControls}>
-            <label style={styles.fileLabel}>
+          <div style={{
+            ...styles.canvasControls,
+            ...(isMobile ? { flexWrap: 'wrap', gap: '8px' } : {})
+          }}>
+            <label style={{
+              ...styles.fileLabel,
+              ...(isMobile ? { fontSize: '12px', padding: '8px 12px' } : {})
+            }}>
               <input type="file" accept="image/*" onChange={handleTemplateImageUpload} style={styles.fileInput} />
               背景画像を{templateImageUrl ? '変更' : 'アップロード'}
             </label>
-            <button onClick={addFrame} style={styles.addFrameButton}>+ 枠を追加</button>
+            <button onClick={addFrame} style={{
+              ...styles.addFrameButton,
+              ...(isMobile ? { fontSize: '12px', padding: '8px 12px' } : {})
+            }}>+ 枠を追加</button>
             <button
               onClick={() => setShowFrameBorders(!showFrameBorders)}
               style={{
                 ...styles.toggleButton,
                 backgroundColor: showFrameBorders ? '#22c55e' : '#94a3b8',
+                ...(isMobile ? { fontSize: '12px', padding: '8px 12px' } : {})
               }}
             >
               {showFrameBorders ? '枠線 ON' : '枠線 OFF'}
             </button>
-            {showFrameBorders && (
+            {showFrameBorders && !isMobile && (
               <div style={styles.borderColorPicker}>
                 <span style={styles.borderColorLabel}>枠線色</span>
                 <input
@@ -888,7 +924,10 @@ export default function TemplateEditorPage() {
 
       {/* グリッドモード設定 */}
       {template.mode === 'grid' && (
-        <div style={styles.gridModeContent}>
+        <div style={{
+          ...styles.gridModeContent,
+          ...(isMobile ? { flexDirection: 'column', gap: '16px' } : {})
+        }}>
           {/* 左側: プレビュー */}
           <div style={styles.gridPreviewSection}>
             <h4 style={styles.gridPreviewTitle}>
@@ -959,7 +998,10 @@ export default function TemplateEditorPage() {
           </div>
 
           {/* 右側: 設定パネル */}
-          <div style={styles.gridSettingsPanel}>
+          <div style={{
+            ...styles.gridSettingsPanel,
+            ...(isMobile ? { flex: '1', width: '100%' } : {})
+          }}>
             {/* グリッド設定 */}
             <div style={styles.section}>
               <h3 style={styles.sectionTitle}>グリッド設定</h3>
