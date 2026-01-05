@@ -90,6 +90,7 @@ interface CastDailyItemData {
   quantity: number
   self_sales: number     // 推しにつく売上（分配ロジック適用後）
   help_sales: number     // ヘルプにつく売上（分配ロジック適用後）
+  needs_cast: boolean    // 指名必須商品か（ランキング表示用）
   // 後方互換用
   subtotal: number
   back_amount: number
@@ -104,7 +105,8 @@ function aggregateCastDailyItems(
   storeId: number,
   date: string,
   salesSettings: SalesSettings,
-  taxRate: number = 0.1
+  taxRate: number = 0.1,
+  productNeedsCastMap: Map<string, boolean> = new Map()  // product_name => needs_cast
 ): CastDailyItemData[] {
   const itemsMap = new Map<string, CastDailyItemData>()
   const method = salesSettings.published_aggregation ?? 'item_based'
@@ -213,6 +215,7 @@ function aggregateCastDailyItems(
                 quantity: item.quantity,
                 self_sales: 0,
                 help_sales: 0,
+                needs_cast: productNeedsCastMap.get(item.product_name) ?? true,
                 subtotal: item.subtotal,
                 back_amount: 0,
                 is_self: true
@@ -241,6 +244,7 @@ function aggregateCastDailyItems(
                 quantity: item.quantity,
                 self_sales: perCast,
                 help_sales: 0,
+                needs_cast: productNeedsCastMap.get(item.product_name) ?? true,
                 subtotal: item.subtotal,
                 back_amount: 0,
                 is_self: true
@@ -300,6 +304,7 @@ function aggregateCastDailyItems(
                 quantity: item.quantity,
                 self_sales: selfShare,
                 help_sales: helpShare,
+                needs_cast: productNeedsCastMap.get(item.product_name) ?? true,
                 subtotal: item.subtotal,
                 back_amount: 0,
                 is_self: false
@@ -343,6 +348,7 @@ function aggregateCastDailyItems(
               quantity: item.quantity,
               self_sales: perNomination,
               help_sales: 0,
+              needs_cast: productNeedsCastMap.get(item.product_name) ?? true,
               subtotal: item.subtotal,
               back_amount: 0,
               is_self: true
@@ -372,6 +378,7 @@ function aggregateCastDailyItems(
               quantity: item.quantity,
               self_sales: perNomination,
               help_sales: 0,
+              needs_cast: productNeedsCastMap.get(item.product_name) ?? true,
               subtotal: item.subtotal,
               back_amount: 0,
               is_self: true
@@ -442,6 +449,7 @@ function aggregateCastDailyItems(
                 quantity: item.quantity,
                 self_sales: selfShare,
                 help_sales: helpSharePerCast,
+                needs_cast: productNeedsCastMap.get(item.product_name) ?? true,
                 subtotal: item.subtotal,
                 back_amount: 0,
                 is_self: false
@@ -470,6 +478,7 @@ function aggregateCastDailyItems(
                 quantity: item.quantity,
                 self_sales: selfAmount,
                 help_sales: 0,
+                needs_cast: productNeedsCastMap.get(item.product_name) ?? true,
                 subtotal: item.subtotal,
                 back_amount: 0,
                 is_self: true
@@ -644,6 +653,17 @@ async function recalculateForDate(storeId: number, date: string): Promise<{
 
     const castMap = new Map<string, Cast>()
     casts?.forEach((c: Cast) => castMap.set(c.name, c))
+
+    // 3.5. 商品のneeds_cast情報を取得（ランキング表示用）
+    const { data: products } = await supabaseAdmin
+      .from('products')
+      .select('name, needs_cast')
+      .eq('store_id', storeId)
+
+    const productNeedsCastMap = new Map<string, boolean>()
+    products?.forEach((p: { name: string; needs_cast: boolean | null }) => {
+      productNeedsCastMap.set(p.name, p.needs_cast ?? true)
+    })
 
     // 4. 時給関連データを取得
     const { data: attendances } = await supabaseAdmin
@@ -935,7 +955,7 @@ async function recalculateForDate(storeId: number, date: string): Promise<{
     }
 
     // 10. cast_daily_itemsも更新（新しいカラム構成で）
-    const dailyItems = aggregateCastDailyItems(typedOrders, castMap, storeId, date, salesSettings, taxRate)
+    const dailyItems = aggregateCastDailyItems(typedOrders, castMap, storeId, date, salesSettings, taxRate, productNeedsCastMap)
 
     // 10.5. BASE注文もcast_daily_itemsに追加（推し扱い、カテゴリは"BASE"）
     const baseItemsMap = new Map<string, CastDailyItemData>()
@@ -959,6 +979,7 @@ async function recalculateForDate(storeId: number, date: string): Promise<{
           quantity: order.quantity,
           self_sales: amount,
           help_sales: 0,
+          needs_cast: true,  // BASEは常に指名必須（キャストに紐づいている）
           subtotal: amount,
           back_amount: 0,
           is_self: true  // 後方互換用
