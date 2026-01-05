@@ -163,16 +163,16 @@ function aggregateCastDailyItems(
       const noCast = realCastsOnItem.length === 0
 
       // ========================================
-      // item_based: 商品のキャストに売上が入る
+      // item_based: cast_id=推し、キャストなし商品はself_sales=0
       // ========================================
       if (isItemBased) {
-        // キャストなし商品 → 保存するが self_sales=0
-        if (noCast) {
-          // 伝票の推しごとに記録（誰の卓かは記録する）
-          for (const nominationName of realNominations) {
-            const nominationCast = castMap.get(nominationName)
-            if (!nominationCast) continue
+        // 伝票の推しごとにループ
+        for (const nominationName of realNominations) {
+          const nominationCast = castMap.get(nominationName)
+          if (!nominationCast) continue
 
+          // キャストなし商品 → self_sales=0（売上にカウントしない）
+          if (noCast) {
             const key = `${nominationCast.id}:null:${item.product_name}:${item.category || ''}`
             if (itemsMap.has(key)) {
               const existing = itemsMap.get(key)!
@@ -194,43 +194,93 @@ function aggregateCastDailyItems(
                 is_self: true
               })
             }
+            continue
           }
-          continue
-        }
 
-        // キャストあり商品 → 商品のキャストに売上が入る
-        const perCast = Math.floor(itemAmount / realCastsOnItem.length)
-        for (const castName of realCastsOnItem) {
-          const cast = castMap.get(castName)
-          if (!cast) continue
-
-          const isSelf = realNominations.includes(castName)
-          const key = `${cast.id}:null:${item.product_name}:${item.category || ''}`
-
-          if (itemsMap.has(key)) {
-            const existing = itemsMap.get(key)!
-            existing.quantity += item.quantity
-            if (isSelf) {
+          // 推し自身の商品（商品のcast_nameに推しが含まれる）
+          if (selfCastsOnItem.includes(nominationName)) {
+            const perCast = Math.floor(itemAmount / selfCastsOnItem.length)
+            const key = `${nominationCast.id}:null:${item.product_name}:${item.category || ''}`
+            if (itemsMap.has(key)) {
+              const existing = itemsMap.get(key)!
+              existing.quantity += item.quantity
               existing.self_sales += perCast
+              existing.subtotal += item.subtotal
             } else {
-              existing.help_sales += perCast
+              itemsMap.set(key, {
+                cast_id: nominationCast.id,
+                help_cast_id: null,
+                store_id: storeId,
+                date: date,
+                category: item.category,
+                product_name: item.product_name,
+                quantity: item.quantity,
+                self_sales: perCast,
+                help_sales: 0,
+                subtotal: item.subtotal,
+                back_amount: 0,
+                is_self: true
+              })
             }
-            existing.subtotal += item.subtotal
-          } else {
-            itemsMap.set(key, {
-              cast_id: cast.id,
-              help_cast_id: null,
-              store_id: storeId,
-              date: date,
-              category: item.category,
-              product_name: item.product_name,
-              quantity: item.quantity,
-              self_sales: isSelf ? perCast : 0,
-              help_sales: isSelf ? 0 : perCast,
-              subtotal: item.subtotal,
-              back_amount: 0,
-              is_self: isSelf
-            })
+          }
+
+          // ヘルプ商品（商品のcast_nameが推し以外）
+          for (const helpCastName of helpCastsOnItem) {
+            const helpCast = castMap.get(helpCastName)
+            if (!helpCast) continue
+
+            // 分配設定に基づく計算
+            let selfShare = 0
+            let helpShare = 0
+            const perItem = Math.floor(itemAmount / helpCastsOnItem.length)
+
+            switch (helpDistMethod) {
+              case 'all_to_nomination':
+                selfShare = perItem
+                helpShare = 0
+                break
+              case 'equal':
+                selfShare = Math.floor(perItem / 2)
+                helpShare = giveHelpSales ? perItem - selfShare : 0
+                break
+              case 'ratio':
+                const helpAmount = Math.floor(perItem * helpRatio / 100)
+                selfShare = perItem - helpAmount
+                helpShare = giveHelpSales ? helpAmount : 0
+                break
+              case 'equal_per_person':
+                const total = realNominations.length + 1
+                selfShare = Math.floor(perItem / total)
+                helpShare = giveHelpSales ? Math.floor(perItem / total) : 0
+                break
+              default:
+                selfShare = perItem
+                helpShare = 0
+            }
+
+            const key = `${nominationCast.id}:${helpCast.id}:${item.product_name}:${item.category || ''}`
+            if (itemsMap.has(key)) {
+              const existing = itemsMap.get(key)!
+              existing.quantity += item.quantity
+              existing.self_sales += selfShare
+              existing.help_sales += helpShare
+              existing.subtotal += item.subtotal
+            } else {
+              itemsMap.set(key, {
+                cast_id: nominationCast.id,
+                help_cast_id: helpCast.id,
+                store_id: storeId,
+                date: date,
+                category: item.category,
+                product_name: item.product_name,
+                quantity: item.quantity,
+                self_sales: selfShare,
+                help_sales: helpShare,
+                subtotal: item.subtotal,
+                back_amount: 0,
+                is_self: false
+              })
+            }
           }
         }
         continue
