@@ -590,128 +590,404 @@ export function calculateReceiptBased(
     // 推しがヘルプ除外名のみの場合（フリーなど）
     const nominationIsNonHelpOnly = allNominations.length > 0 && realNominations.length === 0
 
-    // 伝票内の全商品を集計
-    let receiptTotalRaw = 0
-    let receiptTotalProcessed = 0 // 商品ごとに処理済みの合計
-    let selfTotalRaw = 0
-    let helpTotalRaw = 0
-    const helpCastsInReceipt: string[] = []
-    const selfCastsInReceipt: string[] = []
+    // 分配先を決定（nominationIsNonHelpOnlyの場合は後で商品上のキャストを収集、それ以外は実推し）
+    let distributeTargets = nominationIsNonHelpOnly ? [] as string[] : realNominations
 
-    order.order_items.forEach(item => {
-      const itemAmount = item.unit_price * item.quantity
-      receiptTotalRaw += itemAmount
-
-      // 商品ごと(per_item)の場合は、各商品に対して税抜き＆端数処理を適用
-      if (roundingTiming === 'per_item') {
-        receiptTotalProcessed += applyTaxAndRounding(itemAmount)
-      }
-
-      const castsOnItem = item.cast_name || []
-
-      // nonHelpNamesは売上対象外なので除外
-      const realCastsOnItem = castsOnItem.filter(c => !nonHelpNames.includes(c))
-
-      // nominationIsNonHelpOnlyの場合は、商品についてる実キャスト全員がSELF扱い
-      const selfCasts = nominationIsNonHelpOnly
-        ? realCastsOnItem // フリー推しの場合は商品の実キャスト全員がSELF
-        : realCastsOnItem.filter(c => realNominations.includes(c))
-      const helpCasts = nominationIsNonHelpOnly
-        ? [] // フリー推しの場合はヘルプなし
-        : realCastsOnItem.filter(c => !realNominations.includes(c))
-
-      if (selfCasts.length > 0 && helpCasts.length === 0) {
-        selfTotalRaw += itemAmount
-        selfCasts.forEach(c => {
-          if (!selfCastsInReceipt.includes(c)) selfCastsInReceipt.push(c)
-        })
-      } else if (helpCasts.length > 0 && selfCasts.length === 0) {
-        helpTotalRaw += itemAmount
-        helpCasts.forEach(c => {
-          if (!helpCastsInReceipt.includes(c)) helpCastsInReceipt.push(c)
-        })
-      } else if (selfCasts.length > 0 && helpCasts.length > 0) {
-        // 混在 → 両方に分類
-        selfTotalRaw += itemAmount
-        selfCasts.forEach(c => {
-          if (!selfCastsInReceipt.includes(c)) selfCastsInReceipt.push(c)
-        })
-        helpCasts.forEach(c => {
-          if (!helpCastsInReceipt.includes(c)) helpCastsInReceipt.push(c)
-        })
-      } else {
-        // キャストなし → 誰にも計上しない（フリー推しでもフリーに売上をつけない）
-      }
-    })
-
-    // 税計算・端数処理
-    let receiptTotal: number
+    // per_itemの場合: 商品ごとに税計算＆ヘルプ分配を行う
     if (roundingTiming === 'per_item') {
-      // 商品ごとに処理済みの合計を使用
-      receiptTotal = receiptTotalProcessed
-    } else {
-      // 合計に対して税抜き＆端数処理を適用
-      receiptTotal = applyTaxAndRounding(receiptTotalRaw)
-    }
-
-    // ヘルプ分配計算
-    let nominationShare = receiptTotal
-    let helpShare = 0
-
-    // 分配先を決定（nominationIsNonHelpOnlyの場合は商品上のキャスト、それ以外は実推し）
-    const distributeTargets = nominationIsNonHelpOnly ? selfCastsInReceipt : realNominations
-
-    if (helpTotalRaw > 0 && includeHelpItems) {
-      switch (helpDistMethod) {
-        case 'all_to_nomination':
-          nominationShare = receiptTotal
-          helpShare = 0
-          break
-        case 'equal':
-          nominationShare = Math.floor(receiptTotal / 2)
-          helpShare = receiptTotal - nominationShare
-          break
-        case 'ratio':
-          helpShare = Math.floor(receiptTotal * helpRatio / 100)
-          nominationShare = receiptTotal - helpShare
-          break
-        case 'equal_per_person':
-          const allCasts = [...distributeTargets, ...helpCastsInReceipt]
-          if (allCasts.length > 0) {
-            const perPerson = Math.floor(receiptTotal / allCasts.length)
-            nominationShare = perPerson * distributeTargets.length
-            helpShare = receiptTotal - nominationShare
-          }
-          break
+      // nominationIsNonHelpOnlyの場合、先に商品上のキャストを収集
+      if (nominationIsNonHelpOnly) {
+        order.order_items.forEach(item => {
+          const castsOnItem = item.cast_name || []
+          const realCastsOnItem = castsOnItem.filter(c => !nonHelpNames.includes(c))
+          realCastsOnItem.forEach(c => {
+            if (!distributeTargets.includes(c)) distributeTargets.push(c)
+          })
+        })
       }
-    }
 
-    // 推しへの分配（nominationIsNonHelpOnlyの場合は商品上のキャストに分配）
-    if (distributeTargets.length > 0) {
-      const perNomination = Math.floor(nominationShare / distributeTargets.length)
-      distributeTargets.forEach((nomName: string) => {
-        const cast = castNameMap.get(nomName)
-        if (cast) {
-          const summary = summaryMap.get(cast.id)
-          if (summary) {
-            summary.self_sales += perNomination
+      order.order_items.forEach(item => {
+        const itemAmount = item.unit_price * item.quantity
+        // 商品ごとに税計算＆端数処理
+        const processedAmount = applyTaxAndRounding(itemAmount)
+
+        const castsOnItem = item.cast_name || []
+        const realCastsOnItem = castsOnItem.filter(c => !nonHelpNames.includes(c))
+
+        // nominationIsNonHelpOnlyの場合は、商品についてる実キャスト全員がSELF扱い
+        const selfCasts = nominationIsNonHelpOnly
+          ? realCastsOnItem
+          : realCastsOnItem.filter(c => realNominations.includes(c))
+        const helpCasts = nominationIsNonHelpOnly
+          ? []
+          : realCastsOnItem.filter(c => !realNominations.includes(c))
+
+        const isSelfOnly = selfCasts.length > 0 && helpCasts.length === 0
+        const isHelpOnly = helpCasts.length > 0 && selfCasts.length === 0
+        const isMixed = selfCasts.length > 0 && helpCasts.length > 0
+        const noCast = realCastsOnItem.length === 0
+
+        if (noCast) {
+          // キャストなし → 伝票小計では推しの売上に含める
+          if (distributeTargets.length > 0) {
+            const perNomination = Math.floor(processedAmount / distributeTargets.length)
+            distributeTargets.forEach(nomName => {
+              const cast = castNameMap.get(nomName)
+              if (cast) {
+                const summary = summaryMap.get(cast.id)
+                if (summary) {
+                  summary.self_sales += perNomination
+                }
+              }
+            })
+          }
+        } else if (isSelfOnly) {
+          // SELF商品 → 推しの売上に全額
+          if (distributeTargets.length > 0) {
+            const perNomination = Math.floor(processedAmount / distributeTargets.length)
+            distributeTargets.forEach(nomName => {
+              const cast = castNameMap.get(nomName)
+              if (cast) {
+                const summary = summaryMap.get(cast.id)
+                if (summary) {
+                  summary.self_sales += perNomination
+                }
+              }
+            })
+          }
+        } else if (isHelpOnly) {
+          // HELP商品
+          if (includeHelpItems) {
+            // ヘルプ分配方法による
+            switch (helpDistMethod) {
+              case 'all_to_nomination':
+                // 全額推しに
+                if (distributeTargets.length > 0) {
+                  const perNomination = Math.floor(processedAmount / distributeTargets.length)
+                  distributeTargets.forEach(nomName => {
+                    const cast = castNameMap.get(nomName)
+                    if (cast) {
+                      const summary = summaryMap.get(cast.id)
+                      if (summary) {
+                        summary.self_sales += perNomination
+                      }
+                    }
+                  })
+                }
+                break
+              case 'equal':
+                // 推しとヘルプで50:50
+                {
+                  const nominationShare = Math.floor(processedAmount / 2)
+                  const helpShareAmount = processedAmount - nominationShare
+                  if (distributeTargets.length > 0) {
+                    const perNomination = Math.floor(nominationShare / distributeTargets.length)
+                    distributeTargets.forEach(nomName => {
+                      const cast = castNameMap.get(nomName)
+                      if (cast) {
+                        const summary = summaryMap.get(cast.id)
+                        if (summary) {
+                          summary.self_sales += perNomination
+                        }
+                      }
+                    })
+                  }
+                  if (giveHelpSales && helpCasts.length > 0) {
+                    const perHelp = Math.floor(helpShareAmount / helpCasts.length)
+                    helpCasts.forEach(helpName => {
+                      const cast = castNameMap.get(helpName)
+                      if (cast) {
+                        const summary = summaryMap.get(cast.id)
+                        if (summary) {
+                          summary.help_sales += perHelp
+                        }
+                      }
+                    })
+                  }
+                }
+                break
+              case 'ratio':
+                // 割合分配
+                {
+                  const helpShareAmount = Math.floor(processedAmount * helpRatio / 100)
+                  const nominationShare = processedAmount - helpShareAmount
+                  if (distributeTargets.length > 0) {
+                    const perNomination = Math.floor(nominationShare / distributeTargets.length)
+                    distributeTargets.forEach(nomName => {
+                      const cast = castNameMap.get(nomName)
+                      if (cast) {
+                        const summary = summaryMap.get(cast.id)
+                        if (summary) {
+                          summary.self_sales += perNomination
+                        }
+                      }
+                    })
+                  }
+                  if (giveHelpSales && helpCasts.length > 0) {
+                    const perHelp = Math.floor(helpShareAmount / helpCasts.length)
+                    helpCasts.forEach(helpName => {
+                      const cast = castNameMap.get(helpName)
+                      if (cast) {
+                        const summary = summaryMap.get(cast.id)
+                        if (summary) {
+                          summary.help_sales += perHelp
+                        }
+                      }
+                    })
+                  }
+                }
+                break
+              case 'equal_per_person':
+                // 全員で均等割
+                {
+                  const allCasts = [...distributeTargets, ...helpCasts]
+                  if (allCasts.length > 0) {
+                    const perPerson = Math.floor(processedAmount / allCasts.length)
+                    distributeTargets.forEach(nomName => {
+                      const cast = castNameMap.get(nomName)
+                      if (cast) {
+                        const summary = summaryMap.get(cast.id)
+                        if (summary) {
+                          summary.self_sales += perPerson
+                        }
+                      }
+                    })
+                    if (giveHelpSales) {
+                      helpCasts.forEach(helpName => {
+                        const cast = castNameMap.get(helpName)
+                        if (cast) {
+                          const summary = summaryMap.get(cast.id)
+                          if (summary) {
+                            summary.help_sales += perPerson
+                          }
+                        }
+                      })
+                    }
+                  }
+                }
+                break
+            }
+          }
+          // 含めない場合は何もしない（ただし推しには売上が入らない）
+        } else if (isMixed) {
+          // 混在
+          switch (helpDistMethod) {
+            case 'all_to_nomination':
+              // 全額推しに
+              if (distributeTargets.length > 0) {
+                const perNomination = Math.floor(processedAmount / distributeTargets.length)
+                distributeTargets.forEach(nomName => {
+                  const cast = castNameMap.get(nomName)
+                  if (cast) {
+                    const summary = summaryMap.get(cast.id)
+                    if (summary) {
+                      summary.self_sales += perNomination
+                    }
+                  }
+                })
+              }
+              break
+            case 'equal':
+              // 推しとヘルプで50:50
+              {
+                const nominationShare = Math.floor(processedAmount / 2)
+                const helpShareAmount = processedAmount - nominationShare
+                if (distributeTargets.length > 0) {
+                  const perNomination = Math.floor(nominationShare / distributeTargets.length)
+                  distributeTargets.forEach(nomName => {
+                    const cast = castNameMap.get(nomName)
+                    if (cast) {
+                      const summary = summaryMap.get(cast.id)
+                      if (summary) {
+                        summary.self_sales += perNomination
+                      }
+                    }
+                  })
+                }
+                if (giveHelpSales && helpCasts.length > 0) {
+                  const perHelp = Math.floor(helpShareAmount / helpCasts.length)
+                  helpCasts.forEach(helpName => {
+                    const cast = castNameMap.get(helpName)
+                    if (cast) {
+                      const summary = summaryMap.get(cast.id)
+                      if (summary) {
+                        summary.help_sales += perHelp
+                      }
+                    }
+                  })
+                }
+              }
+              break
+            case 'ratio':
+              // 割合分配
+              {
+                const helpShareAmount = Math.floor(processedAmount * helpRatio / 100)
+                const nominationShare = processedAmount - helpShareAmount
+                if (distributeTargets.length > 0) {
+                  const perNomination = Math.floor(nominationShare / distributeTargets.length)
+                  distributeTargets.forEach(nomName => {
+                    const cast = castNameMap.get(nomName)
+                    if (cast) {
+                      const summary = summaryMap.get(cast.id)
+                      if (summary) {
+                        summary.self_sales += perNomination
+                      }
+                    }
+                  })
+                }
+                if (giveHelpSales && helpCasts.length > 0) {
+                  const perHelp = Math.floor(helpShareAmount / helpCasts.length)
+                  helpCasts.forEach(helpName => {
+                    const cast = castNameMap.get(helpName)
+                    if (cast) {
+                      const summary = summaryMap.get(cast.id)
+                      if (summary) {
+                        summary.help_sales += perHelp
+                      }
+                    }
+                  })
+                }
+              }
+              break
+            case 'equal_per_person':
+              // 全員で均等割
+              {
+                const allCasts = [...distributeTargets, ...helpCasts]
+                if (allCasts.length > 0) {
+                  const perPerson = Math.floor(processedAmount / allCasts.length)
+                  distributeTargets.forEach(nomName => {
+                    const cast = castNameMap.get(nomName)
+                    if (cast) {
+                      const summary = summaryMap.get(cast.id)
+                      if (summary) {
+                        summary.self_sales += perPerson
+                      }
+                    }
+                  })
+                  if (giveHelpSales) {
+                    helpCasts.forEach(helpName => {
+                      const cast = castNameMap.get(helpName)
+                      if (cast) {
+                        const summary = summaryMap.get(cast.id)
+                        if (summary) {
+                          summary.help_sales += perPerson
+                        }
+                      }
+                    })
+                  }
+                }
+              }
+              break
           }
         }
       })
-    }
+    } else {
+      // total: 伝票全体で税計算＆ヘルプ分配を行う（従来のロジック）
+      let receiptTotalRaw = 0
+      let helpTotalRaw = 0
+      const helpCastsInReceipt: string[] = []
+      const selfCastsInReceipt: string[] = []
 
-    // ヘルプへの分配
-    if (giveHelpSales && helpShare > 0 && helpCastsInReceipt.length > 0) {
-      const perHelp = Math.floor(helpShare / helpCastsInReceipt.length)
-      helpCastsInReceipt.forEach(helpName => {
-        const cast = castNameMap.get(helpName)
-        if (cast) {
-          const summary = summaryMap.get(cast.id)
-          if (summary) {
-            summary.help_sales += perHelp
-          }
+      order.order_items.forEach(item => {
+        const itemAmount = item.unit_price * item.quantity
+        receiptTotalRaw += itemAmount
+
+        const castsOnItem = item.cast_name || []
+        const realCastsOnItem = castsOnItem.filter(c => !nonHelpNames.includes(c))
+
+        // nominationIsNonHelpOnlyの場合は、商品についてる実キャスト全員がSELF扱い
+        const selfCasts = nominationIsNonHelpOnly
+          ? realCastsOnItem
+          : realCastsOnItem.filter(c => realNominations.includes(c))
+        const helpCasts = nominationIsNonHelpOnly
+          ? []
+          : realCastsOnItem.filter(c => !realNominations.includes(c))
+
+        if (selfCasts.length > 0 && helpCasts.length === 0) {
+          selfCasts.forEach(c => {
+            if (!selfCastsInReceipt.includes(c)) selfCastsInReceipt.push(c)
+          })
+        } else if (helpCasts.length > 0 && selfCasts.length === 0) {
+          helpTotalRaw += itemAmount
+          helpCasts.forEach(c => {
+            if (!helpCastsInReceipt.includes(c)) helpCastsInReceipt.push(c)
+          })
+        } else if (selfCasts.length > 0 && helpCasts.length > 0) {
+          // 混在 → 両方に分類
+          selfCasts.forEach(c => {
+            if (!selfCastsInReceipt.includes(c)) selfCastsInReceipt.push(c)
+          })
+          helpCasts.forEach(c => {
+            if (!helpCastsInReceipt.includes(c)) helpCastsInReceipt.push(c)
+          })
         }
+        // キャストなしの商品も伝票小計では推しの売上に含まれる（receiptTotalRawに加算済み）
       })
+
+      // nominationIsNonHelpOnlyの場合は商品上のキャストを分配先にする
+      if (nominationIsNonHelpOnly) {
+        distributeTargets = selfCastsInReceipt
+      }
+
+      // 伝票全体に税計算＆端数処理を適用
+      const receiptTotal = applyTaxAndRounding(receiptTotalRaw)
+
+      // ヘルプ分配計算
+      let nominationShare = receiptTotal
+      let helpShare = 0
+
+      if (helpTotalRaw > 0 && includeHelpItems) {
+        switch (helpDistMethod) {
+          case 'all_to_nomination':
+            nominationShare = receiptTotal
+            helpShare = 0
+            break
+          case 'equal':
+            nominationShare = Math.floor(receiptTotal / 2)
+            helpShare = receiptTotal - nominationShare
+            break
+          case 'ratio':
+            helpShare = Math.floor(receiptTotal * helpRatio / 100)
+            nominationShare = receiptTotal - helpShare
+            break
+          case 'equal_per_person':
+            const allCasts = [...distributeTargets, ...helpCastsInReceipt]
+            if (allCasts.length > 0) {
+              const perPerson = Math.floor(receiptTotal / allCasts.length)
+              nominationShare = perPerson * distributeTargets.length
+              helpShare = receiptTotal - nominationShare
+            }
+            break
+        }
+      }
+
+      // 推しへの分配
+      if (distributeTargets.length > 0) {
+        const perNomination = Math.floor(nominationShare / distributeTargets.length)
+        distributeTargets.forEach((nomName: string) => {
+          const cast = castNameMap.get(nomName)
+          if (cast) {
+            const summary = summaryMap.get(cast.id)
+            if (summary) {
+              summary.self_sales += perNomination
+            }
+          }
+        })
+      }
+
+      // ヘルプへの分配
+      if (giveHelpSales && helpShare > 0 && helpCastsInReceipt.length > 0) {
+        const perHelp = Math.floor(helpShare / helpCastsInReceipt.length)
+        helpCastsInReceipt.forEach(helpName => {
+          const cast = castNameMap.get(helpName)
+          if (cast) {
+            const summary = summaryMap.get(cast.id)
+            if (summary) {
+              summary.help_sales += perHelp
+            }
+          }
+        })
+      }
     }
   })
 
