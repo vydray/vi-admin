@@ -85,6 +85,7 @@ interface CastDailyItemData {
   help_cast_id: number | null  // ヘルプしたキャスト（推し自身ならnull）
   store_id: number
   date: string
+  order_id: string | null  // 元の伝票ID（伝票単位で確認用）
   category: string | null
   product_name: string
   quantity: number
@@ -199,7 +200,7 @@ function aggregateCastDailyItems(
 
           // キャストなし商品 → self_sales=0（売上にカウントしない）
           if (noCast) {
-            const key = `${nominationCast.id}:null:${item.product_name}:${item.category || ''}`
+            const key = `${order.id}:${nominationCast.id}:null:${item.product_name}:${item.category || ''}`
             if (itemsMap.has(key)) {
               const existing = itemsMap.get(key)!
               existing.quantity += item.quantity
@@ -210,6 +211,7 @@ function aggregateCastDailyItems(
                 help_cast_id: null,
                 store_id: storeId,
                 date: date,
+                order_id: order.id,
                 category: item.category,
                 product_name: item.product_name,
                 quantity: item.quantity,
@@ -227,7 +229,7 @@ function aggregateCastDailyItems(
           // 推し自身の商品（商品のcast_nameに推しが含まれる）
           if (selfCastsOnItem.includes(nominationName)) {
             const perCast = Math.floor(itemAmount / selfCastsOnItem.length)
-            const key = `${nominationCast.id}:null:${item.product_name}:${item.category || ''}`
+            const key = `${order.id}:${nominationCast.id}:null:${item.product_name}:${item.category || ''}`
             if (itemsMap.has(key)) {
               const existing = itemsMap.get(key)!
               existing.quantity += item.quantity
@@ -239,6 +241,7 @@ function aggregateCastDailyItems(
                 help_cast_id: null,
                 store_id: storeId,
                 date: date,
+                order_id: order.id,
                 category: item.category,
                 product_name: item.product_name,
                 quantity: item.quantity,
@@ -286,7 +289,7 @@ function aggregateCastDailyItems(
                 helpShare = 0
             }
 
-            const key = `${nominationCast.id}:${helpCast.id}:${item.product_name}:${item.category || ''}`
+            const key = `${order.id}:${nominationCast.id}:${helpCast.id}:${item.product_name}:${item.category || ''}`
             if (itemsMap.has(key)) {
               const existing = itemsMap.get(key)!
               existing.quantity += item.quantity
@@ -299,6 +302,7 @@ function aggregateCastDailyItems(
                 help_cast_id: helpCast.id,
                 store_id: storeId,
                 date: date,
+                order_id: order.id,
                 category: item.category,
                 product_name: item.product_name,
                 quantity: item.quantity,
@@ -330,7 +334,7 @@ function aggregateCastDailyItems(
         // キャストなし商品 → 推しの売上としてカウント
         if (noCast) {
           const perNomination = Math.floor(itemAmount / realNominations.length)
-          const key = `${nominationCast.id}:null:${item.product_name}:${item.category || ''}`
+          const key = `${order.id}:${nominationCast.id}:null:${item.product_name}:${item.category || ''}`
 
           if (itemsMap.has(key)) {
             const existing = itemsMap.get(key)!
@@ -343,6 +347,7 @@ function aggregateCastDailyItems(
               help_cast_id: null,
               store_id: storeId,
               date: date,
+              order_id: order.id,
               category: item.category,
               product_name: item.product_name,
               quantity: item.quantity,
@@ -360,7 +365,7 @@ function aggregateCastDailyItems(
         // SELF商品 → 推しのself_salesに全額
         if (isSelfOnly) {
           const perNomination = Math.floor(itemAmount / realNominations.length)
-          const key = `${nominationCast.id}:null:${item.product_name}:${item.category || ''}`
+          const key = `${order.id}:${nominationCast.id}:null:${item.product_name}:${item.category || ''}`
 
           if (itemsMap.has(key)) {
             const existing = itemsMap.get(key)!
@@ -373,6 +378,7 @@ function aggregateCastDailyItems(
               help_cast_id: null,
               store_id: storeId,
               date: date,
+              order_id: order.id,
               category: item.category,
               product_name: item.product_name,
               quantity: item.quantity,
@@ -430,7 +436,7 @@ function aggregateCastDailyItems(
             const helpCast = castMap.get(helpCastName)
             if (!helpCast) continue
 
-            const key = `${nominationCast.id}:${helpCast.id}:${item.product_name}:${item.category || ''}`
+            const key = `${order.id}:${nominationCast.id}:${helpCast.id}:${item.product_name}:${item.category || ''}`
 
             if (itemsMap.has(key)) {
               const existing = itemsMap.get(key)!
@@ -444,6 +450,7 @@ function aggregateCastDailyItems(
                 help_cast_id: helpCast.id,
                 store_id: storeId,
                 date: date,
+                order_id: order.id,
                 category: item.category,
                 product_name: item.product_name,
                 quantity: item.quantity,
@@ -459,7 +466,7 @@ function aggregateCastDailyItems(
 
           // MIXED商品の場合、推し自身の分もレコードに
           if (isMixed && selfCastsOnItem.includes(nominationName)) {
-            const selfKey = `${nominationCast.id}:null:${item.product_name}:${item.category || ''}`
+            const selfKey = `${order.id}:${nominationCast.id}:null:${item.product_name}:${item.category || ''}`
             const selfAmount = Math.floor(itemAmount / (selfCastsOnItem.length + helpCastsOnItem.length))
 
             if (itemsMap.has(selfKey)) {
@@ -473,6 +480,7 @@ function aggregateCastDailyItems(
                 help_cast_id: null,
                 store_id: storeId,
                 date: date,
+                order_id: order.id,
                 category: item.category,
                 product_name: item.product_name,
                 quantity: item.quantity,
@@ -974,6 +982,7 @@ async function recalculateForDate(storeId: number, date: string): Promise<{
           help_cast_id: null,  // BASEは全て推し扱い
           store_id: storeId,
           date: date,
+          order_id: null,  // BASEは元伝票なし
           category: 'BASE',
           product_name: order.product_name,
           quantity: order.quantity,
