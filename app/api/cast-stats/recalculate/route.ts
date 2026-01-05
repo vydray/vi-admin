@@ -160,21 +160,97 @@ function aggregateCastDailyItems(
       const selfCastsOnItem = realCastsOnItem.filter(c => realNominations.includes(c))
       const helpCastsOnItem = realCastsOnItem.filter(c => !realNominations.includes(c))
 
+      const noCast = realCastsOnItem.length === 0
+
+      // ========================================
+      // item_based: 商品のキャストに売上が入る
+      // ========================================
+      if (isItemBased) {
+        // キャストなし商品 → 保存するが self_sales=0
+        if (noCast) {
+          // 伝票の推しごとに記録（誰の卓かは記録する）
+          for (const nominationName of realNominations) {
+            const nominationCast = castMap.get(nominationName)
+            if (!nominationCast) continue
+
+            const key = `${nominationCast.id}:null:${item.product_name}:${item.category || ''}`
+            if (itemsMap.has(key)) {
+              const existing = itemsMap.get(key)!
+              existing.quantity += item.quantity
+              existing.subtotal += item.subtotal
+            } else {
+              itemsMap.set(key, {
+                cast_id: nominationCast.id,
+                help_cast_id: null,
+                store_id: storeId,
+                date: date,
+                category: item.category,
+                product_name: item.product_name,
+                quantity: item.quantity,
+                self_sales: 0,
+                help_sales: 0,
+                subtotal: item.subtotal,
+                back_amount: 0,
+                is_self: true
+              })
+            }
+          }
+          continue
+        }
+
+        // キャストあり商品 → 商品のキャストに売上が入る
+        const perCast = Math.floor(itemAmount / realCastsOnItem.length)
+        for (const castName of realCastsOnItem) {
+          const cast = castMap.get(castName)
+          if (!cast) continue
+
+          const isSelf = realNominations.includes(castName)
+          const key = `${cast.id}:null:${item.product_name}:${item.category || ''}`
+
+          if (itemsMap.has(key)) {
+            const existing = itemsMap.get(key)!
+            existing.quantity += item.quantity
+            if (isSelf) {
+              existing.self_sales += perCast
+            } else {
+              existing.help_sales += perCast
+            }
+            existing.subtotal += item.subtotal
+          } else {
+            itemsMap.set(key, {
+              cast_id: cast.id,
+              help_cast_id: null,
+              store_id: storeId,
+              date: date,
+              category: item.category,
+              product_name: item.product_name,
+              quantity: item.quantity,
+              self_sales: isSelf ? perCast : 0,
+              help_sales: isSelf ? 0 : perCast,
+              subtotal: item.subtotal,
+              back_amount: 0,
+              is_self: isSelf
+            })
+          }
+        }
+        continue
+      }
+
+      // ========================================
+      // receipt_based: 伝票の推しに売上が入る
+      // ========================================
       const isSelfOnly = selfCastsOnItem.length > 0 && helpCastsOnItem.length === 0
       const isHelpOnly = helpCastsOnItem.length > 0 && selfCastsOnItem.length === 0
       const isMixed = selfCastsOnItem.length > 0 && helpCastsOnItem.length > 0
-      const noCast = realCastsOnItem.length === 0
 
       // 各推しに対してデータを作成
       for (const nominationName of realNominations) {
         const nominationCast = castMap.get(nominationName)
         if (!nominationCast) continue
 
-        // キャストなし商品の処理
-        // - item_based: 保存するが self_sales=0（売上カウントしない）
-        // - receipt_based: 保存して self_sales=金額（推しの売上としてカウント）
+        // キャストなし商品 → 推しの売上としてカウント
         if (noCast) {
-          const perNomination = isItemBased ? 0 : Math.floor(itemAmount / realNominations.length)
+          const perNomination = Math.floor(itemAmount / realNominations.length)
           const key = `${nominationCast.id}:null:${item.product_name}:${item.category || ''}`
 
           if (itemsMap.has(key)) {
@@ -268,7 +344,7 @@ function aggregateCastDailyItems(
               helpSharePerCast = 0
           }
 
-          // 推しのレコードを作成（help_cast_id = ヘルプキャストの最初の人、またはnull）
+          // 推しのレコードを作成（help_cast_id = ヘルプキャスト）
           for (const helpCastName of helpCastsOnItem) {
             const helpCast = castMap.get(helpCastName)
             if (!helpCast) continue
@@ -299,7 +375,7 @@ function aggregateCastDailyItems(
             }
           }
 
-          // MIXED商品の場合、推し自身の分もレコードに（selfCastsOnItemがある場合）
+          // MIXED商品の場合、推し自身の分もレコードに
           if (isMixed && selfCastsOnItem.includes(nominationName)) {
             const selfKey = `${nominationCast.id}:null:${item.product_name}:${item.category || ''}`
             const selfAmount = Math.floor(itemAmount / (selfCastsOnItem.length + helpCastsOnItem.length))
