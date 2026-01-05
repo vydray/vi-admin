@@ -110,7 +110,7 @@ function aggregateCastDailyItems(
   const method = salesSettings.published_aggregation ?? 'item_based'
   const nonHelpNames = salesSettings.non_help_staff_names || []
 
-  // 設定に応じた税抜き計算
+  // 設定に応じた税抜き計算と端数処理
   const isItemBased = method === 'item_based'
   const excludeTax = isItemBased
     ? (salesSettings.item_exclude_consumption_tax ?? salesSettings.use_tax_excluded ?? false)
@@ -125,11 +125,35 @@ function aggregateCastDailyItems(
     ? (salesSettings.item_help_ratio ?? 50)
     : (salesSettings.receipt_help_ratio ?? 50)
 
-  // 税抜き計算関数
-  const applyTax = (amount: number) => {
-    if (!excludeTax) return amount
-    const taxPercent = Math.round(taxRate * 100)
-    return Math.floor(amount * 100 / (100 + taxPercent))
+  // 端数処理設定
+  const roundingMethod = isItemBased
+    ? (salesSettings.item_rounding_method ?? 'floor_100')
+    : (salesSettings.receipt_rounding_method ?? 'floor_100')
+  const roundingPosition = isItemBased
+    ? (salesSettings.item_rounding_position ?? 100)
+    : (salesSettings.receipt_rounding_position ?? 100)
+
+  // 端数処理関数
+  const applyRounding = (amount: number) => {
+    if (roundingPosition <= 0) return amount
+    if (roundingMethod.startsWith('floor')) {
+      return Math.floor(amount / roundingPosition) * roundingPosition
+    } else if (roundingMethod.startsWith('ceil')) {
+      return Math.ceil(amount / roundingPosition) * roundingPosition
+    } else if (roundingMethod === 'round') {
+      return Math.round(amount / roundingPosition) * roundingPosition
+    }
+    return amount
+  }
+
+  // 税抜き計算 + 端数処理
+  const applyTaxAndRounding = (amount: number) => {
+    let result = amount
+    if (excludeTax) {
+      const taxPercent = Math.round(taxRate * 100)
+      result = Math.floor(result * 100 / (100 + taxPercent))
+    }
+    return applyRounding(result)
   }
 
   for (const order of orders) {
@@ -152,9 +176,9 @@ function aggregateCastDailyItems(
       const castsOnItem = item.cast_name || []
       const realCastsOnItem = castsOnItem.filter(c => !nonHelpNames.includes(c))
 
-      // 商品金額（税抜き適用）
+      // 商品金額（税抜き + 端数処理適用）
       const rawAmount = (item.unit_price || 0) * (item.quantity || 0)
-      const itemAmount = applyTax(rawAmount)
+      const itemAmount = applyTaxAndRounding(rawAmount)
 
       // SELF/HELP判定
       const selfCastsOnItem = realCastsOnItem.filter(c => realNominations.includes(c))
