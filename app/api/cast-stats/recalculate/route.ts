@@ -110,8 +110,6 @@ function aggregateCastDailyItems(
   const method = salesSettings.published_aggregation ?? 'item_based'
   const nonHelpNames = salesSettings.non_help_staff_names || []
 
-  console.log(`[aggregateCastDailyItems] method=${method}, orders=${orders.length}, taxRate=${taxRate}`)
-
   // 設定に応じた税抜き計算
   const isItemBased = method === 'item_based'
   const excludeTax = isItemBased
@@ -157,11 +155,6 @@ function aggregateCastDailyItems(
       // 商品金額（税抜き適用）
       const rawAmount = (item.unit_price || 0) * (item.quantity || 0)
       const itemAmount = applyTax(rawAmount)
-
-      // デバッグ: 最初の数件だけログ出力
-      if (itemsMap.size < 3) {
-        console.log(`[item] ${item.product_name}: unit_price=${item.unit_price}, qty=${item.quantity}, raw=${rawAmount}, after_tax=${itemAmount}, cast_name=${JSON.stringify(item.cast_name)}`)
-      }
 
       // SELF/HELP判定
       const selfCastsOnItem = realCastsOnItem.filter(c => realNominations.includes(c))
@@ -338,9 +331,7 @@ function aggregateCastDailyItems(
     }
   }
 
-  const result = Array.from(itemsMap.values())
-  console.log(`[aggregateCastDailyItems] result count=${result.length}, sample=${JSON.stringify(result.slice(0, 2))}`)
-  return result
+  return Array.from(itemsMap.values())
 }
 
 // 勤務時間を計算（時間単位）- 深夜勤務（日をまたぐ）対応
