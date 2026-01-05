@@ -655,16 +655,32 @@
 | カラム | 型 | NOT NULL | デフォルト | 説明 |
 |--------|-----|----------|-----------|------|
 | id | integer | ✓ |  | PK |
-| cast_id | integer | ✓ |  | FK → casts.id |
+| cast_id | integer | ✓ |  | FK → casts.id（テーブルの推し） |
+| help_cast_id | integer |  |  | FK → casts.id（ヘルプキャスト、推し自身ならnull） |
 | store_id | integer | ✓ |  | FK → stores.id |
-| date | date | ✓ |  |  |
-| category | varchar(100) |  |  |  |
-| product_name | varchar(200) |  |  |  |
+| date | date | ✓ |  | 営業日 |
+| category | varchar(100) |  |  | 商品カテゴリ |
+| product_name | varchar(200) |  |  | 商品名 |
 | quantity | integer | ✓ | 0 | 個数 |
-| subtotal | integer | ✓ | 0 | 小計 |
-| back_amount | integer | ✓ | 0 | バック金額 |
+| self_sales | integer | ✓ | 0 | 推しにつく売上（分配ロジック適用後） |
+| help_sales | integer | ✓ | 0 | ヘルプにつく売上（分配ロジック適用後） |
+| subtotal | integer | ✓ | 0 | 【非推奨】生の小計（self_sales + help_salesを使用） |
+| back_amount | integer | ✓ | 0 | 【非推奨】報酬計算はpayslipsで行う |
+| is_self | boolean | ✓ | TRUE | 【非推奨】help_cast_id IS NULLで判定 |
 | created_at | timestamptz |  | now() |  |
 | updated_at | timestamptz |  | now() |  |
+
+**集計例:**
+```sql
+-- キャストAの推し売上合計
+SELECT SUM(self_sales) FROM cast_daily_items WHERE cast_id = A_ID
+
+-- キャストBのヘルプ売上合計
+SELECT SUM(help_sales) FROM cast_daily_items WHERE help_cast_id = B_ID
+
+-- キャストAのテーブルでの合計売上（推し + ヘルプされた分）
+SELECT SUM(self_sales) + SUM(help_sales) FROM cast_daily_items WHERE cast_id = A_ID
+```
 
 ### cast_daily_stats
 **キャスト別日別売上サマリー**

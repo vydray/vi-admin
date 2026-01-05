@@ -658,14 +658,19 @@ export interface CastSalesSummary {
 // 日別商品詳細
 export interface CastDailyItem {
   id: number
-  cast_id: number
+  cast_id: number           // テーブルの推し（staff_name）
+  help_cast_id: number | null // ヘルプしたキャスト（推し自身の注文ならnull）
   store_id: number
   date: string
   category: string | null
   product_name: string | null
   quantity: number
-  subtotal: number
-  back_amount: number
+  self_sales: number        // 推しにつく売上（分配ロジック適用後）
+  help_sales: number        // ヘルプにつく売上（分配ロジック適用後）
+  // 以下は非推奨（後方互換性のため残す）
+  subtotal: number          // @deprecated - self_sales + help_sales を使用
+  back_amount: number       // @deprecated - 報酬計算はpayslipsで行う
+  is_self: boolean          // @deprecated - help_cast_id IS NULL で判定
   created_at: string
   updated_at: string
 }
