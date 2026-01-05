@@ -72,6 +72,7 @@ interface OrderWithPayment {
   order_date: string
   checkout_datetime: string
   deleted_at: string | null
+  guest_count: number | null
   payments: Payment[]
 }
 
@@ -373,7 +374,7 @@ export default function Home() {
       // 今日の営業日のデータを取得（order_dateで絞り込み）
       const { data: todayOrders, error: todayError } = await supabase
         .from('orders')
-        .select('id, total_incl_tax, table_number, order_date, checkout_datetime, payments(cash_amount, credit_card_amount, other_payment_amount, change_amount)')
+        .select('id, total_incl_tax, table_number, order_date, checkout_datetime, guest_count, payments(cash_amount, credit_card_amount, other_payment_amount, change_amount)')
         .eq('store_id', storeId)
         .gte('order_date', todayBusinessDay)
         .lt('order_date', todayBusinessDay + 'T23:59:59')
@@ -382,7 +383,7 @@ export default function Home() {
       // 選択された月のデータを取得（order_dateで絞り込み）
       const { data: monthlyOrders, error: monthlyError } = await supabase
         .from('orders')
-        .select('id, total_incl_tax, table_number, order_date, checkout_datetime, payments(cash_amount, credit_card_amount, other_payment_amount, change_amount)')
+        .select('id, total_incl_tax, table_number, order_date, checkout_datetime, guest_count, payments(cash_amount, credit_card_amount, other_payment_amount, change_amount)')
         .eq('store_id', storeId)
         .gte('order_date', monthStart)
         .lte('order_date', monthEnd + 'T23:59:59')
@@ -413,8 +414,8 @@ export default function Home() {
         const payment = Array.isArray(order.payments) ? order.payments[0] : order.payments
         return sum + (Number(payment?.other_payment_amount) || 0)
       }, 0)
-      const todayUniqueTables = new Set(typedTodayOrders.map(o => o.table_number).filter(Boolean))
-      const todayGroups = todayUniqueTables.size
+      // 今日の来店人数（guest_countの合計）
+      const todayGuests = typedTodayOrders.reduce((sum, order) => sum + (Number(order.guest_count) || 0), 0)
 
       // 月間の集計
       const monthlySales = typedMonthlyOrders.reduce((sum, order) => sum + (Number(order.total_incl_tax) || 0), 0)
@@ -430,8 +431,8 @@ export default function Home() {
         const payment = Array.isArray(order.payments) ? order.payments[0] : order.payments
         return sum + (Number(payment?.other_payment_amount) || 0)
       }, 0)
-      const monthlyUniqueTables = new Set(typedMonthlyOrders.map(o => o.table_number).filter(Boolean))
-      const monthlyGroups = monthlyUniqueTables.size
+      // 月間来店人数（guest_countの合計）
+      const monthlyGuests = typedMonthlyOrders.reduce((sum, order) => sum + (Number(order.guest_count) || 0), 0)
 
       // 報酬明細から人件費データを取得
       const yearMonth = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}`
@@ -473,16 +474,16 @@ export default function Home() {
       setData({
         todaySales,
         monthlySales,
-        todayCustomers: typedTodayOrders.length,
-        monthlyCustomers: typedMonthlyOrders.length,
+        todayCustomers: typedTodayOrders.length,     // 会計数
+        monthlyCustomers: typedMonthlyOrders.length, // 会計数
         monthlyCashSales,
         monthlyCardSales,
         monthlyCredit,
-        monthlyGroups,
+        monthlyGroups: monthlyGuests,  // 来店人数（guest_countの合計）
         todayCashSales,
         todayCardSales,
         todayCredit,
-        todayGroups,
+        todayGroups: todayGuests,      // 来店人数（guest_countの合計）
         monthlyGrossTotal,
         monthlyNetPayment,
         monthlyDailyPayment,
@@ -514,7 +515,8 @@ export default function Home() {
           const payment = Array.isArray(order.payments) ? order.payments[0] : order.payments
           return sum + (Number(payment?.other_payment_amount) || 0)
         }, 0)
-        const dayUniqueTables = new Set(dayOrders.map(o => o.table_number).filter(Boolean))
+        // 日別来店人数（guest_countの合計）
+        const dayGuests = dayOrders.reduce((sum, order) => sum + (Number(order.guest_count) || 0), 0)
 
         cumulative += daySales
 
@@ -527,7 +529,7 @@ export default function Home() {
           cardSales: dayCardSales,
           otherSales: dayOtherSales,
           orderCount: dayOrders.length,
-          groups: dayUniqueTables.size,
+          groups: dayGuests,  // 来店人数
         })
       }
 
@@ -641,8 +643,8 @@ export default function Home() {
             { label: '現金売上', value: '¥' + data.monthlyCashSales.toLocaleString() },
             { label: 'カード売上', value: '¥' + data.monthlyCardSales.toLocaleString() },
             { label: '売掛', value: '¥' + data.monthlyCredit.toLocaleString() },
-            { label: '来店人数', value: data.monthlyCustomers + '人' },
-            { label: '来店組数', value: data.monthlyGroups + '組' },
+            { label: '会計数', value: data.monthlyCustomers + '件' },
+            { label: '来店人数', value: data.monthlyGroups + '人' },
             { label: '客単価', value: '¥' + avgMonthly.toLocaleString() },
             { label: '人件費', value: '¥' + (data.monthlyNetPayment + data.monthlyDailyPayment).toLocaleString() },
             { label: '源泉徴収', value: '¥' + data.monthlyWithholdingTax.toLocaleString() },
@@ -658,8 +660,8 @@ export default function Home() {
             { label: '現金売上', value: '¥' + data.todayCashSales.toLocaleString() },
             { label: 'カード売上', value: '¥' + data.todayCardSales.toLocaleString() },
             { label: '売掛', value: '¥' + data.todayCredit.toLocaleString() },
-            { label: '来店人数', value: data.todayCustomers + '人' },
-            { label: '来店組数', value: data.todayGroups + '組' },
+            { label: '会計数', value: data.todayCustomers + '件' },
+            { label: '来店人数', value: data.todayGroups + '人' },
             { label: '客単価', value: '¥' + avgToday.toLocaleString() },
           ]}
         />
@@ -744,7 +746,7 @@ export default function Home() {
                 }}>日付</th>
                 <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>総売上</th>
                 <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>会計数</th>
-                <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>組数</th>
+                <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>人数</th>
                 <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>現金</th>
                 <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>カード</th>
                 <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>売掛</th>
@@ -971,9 +973,9 @@ export default function Home() {
                   </div>
                 </div>
                 <div style={styles.dailyReportCard}>
-                  <div style={styles.dailyReportLabel}>組数</div>
+                  <div style={styles.dailyReportLabel}>来店人数</div>
                   <div style={styles.dailyReportBigValue}>
-                    {selectedDayData.groups}<span style={{ fontSize: '16px' }}>組</span>
+                    {selectedDayData.groups}<span style={{ fontSize: '16px' }}>人</span>
                   </div>
                 </div>
               </div>
