@@ -172,19 +172,16 @@ function aggregateCastDailyItems(
       const isMixed = selfCastsOnItem.length > 0 && helpCastsOnItem.length > 0
       const noCast = realCastsOnItem.length === 0
 
-      // item_based: キャスト名がないものはスキップ
-      // receipt_based: キャスト名がないものは推しのself_salesに
-      if (isItemBased && noCast) continue
-
       // 各推しに対してデータを作成
       for (const nominationName of realNominations) {
         const nominationCast = castMap.get(nominationName)
         if (!nominationCast) continue
 
-        // キャストなし商品 → 推しのself_salesに（receipt_basedのみ）
+        // キャストなし商品の処理
+        // - item_based: 保存するが self_sales=0（売上カウントしない）
+        // - receipt_based: 保存して self_sales=金額（推しの売上としてカウント）
         if (noCast) {
-          // receipt_basedでは推しに全額
-          const perNomination = Math.floor(itemAmount / realNominations.length)
+          const perNomination = isItemBased ? 0 : Math.floor(itemAmount / realNominations.length)
           const key = `${nominationCast.id}:null:${item.product_name}:${item.category || ''}`
 
           if (itemsMap.has(key)) {
