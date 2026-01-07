@@ -24,6 +24,9 @@ interface DashboardData {
   todayCardSales: number
   todayCredit: number
   todayGroups: number
+  // BASE売上
+  monthlyBaseSales: number
+  todayBaseSales: number
   // 人件費関連
   monthlyGrossTotal: number      // 総支給額合計
   monthlyNetPayment: number      // 差引支給額合計
@@ -92,6 +95,8 @@ export default function Home() {
     todayCardSales: 0,
     todayCredit: 0,
     todayGroups: 0,
+    monthlyBaseSales: 0,
+    todayBaseSales: 0,
     monthlyGrossTotal: 0,
     monthlyNetPayment: 0,
     monthlyDailyPayment: 0,
@@ -389,6 +394,15 @@ export default function Home() {
         .lte('order_date', monthEnd + 'T23:59:59')
         .is('deleted_at', null)
 
+      // BASE売上を取得
+      const { data: baseOrdersData } = await supabase
+        .from('base_orders')
+        .select('actual_price, quantity, business_date')
+        .eq('store_id', storeId)
+        .gte('business_date', monthStart)
+        .lte('business_date', monthEnd)
+        .not('actual_price', 'is', null)
+
       if (todayError) {
         console.error('Today orders error:', todayError)
       }
@@ -433,6 +447,15 @@ export default function Home() {
       }, 0)
       // 月間来店人数（guest_countの合計）
       const monthlyGuests = typedMonthlyOrders.reduce((sum, order) => sum + (Number(order.guest_count) || 0), 0)
+
+      // BASE売上の集計
+      const monthlyBaseSales = (baseOrdersData || []).reduce(
+        (sum, order) => sum + ((order.actual_price || 0) * (order.quantity || 1)),
+        0
+      )
+      const todayBaseSales = (baseOrdersData || [])
+        .filter(order => order.business_date === todayBusinessDay)
+        .reduce((sum, order) => sum + ((order.actual_price || 0) * (order.quantity || 1)), 0)
 
       // 報酬明細から人件費データを取得
       const yearMonth = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}`
@@ -484,6 +507,8 @@ export default function Home() {
         todayCardSales,
         todayCredit,
         todayGroups: todayGuests,      // 来店人数（guest_countの合計）
+        monthlyBaseSales,
+        todayBaseSales,
         monthlyGrossTotal,
         monthlyNetPayment,
         monthlyDailyPayment,
@@ -639,7 +664,8 @@ export default function Home() {
           color="#3498db"
           isMobile={isMobile}
           stats={[
-            { label: '総売上', value: '¥' + data.monthlySales.toLocaleString() },
+            { label: '店舗売上', value: '¥' + data.monthlySales.toLocaleString() },
+            { label: 'BASE売上', value: '¥' + data.monthlyBaseSales.toLocaleString() },
             { label: '現金売上', value: '¥' + data.monthlyCashSales.toLocaleString() },
             { label: 'カード売上', value: '¥' + data.monthlyCardSales.toLocaleString() },
             { label: '売掛', value: '¥' + data.monthlyCredit.toLocaleString() },
@@ -656,7 +682,8 @@ export default function Home() {
           color="#1abc9c"
           isMobile={isMobile}
           stats={[
-            { label: '総売上', value: '¥' + data.todaySales.toLocaleString() },
+            { label: '店舗売上', value: '¥' + data.todaySales.toLocaleString() },
+            { label: 'BASE売上', value: '¥' + data.todayBaseSales.toLocaleString() },
             { label: '現金売上', value: '¥' + data.todayCashSales.toLocaleString() },
             { label: 'カード売上', value: '¥' + data.todayCardSales.toLocaleString() },
             { label: '売掛', value: '¥' + data.todayCredit.toLocaleString() },
@@ -744,7 +771,7 @@ export default function Home() {
                     minWidth: '45px',
                   } : {})
                 }}>日付</th>
-                <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>総売上</th>
+                <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>店舗売上</th>
                 <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>会計数</th>
                 <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>人数</th>
                 <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>現金</th>
@@ -938,7 +965,7 @@ export default function Home() {
             }}>
               {/* 売上サマリー */}
               <div style={styles.dailyReportCard}>
-                <div style={styles.dailyReportCardHeader}>総売上</div>
+                <div style={styles.dailyReportCardHeader}>店舗売上</div>
                 <div style={styles.dailyReportBigValue}>
                   ¥{selectedDayData.sales.toLocaleString()}
                 </div>
