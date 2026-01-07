@@ -49,6 +49,8 @@ interface OrderWithStaff {
   staff_name: string | null
   order_date: string
   guest_count: number | null
+  table_number: string | null
+  guest_name: string | null
   order_items: OrderItemWithTax[]
 }
 
@@ -86,6 +88,8 @@ interface CastDailyItemData {
   store_id: number
   date: string
   order_id: string | null  // 元の伝票ID（伝票単位で確認用）
+  table_number: string | null  // テーブル番号
+  guest_name: string | null    // お客様名
   category: string | null
   product_name: string
   quantity: number
@@ -212,6 +216,8 @@ function aggregateCastDailyItems(
                 store_id: storeId,
                 date: date,
                 order_id: order.id,
+                table_number: order.table_number,
+                guest_name: order.guest_name,
                 category: item.category,
                 product_name: item.product_name,
                 quantity: item.quantity,
@@ -242,6 +248,8 @@ function aggregateCastDailyItems(
                 store_id: storeId,
                 date: date,
                 order_id: order.id,
+                table_number: order.table_number,
+                guest_name: order.guest_name,
                 category: item.category,
                 product_name: item.product_name,
                 quantity: item.quantity,
@@ -303,6 +311,8 @@ function aggregateCastDailyItems(
                 store_id: storeId,
                 date: date,
                 order_id: order.id,
+                table_number: order.table_number,
+                guest_name: order.guest_name,
                 category: item.category,
                 product_name: item.product_name,
                 quantity: item.quantity,
@@ -348,6 +358,8 @@ function aggregateCastDailyItems(
               store_id: storeId,
               date: date,
               order_id: order.id,
+              table_number: order.table_number,
+              guest_name: order.guest_name,
               category: item.category,
               product_name: item.product_name,
               quantity: item.quantity,
@@ -379,6 +391,8 @@ function aggregateCastDailyItems(
               store_id: storeId,
               date: date,
               order_id: order.id,
+              table_number: order.table_number,
+              guest_name: order.guest_name,
               category: item.category,
               product_name: item.product_name,
               quantity: item.quantity,
@@ -451,6 +465,8 @@ function aggregateCastDailyItems(
                 store_id: storeId,
                 date: date,
                 order_id: order.id,
+                table_number: order.table_number,
+                guest_name: order.guest_name,
                 category: item.category,
                 product_name: item.product_name,
                 quantity: item.quantity,
@@ -481,6 +497,8 @@ function aggregateCastDailyItems(
                 store_id: storeId,
                 date: date,
                 order_id: order.id,
+                table_number: order.table_number,
+                guest_name: order.guest_name,
                 category: item.category,
                 product_name: item.product_name,
                 quantity: item.quantity,
@@ -608,6 +626,8 @@ async function recalculateForDate(storeId: number, date: string): Promise<{
         staff_name,
         order_date,
         guest_count,
+        table_number,
+        guest_name,
         order_items (
           id,
           product_name,
@@ -983,6 +1003,8 @@ async function recalculateForDate(storeId: number, date: string): Promise<{
           store_id: storeId,
           date: date,
           order_id: null,  // BASEは元伝票なし
+          table_number: null,  // BASEはテーブル情報なし
+          guest_name: null,  // BASEはお客様名なし
           category: 'BASE',
           product_name: order.product_name,
           quantity: order.quantity,

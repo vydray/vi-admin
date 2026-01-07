@@ -90,6 +90,7 @@ function CastSalesPageContent() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [recalculating, setRecalculating] = useState(false)
+  const [recalculateProgress, setRecalculateProgress] = useState(0)
   const [finalizing, setFinalizing] = useState(false)
   const [isFinalized, setIsFinalized] = useState(false)
   const [productSalesData, setProductSalesData] = useState<Map<string, ProductSalesData>>(new Map())
@@ -552,6 +553,18 @@ function CastSalesPageContent() {
     if (!confirmed) return
 
     setRecalculating(true)
+    setRecalculateProgress(0)
+
+    // 進捗アニメーション（0→90%を約12秒で）
+    const progressInterval = setInterval(() => {
+      setRecalculateProgress(prev => {
+        if (prev >= 90) return prev
+        // 最初は速く、後半は遅くなる
+        const increment = Math.max(1, Math.floor((90 - prev) / 10))
+        return Math.min(90, prev + increment)
+      })
+    }, 400)
+
     try {
       const start = startOfMonth(selectedMonth)
       const end = endOfMonth(selectedMonth)
@@ -574,13 +587,19 @@ function CastSalesPageContent() {
         throw new Error(result.error || '再計算に失敗しました')
       }
 
+      clearInterval(progressInterval)
+      setRecalculateProgress(100)
+      await new Promise(resolve => setTimeout(resolve, 300))
+
       await loadData()
       alert('売上データを再計算しました')
     } catch (err) {
       console.error('再計算エラー:', err)
       alert('再計算に失敗しました')
     } finally {
+      clearInterval(progressInterval)
       setRecalculating(false)
+      setRecalculateProgress(0)
     }
   }
 
@@ -762,6 +781,69 @@ function CastSalesPageContent() {
         padding: '8px',
         paddingBottom: '40px'
       }}>
+        {/* 再計算中オーバーレイ */}
+        {recalculating && (
+          <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 9999
+          }}>
+            <div style={{
+              backgroundColor: '#fff',
+              borderRadius: '12px',
+              padding: '24px 32px',
+              textAlign: 'center',
+              boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)',
+              margin: '16px'
+            }}>
+              <div style={{
+                width: '40px',
+                height: '40px',
+                border: '4px solid #e5e7eb',
+                borderTop: '4px solid #3b82f6',
+                borderRadius: '50%',
+                margin: '0 auto 12px',
+                animation: 'spin 1s linear infinite'
+              }} />
+              <div style={{ fontSize: '14px', fontWeight: '600', color: '#1a1a1a', marginBottom: '12px' }}>
+                再計算中...
+              </div>
+              <div style={{
+                width: '160px',
+                height: '6px',
+                backgroundColor: '#e5e7eb',
+                borderRadius: '3px',
+                overflow: 'hidden',
+                margin: '0 auto'
+              }}>
+                <div style={{
+                  width: `${recalculateProgress}%`,
+                  height: '100%',
+                  backgroundColor: '#3b82f6',
+                  borderRadius: '3px',
+                  transition: 'width 0.3s ease-out'
+                }} />
+              </div>
+              <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '6px' }}>
+                {recalculateProgress}%
+              </div>
+            </div>
+            <style>{`
+              @keyframes spin {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
+              }
+            `}</style>
+          </div>
+        )}
+
         {/* ヘッダー */}
         <div style={{
           backgroundColor: '#fff',
@@ -1226,6 +1308,68 @@ function CastSalesPageContent() {
       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
       paddingBottom: '60px'
     }}>
+      {/* 再計算中オーバーレイ */}
+      {recalculating && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 9999
+        }}>
+          <div style={{
+            backgroundColor: '#fff',
+            borderRadius: '12px',
+            padding: '32px 48px',
+            textAlign: 'center',
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)'
+          }}>
+            <div style={{
+              width: '48px',
+              height: '48px',
+              border: '4px solid #e5e7eb',
+              borderTop: '4px solid #3b82f6',
+              borderRadius: '50%',
+              margin: '0 auto 16px',
+              animation: 'spin 1s linear infinite'
+            }} />
+            <div style={{ fontSize: '16px', fontWeight: '600', color: '#1a1a1a', marginBottom: '16px' }}>
+              売上データを再計算中...
+            </div>
+            <div style={{
+              width: '200px',
+              height: '8px',
+              backgroundColor: '#e5e7eb',
+              borderRadius: '4px',
+              overflow: 'hidden',
+              margin: '0 auto'
+            }}>
+              <div style={{
+                width: `${recalculateProgress}%`,
+                height: '100%',
+                backgroundColor: '#3b82f6',
+                borderRadius: '4px',
+                transition: 'width 0.3s ease-out'
+              }} />
+            </div>
+            <div style={{ fontSize: '14px', color: '#6b7280', marginTop: '8px' }}>
+              {recalculateProgress}%
+            </div>
+          </div>
+          <style>{`
+            @keyframes spin {
+              0% { transform: rotate(0deg); }
+              100% { transform: rotate(360deg); }
+            }
+          `}</style>
+        </div>
+      )}
+
       {/* ヘッダー */}
       <div style={{
         backgroundColor: '#fff',
