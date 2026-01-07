@@ -28,6 +28,25 @@ interface ParsedCSVRow {
   quantity: number
 }
 
+// 手数料CSVパース結果
+interface FeeCSVRow {
+  orderId: string
+  orderDatetime: string
+  paymentMethod: string
+  subtotal: number
+  paymentFee: number
+  serviceFee: number
+  netAmount: number
+}
+
+interface FeeSummary {
+  totalSubtotal: number
+  totalPaymentFee: number
+  totalServiceFee: number
+  totalNetAmount: number
+  orderCount: number
+}
+
 export default function BaseSettingsPage() {
   return (
     <ProtectedPage permissionKey="base_settings">
@@ -48,7 +67,7 @@ function BaseSettingsPageContent() {
   // UI状態
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [activeTab, setActiveTab] = useState<'products' | 'import' | 'orders' | 'settings'>('products')
+  const [activeTab, setActiveTab] = useState<'products' | 'import' | 'orders' | 'fees' | 'settings'>('products')
 
   // 商品追加モーダル
   const [showAddProductModal, setShowAddProductModal] = useState(false)
@@ -60,6 +79,11 @@ function BaseSettingsPageContent() {
   // CSVインポート
   const [csvData, setCsvData] = useState<ParsedCSVRow[]>([])
   const [importing, setImporting] = useState(false)
+
+  // 手数料CSV
+  const feeFileInputRef = useRef<HTMLInputElement>(null)
+  const [feeData, setFeeData] = useState<FeeCSVRow[]>([])
+  const [feeSummary, setFeeSummary] = useState<FeeSummary | null>(null)
 
   // 注文履歴
   const [orders, setOrders] = useState<any[]>([])
@@ -349,6 +373,86 @@ function BaseSettingsPageContent() {
       toast.success(`${parsedRows.length}件のデータを読み込みました`)
     } catch (err) {
       console.error('CSVパースエラー:', err)
+      toast.error('CSVの解析に失敗しました')
+    }
+  }
+
+  // 手数料CSVファイル選択
+  const handleFeeFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      const text = event.target?.result as string
+      parseFeeCSV(text)
+    }
+    reader.readAsText(file, 'Shift_JIS')
+  }
+
+  // 手数料CSVパース（売上データダウンロード App形式）
+  const parseFeeCSV = (text: string) => {
+    try {
+      const lines = text.split('\n')
+      if (lines.length < 2) {
+        toast.error('CSVファイルが空です')
+        return
+      }
+
+      // ヘッダー行を解析（カンマ区切り）
+      const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''))
+
+      // カラムインデックスを取得
+      const orderIdIdx = headers.findIndex(h => h === '注文ID')
+      const orderDateIdx = headers.findIndex(h => h === '注文日時')
+      const paymentMethodIdx = headers.findIndex(h => h === '決済方法')
+      const subtotalIdx = headers.findIndex(h => h.includes('小計'))
+      const paymentFeeIdx = headers.findIndex(h => h.includes('かんたん決済手数料'))
+      const serviceFeeIdx = headers.findIndex(h => h === 'サービス利用')
+      const netAmountIdx = headers.findIndex(h => h.includes('売上代金入金計'))
+
+      if (orderIdIdx === -1) {
+        toast.error('必要なカラムが見つかりません（注文ID）')
+        return
+      }
+
+      const parsedRows: FeeCSVRow[] = []
+
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim()
+        if (!line) continue
+
+        const values = line.split(',').map(v => v.trim().replace(/"/g, ''))
+
+        // 注文IDがない行はスキップ
+        if (!values[orderIdIdx]) continue
+
+        parsedRows.push({
+          orderId: values[orderIdIdx] || '',
+          orderDatetime: orderDateIdx >= 0 ? values[orderDateIdx] || '' : '',
+          paymentMethod: paymentMethodIdx >= 0 ? values[paymentMethodIdx] || '' : '',
+          subtotal: subtotalIdx >= 0 ? parseInt(values[subtotalIdx]) || 0 : 0,
+          paymentFee: paymentFeeIdx >= 0 ? parseInt(values[paymentFeeIdx]) || 0 : 0,
+          serviceFee: serviceFeeIdx >= 0 ? parseInt(values[serviceFeeIdx]) || 0 : 0,
+          netAmount: netAmountIdx >= 0 ? parseInt(values[netAmountIdx]) || 0 : 0,
+        })
+      }
+
+      setFeeData(parsedRows)
+
+      // サマリー計算
+      const summary: FeeSummary = {
+        totalSubtotal: parsedRows.reduce((sum, r) => sum + r.subtotal, 0),
+        totalPaymentFee: parsedRows.reduce((sum, r) => sum + r.paymentFee, 0),
+        totalServiceFee: parsedRows.reduce((sum, r) => sum + r.serviceFee, 0),
+        totalNetAmount: parsedRows.reduce((sum, r) => sum + r.netAmount, 0),
+        orderCount: parsedRows.length,
+      }
+      setFeeSummary(summary)
+
+      toast.success(`${parsedRows.length}件のデータを読み込みました`)
+    } catch (err) {
+      console.error('手数料CSVパースエラー:', err)
       toast.error('CSVの解析に失敗しました')
     }
   }
@@ -738,6 +842,15 @@ function BaseSettingsPageContent() {
         <button
           style={{
             ...styles.tab,
+            ...(activeTab === 'fees' ? styles.tabActive : {}),
+          }}
+          onClick={() => setActiveTab('fees')}
+        >
+          手数料確認
+        </button>
+        <button
+          style={{
+            ...styles.tab,
             ...(activeTab === 'settings' ? styles.tabActive : {}),
           }}
           onClick={() => setActiveTab('settings')}
@@ -1103,6 +1216,153 @@ function BaseSettingsPageContent() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 手数料確認 */}
+      {activeTab === 'fees' && (
+        <div style={styles.content}>
+          <div style={styles.sectionHeader}>
+            <h2 style={styles.sectionTitle}>BASE手数料確認</h2>
+          </div>
+
+          <p style={styles.hint}>
+            BASEの「売上データダウンロード App」からダウンロードしたCSVをアップロードして、
+            手数料の合計を確認できます。
+            <br />
+            <a
+              href="https://admin.thebase.com/apps/detail/123"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: '#3b82f6' }}
+            >
+              売上データダウンロード App →
+            </a>
+          </p>
+
+          <div style={styles.uploadArea}>
+            <input
+              ref={feeFileInputRef}
+              type="file"
+              accept=".csv"
+              onChange={handleFeeFileSelect}
+              style={styles.fileInput}
+            />
+            <p>CSVファイルを選択してください</p>
+            <p style={styles.uploadHint}>
+              対応形式: 売上データダウンロード App のCSV（カンマ区切り）
+            </p>
+          </div>
+
+          {/* サマリー表示 */}
+          {feeSummary && (
+            <div style={styles.feeSummarySection}>
+              <h3 style={styles.feeSummaryTitle}>手数料サマリー</h3>
+              <div style={styles.feeSummaryGrid}>
+                <div style={styles.feeSummaryCard}>
+                  <div style={styles.feeSummaryLabel}>注文件数</div>
+                  <div style={styles.feeSummaryValue}>{feeSummary.orderCount}件</div>
+                </div>
+                <div style={styles.feeSummaryCard}>
+                  <div style={styles.feeSummaryLabel}>売上合計（税込）</div>
+                  <div style={styles.feeSummaryValue}>¥{feeSummary.totalSubtotal.toLocaleString()}</div>
+                </div>
+                <div style={{ ...styles.feeSummaryCard, backgroundColor: '#fef2f2' }}>
+                  <div style={styles.feeSummaryLabel}>決済手数料</div>
+                  <div style={{ ...styles.feeSummaryValue, color: '#dc2626' }}>
+                    -¥{feeSummary.totalPaymentFee.toLocaleString()}
+                  </div>
+                </div>
+                <div style={{ ...styles.feeSummaryCard, backgroundColor: '#fef2f2' }}>
+                  <div style={styles.feeSummaryLabel}>サービス利用料</div>
+                  <div style={{ ...styles.feeSummaryValue, color: '#dc2626' }}>
+                    -¥{feeSummary.totalServiceFee.toLocaleString()}
+                  </div>
+                </div>
+                <div style={{ ...styles.feeSummaryCard, backgroundColor: '#f0fdf4', gridColumn: 'span 2' }}>
+                  <div style={styles.feeSummaryLabel}>手数料合計</div>
+                  <div style={{ ...styles.feeSummaryValue, color: '#dc2626', fontSize: '24px' }}>
+                    -¥{(feeSummary.totalPaymentFee + feeSummary.totalServiceFee).toLocaleString()}
+                  </div>
+                </div>
+                <div style={{ ...styles.feeSummaryCard, backgroundColor: '#eff6ff', gridColumn: 'span 2' }}>
+                  <div style={styles.feeSummaryLabel}>入金予定額</div>
+                  <div style={{ ...styles.feeSummaryValue, color: '#2563eb', fontSize: '24px' }}>
+                    ¥{feeSummary.totalNetAmount.toLocaleString()}
+                  </div>
+                </div>
+              </div>
+
+              <div style={styles.feeCalculation}>
+                <span>¥{feeSummary.totalSubtotal.toLocaleString()}</span>
+                <span> - </span>
+                <span style={{ color: '#dc2626' }}>¥{feeSummary.totalPaymentFee.toLocaleString()}</span>
+                <span style={{ color: '#64748b' }}>(決済)</span>
+                <span> - </span>
+                <span style={{ color: '#dc2626' }}>¥{feeSummary.totalServiceFee.toLocaleString()}</span>
+                <span style={{ color: '#64748b' }}>(サービス)</span>
+                <span> = </span>
+                <span style={{ color: '#2563eb', fontWeight: 'bold' }}>¥{feeSummary.totalNetAmount.toLocaleString()}</span>
+              </div>
+            </div>
+          )}
+
+          {/* 詳細データ表示 */}
+          {feeData.length > 0 && (
+            <div style={styles.feeDetailSection}>
+              <div style={styles.feeDetailHeader}>
+                <h3 style={styles.feeDetailTitle}>注文明細（{feeData.length}件）</h3>
+                <Button
+                  onClick={() => {
+                    setFeeData([])
+                    setFeeSummary(null)
+                    if (feeFileInputRef.current) feeFileInputRef.current.value = ''
+                  }}
+                  variant="outline"
+                  size="small"
+                >
+                  クリア
+                </Button>
+              </div>
+              <div style={styles.feeTableContainer}>
+                <table style={styles.table}>
+                  <thead>
+                    <tr>
+                      <th style={styles.th}>注文ID</th>
+                      <th style={styles.th}>注文日時</th>
+                      <th style={styles.th}>決済方法</th>
+                      <th style={{ ...styles.th, textAlign: 'right' }}>売上</th>
+                      <th style={{ ...styles.th, textAlign: 'right' }}>決済手数料</th>
+                      <th style={{ ...styles.th, textAlign: 'right' }}>サービス料</th>
+                      <th style={{ ...styles.th, textAlign: 'right' }}>入金額</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {feeData.slice(0, 50).map((row, idx) => (
+                      <tr key={idx}>
+                        <td style={styles.td}>{row.orderId}</td>
+                        <td style={styles.td}>{row.orderDatetime}</td>
+                        <td style={styles.td}>{row.paymentMethod}</td>
+                        <td style={{ ...styles.td, textAlign: 'right' }}>¥{row.subtotal.toLocaleString()}</td>
+                        <td style={{ ...styles.td, textAlign: 'right', color: '#dc2626' }}>
+                          {row.paymentFee > 0 ? `-¥${row.paymentFee.toLocaleString()}` : '-'}
+                        </td>
+                        <td style={{ ...styles.td, textAlign: 'right', color: '#dc2626' }}>
+                          {row.serviceFee > 0 ? `-¥${row.serviceFee.toLocaleString()}` : '-'}
+                        </td>
+                        <td style={{ ...styles.td, textAlign: 'right', fontWeight: '600', color: '#2563eb' }}>
+                          ¥{row.netAmount.toLocaleString()}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {feeData.length > 50 && (
+                  <p style={styles.moreRows}>他 {feeData.length - 50} 件...</p>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -2240,5 +2500,69 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '11px',
     color: '#15803d',
     margin: '8px 0 0 0',
+  },
+  // 手数料確認スタイル
+  feeSummarySection: {
+    marginTop: '20px',
+    padding: '20px',
+    backgroundColor: '#f8fafc',
+    borderRadius: '12px',
+    border: '1px solid #e2e8f0',
+  },
+  feeSummaryTitle: {
+    fontSize: '18px',
+    fontWeight: '600',
+    color: '#2c3e50',
+    margin: '0 0 16px 0',
+  },
+  feeSummaryGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(2, 1fr)',
+    gap: '12px',
+  },
+  feeSummaryCard: {
+    backgroundColor: 'white',
+    borderRadius: '8px',
+    padding: '16px',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+  },
+  feeSummaryLabel: {
+    fontSize: '13px',
+    color: '#64748b',
+    marginBottom: '4px',
+  },
+  feeSummaryValue: {
+    fontSize: '20px',
+    fontWeight: '700',
+    color: '#2c3e50',
+  },
+  feeCalculation: {
+    marginTop: '16px',
+    padding: '12px 16px',
+    backgroundColor: 'white',
+    borderRadius: '8px',
+    fontSize: '14px',
+    textAlign: 'center' as const,
+    border: '1px solid #e2e8f0',
+  },
+  feeDetailSection: {
+    marginTop: '24px',
+  },
+  feeDetailHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '12px',
+  },
+  feeDetailTitle: {
+    fontSize: '16px',
+    fontWeight: '600',
+    color: '#2c3e50',
+    margin: 0,
+  },
+  feeTableContainer: {
+    overflowX: 'auto' as const,
+    border: '1px solid #e5e7eb',
+    borderRadius: '8px',
   },
 }
