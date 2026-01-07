@@ -1545,14 +1545,13 @@ function ReceiptsPageContent() {
               <th style={styles.th}>お客様名</th>
               <th style={styles.th}>推し</th>
               <th style={styles.th}>支払方法</th>
-              <th style={styles.th}>小計</th>
               <th style={styles.th}>合計（税込）</th>
             </tr>
           </thead>
           <tbody>
             {filteredReceipts.length === 0 ? (
               <tr>
-                <td colSpan={9} style={styles.emptyRow}>
+                <td colSpan={8} style={styles.emptyRow}>
                   伝票がありません
                 </td>
               </tr>
@@ -1570,7 +1569,6 @@ function ReceiptsPageContent() {
                   <td style={styles.td}>{receipt.guest_name || '-'}</td>
                   <td style={styles.td}>{formatCastName(receipt.staff_name)}</td>
                   <td style={styles.td}>{receipt.payment_methods || '-'}</td>
-                  <td style={styles.td}>{formatCurrency(receipt.subtotal_incl_tax)}</td>
                   <td style={styles.td}>{formatCurrency(receipt.total_incl_tax)}</td>
                 </tr>
               ))
