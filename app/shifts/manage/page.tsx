@@ -776,18 +776,7 @@ function ShiftManageContent() {
               .eq('id', request.id)
           }
 
-          // ロック状態を確定に自動設定（オプション）
-          const existingLock = shiftLocks.find(l => l.cast_id === parseInt(castId) && l.date === dateStr)
-          if (!existingLock) {
-            await supabase
-              .from('shift_locks')
-              .insert({
-                cast_id: parseInt(castId),
-                date: dateStr,
-                lock_type: 'confirmed',
-                store_id: storeId
-              })
-          }
+          // 注意: 自動確定は行わない（確定は別途「確定」ボタンで行う）
 
           await reloadShiftData()
           setEditingCell(null)
