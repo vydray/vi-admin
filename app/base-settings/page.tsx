@@ -1233,7 +1233,7 @@ function BaseSettingsPageContent() {
             手数料の合計を確認できます。
             <br />
             <a
-              href="https://admin.thebase.com/apps/detail/123"
+              href="https://admin.thebase.com/apps/114/aggregation"
               target="_blank"
               rel="noopener noreferrer"
               style={{ color: '#3b82f6' }}
