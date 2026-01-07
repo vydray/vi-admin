@@ -394,14 +394,13 @@ export default function Home() {
         .lte('order_date', monthEnd + 'T23:59:59')
         .is('deleted_at', null)
 
-      // BASE売上を取得
+      // BASE売上を取得（お客様がBASEで実際に支払った金額=base_price）
       const { data: baseOrdersData } = await supabase
         .from('base_orders')
-        .select('actual_price, quantity, business_date')
+        .select('base_price, quantity, business_date')
         .eq('store_id', storeId)
         .gte('business_date', monthStart)
         .lte('business_date', monthEnd)
-        .not('actual_price', 'is', null)
 
       if (todayError) {
         console.error('Today orders error:', todayError)
@@ -448,14 +447,14 @@ export default function Home() {
       // 月間来店人数（guest_countの合計）
       const monthlyGuests = typedMonthlyOrders.reduce((sum, order) => sum + (Number(order.guest_count) || 0), 0)
 
-      // BASE売上の集計
+      // BASE売上の集計（お客様がBASEで実際に支払った金額）
       const monthlyBaseSales = (baseOrdersData || []).reduce(
-        (sum, order) => sum + ((order.actual_price || 0) * (order.quantity || 1)),
+        (sum, order) => sum + ((order.base_price || 0) * (order.quantity || 1)),
         0
       )
       const todayBaseSales = (baseOrdersData || [])
         .filter(order => order.business_date === todayBusinessDay)
-        .reduce((sum, order) => sum + ((order.actual_price || 0) * (order.quantity || 1)), 0)
+        .reduce((sum, order) => sum + ((order.base_price || 0) * (order.quantity || 1)), 0)
 
       // 報酬明細から人件費データを取得
       const yearMonth = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}`
