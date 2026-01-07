@@ -31,6 +31,27 @@ const formatCastName = (castName: string[] | string | null | undefined): string 
   return castName
 }
 
+// staff_name/cast_nameを配列に変換（JSON文字列・カンマ区切り文字列も対応）
+const parseNamesToArray = (names: string[] | string | null | undefined): string[] => {
+  if (!names) return []
+  if (Array.isArray(names)) return names
+  if (typeof names === 'string') {
+    if (names.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(names)
+        return Array.isArray(parsed) ? parsed : [names]
+      } catch {
+        return [names]
+      }
+    }
+    if (names.includes(',')) {
+      return names.split(',').map(s => s.trim()).filter(s => s)
+    }
+    return [names]
+  }
+  return []
+}
+
 interface OrderWithPayment {
   id: number
   store_id: number
@@ -71,6 +92,7 @@ function ReceiptsPageContent() {
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [filterStaffName, setFilterStaffName] = useState('')
+  const [filterCastName, setFilterCastName] = useState('')  // 商品キャスト名フィルター
   const [filterPaymentMethod, setFilterPaymentMethod] = useState('')
   const [filterMinAmount, setFilterMinAmount] = useState('')
   const [filterMaxAmount, setFilterMaxAmount] = useState('')
@@ -1285,11 +1307,16 @@ function ReceiptsPageContent() {
     const matchesStartDate = !startDate || orderDateStr >= startDate
     const matchesEndDate = !endDate || orderDateStr <= endDate
 
-    // 推しフィルター（配列対応）
-    const matchesStaffName = filterStaffName === '' || (
-      Array.isArray(receipt.staff_name)
-        ? receipt.staff_name.includes(filterStaffName)
-        : receipt.staff_name === filterStaffName
+    // 推しフィルター（配列・カンマ区切り対応）
+    const staffNames = parseNamesToArray(receipt.staff_name)
+    const matchesStaffName = filterStaffName === '' || staffNames.includes(filterStaffName)
+
+    // 商品キャスト名フィルター（order_itemsのcast_nameで検索）
+    const matchesCastName = filterCastName === '' || (
+      receipt.order_items?.some(item => {
+        const castNames = parseNamesToArray(item.cast_name)
+        return castNames.includes(filterCastName)
+      }) ?? false
     )
 
     // 支払方法フィルター
@@ -1305,7 +1332,7 @@ function ReceiptsPageContent() {
     const matchesItemSearch = matchingOrderIds === null || matchingOrderIds.includes(receipt.id)
 
     return matchesSearch && matchesStartDate && matchesEndDate &&
-           matchesStaffName && matchesPaymentMethod &&
+           matchesStaffName && matchesCastName && matchesPaymentMethod &&
            matchesMinAmount && matchesMaxAmount && matchesItemSearch
   })
 
@@ -1422,14 +1449,33 @@ function ReceiptsPageContent() {
               style={styles.filterSelect}
             >
               <option value="">全て</option>
-              {Array.from(new Set(receipts.flatMap(r => {
-                if (Array.isArray(r.staff_name)) return r.staff_name
-                return r.staff_name ? [r.staff_name] : []
-              }))).map((staffName) => (
-                <option key={staffName} value={staffName}>
-                  {staffName}
-                </option>
-              ))}
+              {Array.from(new Set(receipts.flatMap(r => parseNamesToArray(r.staff_name))))
+                .sort()
+                .map((staffName) => (
+                  <option key={staffName} value={staffName}>
+                    {staffName}
+                  </option>
+                ))}
+            </select>
+          </label>
+
+          <label style={styles.filterLabel}>
+            商品キャスト:
+            <select
+              value={filterCastName}
+              onChange={(e) => setFilterCastName(e.target.value)}
+              style={styles.filterSelect}
+            >
+              <option value="">全て</option>
+              {Array.from(new Set(receipts.flatMap(r =>
+                (r.order_items || []).flatMap(item => parseNamesToArray(item.cast_name))
+              )))
+                .sort()
+                .map((castName) => (
+                  <option key={castName} value={castName}>
+                    {castName}
+                  </option>
+                ))}
             </select>
           </label>
 
@@ -1468,13 +1514,14 @@ function ReceiptsPageContent() {
             </div>
           </label>
 
-          {(searchTerm || startDate || endDate || filterStaffName || filterPaymentMethod || filterMinAmount || filterMaxAmount) && (
+          {(searchTerm || startDate || endDate || filterStaffName || filterCastName || filterPaymentMethod || filterMinAmount || filterMaxAmount) && (
             <Button
               onClick={() => {
                 setSearchTerm('')
                 setStartDate('')
                 setEndDate('')
                 setFilterStaffName('')
+                setFilterCastName('')
                 setFilterPaymentMethod('')
                 setFilterMinAmount('')
                 setFilterMaxAmount('')
