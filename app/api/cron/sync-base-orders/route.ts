@@ -83,16 +83,31 @@ export async function GET(request: Request) {
           }
         }
 
-        // 当月1日からの注文を取得
+        // 当月1日からの注文を取得（ページネーション対応）
         const endDate = new Date().toISOString().split('T')[0]
         const now = new Date()
         const startDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]
 
-        const ordersResponse = await fetchOrders(accessToken, {
-          start_ordered: startDate,
-          end_ordered: endDate,
-          limit: 100,
-        })
+        let allOrders: any[] = []
+        let offset = 0
+        const PAGE_SIZE = 100
+
+        while (true) {
+          const ordersResponse = await fetchOrders(accessToken, {
+            start_ordered: startDate,
+            end_ordered: endDate,
+            limit: PAGE_SIZE,
+            offset,
+          })
+
+          const orders = ordersResponse.orders || []
+          allOrders = allOrders.concat(orders)
+
+          if (orders.length < PAGE_SIZE) {
+            break // 最後のページ
+          }
+          offset += PAGE_SIZE
+        }
 
         // 売上設定から締め時間を取得
         const { data: salesSettings } = await supabase
@@ -117,7 +132,7 @@ export async function GET(request: Request) {
           .eq('store_id', setting.store_id)
 
         // キャンセル以外の注文を処理（デジタルコンテンツはdispatchedにならないことがある）
-        const activeOrders = (ordersResponse.orders || []).filter(
+        const activeOrders = allOrders.filter(
           order => order.dispatch_status !== 'cancelled'
         )
 

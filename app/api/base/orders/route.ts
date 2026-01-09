@@ -86,14 +86,29 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // BASE APIから注文を取得
+    // BASE APIから注文を取得（ページネーション対応）
     console.log('Fetching BASE orders:', { effectiveStartDate, effectiveEndDate })
-    const ordersResponse = await fetchOrders(accessToken, {
-      start_ordered: effectiveStartDate,
-      end_ordered: effectiveEndDate,
-      limit: 100,
-    })
-    console.log('BASE API full response:', JSON.stringify(ordersResponse, null, 2))
+    let allOrders: any[] = []
+    let offset = 0
+    const PAGE_SIZE = 100
+
+    while (true) {
+      const ordersResponse = await fetchOrders(accessToken, {
+        start_ordered: effectiveStartDate,
+        end_ordered: effectiveEndDate,
+        limit: PAGE_SIZE,
+        offset,
+      })
+
+      const orders = ordersResponse.orders || []
+      allOrders = allOrders.concat(orders)
+      console.log(`Fetched ${orders.length} orders (offset: ${offset}, total: ${allOrders.length})`)
+
+      if (orders.length < PAGE_SIZE) {
+        break // 最後のページ
+      }
+      offset += PAGE_SIZE
+    }
 
     // 売上設定から締め時間を取得
     const { data: salesSettings } = await supabase
@@ -119,8 +134,8 @@ export async function POST(request: NextRequest) {
 
     // キャンセル以外の注文を取得（デジタルコンテンツはdispatchedにならないことがある）
     // dispatch_status: unpaid(入金待ち), ordered(未対応), shipping(配送中), dispatched(対応済み), cancelled(キャンセル)
-    const activeOrders = (ordersResponse.orders || []).filter(order => order.dispatch_status !== 'cancelled')
-    console.log(`Total orders: ${ordersResponse.orders?.length || 0}, Active (non-cancelled): ${activeOrders.length}`)
+    const activeOrders = allOrders.filter(order => order.dispatch_status !== 'cancelled')
+    console.log(`Total orders: ${allOrders.length}, Active (non-cancelled): ${activeOrders.length}`)
 
     // 注文詳細を並列取得（5件ずつ）
     let successCount = 0
@@ -204,7 +219,7 @@ export async function POST(request: NextRequest) {
       success: true,
       imported: successCount,
       errors: errorCount,
-      total: ordersResponse.orders?.length || 0,
+      total: allOrders.length,
     })
   } catch (error) {
     console.error('BASE orders error:', error)
