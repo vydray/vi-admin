@@ -47,6 +47,9 @@ function ExpensesPageContent() {
   // 新規経費の領収書写真
   const [selectedReceiptFile, setSelectedReceiptFile] = useState<File | null>(null)
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null)
+  const [isDragging, setIsDragging] = useState(false)
+  const [imageZoom, setImageZoom] = useState(1)
+  const [showZoomModal, setShowZoomModal] = useState(false)
 
   // 小口現金データ
   const [systemBalance, setSystemBalance] = useState(0)
@@ -391,11 +394,40 @@ function ExpensesPageContent() {
   const handleReceiptSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
-      setSelectedReceiptFile(file)
-      // プレビュー用URL作成
-      const reader = new FileReader()
-      reader.onload = () => setReceiptPreview(reader.result as string)
-      reader.readAsDataURL(file)
+      processReceiptFile(file)
+    }
+  }
+
+  // ファイル処理共通関数
+  const processReceiptFile = (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      toast.error('画像ファイルを選択してください')
+      return
+    }
+    setSelectedReceiptFile(file)
+    setImageZoom(1)
+    const reader = new FileReader()
+    reader.onload = () => setReceiptPreview(reader.result as string)
+    reader.readAsDataURL(file)
+  }
+
+  // ドラッグ&ドロップハンドラ
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(true)
+  }
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(false)
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(false)
+    const file = e.dataTransfer.files?.[0]
+    if (file) {
+      processReceiptFile(file)
     }
   }
 
@@ -403,6 +435,22 @@ function ExpensesPageContent() {
   const clearSelectedReceipt = () => {
     setSelectedReceiptFile(null)
     setReceiptPreview(null)
+    setImageZoom(1)
+  }
+
+  // モーダルを閉じる
+  const closeAddModal = () => {
+    setShowAddForm(false)
+    clearSelectedReceipt()
+    setNewExpense({
+      category_id: categories.length > 0 ? categories[0].id : 0,
+      target_month: format(selectedMonth, 'yyyy-MM'),
+      payment_date: format(new Date(), 'yyyy-MM-dd'),
+      payment_method: 'cash',
+      amount: 0,
+      description: '',
+      entered_by: '',
+    })
   }
 
   // 補充
@@ -621,115 +669,214 @@ function ExpensesPageContent() {
 
           {/* 経費追加ボタン */}
           <div style={styles.actionBar}>
-            <Button onClick={() => setShowAddForm(!showAddForm)}>
-              {showAddForm ? 'キャンセル' : '+ 経費を追加'}
+            <Button onClick={() => setShowAddForm(true)}>
+              + 経費を追加
             </Button>
           </div>
 
-          {/* 経費追加フォーム */}
+          {/* 経費追加モーダル */}
           {showAddForm && (
-            <div style={styles.formCard}>
-              <h3 style={styles.formTitle}>新規経費</h3>
-              <div style={styles.formGrid}>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>カテゴリ</label>
-                  <select
-                    value={newExpense.category_id}
-                    onChange={(e) => setNewExpense({ ...newExpense, category_id: Number(e.target.value) })}
-                    style={styles.select}
-                  >
-                    {categories.map(cat => (
-                      <option key={cat.id} value={cat.id}>
-                        {cat.name} ({cat.account_type === 'cost' ? '売上原価' : '販管費'})
-                      </option>
-                    ))}
-                  </select>
+            <div style={styles.modalOverlay} onClick={closeAddModal}>
+              <div
+                style={styles.expenseModalContent}
+                onClick={e => e.stopPropagation()}
+              >
+                <div style={styles.expenseModalHeader}>
+                  <h3 style={styles.expenseModalTitle}>新規経費</h3>
+                  <button onClick={closeAddModal} style={styles.closeButton}>✕</button>
                 </div>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>対象月</label>
-                  <input
-                    type="month"
-                    value={newExpense.target_month}
-                    onChange={(e) => setNewExpense({ ...newExpense, target_month: e.target.value })}
-                    style={styles.input}
-                  />
-                </div>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>支払日</label>
-                  <input
-                    type="date"
-                    value={newExpense.payment_date}
-                    onChange={(e) => setNewExpense({ ...newExpense, payment_date: e.target.value })}
-                    style={styles.input}
-                  />
-                </div>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>支払方法</label>
-                  <select
-                    value={newExpense.payment_method}
-                    onChange={(e) => setNewExpense({ ...newExpense, payment_method: e.target.value as PaymentMethod })}
-                    style={styles.select}
-                  >
-                    <option value="cash">小口現金</option>
-                    <option value="bank">口座払い</option>
-                  </select>
-                </div>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>金額</label>
-                  <input
-                    type="number"
-                    value={newExpense.amount || ''}
-                    onChange={(e) => setNewExpense({ ...newExpense, amount: Number(e.target.value) })}
-                    style={styles.input}
-                    placeholder="0"
-                  />
-                </div>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>入力者 *</label>
-                  <input
-                    type="text"
-                    value={newExpense.entered_by}
-                    onChange={(e) => setNewExpense({ ...newExpense, entered_by: e.target.value })}
-                    style={styles.input}
-                    placeholder="必須"
-                  />
-                </div>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>説明</label>
-                  <input
-                    type="text"
-                    value={newExpense.description}
-                    onChange={(e) => setNewExpense({ ...newExpense, description: e.target.value })}
-                    style={styles.input}
-                    placeholder="任意"
-                  />
-                </div>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>領収書写真</label>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleReceiptSelect}
-                    style={styles.fileInput}
-                  />
-                  {receiptPreview && (
-                    <div style={styles.receiptPreviewContainer}>
-                      <img src={receiptPreview} alt="プレビュー" style={styles.previewImage} />
-                      <button
-                        type="button"
-                        onClick={clearSelectedReceipt}
-                        style={styles.removePreviewButton}
-                      >
-                        ✕
-                      </button>
+                <div style={styles.expenseModalBody}>
+                  {/* 左側: フォーム */}
+                  <div style={styles.expenseFormSection}>
+                    <div style={styles.expenseFormGrid}>
+                      <div style={styles.formGroup}>
+                        <label style={styles.label}>カテゴリ</label>
+                        <select
+                          value={newExpense.category_id}
+                          onChange={(e) => setNewExpense({ ...newExpense, category_id: Number(e.target.value) })}
+                          style={styles.select}
+                        >
+                          {categories.map(cat => (
+                            <option key={cat.id} value={cat.id}>
+                              {cat.name} ({cat.account_type === 'cost' ? '売上原価' : '販管費'})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div style={styles.formGroup}>
+                        <label style={styles.label}>対象月</label>
+                        <input
+                          type="month"
+                          value={newExpense.target_month}
+                          onChange={(e) => setNewExpense({ ...newExpense, target_month: e.target.value })}
+                          style={styles.input}
+                        />
+                      </div>
+                      <div style={styles.formGroup}>
+                        <label style={styles.label}>支払日</label>
+                        <input
+                          type="date"
+                          value={newExpense.payment_date}
+                          onChange={(e) => setNewExpense({ ...newExpense, payment_date: e.target.value })}
+                          style={styles.input}
+                        />
+                      </div>
+                      <div style={styles.formGroup}>
+                        <label style={styles.label}>支払方法</label>
+                        <select
+                          value={newExpense.payment_method}
+                          onChange={(e) => setNewExpense({ ...newExpense, payment_method: e.target.value as PaymentMethod })}
+                          style={styles.select}
+                        >
+                          <option value="cash">小口現金</option>
+                          <option value="bank">口座払い</option>
+                        </select>
+                      </div>
+                      <div style={styles.formGroup}>
+                        <label style={styles.label}>金額 *</label>
+                        <input
+                          type="number"
+                          value={newExpense.amount || ''}
+                          onChange={(e) => setNewExpense({ ...newExpense, amount: Number(e.target.value) })}
+                          style={styles.input}
+                          placeholder="0"
+                        />
+                      </div>
+                      <div style={styles.formGroup}>
+                        <label style={styles.label}>入力者 *</label>
+                        <input
+                          type="text"
+                          value={newExpense.entered_by}
+                          onChange={(e) => setNewExpense({ ...newExpense, entered_by: e.target.value })}
+                          style={styles.input}
+                          placeholder="必須"
+                        />
+                      </div>
+                      <div style={{ ...styles.formGroup, gridColumn: '1 / -1' }}>
+                        <label style={styles.label}>説明</label>
+                        <input
+                          type="text"
+                          value={newExpense.description}
+                          onChange={(e) => setNewExpense({ ...newExpense, description: e.target.value })}
+                          style={styles.input}
+                          placeholder="任意"
+                        />
+                      </div>
                     </div>
-                  )}
+                  </div>
+
+                  {/* 右側: 領収書アップロード */}
+                  <div style={styles.receiptSection}>
+                    <label style={styles.label}>領収書写真</label>
+                    {!receiptPreview ? (
+                      <div
+                        style={{
+                          ...styles.dropZone,
+                          ...(isDragging ? styles.dropZoneActive : {}),
+                        }}
+                        onDragOver={handleDragOver}
+                        onDragLeave={handleDragLeave}
+                        onDrop={handleDrop}
+                      >
+                        <div style={styles.dropZoneContent}>
+                          <span style={styles.dropIcon}>📷</span>
+                          <p style={styles.dropText}>
+                            ここにドラッグ&ドロップ
+                            <br />
+                            または
+                          </p>
+                          <label style={styles.fileSelectButton}>
+                            ファイルを選択
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={handleReceiptSelect}
+                              style={{ display: 'none' }}
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={styles.receiptPreviewArea}>
+                        <div style={styles.imageContainer}>
+                          <img
+                            src={receiptPreview}
+                            alt="領収書プレビュー"
+                            style={{
+                              ...styles.receiptImage,
+                              transform: `scale(${imageZoom})`,
+                            }}
+                            onClick={() => setShowZoomModal(true)}
+                          />
+                        </div>
+                        <div style={styles.imageControls}>
+                          <button
+                            type="button"
+                            onClick={() => setImageZoom(z => Math.max(0.5, z - 0.25))}
+                            style={styles.zoomButton}
+                            disabled={imageZoom <= 0.5}
+                          >
+                            −
+                          </button>
+                          <span style={styles.zoomLevel}>{Math.round(imageZoom * 100)}%</span>
+                          <button
+                            type="button"
+                            onClick={() => setImageZoom(z => Math.min(3, z + 0.25))}
+                            style={styles.zoomButton}
+                            disabled={imageZoom >= 3}
+                          >
+                            +
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setShowZoomModal(true)}
+                            style={styles.expandButton}
+                            title="拡大表示"
+                          >
+                            🔍
+                          </button>
+                          <button
+                            type="button"
+                            onClick={clearSelectedReceipt}
+                            style={styles.removeButton}
+                          >
+                            削除
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div style={styles.expenseModalFooter}>
+                  <Button variant="secondary" onClick={closeAddModal}>
+                    キャンセル
+                  </Button>
+                  <Button onClick={handleAddExpense} disabled={saving}>
+                    {saving ? '保存中...' : '追加'}
+                  </Button>
                 </div>
               </div>
-              <div style={styles.formActions}>
-                <Button onClick={handleAddExpense} disabled={saving}>
-                  {saving ? '保存中...' : '追加'}
-                </Button>
+            </div>
+          )}
+
+          {/* 画像ズームモーダル */}
+          {showZoomModal && receiptPreview && (
+            <div
+              style={styles.zoomModalOverlay}
+              onClick={() => setShowZoomModal(false)}
+            >
+              <div style={styles.zoomModalContent} onClick={e => e.stopPropagation()}>
+                <button
+                  onClick={() => setShowZoomModal(false)}
+                  style={styles.zoomModalClose}
+                >
+                  ✕
+                </button>
+                <img
+                  src={receiptPreview}
+                  alt="領収書拡大"
+                  style={styles.zoomModalImage}
+                />
               </div>
             </div>
           )}
@@ -1607,5 +1754,204 @@ const styles: { [key: string]: React.CSSProperties } = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  // 経費追加モーダル
+  expenseModalContent: {
+    backgroundColor: 'white',
+    borderRadius: '12px',
+    width: '95%',
+    maxWidth: '900px',
+    maxHeight: '90vh',
+    display: 'flex',
+    flexDirection: 'column',
+    boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)',
+  },
+  expenseModalHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '20px',
+    borderBottom: '1px solid #eee',
+  },
+  expenseModalTitle: {
+    fontSize: '18px',
+    fontWeight: 'bold',
+    margin: 0,
+  },
+  closeButton: {
+    background: 'none',
+    border: 'none',
+    fontSize: '20px',
+    cursor: 'pointer',
+    color: '#666',
+    padding: '5px',
+  },
+  expenseModalBody: {
+    display: 'flex',
+    gap: '20px',
+    padding: '20px',
+    overflowY: 'auto',
+    flex: 1,
+  },
+  expenseFormSection: {
+    flex: 1,
+    minWidth: 0,
+  },
+  expenseFormGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(2, 1fr)',
+    gap: '15px',
+  },
+  receiptSection: {
+    width: '320px',
+    flexShrink: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '10px',
+  },
+  dropZone: {
+    border: '2px dashed #ddd',
+    borderRadius: '8px',
+    padding: '30px',
+    textAlign: 'center',
+    backgroundColor: '#fafafa',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    minHeight: '200px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dropZoneActive: {
+    borderColor: '#3498db',
+    backgroundColor: '#e8f4fc',
+  },
+  dropZoneContent: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '10px',
+  },
+  dropIcon: {
+    fontSize: '48px',
+  },
+  dropText: {
+    color: '#666',
+    fontSize: '14px',
+    margin: 0,
+    textAlign: 'center',
+  },
+  fileSelectButton: {
+    padding: '8px 16px',
+    backgroundColor: '#3498db',
+    color: 'white',
+    borderRadius: '5px',
+    cursor: 'pointer',
+    fontSize: '14px',
+  },
+  receiptPreviewArea: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '10px',
+    flex: 1,
+  },
+  imageContainer: {
+    border: '1px solid #ddd',
+    borderRadius: '8px',
+    overflow: 'hidden',
+    backgroundColor: '#f8f9fa',
+    flex: 1,
+    minHeight: '200px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  receiptImage: {
+    maxWidth: '100%',
+    maxHeight: '300px',
+    objectFit: 'contain',
+    cursor: 'pointer',
+    transition: 'transform 0.2s ease',
+  },
+  imageControls: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    justifyContent: 'center',
+  },
+  zoomButton: {
+    width: '32px',
+    height: '32px',
+    border: '1px solid #ddd',
+    borderRadius: '5px',
+    backgroundColor: 'white',
+    cursor: 'pointer',
+    fontSize: '18px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  zoomLevel: {
+    fontSize: '12px',
+    color: '#666',
+    minWidth: '40px',
+    textAlign: 'center',
+  },
+  expandButton: {
+    padding: '6px 12px',
+    border: '1px solid #ddd',
+    borderRadius: '5px',
+    backgroundColor: 'white',
+    cursor: 'pointer',
+    fontSize: '14px',
+  },
+  removeButton: {
+    padding: '6px 12px',
+    border: 'none',
+    borderRadius: '5px',
+    backgroundColor: '#e74c3c',
+    color: 'white',
+    cursor: 'pointer',
+    fontSize: '12px',
+  },
+  expenseModalFooter: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    gap: '10px',
+    padding: '15px 20px',
+    borderTop: '1px solid #eee',
+  },
+  // ズームモーダル
+  zoomModalOverlay: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2000,
+  },
+  zoomModalContent: {
+    position: 'relative',
+    maxWidth: '95vw',
+    maxHeight: '95vh',
+  },
+  zoomModalClose: {
+    position: 'absolute',
+    top: '-40px',
+    right: '0',
+    background: 'none',
+    border: 'none',
+    color: 'white',
+    fontSize: '30px',
+    cursor: 'pointer',
+  },
+  zoomModalImage: {
+    maxWidth: '95vw',
+    maxHeight: '90vh',
+    objectFit: 'contain',
   },
 }
