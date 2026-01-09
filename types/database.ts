@@ -916,7 +916,8 @@ export interface Expense {
   payment_date: string        // 支払日
   payment_method: PaymentMethod
   amount: number
-  description: string | null
+  usage_purpose: string | null // 使用用途
+  description: string | null   // 備考
   receipt_path: string | null // 領収書画像パス
   entered_by: string | null   // 入力者
   created_at: string

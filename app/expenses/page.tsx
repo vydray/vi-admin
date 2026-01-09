@@ -37,6 +37,7 @@ function ExpensesPageContent() {
     payment_date: format(new Date(), 'yyyy-MM-dd'),
     payment_method: 'cash' as PaymentMethod,
     amount: 0,
+    usage_purpose: '',
     description: '',
     entered_by: '',
   })
@@ -262,6 +263,10 @@ function ExpensesPageContent() {
       toast.error('入力者を入力してください')
       return
     }
+    if (!newExpense.usage_purpose.trim()) {
+      toast.error('使用用途を入力してください')
+      return
+    }
     if (newExpense.amount <= 0) {
       toast.error('金額を入力してください')
       return
@@ -279,6 +284,7 @@ function ExpensesPageContent() {
           payment_date: newExpense.payment_date,
           payment_method: newExpense.payment_method,
           amount: newExpense.amount,
+          usage_purpose: newExpense.usage_purpose.trim(),
           description: newExpense.description || null,
           entered_by: newExpense.entered_by.trim(),
         })
@@ -316,6 +322,7 @@ function ExpensesPageContent() {
         payment_date: format(new Date(), 'yyyy-MM-dd'),
         payment_method: 'cash',
         amount: 0,
+        usage_purpose: '',
         description: '',
         entered_by: '',
       })
@@ -333,7 +340,7 @@ function ExpensesPageContent() {
   // 経費削除
   const handleDeleteExpense = async (expense: ExpenseWithCategory) => {
     const result = await confirm(
-      `${expense.description || '（説明なし）'} - ${formatCurrency(expense.amount)} を削除しますか？`
+      `${expense.usage_purpose || expense.description || '（使用用途なし）'} - ${formatCurrency(expense.amount)} を削除しますか？`
     )
 
     if (!result) return
@@ -448,6 +455,7 @@ function ExpensesPageContent() {
       payment_date: format(new Date(), 'yyyy-MM-dd'),
       payment_method: 'cash',
       amount: 0,
+      usage_purpose: '',
       description: '',
       entered_by: '',
     })
@@ -753,7 +761,17 @@ function ExpensesPageContent() {
                         />
                       </div>
                       <div style={{ ...styles.formGroup, gridColumn: '1 / -1' }}>
-                        <label style={styles.label}>説明</label>
+                        <label style={styles.label}>使用用途 *</label>
+                        <input
+                          type="text"
+                          value={newExpense.usage_purpose}
+                          onChange={(e) => setNewExpense({ ...newExpense, usage_purpose: e.target.value })}
+                          style={styles.input}
+                          placeholder="必須"
+                        />
+                      </div>
+                      <div style={{ ...styles.formGroup, gridColumn: '1 / -1' }}>
+                        <label style={styles.label}>備考</label>
                         <input
                           type="text"
                           value={newExpense.description}
@@ -911,7 +929,10 @@ function ExpensesPageContent() {
                         )}
                       </div>
                       <div style={styles.expenseDescription}>
-                        {expense.description || '（説明なし）'}
+                        {expense.usage_purpose || expense.description || '（使用用途なし）'}
+                        {expense.usage_purpose && expense.description && (
+                          <span style={styles.expenseNote}> / {expense.description}</span>
+                        )}
                       </div>
                     </div>
                     <div style={styles.expenseRight}>
@@ -1493,6 +1514,10 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   expenseDescription: {
     fontSize: '14px',
+  },
+  expenseNote: {
+    color: '#888',
+    fontSize: '13px',
   },
   expenseRight: {
     display: 'flex',
