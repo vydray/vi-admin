@@ -55,6 +55,7 @@ const mainItems: MenuItem[] = [
   { name: '勤怠管理', path: '/attendance', icon: '⏰' },
   { name: 'シフト管理', path: '/shifts/manage', icon: '📅' },
   { name: '伝票管理', path: '/receipts', icon: '🧾' },
+  { name: '経費管理', path: '/expenses', icon: '💸' },
   { name: '報酬明細', path: '/payslip', icon: '📄' },
   { name: 'キャスト管理', path: '/casts', icon: '👥' },
 ]

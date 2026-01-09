@@ -875,3 +875,78 @@ export interface BaseOrder {
 export interface BaseProductWithVariations extends BaseProduct {
   variations: BaseVariation[]
 }
+
+// ============================================================================
+// Expense Management Types (経費管理)
+// ============================================================================
+
+// 勘定科目タイプ（PL区分）
+export type AccountType = 'cost' | 'expense'
+// cost: 売上原価（仕入高など）
+// expense: 販売費及び一般管理費（地代家賃、水道光熱費など）
+
+// 支払い方法
+export type PaymentMethod = 'cash' | 'bank'
+// cash: 小口現金
+// bank: 口座払い
+
+// 小口現金取引タイプ
+export type PettyCashTransactionType = 'deposit' | 'withdrawal' | 'adjustment'
+// deposit: 口座から小口へ補充
+// withdrawal: 経費支払い
+// adjustment: 差異調整
+
+// 経費カテゴリ（勘定科目）
+export interface ExpenseCategory {
+  id: number
+  store_id: number
+  name: string                // カテゴリ名（仕入高、地代家賃など）
+  account_type: AccountType   // PL区分
+  display_order: number
+  is_active: boolean
+  created_at: string
+}
+
+// 経費
+export interface Expense {
+  id: number
+  store_id: number
+  category_id: number | null
+  target_month: string        // 対象月（例: '2025-01'）
+  payment_date: string        // 支払日
+  payment_method: PaymentMethod
+  amount: number
+  description: string | null
+  receipt_path: string | null // 領収書画像パス
+  created_at: string
+  updated_at: string
+}
+
+// 経費（カテゴリ情報付き）
+export interface ExpenseWithCategory extends Expense {
+  category: ExpenseCategory | null
+}
+
+// 小口現金取引
+export interface PettyCashTransaction {
+  id: number
+  store_id: number
+  transaction_date: string
+  transaction_type: PettyCashTransactionType
+  amount: number              // 常に正の値
+  expense_id: number | null   // 経費支払いの場合リンク
+  description: string | null
+  created_at: string
+}
+
+// 小口現金残高確認
+export interface PettyCashCheck {
+  id: number
+  store_id: number
+  check_date: string
+  system_balance: number      // システム計算上の残高
+  actual_balance: number      // 実際に数えた金額
+  difference: number          // 差異（actual - system）
+  note: string | null
+  created_at: string
+}

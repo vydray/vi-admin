@@ -69,6 +69,15 @@ export type {
   BaseVariation,
   BaseOrder,
   BaseProductWithVariations,
+  // 経費管理
+  AccountType,
+  PaymentMethod,
+  PettyCashTransactionType,
+  ExpenseCategory,
+  Expense,
+  ExpenseWithCategory,
+  PettyCashTransaction,
+  PettyCashCheck,
 } from './database'
 
 // UI Component types

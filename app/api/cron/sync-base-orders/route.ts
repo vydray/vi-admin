@@ -83,9 +83,10 @@ export async function GET(request: Request) {
           }
         }
 
-        // 過去3日分の注文を取得
+        // 当月1日からの注文を取得
         const endDate = new Date().toISOString().split('T')[0]
-        const startDate = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+        const now = new Date()
+        const startDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]
 
         const ordersResponse = await fetchOrders(accessToken, {
           start_ordered: startDate,
@@ -115,9 +116,9 @@ export async function GET(request: Request) {
           .select('id, name')
           .eq('store_id', setting.store_id)
 
-        // 対応済みの注文のみ処理
+        // キャンセル以外の注文を処理（デジタルコンテンツはdispatchedにならないことがある）
         const activeOrders = (ordersResponse.orders || []).filter(
-          order => order.dispatch_status === 'dispatched'
+          order => order.dispatch_status !== 'cancelled'
         )
 
         let successCount = 0

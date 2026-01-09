@@ -117,10 +117,10 @@ export async function POST(request: NextRequest) {
       .select('id, name')
       .eq('store_id', store_id)
 
-    // 対応済み（dispatched）の注文のみを取得
+    // キャンセル以外の注文を取得（デジタルコンテンツはdispatchedにならないことがある）
     // dispatch_status: unpaid(入金待ち), ordered(未対応), shipping(配送中), dispatched(対応済み), cancelled(キャンセル)
-    const activeOrders = (ordersResponse.orders || []).filter(order => order.dispatch_status === 'dispatched')
-    console.log(`Total orders: ${ordersResponse.orders?.length || 0}, Dispatched (completed): ${activeOrders.length}`)
+    const activeOrders = (ordersResponse.orders || []).filter(order => order.dispatch_status !== 'cancelled')
+    console.log(`Total orders: ${ordersResponse.orders?.length || 0}, Active (non-cancelled): ${activeOrders.length}`)
 
     // 注文詳細を並列取得（5件ずつ）
     let successCount = 0
