@@ -38,10 +38,15 @@ function ExpensesPageContent() {
     payment_method: 'cash' as PaymentMethod,
     amount: 0,
     description: '',
+    entered_by: '',
   })
   const [saving, setSaving] = useState(false)
   const [uploadingImage, setUploadingImage] = useState(false)
   const [editingExpenseId, setEditingExpenseId] = useState<number | null>(null)
+
+  // 新規経費の領収書写真
+  const [selectedReceiptFile, setSelectedReceiptFile] = useState<File | null>(null)
+  const [receiptPreview, setReceiptPreview] = useState<string | null>(null)
 
   // 小口現金データ
   const [systemBalance, setSystemBalance] = useState(0)
@@ -250,6 +255,10 @@ function ExpensesPageContent() {
 
   // 経費追加
   const handleAddExpense = async () => {
+    if (!newExpense.entered_by.trim()) {
+      toast.error('入力者を入力してください')
+      return
+    }
     if (newExpense.amount <= 0) {
       toast.error('金額を入力してください')
       return
@@ -268,6 +277,7 @@ function ExpensesPageContent() {
           payment_method: newExpense.payment_method,
           amount: newExpense.amount,
           description: newExpense.description || null,
+          entered_by: newExpense.entered_by.trim(),
         })
         .select()
         .single()
@@ -290,6 +300,11 @@ function ExpensesPageContent() {
         if (txError) throw txError
       }
 
+      // 領収書写真がある場合はアップロード
+      if (selectedReceiptFile) {
+        await handleImageUpload(expenseData.id, selectedReceiptFile)
+      }
+
       toast.success('経費を追加しました')
       setShowAddForm(false)
       setNewExpense({
@@ -299,7 +314,10 @@ function ExpensesPageContent() {
         payment_method: 'cash',
         amount: 0,
         description: '',
+        entered_by: '',
       })
+      // 領収書選択をクリア
+      clearSelectedReceipt()
       loadData()
     } catch (err) {
       console.error('経費追加エラー:', err)
@@ -367,6 +385,24 @@ function ExpensesPageContent() {
     } finally {
       setUploadingImage(false)
     }
+  }
+
+  // 新規経費フォームの領収書選択
+  const handleReceiptSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      setSelectedReceiptFile(file)
+      // プレビュー用URL作成
+      const reader = new FileReader()
+      reader.onload = () => setReceiptPreview(reader.result as string)
+      reader.readAsDataURL(file)
+    }
+  }
+
+  // 選択した領収書をクリア
+  const clearSelectedReceipt = () => {
+    setSelectedReceiptFile(null)
+    setReceiptPreview(null)
   }
 
   // 補充
@@ -649,6 +685,16 @@ function ExpensesPageContent() {
                   />
                 </div>
                 <div style={styles.formGroup}>
+                  <label style={styles.label}>入力者 *</label>
+                  <input
+                    type="text"
+                    value={newExpense.entered_by}
+                    onChange={(e) => setNewExpense({ ...newExpense, entered_by: e.target.value })}
+                    style={styles.input}
+                    placeholder="必須"
+                  />
+                </div>
+                <div style={styles.formGroup}>
                   <label style={styles.label}>説明</label>
                   <input
                     type="text"
@@ -657,6 +703,27 @@ function ExpensesPageContent() {
                     style={styles.input}
                     placeholder="任意"
                   />
+                </div>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>領収書写真</label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleReceiptSelect}
+                    style={styles.fileInput}
+                  />
+                  {receiptPreview && (
+                    <div style={styles.receiptPreviewContainer}>
+                      <img src={receiptPreview} alt="プレビュー" style={styles.previewImage} />
+                      <button
+                        type="button"
+                        onClick={clearSelectedReceipt}
+                        style={styles.removePreviewButton}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
               <div style={styles.formActions}>
@@ -690,6 +757,11 @@ function ExpensesPageContent() {
                         }}>
                           {expense.payment_method === 'cash' ? '小口' : '口座'}
                         </span>
+                        {expense.entered_by && (
+                          <span style={styles.enteredByBadge}>
+                            {expense.entered_by}
+                          </span>
+                        )}
                       </div>
                       <div style={styles.expenseDescription}>
                         {expense.description || '（説明なし）'}
@@ -1265,6 +1337,13 @@ const styles: { [key: string]: React.CSSProperties } = {
     color: 'white',
     borderRadius: '3px',
   },
+  enteredByBadge: {
+    fontSize: '11px',
+    padding: '2px 6px',
+    backgroundColor: '#9b59b6',
+    color: 'white',
+    borderRadius: '3px',
+  },
   expenseDescription: {
     fontSize: '14px',
   },
@@ -1492,5 +1571,41 @@ const styles: { [key: string]: React.CSSProperties } = {
     backgroundColor: '#e9ecef',
     borderRadius: '3px',
     color: '#666',
+  },
+  fileInput: {
+    padding: '8px',
+    border: '1px dashed #ddd',
+    borderRadius: '5px',
+    cursor: 'pointer',
+    backgroundColor: '#fafafa',
+    width: '100%',
+  },
+  receiptPreviewContainer: {
+    marginTop: '10px',
+    position: 'relative',
+    display: 'inline-block',
+  },
+  previewImage: {
+    maxWidth: '200px',
+    maxHeight: '150px',
+    objectFit: 'contain',
+    borderRadius: '5px',
+    border: '1px solid #ddd',
+  },
+  removePreviewButton: {
+    position: 'absolute',
+    top: '-8px',
+    right: '-8px',
+    width: '24px',
+    height: '24px',
+    borderRadius: '50%',
+    border: 'none',
+    backgroundColor: '#e74c3c',
+    color: 'white',
+    cursor: 'pointer',
+    fontSize: '12px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 }

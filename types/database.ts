@@ -918,6 +918,7 @@ export interface Expense {
   amount: number
   description: string | null
   receipt_path: string | null // 領収書画像パス
+  entered_by: string | null   // 入力者
   created_at: string
   updated_at: string
 }
