@@ -57,6 +57,17 @@ function ExpensesPageContent() {
   const [showCheckForm, setShowCheckForm] = useState(false)
   const [actualBalance, setActualBalance] = useState(0)
   const [checkNote, setCheckNote] = useState('')
+  const [cashCount, setCashCount] = useState({
+    yen10000: 0,
+    yen5000: 0,
+    yen1000: 0,
+    yen500: 0,
+    yen100: 0,
+    yen50: 0,
+    yen10: 0,
+    yen5: 0,
+    yen1: 0,
+  })
 
   // 業務日報経費（直接表示用）
   const [dailyReportExpenses, setDailyReportExpenses] = useState<{
@@ -745,7 +756,18 @@ function ExpensesPageContent() {
             </Button>
             <Button onClick={() => {
               setShowCheckForm(true)
-              setActualBalance(systemBalance)
+              setCashCount({
+                yen10000: 0,
+                yen5000: 0,
+                yen1000: 0,
+                yen500: 0,
+                yen100: 0,
+                yen50: 0,
+                yen10: 0,
+                yen5: 0,
+                yen1: 0,
+              })
+              setCheckNote('')
             }}>
               ✓ 残高確認
             </Button>
@@ -792,58 +814,140 @@ function ExpensesPageContent() {
           )}
 
           {/* 残高確認モーダル */}
-          {showCheckForm && (
-            <div style={styles.modalOverlay} onClick={() => setShowCheckForm(false)}>
-              <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
-                <h3 style={styles.modalTitle}>残高確認</h3>
-                <div style={styles.modalBody}>
-                  <div style={styles.formGroup}>
-                    <label style={styles.label}>実際の現金額</label>
-                    <input
-                      type="number"
-                      value={actualBalance || ''}
-                      onChange={(e) => setActualBalance(Number(e.target.value))}
-                      style={styles.input}
-                      placeholder="0"
-                      autoFocus
-                    />
+          {showCheckForm && (() => {
+            const calculatedTotal =
+              cashCount.yen10000 * 10000 +
+              cashCount.yen5000 * 5000 +
+              cashCount.yen1000 * 1000 +
+              cashCount.yen500 * 500 +
+              cashCount.yen100 * 100 +
+              cashCount.yen50 * 50 +
+              cashCount.yen10 * 10 +
+              cashCount.yen5 * 5 +
+              cashCount.yen1 * 1
+            const difference = calculatedTotal - systemBalance
+
+            return (
+              <div style={styles.modalOverlay} onClick={() => setShowCheckForm(false)}>
+                <div style={{ ...styles.modalContent, maxWidth: '500px' }} onClick={e => e.stopPropagation()}>
+                  <h3 style={styles.modalTitle}>残高確認</h3>
+                  <div style={styles.modalBody}>
+                    <div style={styles.cashCountGrid}>
+                      {[
+                        { key: 'yen10000', label: '1万円札', value: 10000 },
+                        { key: 'yen5000', label: '5千円札', value: 5000 },
+                        { key: 'yen1000', label: '千円札', value: 1000 },
+                        { key: 'yen500', label: '500円', value: 500 },
+                        { key: 'yen100', label: '100円', value: 100 },
+                        { key: 'yen50', label: '50円', value: 50 },
+                        { key: 'yen10', label: '10円', value: 10 },
+                        { key: 'yen5', label: '5円', value: 5 },
+                        { key: 'yen1', label: '1円', value: 1 },
+                      ].map((denom) => (
+                        <div key={denom.key} style={styles.cashCountRow}>
+                          <span style={styles.cashCountLabel}>{denom.label}</span>
+                          <input
+                            type="number"
+                            value={cashCount[denom.key as keyof typeof cashCount] || ''}
+                            onChange={(e) => setCashCount(prev => ({
+                              ...prev,
+                              [denom.key]: Number(e.target.value) || 0
+                            }))}
+                            style={styles.cashCountInput}
+                            placeholder="0"
+                            min="0"
+                          />
+                          <span style={styles.cashCountSubtotal}>
+                            = {formatCurrency(cashCount[denom.key as keyof typeof cashCount] * denom.value)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={styles.cashCountTotal}>
+                      <span>合計</span>
+                      <span style={{ fontSize: '20px', fontWeight: 'bold' }}>
+                        {formatCurrency(calculatedTotal)}
+                      </span>
+                    </div>
+                    <div style={styles.cashCountDifference}>
+                      <span>システム残高との差異</span>
+                      <span style={{
+                        fontSize: '18px',
+                        fontWeight: 'bold',
+                        color: difference === 0 ? '#27ae60' :
+                               difference > 0 ? '#3498db' : '#e74c3c'
+                      }}>
+                        {difference >= 0 ? '+' : ''}{formatCurrency(difference)}
+                      </span>
+                    </div>
+                    <div style={styles.formGroup}>
+                      <label style={styles.label}>備考</label>
+                      <input
+                        type="text"
+                        value={checkNote}
+                        onChange={(e) => setCheckNote(e.target.value)}
+                        style={styles.input}
+                        placeholder="差異の理由など"
+                      />
+                    </div>
                   </div>
-                  <div style={styles.formGroup}>
-                    <label style={styles.label}>差異</label>
-                    <input
-                      type="text"
-                      value={formatCurrency(actualBalance - systemBalance)}
-                      readOnly
-                      style={{
-                        ...styles.input,
-                        backgroundColor: '#f5f5f5',
-                        color: actualBalance - systemBalance === 0 ? '#27ae60' :
-                               actualBalance - systemBalance > 0 ? '#3498db' : '#e74c3c'
-                      }}
-                    />
+                  <div style={styles.modalFooter}>
+                    <Button variant="secondary" onClick={() => setShowCheckForm(false)}>
+                      キャンセル
+                    </Button>
+                    <Button onClick={async () => {
+                      setSaving(true)
+                      try {
+                        const { error } = await supabase
+                          .from('petty_cash_checks')
+                          .upsert({
+                            store_id: storeId,
+                            check_date: format(new Date(), 'yyyy-MM-dd'),
+                            system_balance: systemBalance,
+                            actual_balance: calculatedTotal,
+                            difference: difference,
+                            note: checkNote || null,
+                          }, {
+                            onConflict: 'store_id,check_date'
+                          })
+
+                        if (error) throw error
+
+                        if (difference !== 0) {
+                          const result = await confirm(
+                            `${formatCurrency(Math.abs(difference))} の${difference > 0 ? '過剰' : '不足'}があります。調整しますか？`
+                          )
+
+                          if (result) {
+                            await supabase
+                              .from('petty_cash_transactions')
+                              .insert({
+                                store_id: storeId,
+                                transaction_date: format(new Date(), 'yyyy-MM-dd'),
+                                transaction_type: 'adjustment',
+                                amount: difference,
+                                description: `残高確認調整: ${checkNote || ''}`,
+                              })
+                          }
+                        }
+
+                        toast.success('残高確認を記録しました')
+                        setShowCheckForm(false)
+                        loadData()
+                      } catch (err) {
+                        console.error('残高確認エラー:', err)
+                        toast.error('残高確認の記録に失敗しました')
+                      } finally {
+                        setSaving(false)
+                      }
+                    }} disabled={saving}>
+                      {saving ? '保存中...' : '確認を記録'}
+                    </Button>
                   </div>
-                  <div style={styles.formGroup}>
-                    <label style={styles.label}>備考</label>
-                    <input
-                      type="text"
-                      value={checkNote}
-                      onChange={(e) => setCheckNote(e.target.value)}
-                      style={styles.input}
-                      placeholder="差異の理由など"
-                    />
-                  </div>
-                </div>
-                <div style={styles.modalFooter}>
-                  <Button variant="secondary" onClick={() => setShowCheckForm(false)}>
-                    キャンセル
-                  </Button>
-                  <Button onClick={handleBalanceCheck} disabled={saving}>
-                    {saving ? '保存中...' : '確認を記録'}
-                  </Button>
                 </div>
               </div>
-            </div>
-          )}
+            )
+          })()}
 
           {/* 入出金履歴 */}
           <div style={styles.listCard}>
@@ -1221,6 +1325,51 @@ const styles: { [key: string]: React.CSSProperties } = {
     gap: '10px',
     padding: '15px 20px',
     borderTop: '1px solid #eee',
+  },
+  cashCountGrid: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px',
+  },
+  cashCountRow: {
+    display: 'grid',
+    gridTemplateColumns: '80px 80px 1fr',
+    alignItems: 'center',
+    gap: '10px',
+  },
+  cashCountLabel: {
+    fontSize: '14px',
+    fontWeight: '500',
+  },
+  cashCountInput: {
+    padding: '8px',
+    border: '1px solid #ddd',
+    borderRadius: '5px',
+    fontSize: '14px',
+    textAlign: 'right',
+    width: '100%',
+  },
+  cashCountSubtotal: {
+    fontSize: '14px',
+    color: '#666',
+    textAlign: 'right',
+  },
+  cashCountTotal: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '15px',
+    backgroundColor: '#f8f9fa',
+    borderRadius: '8px',
+    marginTop: '10px',
+  },
+  cashCountDifference: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '10px 15px',
+    backgroundColor: '#fff3cd',
+    borderRadius: '8px',
   },
   transactionList: {
     display: 'flex',
