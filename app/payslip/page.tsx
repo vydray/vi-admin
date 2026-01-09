@@ -1315,22 +1315,16 @@ function PayslipPageContent() {
     }
   }, [savedPayslip])
 
-  // 全キャスト再計算（当月のみ）
+  // 全キャスト再計算
   const recalculateAll = useCallback(async () => {
-    // 当月以外は再計算不可
-    const now = new Date()
-    const isCurrentMonth = selectedMonth.getFullYear() === now.getFullYear() && selectedMonth.getMonth() === now.getMonth()
-    if (!isCurrentMonth) {
-      alert('過去の月は再計算できません')
-      return
-    }
+    const yearMonth = format(selectedMonth, 'yyyy-MM')
 
     setRecalculating(true)
     try {
       const res = await fetch('/api/payslips/recalculate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ store_id: storeId })
+        body: JSON.stringify({ store_id: storeId, year_month: yearMonth })
       })
 
       const result = await res.json()

@@ -561,22 +561,30 @@ async function calculatePayslipForCast(
   }
 }
 
-// POST: 報酬明細を再計算（当月のみ）
+// POST: 報酬明細を再計算
 export async function POST(request: NextRequest) {
   // Cron認証またはセッション認証
   const isCron = validateCronAuth(request)
 
   try {
-    // 当月のみ計算（過去月は再計算しない）
-    const month = new Date()
-
-    // リクエストボディから store_id を取得（手動実行時）
+    // リクエストボディから store_id と year_month を取得（手動実行時）
     let targetStoreId: number | null = null
+    let targetYearMonth: string | null = null
     try {
       const body = await request.json()
       targetStoreId = body.store_id || null
+      targetYearMonth = body.year_month || null // 例: '2025-12'
     } catch {
       // bodyがない場合（Cronからの呼び出し）
+    }
+
+    // 計算対象月を決定（指定がなければ当月）
+    let month: Date
+    if (targetYearMonth) {
+      const [year, monthNum] = targetYearMonth.split('-').map(Number)
+      month = new Date(year, monthNum - 1, 1)
+    } else {
+      month = new Date()
     }
 
     let totalProcessed = 0
