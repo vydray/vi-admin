@@ -740,95 +740,107 @@ function ExpensesPageContent() {
 
           {/* アクションボタン */}
           <div style={styles.actionButtons}>
-            <Button onClick={() => setShowDepositForm(!showDepositForm)}>
-              {showDepositForm ? 'キャンセル' : '💰 補充'}
+            <Button onClick={() => setShowDepositForm(true)}>
+              💰 補充
             </Button>
             <Button onClick={() => {
-              setShowCheckForm(!showCheckForm)
+              setShowCheckForm(true)
               setActualBalance(systemBalance)
             }}>
-              {showCheckForm ? 'キャンセル' : '✓ 残高確認'}
+              ✓ 残高確認
             </Button>
           </div>
 
-          {/* 補充フォーム */}
+          {/* 補充モーダル */}
           {showDepositForm && (
-            <div style={styles.formCard}>
-              <h3 style={styles.formTitle}>小口現金補充</h3>
-              <div style={styles.formGrid}>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>補充金額</label>
-                  <input
-                    type="number"
-                    value={depositAmount || ''}
-                    onChange={(e) => setDepositAmount(Number(e.target.value))}
-                    style={styles.input}
-                    placeholder="0"
-                  />
+            <div style={styles.modalOverlay} onClick={() => setShowDepositForm(false)}>
+              <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
+                <h3 style={styles.modalTitle}>小口現金補充</h3>
+                <div style={styles.modalBody}>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>補充金額</label>
+                    <input
+                      type="number"
+                      value={depositAmount || ''}
+                      onChange={(e) => setDepositAmount(Number(e.target.value))}
+                      style={styles.input}
+                      placeholder="0"
+                      autoFocus
+                    />
+                  </div>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>メモ</label>
+                    <input
+                      type="text"
+                      value={depositDescription}
+                      onChange={(e) => setDepositDescription(e.target.value)}
+                      style={styles.input}
+                      placeholder="任意"
+                    />
+                  </div>
                 </div>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>メモ</label>
-                  <input
-                    type="text"
-                    value={depositDescription}
-                    onChange={(e) => setDepositDescription(e.target.value)}
-                    style={styles.input}
-                    placeholder="任意"
-                  />
+                <div style={styles.modalFooter}>
+                  <Button variant="secondary" onClick={() => setShowDepositForm(false)}>
+                    キャンセル
+                  </Button>
+                  <Button onClick={handleDeposit} disabled={saving}>
+                    {saving ? '保存中...' : '補充を記録'}
+                  </Button>
                 </div>
-              </div>
-              <div style={styles.formActions}>
-                <Button onClick={handleDeposit} disabled={saving}>
-                  {saving ? '保存中...' : '補充を記録'}
-                </Button>
               </div>
             </div>
           )}
 
-          {/* 残高確認フォーム */}
+          {/* 残高確認モーダル */}
           {showCheckForm && (
-            <div style={styles.formCard}>
-              <h3 style={styles.formTitle}>残高確認</h3>
-              <div style={styles.formGrid}>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>実際の現金額</label>
-                  <input
-                    type="number"
-                    value={actualBalance || ''}
-                    onChange={(e) => setActualBalance(Number(e.target.value))}
-                    style={styles.input}
-                    placeholder="0"
-                  />
+            <div style={styles.modalOverlay} onClick={() => setShowCheckForm(false)}>
+              <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
+                <h3 style={styles.modalTitle}>残高確認</h3>
+                <div style={styles.modalBody}>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>実際の現金額</label>
+                    <input
+                      type="number"
+                      value={actualBalance || ''}
+                      onChange={(e) => setActualBalance(Number(e.target.value))}
+                      style={styles.input}
+                      placeholder="0"
+                      autoFocus
+                    />
+                  </div>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>差異</label>
+                    <input
+                      type="text"
+                      value={formatCurrency(actualBalance - systemBalance)}
+                      readOnly
+                      style={{
+                        ...styles.input,
+                        backgroundColor: '#f5f5f5',
+                        color: actualBalance - systemBalance === 0 ? '#27ae60' :
+                               actualBalance - systemBalance > 0 ? '#3498db' : '#e74c3c'
+                      }}
+                    />
+                  </div>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>備考</label>
+                    <input
+                      type="text"
+                      value={checkNote}
+                      onChange={(e) => setCheckNote(e.target.value)}
+                      style={styles.input}
+                      placeholder="差異の理由など"
+                    />
+                  </div>
                 </div>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>差異</label>
-                  <input
-                    type="text"
-                    value={formatCurrency(actualBalance - systemBalance)}
-                    readOnly
-                    style={{
-                      ...styles.input,
-                      backgroundColor: '#f5f5f5',
-                      color: actualBalance - systemBalance === 0 ? '#27ae60' :
-                             actualBalance - systemBalance > 0 ? '#3498db' : '#e74c3c'
-                    }}
-                  />
+                <div style={styles.modalFooter}>
+                  <Button variant="secondary" onClick={() => setShowCheckForm(false)}>
+                    キャンセル
+                  </Button>
+                  <Button onClick={handleBalanceCheck} disabled={saving}>
+                    {saving ? '保存中...' : '確認を記録'}
+                  </Button>
                 </div>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>備考</label>
-                  <input
-                    type="text"
-                    value={checkNote}
-                    onChange={(e) => setCheckNote(e.target.value)}
-                    style={styles.input}
-                    placeholder="差異の理由など"
-                  />
-                </div>
-              </div>
-              <div style={styles.formActions}>
-                <Button onClick={handleBalanceCheck} disabled={saving}>
-                  {saving ? '保存中...' : '確認を記録'}
-                </Button>
               </div>
             </div>
           )}
@@ -1171,6 +1183,44 @@ const styles: { [key: string]: React.CSSProperties } = {
     display: 'flex',
     gap: '10px',
     justifyContent: 'center',
+  },
+  modalOverlay: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1000,
+  },
+  modalContent: {
+    backgroundColor: 'white',
+    borderRadius: '12px',
+    width: '90%',
+    maxWidth: '400px',
+    boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)',
+  },
+  modalTitle: {
+    fontSize: '18px',
+    fontWeight: 'bold',
+    padding: '20px 20px 0',
+    margin: 0,
+  },
+  modalBody: {
+    padding: '20px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '15px',
+  },
+  modalFooter: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    gap: '10px',
+    padding: '15px 20px',
+    borderTop: '1px solid #eee',
   },
   transactionList: {
     display: 'flex',
