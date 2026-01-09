@@ -58,8 +58,12 @@ function ExpensesPageContent() {
   const [actualBalance, setActualBalance] = useState(0)
   const [checkNote, setCheckNote] = useState('')
 
-  // 業務日報取り込み
-  const [importing, setImporting] = useState(false)
+  // 業務日報経費（直接表示用）
+  const [dailyReportExpenses, setDailyReportExpenses] = useState<{
+    id: number
+    business_date: string
+    expense_amount: number
+  }[]>([])
 
   // 通貨フォーマッタ
   const formatCurrency = (amount: number) => {
@@ -176,23 +180,44 @@ function ExpensesPageContent() {
     return data || []
   }, [storeId])
 
+  // 業務日報から経費を取得
+  const loadDailyReportExpenses = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('daily_reports')
+      .select('id, business_date, expense_amount')
+      .eq('store_id', storeId)
+      .gt('expense_amount', 0)
+      .order('business_date', { ascending: false })
+
+    if (error) {
+      console.error('業務日報経費取得エラー:', error)
+      return []
+    }
+    return data || []
+  }, [storeId])
+
   // データ読み込み
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
-      const [categoriesData, expensesData, balance, transactionsData, checksData] = await Promise.all([
+      const [categoriesData, expensesData, balance, transactionsData, checksData, dailyExpenses] = await Promise.all([
         loadCategories(),
         loadExpenses(),
         calculateSystemBalance(),
         loadTransactions(),
         loadRecentChecks(),
+        loadDailyReportExpenses(),
       ])
 
       setCategories(categoriesData)
       setExpenses(expensesData)
-      setSystemBalance(balance)
       setTransactions(transactionsData)
       setRecentChecks(checksData)
+      setDailyReportExpenses(dailyExpenses)
+
+      // システム残高 = petty_cash残高 - 業務日報経費合計
+      const dailyExpenseTotal = dailyExpenses.reduce((sum, d) => sum + d.expense_amount, 0)
+      setSystemBalance(balance - dailyExpenseTotal)
 
       // 初期カテゴリ設定
       if (categoriesData.length > 0 && newExpense.category_id === 0) {
@@ -204,7 +229,7 @@ function ExpensesPageContent() {
     } finally {
       setLoading(false)
     }
-  }, [loadCategories, loadExpenses, calculateSystemBalance, loadTransactions, loadRecentChecks, newExpense.category_id])
+  }, [loadCategories, loadExpenses, calculateSystemBalance, loadTransactions, loadRecentChecks, loadDailyReportExpenses, newExpense.category_id])
 
   useEffect(() => {
     if (!storeLoading && storeId) {
@@ -420,76 +445,27 @@ function ExpensesPageContent() {
     }
   }
 
-  // 業務日報から経費を取り込み
-  const handleImportFromDailyReports = async () => {
-    const result = await confirm(
-      `${format(selectedMonth, 'yyyy年M月', { locale: ja })}の業務日報から経費を取り込みますか？`
-    )
-    if (!result) return
-
-    setImporting(true)
-    try {
-      // 選択月の業務日報を取得
-      const startDate = format(selectedMonth, 'yyyy-MM-01')
-      const endDate = format(addMonths(selectedMonth, 1), 'yyyy-MM-01')
-
-      const { data: dailyReports, error: reportsError } = await supabase
-        .from('daily_reports')
-        .select('id, business_date, expense_amount')
-        .eq('store_id', storeId)
-        .gte('business_date', startDate)
-        .lt('business_date', endDate)
-        .gt('expense_amount', 0)
-
-      if (reportsError) throw reportsError
-
-      if (!dailyReports || dailyReports.length === 0) {
-        toast('取り込む経費がありません')
-        return
-      }
-
-      // 既に取り込み済みのdaily_report_idを取得
-      const { data: existingTx } = await supabase
-        .from('petty_cash_transactions')
-        .select('daily_report_id')
-        .eq('store_id', storeId)
-        .not('daily_report_id', 'is', null)
-
-      const importedIds = new Set((existingTx || []).map(tx => tx.daily_report_id))
-
-      // 未取り込みの日報を抽出
-      const newReports = dailyReports.filter(report => !importedIds.has(report.id))
-
-      if (newReports.length === 0) {
-        toast('全て取り込み済みです')
-        return
-      }
-
-      // 取り込み実行
-      const { error: insertError } = await supabase
-        .from('petty_cash_transactions')
-        .insert(
-          newReports.map(report => ({
-            store_id: storeId,
-            transaction_date: report.business_date,
-            transaction_type: 'withdrawal',
-            amount: report.expense_amount,
-            daily_report_id: report.id,
-            description: '業務日報より',
-          }))
-        )
-
-      if (insertError) throw insertError
-
-      toast.success(`${newReports.length}件の経費を取り込みました`)
-      loadData()
-    } catch (err) {
-      console.error('業務日報取り込みエラー:', err)
-      toast.error('取り込みに失敗しました')
-    } finally {
-      setImporting(false)
-    }
-  }
+  // 入出金履歴（petty_cash_transactions + daily_reports を統合）
+  const mergedTransactions = [
+    // petty_cash_transactions
+    ...transactions.map(tx => ({
+      id: `tx-${tx.id}`,
+      date: tx.transaction_date,
+      type: tx.transaction_type as 'deposit' | 'withdrawal' | 'adjustment',
+      amount: tx.amount,
+      description: tx.description || '',
+      source: 'petty_cash' as const,
+    })),
+    // daily_reports の経費
+    ...dailyReportExpenses.map(dr => ({
+      id: `dr-${dr.id}`,
+      date: dr.business_date,
+      type: 'withdrawal' as const,
+      amount: dr.expense_amount,
+      description: '業務日報',
+      source: 'daily_report' as const,
+    })),
+  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
 
   // 月別集計
   const monthSummary = {
@@ -762,25 +738,6 @@ function ExpensesPageContent() {
             <p style={styles.balanceAmount}>{formatCurrency(systemBalance)}</p>
           </div>
 
-          {/* 月選択 */}
-          <div style={styles.monthSelector}>
-            <button
-              onClick={() => setSelectedMonth(subMonths(selectedMonth, 1))}
-              style={styles.monthButton}
-            >
-              ◀
-            </button>
-            <span style={styles.monthText}>
-              {format(selectedMonth, 'yyyy年M月', { locale: ja })}
-            </span>
-            <button
-              onClick={() => setSelectedMonth(addMonths(selectedMonth, 1))}
-              style={styles.monthButton}
-            >
-              ▶
-            </button>
-          </div>
-
           {/* アクションボタン */}
           <div style={styles.actionButtons}>
             <Button onClick={() => setShowDepositForm(!showDepositForm)}>
@@ -791,9 +748,6 @@ function ExpensesPageContent() {
               setActualBalance(systemBalance)
             }}>
               {showCheckForm ? 'キャンセル' : '✓ 残高確認'}
-            </Button>
-            <Button onClick={handleImportFromDailyReports} disabled={importing}>
-              {importing ? '取り込み中...' : '📥 業務日報から取り込み'}
             </Button>
           </div>
 
@@ -882,34 +836,37 @@ function ExpensesPageContent() {
           {/* 入出金履歴 */}
           <div style={styles.listCard}>
             <h3 style={styles.listTitle}>入出金履歴</h3>
-            {transactions.length === 0 ? (
+            {mergedTransactions.length === 0 ? (
               <p style={styles.emptyText}>履歴がありません</p>
             ) : (
               <div style={styles.transactionList}>
-                {transactions.map(tx => (
+                {mergedTransactions.map(tx => (
                   <div key={tx.id} style={styles.transactionItem}>
                     <div style={styles.transactionInfo}>
                       <span style={{
                         ...styles.transactionType,
-                        color: tx.transaction_type === 'deposit' ? '#27ae60' :
-                               tx.transaction_type === 'withdrawal' ? '#e74c3c' : '#3498db'
+                        color: tx.type === 'deposit' ? '#27ae60' :
+                               tx.type === 'withdrawal' ? '#e74c3c' : '#3498db'
                       }}>
-                        {tx.transaction_type === 'deposit' ? '補充' :
-                         tx.transaction_type === 'withdrawal' ? '支払' : '調整'}
+                        {tx.type === 'deposit' ? '補充' :
+                         tx.type === 'withdrawal' ? '支払' : '調整'}
                       </span>
                       <span style={styles.transactionDate}>
-                        {format(new Date(tx.transaction_date), 'M/d')}
+                        {format(new Date(tx.date), 'M/d')}
                       </span>
                       <span style={styles.transactionDesc}>
-                        {tx.description || ''}
+                        {tx.description}
                       </span>
+                      {tx.source === 'daily_report' && (
+                        <span style={styles.dailyReportBadge}>日報</span>
+                      )}
                     </div>
                     <span style={{
                       ...styles.transactionAmount,
-                      color: tx.transaction_type === 'deposit' ? '#27ae60' :
-                             tx.transaction_type === 'withdrawal' ? '#e74c3c' : '#3498db'
+                      color: tx.type === 'deposit' ? '#27ae60' :
+                             tx.type === 'withdrawal' ? '#e74c3c' : '#3498db'
                     }}>
-                      {tx.transaction_type === 'deposit' ? '+' : '-'}
+                      {tx.type === 'deposit' ? '+' : '-'}
                       {formatCurrency(tx.amount)}
                     </span>
                   </div>
@@ -1244,6 +1201,13 @@ const styles: { [key: string]: React.CSSProperties } = {
   transactionDesc: {
     fontSize: '14px',
     color: '#666',
+  },
+  dailyReportBadge: {
+    fontSize: '10px',
+    padding: '2px 6px',
+    backgroundColor: '#9b59b6',
+    color: 'white',
+    borderRadius: '3px',
   },
   transactionAmount: {
     fontSize: '16px',
