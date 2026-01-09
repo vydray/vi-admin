@@ -935,6 +935,7 @@ export interface PettyCashTransaction {
   transaction_type: PettyCashTransactionType
   amount: number              // 常に正の値
   expense_id: number | null   // 経費支払いの場合リンク
+  daily_report_id: number | null  // 業務日報からの取り込みの場合リンク
   description: string | null
   created_at: string
 }

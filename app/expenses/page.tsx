@@ -58,6 +58,9 @@ function ExpensesPageContent() {
   const [actualBalance, setActualBalance] = useState(0)
   const [checkNote, setCheckNote] = useState('')
 
+  // 業務日報取り込み
+  const [importing, setImporting] = useState(false)
+
   // 通貨フォーマッタ
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('ja-JP', {
@@ -417,6 +420,77 @@ function ExpensesPageContent() {
     }
   }
 
+  // 業務日報から経費を取り込み
+  const handleImportFromDailyReports = async () => {
+    const result = await confirm(
+      `${format(selectedMonth, 'yyyy年M月', { locale: ja })}の業務日報から経費を取り込みますか？`
+    )
+    if (!result) return
+
+    setImporting(true)
+    try {
+      // 選択月の業務日報を取得
+      const startDate = format(selectedMonth, 'yyyy-MM-01')
+      const endDate = format(addMonths(selectedMonth, 1), 'yyyy-MM-01')
+
+      const { data: dailyReports, error: reportsError } = await supabase
+        .from('daily_reports')
+        .select('id, business_date, expense_amount')
+        .eq('store_id', storeId)
+        .gte('business_date', startDate)
+        .lt('business_date', endDate)
+        .gt('expense_amount', 0)
+
+      if (reportsError) throw reportsError
+
+      if (!dailyReports || dailyReports.length === 0) {
+        toast('取り込む経費がありません')
+        return
+      }
+
+      // 既に取り込み済みのdaily_report_idを取得
+      const { data: existingTx } = await supabase
+        .from('petty_cash_transactions')
+        .select('daily_report_id')
+        .eq('store_id', storeId)
+        .not('daily_report_id', 'is', null)
+
+      const importedIds = new Set((existingTx || []).map(tx => tx.daily_report_id))
+
+      // 未取り込みの日報を抽出
+      const newReports = dailyReports.filter(report => !importedIds.has(report.id))
+
+      if (newReports.length === 0) {
+        toast('全て取り込み済みです')
+        return
+      }
+
+      // 取り込み実行
+      const { error: insertError } = await supabase
+        .from('petty_cash_transactions')
+        .insert(
+          newReports.map(report => ({
+            store_id: storeId,
+            transaction_date: report.business_date,
+            transaction_type: 'withdrawal',
+            amount: report.expense_amount,
+            daily_report_id: report.id,
+            description: '業務日報より',
+          }))
+        )
+
+      if (insertError) throw insertError
+
+      toast.success(`${newReports.length}件の経費を取り込みました`)
+      loadData()
+    } catch (err) {
+      console.error('業務日報取り込みエラー:', err)
+      toast.error('取り込みに失敗しました')
+    } finally {
+      setImporting(false)
+    }
+  }
+
   // 月別集計
   const monthSummary = {
     totalCash: expenses.filter(e => e.payment_method === 'cash').reduce((sum, e) => sum + e.amount, 0),
@@ -688,6 +762,25 @@ function ExpensesPageContent() {
             <p style={styles.balanceAmount}>{formatCurrency(systemBalance)}</p>
           </div>
 
+          {/* 月選択 */}
+          <div style={styles.monthSelector}>
+            <button
+              onClick={() => setSelectedMonth(subMonths(selectedMonth, 1))}
+              style={styles.monthButton}
+            >
+              ◀
+            </button>
+            <span style={styles.monthText}>
+              {format(selectedMonth, 'yyyy年M月', { locale: ja })}
+            </span>
+            <button
+              onClick={() => setSelectedMonth(addMonths(selectedMonth, 1))}
+              style={styles.monthButton}
+            >
+              ▶
+            </button>
+          </div>
+
           {/* アクションボタン */}
           <div style={styles.actionButtons}>
             <Button onClick={() => setShowDepositForm(!showDepositForm)}>
@@ -698,6 +791,9 @@ function ExpensesPageContent() {
               setActualBalance(systemBalance)
             }}>
               {showCheckForm ? 'キャンセル' : '✓ 残高確認'}
+            </Button>
+            <Button onClick={handleImportFromDailyReports} disabled={importing}>
+              {importing ? '取り込み中...' : '📥 業務日報から取り込み'}
             </Button>
           </div>
 
