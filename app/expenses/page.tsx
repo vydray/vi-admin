@@ -215,9 +215,9 @@ function ExpensesPageContent() {
       setRecentChecks(checksData)
       setDailyReportExpenses(dailyExpenses)
 
-      // システム残高 = petty_cash残高 - 業務日報経費合計
+      // システム残高 = petty_cash残高 + 業務日報入金合計
       const dailyExpenseTotal = dailyExpenses.reduce((sum, d) => sum + d.expense_amount, 0)
-      setSystemBalance(balance - dailyExpenseTotal)
+      setSystemBalance(balance + dailyExpenseTotal)
 
       // 初期カテゴリ設定
       if (categoriesData.length > 0 && newExpense.category_id === 0) {
@@ -456,11 +456,11 @@ function ExpensesPageContent() {
       description: tx.description || '',
       source: 'petty_cash' as const,
     })),
-    // daily_reports の経費
+    // daily_reports の入金
     ...dailyReportExpenses.map(dr => ({
       id: `dr-${dr.id}`,
       date: dr.business_date,
-      type: 'withdrawal' as const,
+      type: 'deposit' as const,
       amount: dr.expense_amount,
       description: '業務日報',
       source: 'daily_report' as const,
