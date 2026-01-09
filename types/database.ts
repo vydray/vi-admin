@@ -949,5 +949,15 @@ export interface PettyCashCheck {
   actual_balance: number      // 実際に数えた金額
   difference: number          // 差異（actual - system）
   note: string | null
+  // 金種枚数
+  yen10000_count: number
+  yen5000_count: number
+  yen1000_count: number
+  yen500_count: number
+  yen100_count: number
+  yen50_count: number
+  yen10_count: number
+  yen5_count: number
+  yen1_count: number
   created_at: string
 }

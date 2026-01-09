@@ -829,7 +829,7 @@ function ExpensesPageContent() {
 
             return (
               <div style={styles.modalOverlay} onClick={() => setShowCheckForm(false)}>
-                <div style={{ ...styles.modalContent, maxWidth: '500px' }} onClick={e => e.stopPropagation()}>
+                <div style={{ ...styles.modalContent, maxWidth: '500px', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
                   <h3 style={styles.modalTitle}>残高確認</h3>
                   <div style={styles.modalBody}>
                     <div style={styles.cashCountGrid}>
@@ -907,6 +907,15 @@ function ExpensesPageContent() {
                             actual_balance: calculatedTotal,
                             difference: difference,
                             note: checkNote || null,
+                            yen10000_count: cashCount.yen10000,
+                            yen5000_count: cashCount.yen5000,
+                            yen1000_count: cashCount.yen1000,
+                            yen500_count: cashCount.yen500,
+                            yen100_count: cashCount.yen100,
+                            yen50_count: cashCount.yen50,
+                            yen10_count: cashCount.yen10,
+                            yen5_count: cashCount.yen5,
+                            yen1_count: cashCount.yen1,
                           }, {
                             onConflict: 'store_id,check_date'
                           })
@@ -999,23 +1008,42 @@ function ExpensesPageContent() {
             ) : (
               <div style={styles.checkList}>
                 {recentChecks.map(check => (
-                  <div key={check.id} style={styles.checkItem}>
-                    <div style={styles.checkInfo}>
-                      <span style={styles.checkDate}>
-                        {format(new Date(check.check_date), 'M/d')}
-                      </span>
-                      <span>
-                        システム: {formatCurrency(check.system_balance)} /
-                        実際: {formatCurrency(check.actual_balance)}
+                  <div key={check.id} style={styles.checkItemExpanded}>
+                    <div style={styles.checkItemHeader}>
+                      <div style={styles.checkInfo}>
+                        <span style={styles.checkDate}>
+                          {format(new Date(check.check_date), 'M/d')}
+                        </span>
+                        <span>
+                          システム: {formatCurrency(check.system_balance)} /
+                          実際: {formatCurrency(check.actual_balance)}
+                        </span>
+                      </div>
+                      <span style={{
+                        ...styles.checkDifference,
+                        color: check.difference === 0 ? '#27ae60' :
+                               check.difference > 0 ? '#3498db' : '#e74c3c'
+                      }}>
+                        {check.difference >= 0 ? '+' : ''}{formatCurrency(check.difference)}
                       </span>
                     </div>
-                    <span style={{
-                      ...styles.checkDifference,
-                      color: check.difference === 0 ? '#27ae60' :
-                             check.difference > 0 ? '#3498db' : '#e74c3c'
-                    }}>
-                      {check.difference >= 0 ? '+' : ''}{formatCurrency(check.difference)}
-                    </span>
+                    <div style={styles.checkDenomination}>
+                      {[
+                        { label: '1万', count: check.yen10000_count, value: 10000 },
+                        { label: '5千', count: check.yen5000_count, value: 5000 },
+                        { label: '千', count: check.yen1000_count, value: 1000 },
+                        { label: '500', count: check.yen500_count, value: 500 },
+                        { label: '100', count: check.yen100_count, value: 100 },
+                        { label: '50', count: check.yen50_count, value: 50 },
+                        { label: '10', count: check.yen10_count, value: 10 },
+                        { label: '5', count: check.yen5_count, value: 5 },
+                        { label: '1', count: check.yen1_count, value: 1 },
+                      ].filter(d => d.count > 0).map(d => (
+                        <span key={d.label} style={styles.denomBadge}>
+                          {d.label}×{d.count}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1305,6 +1333,8 @@ const styles: { [key: string]: React.CSSProperties } = {
     borderRadius: '12px',
     width: '90%',
     maxWidth: '400px',
+    maxHeight: '90vh',
+    overflowY: 'auto',
     boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)',
   },
   modalTitle: {
@@ -1437,5 +1467,30 @@ const styles: { [key: string]: React.CSSProperties } = {
   checkDifference: {
     fontSize: '16px',
     fontWeight: 'bold',
+  },
+  checkItemExpanded: {
+    padding: '12px 15px',
+    backgroundColor: '#f8f9fa',
+    borderRadius: '5px',
+  },
+  checkItemHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  checkDenomination: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '6px',
+    marginTop: '8px',
+    paddingTop: '8px',
+    borderTop: '1px solid #e9ecef',
+  },
+  denomBadge: {
+    fontSize: '11px',
+    padding: '2px 6px',
+    backgroundColor: '#e9ecef',
+    borderRadius: '3px',
+    color: '#666',
   },
 }
