@@ -44,6 +44,11 @@ function ExpensesPageContent() {
   const [saving, setSaving] = useState(false)
   const [uploadingImage, setUploadingImage] = useState(false)
   const [editingExpenseId, setEditingExpenseId] = useState<number | null>(null)
+  const [formErrors, setFormErrors] = useState<{
+    entered_by?: boolean
+    usage_purpose?: boolean
+    amount?: boolean
+  }>({})
 
   // 新規経費の領収書写真
   const [selectedReceiptFile, setSelectedReceiptFile] = useState<File | null>(null)
@@ -259,18 +264,18 @@ function ExpensesPageContent() {
 
   // 経費追加
   const handleAddExpense = async () => {
-    if (!newExpense.entered_by.trim()) {
-      toast.error('入力者を入力してください')
+    // バリデーション
+    const errors: typeof formErrors = {}
+    if (!newExpense.entered_by.trim()) errors.entered_by = true
+    if (!newExpense.usage_purpose.trim()) errors.usage_purpose = true
+    if (newExpense.amount <= 0) errors.amount = true
+
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors)
+      toast.error('必須項目を入力してください')
       return
     }
-    if (!newExpense.usage_purpose.trim()) {
-      toast.error('使用用途を入力してください')
-      return
-    }
-    if (newExpense.amount <= 0) {
-      toast.error('金額を入力してください')
-      return
-    }
+    setFormErrors({})
 
     setSaving(true)
     try {
@@ -449,6 +454,7 @@ function ExpensesPageContent() {
   const closeAddModal = () => {
     setShowAddForm(false)
     clearSelectedReceipt()
+    setFormErrors({})
     setNewExpense({
       category_id: categories.length > 0 ? categories[0].id : 0,
       target_month: format(selectedMonth, 'yyyy-MM'),
@@ -741,32 +747,59 @@ function ExpensesPageContent() {
                         </select>
                       </div>
                       <div style={styles.formGroup}>
-                        <label style={styles.label}>金額 *</label>
+                        <label style={{
+                          ...styles.label,
+                          ...(formErrors.amount ? styles.labelError : {}),
+                        }}>金額 *</label>
                         <input
                           type="number"
                           value={newExpense.amount || ''}
-                          onChange={(e) => setNewExpense({ ...newExpense, amount: Number(e.target.value) })}
-                          style={styles.input}
+                          onChange={(e) => {
+                            setNewExpense({ ...newExpense, amount: Number(e.target.value) })
+                            if (formErrors.amount) setFormErrors(prev => ({ ...prev, amount: false }))
+                          }}
+                          style={{
+                            ...styles.input,
+                            ...(formErrors.amount ? styles.inputError : {}),
+                          }}
                           placeholder="0"
                         />
                       </div>
                       <div style={styles.formGroup}>
-                        <label style={styles.label}>入力者 *</label>
+                        <label style={{
+                          ...styles.label,
+                          ...(formErrors.entered_by ? styles.labelError : {}),
+                        }}>入力者 *</label>
                         <input
                           type="text"
                           value={newExpense.entered_by}
-                          onChange={(e) => setNewExpense({ ...newExpense, entered_by: e.target.value })}
-                          style={styles.input}
+                          onChange={(e) => {
+                            setNewExpense({ ...newExpense, entered_by: e.target.value })
+                            if (formErrors.entered_by) setFormErrors(prev => ({ ...prev, entered_by: false }))
+                          }}
+                          style={{
+                            ...styles.input,
+                            ...(formErrors.entered_by ? styles.inputError : {}),
+                          }}
                           placeholder="必須"
                         />
                       </div>
                       <div style={{ ...styles.formGroup, gridColumn: '1 / -1' }}>
-                        <label style={styles.label}>使用用途 *</label>
+                        <label style={{
+                          ...styles.label,
+                          ...(formErrors.usage_purpose ? styles.labelError : {}),
+                        }}>使用用途 *</label>
                         <input
                           type="text"
                           value={newExpense.usage_purpose}
-                          onChange={(e) => setNewExpense({ ...newExpense, usage_purpose: e.target.value })}
-                          style={styles.input}
+                          onChange={(e) => {
+                            setNewExpense({ ...newExpense, usage_purpose: e.target.value })
+                            if (formErrors.usage_purpose) setFormErrors(prev => ({ ...prev, usage_purpose: false }))
+                          }}
+                          style={{
+                            ...styles.input,
+                            ...(formErrors.usage_purpose ? styles.inputError : {}),
+                          }}
                           placeholder="必須"
                         />
                       </div>
@@ -1434,11 +1467,17 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '12px',
     color: '#666',
   },
+  labelError: {
+    color: '#e74c3c',
+  },
   input: {
     padding: '10px',
     border: '1px solid #ddd',
     borderRadius: '5px',
     fontSize: '14px',
+  },
+  inputError: {
+    borderColor: '#e74c3c',
   },
   select: {
     padding: '10px',
