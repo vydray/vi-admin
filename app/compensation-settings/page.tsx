@@ -949,6 +949,8 @@ function CompensationSettingsPageContent() {
 
   const loadSettings = useCallback(async (castId: number, year: number, month: number) => {
     try {
+      console.log(`[loadSettings] Loading for cast ${castId}, ${year}/${month}`)
+
       // まず指定年月の設定を探す
       let { data, error } = await supabase
         .from('compensation_settings')
@@ -961,39 +963,39 @@ function CompensationSettingsPageContent() {
         .maybeSingle()
 
       if (error) throw error
+      console.log(`[loadSettings] Exact match:`, data ? `found (id=${data.id})` : 'not found')
 
       let isExactMatch = !!data
 
-      // 年月指定の設定がない場合、直近の設定を探す（過去の月から最新のもの）
+      // 年月指定の設定がない場合、直近の設定を探す
       if (!data) {
-        const { data: recentData, error: recentError } = await supabase
+        // 全ての設定を取得して直近のものを探す（target_year/monthがnullでないもの）
+        const { data: allSettings, error: allError } = await supabase
           .from('compensation_settings')
           .select('*')
           .eq('cast_id', castId)
           .eq('store_id', storeId)
           .eq('is_active', true)
-          .not('target_year', 'is', null)
-          .order('target_year', { ascending: false })
-          .order('target_month', { ascending: false })
-          .limit(1)
-          .maybeSingle()
 
-        if (recentError) throw recentError
+        if (allError) throw allError
+        console.log(`[loadSettings] All settings for this cast:`, allSettings?.length || 0, 'records')
+        allSettings?.forEach(s => console.log(`  - id=${s.id}, target=${s.target_year}/${s.target_month}`))
+
+        // target_year/monthが設定されているものから直近を探す
+        const recentData = allSettings
+          ?.filter(s => s.target_year !== null && s.target_month !== null)
+          .sort((a, b) => {
+            if (a.target_year !== b.target_year) return b.target_year - a.target_year
+            return b.target_month - a.target_month
+          })[0]
+
+        console.log(`[loadSettings] Recent settings:`, recentData ? `found (id=${recentData.id}, ${recentData.target_year}/${recentData.target_month})` : 'not found')
 
         // 直近の設定がなければデフォルト設定（target_year/month = null）を探す
         if (!recentData) {
-          const { data: defaultData, error: defaultError } = await supabase
-            .from('compensation_settings')
-            .select('*')
-            .eq('cast_id', castId)
-            .eq('store_id', storeId)
-            .is('target_year', null)
-            .is('target_month', null)
-            .eq('is_active', true)
-            .maybeSingle()
-
-          if (defaultError) throw defaultError
-          data = defaultData
+          const defaultData = allSettings?.find(s => s.target_year === null && s.target_month === null)
+          console.log(`[loadSettings] Default settings:`, defaultData ? `found (id=${defaultData.id})` : 'not found')
+          data = defaultData || null
         } else {
           data = recentData
         }
