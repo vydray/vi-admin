@@ -44,6 +44,7 @@ function ExpensesPageContent() {
   const [saving, setSaving] = useState(false)
   const [uploadingImage, setUploadingImage] = useState(false)
   const [editingExpenseId, setEditingExpenseId] = useState<number | null>(null)
+  const [selectedExpense, setSelectedExpense] = useState<ExpenseWithCategory | null>(null)
   const [formErrors, setFormErrors] = useState<{
     entered_by?: boolean
     usage_purpose?: boolean
@@ -945,6 +946,126 @@ function ExpensesPageContent() {
             </div>
           )}
 
+          {/* 経費詳細モーダル */}
+          {selectedExpense && (
+            <div style={styles.modalOverlay} onClick={() => setSelectedExpense(null)}>
+              <div
+                style={styles.detailModalContent}
+                onClick={e => e.stopPropagation()}
+              >
+                <div style={styles.detailModalHeader}>
+                  <h3 style={styles.detailModalTitle}>経費詳細</h3>
+                  <button onClick={() => setSelectedExpense(null)} style={styles.closeButton}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <line x1="18" y1="6" x2="6" y2="18"/>
+                      <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                  </button>
+                </div>
+                <div style={styles.detailModalBody}>
+                  <div style={styles.detailGrid}>
+                    <div style={styles.detailItem}>
+                      <span style={styles.detailLabel}>カテゴリ</span>
+                      <span style={styles.detailValue}>{selectedExpense.category?.name || '未分類'}</span>
+                    </div>
+                    <div style={styles.detailItem}>
+                      <span style={styles.detailLabel}>支払方法</span>
+                      <span style={{
+                        ...styles.paymentBadge,
+                        backgroundColor: selectedExpense.payment_method === 'cash' ? '#3498db' : selectedExpense.payment_method === 'register' ? '#e67e22' : '#27ae60'
+                      }}>
+                        {selectedExpense.payment_method === 'cash' ? '小口現金' : selectedExpense.payment_method === 'register' ? 'レジ金' : '口座払い'}
+                      </span>
+                    </div>
+                    <div style={styles.detailItem}>
+                      <span style={styles.detailLabel}>対象月</span>
+                      <span style={styles.detailValue}>{selectedExpense.target_month}</span>
+                    </div>
+                    <div style={styles.detailItem}>
+                      <span style={styles.detailLabel}>支払日</span>
+                      <span style={styles.detailValue}>{format(new Date(selectedExpense.payment_date), 'yyyy/M/d')}</span>
+                    </div>
+                    <div style={styles.detailItem}>
+                      <span style={styles.detailLabel}>金額</span>
+                      <span style={styles.detailAmount}>{formatCurrency(selectedExpense.amount)}</span>
+                    </div>
+                    <div style={styles.detailItem}>
+                      <span style={styles.detailLabel}>入力者</span>
+                      <span style={styles.detailValue}>{selectedExpense.entered_by || '-'}</span>
+                    </div>
+                    <div style={{ ...styles.detailItem, gridColumn: '1 / -1' }}>
+                      <span style={styles.detailLabel}>使用用途</span>
+                      <span style={styles.detailValue}>{selectedExpense.usage_purpose || '-'}</span>
+                    </div>
+                    {selectedExpense.description && (
+                      <div style={{ ...styles.detailItem, gridColumn: '1 / -1' }}>
+                        <span style={styles.detailLabel}>備考</span>
+                        <span style={styles.detailValue}>{selectedExpense.description}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 領収書セクション */}
+                  {selectedExpense.payment_method !== 'register' && (
+                    <div style={styles.detailReceiptSection}>
+                      <span style={styles.detailLabel}>領収書</span>
+                      {selectedExpense.receipt_path ? (
+                        <div style={styles.detailReceiptPreview}>
+                          <img
+                            src={selectedExpense.receipt_path}
+                            alt="領収書"
+                            style={styles.detailReceiptImage}
+                            onClick={() => window.open(selectedExpense.receipt_path!, '_blank')}
+                          />
+                        </div>
+                      ) : (
+                        <label style={styles.detailUploadButton}>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            style={{ display: 'none' }}
+                            onChange={(e) => {
+                              const file = e.target.files?.[0]
+                              if (file) {
+                                handleImageUpload(selectedExpense.id, file)
+                                setSelectedExpense(null)
+                              }
+                            }}
+                            disabled={uploadingImage}
+                          />
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="17 8 12 3 7 8"/>
+                            <line x1="12" y1="3" x2="12" y2="15"/>
+                          </svg>
+                          {uploadingImage ? 'アップロード中...' : '領収書をアップロード'}
+                        </label>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <div style={styles.detailModalFooter}>
+                  <button
+                    onClick={async () => {
+                      await handleDeleteExpense(selectedExpense)
+                      setSelectedExpense(null)
+                    }}
+                    style={styles.detailDeleteButton}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <polyline points="3 6 5 6 21 6"/>
+                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                    </svg>
+                    削除
+                  </button>
+                  <Button variant="secondary" onClick={() => setSelectedExpense(null)}>
+                    閉じる
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* 経費一覧 */}
           <div style={styles.listCard}>
             <h3 style={styles.listTitle}>経費一覧</h3>
@@ -953,7 +1074,11 @@ function ExpensesPageContent() {
             ) : (
               <div style={styles.expenseList}>
                 {expenses.map(expense => (
-                  <div key={expense.id} style={styles.expenseItem}>
+                  <div
+                    key={expense.id}
+                    style={styles.expenseItem}
+                    onClick={() => setSelectedExpense(expense)}
+                  >
                     <div style={styles.expenseMain}>
                       <div style={styles.expenseInfo}>
                         <span style={styles.expenseCategory}>
@@ -985,38 +1110,16 @@ function ExpensesPageContent() {
                       <span style={styles.expenseAmount}>
                         {formatCurrency(expense.amount)}
                       </span>
-                      <div style={styles.expenseActions}>
-                        {expense.receipt_path ? (
-                          <a
-                            href={expense.receipt_path}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={styles.receiptLink}
-                          >
-                            領収書
-                          </a>
-                        ) : (
-                          <label style={styles.uploadLabel}>
-                            <input
-                              type="file"
-                              accept="image/*"
-                              style={{ display: 'none' }}
-                              onChange={(e) => {
-                                const file = e.target.files?.[0]
-                                if (file) handleImageUpload(expense.id, file)
-                              }}
-                              disabled={uploadingImage}
-                            />
-                            📷
-                          </label>
-                        )}
-                        <button
-                          onClick={() => handleDeleteExpense(expense)}
-                          style={styles.deleteButton}
-                        >
-                          🗑️
-                        </button>
-                      </div>
+                      {expense.receipt_path && (
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2">
+                          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                          <circle cx="8.5" cy="8.5" r="1.5"/>
+                          <polyline points="21 15 16 10 5 21"/>
+                        </svg>
+                      )}
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="2">
+                        <polyline points="9 18 15 12 9 6"/>
+                      </svg>
                     </div>
                   </div>
                 ))}
@@ -1531,6 +1634,8 @@ const styles: { [key: string]: React.CSSProperties } = {
     padding: '15px',
     backgroundColor: '#f8f9fa',
     borderRadius: '5px',
+    cursor: 'pointer',
+    transition: 'background-color 0.2s',
   },
   expenseMain: {
     flex: 1,
@@ -2030,5 +2135,104 @@ const styles: { [key: string]: React.CSSProperties } = {
     maxWidth: '95vw',
     maxHeight: '90vh',
     objectFit: 'contain',
+  },
+  // 経費詳細モーダル
+  detailModalContent: {
+    backgroundColor: 'white',
+    borderRadius: '10px',
+    width: '90%',
+    maxWidth: '500px',
+    maxHeight: '90vh',
+    overflow: 'auto',
+  },
+  detailModalHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '20px',
+    borderBottom: '1px solid #eee',
+  },
+  detailModalTitle: {
+    fontSize: '18px',
+    fontWeight: 'bold',
+    margin: 0,
+  },
+  detailModalBody: {
+    padding: '20px',
+  },
+  detailGrid: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: '16px',
+  },
+  detailItem: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '4px',
+  },
+  detailLabel: {
+    fontSize: '12px',
+    color: '#888',
+  },
+  detailValue: {
+    fontSize: '14px',
+    color: '#333',
+  },
+  detailAmount: {
+    fontSize: '18px',
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  detailReceiptSection: {
+    marginTop: '20px',
+    paddingTop: '20px',
+    borderTop: '1px solid #eee',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '10px',
+  },
+  detailReceiptPreview: {
+    display: 'flex',
+    justifyContent: 'center',
+  },
+  detailReceiptImage: {
+    maxWidth: '100%',
+    maxHeight: '200px',
+    objectFit: 'contain',
+    borderRadius: '5px',
+    cursor: 'pointer',
+  },
+  detailUploadButton: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '8px',
+    padding: '12px',
+    border: '1px dashed #ccc',
+    borderRadius: '5px',
+    backgroundColor: '#f8f9fa',
+    cursor: 'pointer',
+    fontSize: '14px',
+    color: '#666',
+  },
+  detailModalFooter: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '15px 20px',
+    borderTop: '1px solid #eee',
+    gap: '10px',
+  },
+  detailDeleteButton: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '8px 16px',
+    border: 'none',
+    borderRadius: '5px',
+    backgroundColor: '#fee2e2',
+    color: '#dc2626',
+    fontSize: '14px',
+    cursor: 'pointer',
   },
 }
