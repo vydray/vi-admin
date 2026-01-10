@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns'
+import { calculateCastSalesByPublishedMethod } from '@/lib/salesCalculation'
+import type { SalesSettings } from '@/types/database'
 
 // Service Role Key でRLSをバイパス
 const supabaseAdmin = createClient(
@@ -100,11 +102,7 @@ interface CastBackRate {
   self_back_ratio: number | null
 }
 
-interface SalesSettings {
-  item_exclude_consumption_tax: boolean
-  use_tax_excluded: boolean
-  item_exclude_service_charge: boolean
-}
+// SalesSettings は types/database.ts からインポート
 
 // 遅刻罰金を計算
 function calculateLatePenalty(lateMinutes: number, rule: LatePenaltyRule): number {
@@ -224,12 +222,41 @@ async function calculatePayslipForCast(
       .eq('store_id', storeId)
       .eq('is_active', true)
 
-    // 売上設定を取得
+    // 売上設定を取得（全フィールド）
     const { data: salesSettings } = await supabaseAdmin
       .from('sales_settings')
-      .select('item_exclude_consumption_tax, use_tax_excluded, item_exclude_service_charge')
+      .select('*')
       .eq('store_id', storeId)
       .single()
+
+    // 注文データを取得（売上計算用）
+    const { data: orders } = await supabaseAdmin
+      .from('orders')
+      .select(`
+        id,
+        staff_name,
+        order_date,
+        order_items (
+          id,
+          product_name,
+          category,
+          cast_name,
+          quantity,
+          unit_price,
+          subtotal
+        )
+      `)
+      .eq('store_id', storeId)
+      .gte('order_date', startDate)
+      .lte('order_date', endDate + 'T23:59:59')
+      .is('deleted_at', null)
+
+    // キャストリスト（売上計算用）
+    const { data: allCasts } = await supabaseAdmin
+      .from('casts')
+      .select('id, name')
+      .eq('store_id', storeId)
+    const castList = (allCasts || []).map(c => ({ id: c.id, name: c.name }))
 
     // BASEバック情報を取得するヘルパー関数
     const getBaseBackInfo = (productName: string): { type: 'ratio' | 'fixed'; rate: number; fixedAmount: number } | null => {
@@ -255,8 +282,55 @@ async function calculatePayslipForCast(
       }
     }
 
-    // 日別売上を集計
+    // 日別売上を集計（共通関数を使用）
     const dailySalesMap = new Map<string, DailySalesData>()
+
+    // 注文を日付ごとにグループ化
+    const ordersByDate = new Map<string, typeof orders>()
+    for (const order of orders || []) {
+      const dateStr = order.order_date?.split('T')[0]
+      if (dateStr) {
+        const existing = ordersByDate.get(dateStr) || []
+        existing.push(order)
+        ordersByDate.set(dateStr, existing)
+      }
+    }
+
+    // 日付ごとに売上を計算（共通関数を使用）
+    if (salesSettings) {
+      ordersByDate.forEach((dayOrders, dateStr) => {
+        // 共通関数で売上を計算（税抜設定が自動適用される）
+        const salesResults = calculateCastSalesByPublishedMethod(
+          dayOrders as any,
+          castList,
+          salesSettings as SalesSettings,
+          0.1,  // taxRate
+          0     // serviceRate
+        )
+
+        // このキャストの売上を取得
+        const castSales = salesResults.find(r => r.cast_id === cast.id)
+        if (castSales && castSales.total_sales > 0) {
+          dailySalesMap.set(dateStr, {
+            date: dateStr,
+            totalSales: castSales.total_sales,
+            productBack: 0,  // 商品バックは別途計算
+            items: castSales.items.map(item => ({
+              product_name: item.product_name,
+              category: item.category,
+              sales_type: item.sales_type,
+              quantity: item.quantity,
+              subtotal: item.subtotal_excl_tax,
+              back_ratio: item.back_ratio,
+              back_amount: item.back_amount,
+              is_base: false
+            }))
+          })
+        }
+      })
+    }
+
+    // cast_daily_itemsから商品バックを取得（バック計算はPOSで行われている）
     for (const item of dailyItems || []) {
       if (!dailySalesMap.has(item.date)) {
         dailySalesMap.set(item.date, {
@@ -267,18 +341,7 @@ async function calculatePayslipForCast(
         })
       }
       const dayData = dailySalesMap.get(item.date)!
-      dayData.totalSales += item.subtotal
       dayData.productBack += item.back_amount
-      dayData.items.push({
-        product_name: item.product_name,
-        category: item.category,
-        sales_type: item.is_self ? 'self' : 'help',
-        quantity: item.quantity,
-        subtotal: item.subtotal,
-        back_ratio: item.subtotal > 0 ? Math.round(item.back_amount / item.subtotal * 100) : 0,
-        back_amount: item.back_amount,
-        is_base: false
-      })
     }
 
     // BASE注文のバックを計算して追加
