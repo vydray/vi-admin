@@ -94,7 +94,7 @@ export async function exportToPDF(
   if (preview) {
     // 新しいタブでプレビュー表示
     const blobUrl = pdf.output('bloburl')
-    window.open(blobUrl as string, '_blank')
+    window.open(blobUrl.toString(), '_blank')
   } else {
     // 直接ダウンロード
     pdf.save(filename)
