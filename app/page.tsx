@@ -415,14 +415,13 @@ export default function Home() {
         .gte('date', monthStart)
         .lte('date', monthEnd)
 
-      // 経費（小口現金払いのみ）
-      const { data: expensesData } = await supabase
-        .from('expenses')
-        .select('payment_date, amount, payment_method')
+      // 経費（業務日報から）
+      const { data: dailyReportsData } = await supabase
+        .from('daily_reports')
+        .select('business_date, expense_amount')
         .eq('store_id', storeId)
-        .eq('payment_method', 'cash')
-        .gte('payment_date', monthStart)
-        .lte('payment_date', monthEnd)
+        .gte('business_date', monthStart)
+        .lte('business_date', monthEnd)
 
       // 現金回収（レジ金チェックから）
       const { data: cashCountsData } = await supabase
@@ -577,10 +576,9 @@ export default function Home() {
           .filter(att => att.date === dateStr)
           .reduce((sum, att) => sum + (att.daily_payment || 0), 0)
 
-        // 経費（小口現金払いのみ）
-        const dayExpense = (expensesData || [])
-          .filter(exp => exp.payment_date === dateStr)
-          .reduce((sum, exp) => sum + (exp.amount || 0), 0)
+        // 経費（業務日報から）
+        const dayExpenseRecord = (dailyReportsData || []).find(dr => dr.business_date === dateStr)
+        const dayExpense = dayExpenseRecord?.expense_amount || 0
 
         // 現金回収
         const dayCollectionRecord = (cashCountsData || []).find(cc => cc.business_date === dateStr)
