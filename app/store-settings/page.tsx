@@ -39,7 +39,7 @@ function StoreSettingsPageContent() {
     logo_url: ''
   })
 
-  const [systemSettings, setSystemSettings] = useState<SystemSettings>({
+  const [systemSettings, setSystemSettings] = useState<SystemSettings & { register_amount: number }>({
     tax_rate: 10,
     service_fee_rate: 15,
     rounding_method: 0,
@@ -47,7 +47,8 @@ function StoreSettingsPageContent() {
     card_fee_rate: 0,
     business_day_start_hour: 6,
     allow_multiple_nominations: false,
-    allow_multiple_casts_per_item: false
+    allow_multiple_casts_per_item: false,
+    register_amount: 50000
   })
 
   useEffect(() => {
@@ -83,7 +84,8 @@ function StoreSettingsPageContent() {
       card_fee_rate: 0,
       business_day_start_hour: 6,
       allow_multiple_nominations: false,
-      allow_multiple_casts_per_item: false
+      allow_multiple_casts_per_item: false,
+      register_amount: 50000
     })
 
     // 店舗設定を取得
@@ -127,7 +129,7 @@ function StoreSettingsPageContent() {
     }
 
     if (systemSettingsData && systemSettingsData.length > 0) {
-      const newSystemSettings: SystemSettings = {
+      const newSystemSettings: SystemSettings & { register_amount: number } = {
         tax_rate: 10,
         service_fee_rate: 15,
         rounding_method: 0,
@@ -135,7 +137,8 @@ function StoreSettingsPageContent() {
         card_fee_rate: 0,
         business_day_start_hour: 6,
         allow_multiple_nominations: false,
-        allow_multiple_casts_per_item: false
+        allow_multiple_casts_per_item: false,
+        register_amount: 50000
       }
 
       systemSettingsData.forEach(setting => {
@@ -155,6 +158,8 @@ function StoreSettingsPageContent() {
           newSystemSettings.allow_multiple_nominations = setting.setting_value === 'true'
         } else if (setting.setting_key === 'allow_multiple_casts_per_item') {
           newSystemSettings.allow_multiple_casts_per_item = setting.setting_value === 'true'
+        } else if (setting.setting_key === 'register_amount') {
+          newSystemSettings.register_amount = Number(setting.setting_value)
         }
       })
       setSystemSettings(newSystemSettings)
@@ -184,7 +189,8 @@ function StoreSettingsPageContent() {
         { store_id: storeId, setting_key: 'card_fee_rate', setting_value: systemSettings.card_fee_rate },
         { store_id: storeId, setting_key: 'business_day_start_hour', setting_value: systemSettings.business_day_start_hour },
         { store_id: storeId, setting_key: 'allow_multiple_nominations', setting_value: String(systemSettings.allow_multiple_nominations) },
-        { store_id: storeId, setting_key: 'allow_multiple_casts_per_item', setting_value: String(systemSettings.allow_multiple_casts_per_item) }
+        { store_id: storeId, setting_key: 'allow_multiple_casts_per_item', setting_value: String(systemSettings.allow_multiple_casts_per_item) },
+        { store_id: storeId, setting_key: 'register_amount', setting_value: systemSettings.register_amount }
       ]
 
       const { error: systemError } = await supabase
@@ -208,7 +214,7 @@ function StoreSettingsPageContent() {
     setSettings(prev => ({ ...prev, [key]: value }))
   }
 
-  const updateSystemSetting = (key: keyof SystemSettings, value: number | boolean) => {
+  const updateSystemSetting = (key: keyof SystemSettings | 'register_amount', value: number | boolean) => {
     setSystemSettings(prev => ({ ...prev, [key]: value }))
   }
 
@@ -989,35 +995,73 @@ function StoreSettingsPageContent() {
                 </div>
               </div>
 
-              <div>
-                <label style={{
-                  display: 'block',
-                  marginBottom: '8px',
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  color: '#374151'
-                }}>
-                  カード手数料率（%）
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.1"
-                  value={systemSettings.card_fee_rate > 0 ? systemSettings.card_fee_rate : ''}
-                  onChange={(e) => updateSystemSetting('card_fee_rate', e.target.value === '' ? 0 : Number(e.target.value))}
-                  placeholder="0"
-                  style={{
-                    width: '200px',
-                    padding: '10px',
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: '20px',
+                marginBottom: '20px'
+              }}>
+                <div>
+                  <label style={{
+                    display: 'block',
+                    marginBottom: '8px',
                     fontSize: '14px',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '6px',
-                    boxSizing: 'border-box'
-                  }}
-                />
-                <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
-                  カード決済時に適用される手数料率を設定します
+                    fontWeight: '500',
+                    color: '#374151'
+                  }}>
+                    カード手数料率（%）
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.1"
+                    value={systemSettings.card_fee_rate > 0 ? systemSettings.card_fee_rate : ''}
+                    onChange={(e) => updateSystemSetting('card_fee_rate', e.target.value === '' ? 0 : Number(e.target.value))}
+                    placeholder="0"
+                    style={{
+                      width: '100%',
+                      padding: '10px',
+                      fontSize: '14px',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '6px',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                  <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                    カード決済時に適用される手数料率を設定します
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{
+                    display: 'block',
+                    marginBottom: '8px',
+                    fontSize: '14px',
+                    fontWeight: '500',
+                    color: '#374151'
+                  }}>
+                    レジ金（円）
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1000"
+                    value={systemSettings.register_amount || ''}
+                    onChange={(e) => updateSystemSetting('register_amount' as keyof SystemSettings, e.target.value === '' ? 0 : Number(e.target.value))}
+                    placeholder="50000"
+                    style={{
+                      width: '100%',
+                      padding: '10px',
+                      fontSize: '14px',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '6px',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                  <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                    お釣り用にレジに残す固定金額を設定します
+                  </div>
                 </div>
               </div>
 
