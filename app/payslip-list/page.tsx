@@ -5,8 +5,8 @@ import { supabase } from '@/lib/supabase'
 import { format, addMonths, subMonths } from 'date-fns'
 import { jsPDF } from 'jspdf'
 import { ja } from 'date-fns/locale'
+import html2canvas from 'html2canvas'
 import { useStore } from '@/contexts/StoreContext'
-import { exportToPDF } from '@/lib/pdfExport'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import ProtectedPage from '@/components/ProtectedPage'
 
@@ -118,12 +118,85 @@ function PayslipListContent() {
     setExporting(true)
     setShowExportModal(false)
     try {
-      await exportToPDF(printRef.current, {
-        filename: `報酬明細一覧_${storeName}_${format(selectedMonth, 'yyyy年MM月')}.pdf`,
-        orientation: 'landscape',
-        margin: 10,
-        preview: true  // 新しいタブでプレビュー表示
+      // 1. テーブルをキャンバスに変換
+      const canvas = await html2canvas(printRef.current, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff'
       })
+
+      // 2. PDF作成（横向き）
+      const pdf = new jsPDF({
+        orientation: 'landscape',
+        unit: 'mm',
+        format: 'a4'
+      })
+
+      const pageWidth = pdf.internal.pageSize.getWidth()
+      const pageHeight = pdf.internal.pageSize.getHeight()
+      const margin = 10
+
+      // テーブル画像を追加
+      const imgData = canvas.toDataURL('image/png')
+      const imgWidth = canvas.width
+      const imgHeight = canvas.height
+      const ratio = imgWidth / imgHeight
+      const availableWidth = pageWidth - margin * 2
+      const finalWidth = availableWidth
+      const finalHeight = availableWidth / ratio
+
+      if (finalHeight <= pageHeight - margin * 2) {
+        pdf.addImage(imgData, 'PNG', margin, margin, finalWidth, finalHeight)
+      } else {
+        // 複数ページに分割
+        const availableHeight = pageHeight - margin * 2
+        const totalPages = Math.ceil(finalHeight / availableHeight)
+        for (let i = 0; i < totalPages; i++) {
+          if (i > 0) pdf.addPage()
+          const sourceY = (i * availableHeight * imgWidth) / finalWidth
+          const sourceHeight = (availableHeight * imgWidth) / finalWidth
+          const pageCanvas = document.createElement('canvas')
+          pageCanvas.width = imgWidth
+          pageCanvas.height = Math.min(sourceHeight, imgHeight - sourceY)
+          const ctx = pageCanvas.getContext('2d')
+          if (ctx) {
+            ctx.drawImage(canvas, 0, sourceY, imgWidth, pageCanvas.height, 0, 0, imgWidth, pageCanvas.height)
+            const pageImgData = pageCanvas.toDataURL('image/png')
+            const pageImgHeight = (pageCanvas.height * finalWidth) / imgWidth
+            pdf.addImage(pageImgData, 'PNG', margin, margin, finalWidth, pageImgHeight)
+          }
+        }
+      }
+
+      // 3. コンパクトカードを次のページに追加（縦向き）
+      const cardPageWidth = 210
+      const cardPageHeight = 297
+      const cardMargin = 10
+      const cardWidth = 90
+      const cardHeight = 65
+      const cols = 2
+      const rows = 4
+      const gapX = (cardPageWidth - cardMargin * 2 - cardWidth * cols) / (cols - 1)
+      const gapY = (cardPageHeight - cardMargin * 2 - cardHeight * rows) / (rows - 1)
+
+      payslips.forEach((p, index) => {
+        if (index % 8 === 0) {
+          pdf.addPage([cardPageWidth, cardPageHeight], 'portrait')
+        }
+
+        const pageIndex = index % 8
+        const col = pageIndex % cols
+        const row = Math.floor(pageIndex / cols)
+        const x = cardMargin + col * (cardWidth + gapX)
+        const y = cardMargin + row * (cardHeight + gapY)
+
+        drawCompactCard(pdf, x, y, cardWidth, cardHeight, p)
+      })
+
+      // 4. プレビュー表示
+      const blobUrl = pdf.output('bloburl')
+      window.open(blobUrl.toString(), '_blank')
     } catch (error) {
       console.error('PDF出力エラー:', error)
       alert('PDF出力に失敗しました')
@@ -258,52 +331,6 @@ function PayslipListContent() {
     pdf.text('残り支給', x + 3, currentY)
     pdf.setFontSize(11)
     pdf.text(formatCurrency(payslip.net_payment), rightX, currentY, { align: 'right' })
-  }
-
-  // コンパクトカード出力
-  const handleExportCompactCards = async () => {
-    setExporting(true)
-    setShowExportModal(false)
-
-    try {
-      const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a4'
-      })
-
-      const pageWidth = 210
-      const pageHeight = 297
-      const margin = 10
-      const cardWidth = 90
-      const cardHeight = 65
-      const cols = 2
-      const rows = 4
-      const gapX = (pageWidth - margin * 2 - cardWidth * cols) / (cols - 1)
-      const gapY = (pageHeight - margin * 2 - cardHeight * rows) / (rows - 1)
-
-      payslips.forEach((p, index) => {
-        if (index > 0 && index % 8 === 0) {
-          pdf.addPage()
-        }
-
-        const pageIndex = index % 8
-        const col = pageIndex % cols
-        const row = Math.floor(pageIndex / cols)
-        const x = margin + col * (cardWidth + gapX)
-        const y = margin + row * (cardHeight + gapY)
-
-        drawCompactCard(pdf, x, y, cardWidth, cardHeight, p)
-      })
-
-      const blobUrl = pdf.output('bloburl')
-      window.open(blobUrl.toString(), '_blank')
-    } catch (error) {
-      console.error('カード出力エラー:', error)
-      alert('カード出力に失敗しました')
-    } finally {
-      setExporting(false)
-    }
   }
 
   const totals = payslips.reduce((acc, p) => ({
@@ -514,12 +541,6 @@ function PayslipListContent() {
                 style={exportOptionBtnStyle('#8b5cf6')}
               >
                 PDF形式でダウンロード
-              </button>
-              <button
-                onClick={handleExportCompactCards}
-                style={exportOptionBtnStyle('#f59e0b')}
-              >
-                カード印刷（封筒添付用）
               </button>
               <button
                 onClick={handleExportCSV}
