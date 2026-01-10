@@ -169,30 +169,83 @@ function PayslipListContent() {
         }
       }
 
-      // 3. コンパクトカードを次のページに追加（縦向き）
-      const cardPageWidth = 210
-      const cardPageHeight = 297
-      const cardMargin = 10
-      const cardWidth = 90
-      const cardHeight = 65
-      const cols = 2
-      const rows = 4
-      const gapX = (cardPageWidth - cardMargin * 2 - cardWidth * cols) / (cols - 1)
-      const gapY = (cardPageHeight - cardMargin * 2 - cardHeight * rows) / (rows - 1)
+      // 3. コンパクトカードをHTML→Canvas→PDFで追加（日本語対応）
+      const cardsPerPage = 8
+      const totalCardPages = Math.ceil(payslips.length / cardsPerPage)
 
-      payslips.forEach((p, index) => {
-        if (index % 8 === 0) {
-          pdf.addPage([cardPageWidth, cardPageHeight], 'portrait')
-        }
+      for (let pageIdx = 0; pageIdx < totalCardPages; pageIdx++) {
+        const pagePayslips = payslips.slice(pageIdx * cardsPerPage, (pageIdx + 1) * cardsPerPage)
 
-        const pageIndex = index % 8
-        const col = pageIndex % cols
-        const row = Math.floor(pageIndex / cols)
-        const x = cardMargin + col * (cardWidth + gapX)
-        const y = cardMargin + row * (cardHeight + gapY)
+        // カードページ用のHTML要素を作成
+        const cardContainer = document.createElement('div')
+        cardContainer.style.cssText = `
+          width: 794px;
+          height: 1123px;
+          padding: 38px;
+          box-sizing: border-box;
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          grid-template-rows: repeat(4, 1fr);
+          gap: 12px;
+          background: white;
+          position: fixed;
+          left: -9999px;
+          top: 0;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        `
 
-        drawCompactCard(pdf, x, y, cardWidth, cardHeight, p)
-      })
+        pagePayslips.forEach(p => {
+          const card = document.createElement('div')
+          card.style.cssText = `
+            border: 1px solid #c8c8c8;
+            border-radius: 4px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+          `
+          card.innerHTML = `
+            <div style="background: #f8fafc; padding: 8px 12px; border-bottom: 1px solid #ddd;">
+              <div style="font-size: 11px; color: #666;">${storeName || ''}</div>
+              <div style="font-size: 13px; color: #333; font-weight: 500;">${format(selectedMonth, 'yyyy年M月')} 報酬明細</div>
+            </div>
+            <div style="padding: 10px 12px; border-bottom: 1px solid #ddd;">
+              <div style="font-size: 16px; font-weight: 600; color: #1e1e1e;">${p.cast_name}</div>
+            </div>
+            <div style="padding: 10px 12px; flex: 1;">
+              <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+                <span style="font-size: 12px; color: #555;">総支給額</span>
+                <span style="font-size: 12px; color: #333;">${formatCurrency(p.gross_total)}</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                <span style="font-size: 12px; color: #555;">控除合計</span>
+                <span style="font-size: 12px; color: #333;">${formatCurrency(p.total_deduction)}</span>
+              </div>
+              <div style="border-top: 1px dashed #ccc; padding-top: 8px; display: flex; justify-content: space-between;">
+                <span style="font-size: 13px; font-weight: 600; color: #1e1e1e;">残り支給</span>
+                <span style="font-size: 14px; font-weight: 600; color: #1e1e1e;">${formatCurrency(p.net_payment)}</span>
+              </div>
+            </div>
+          `
+          cardContainer.appendChild(card)
+        })
+
+        document.body.appendChild(cardContainer)
+
+        // html2canvasでキャプチャ
+        const cardCanvas = await html2canvas(cardContainer, {
+          scale: 2,
+          useCORS: true,
+          logging: false,
+          backgroundColor: '#ffffff'
+        })
+
+        document.body.removeChild(cardContainer)
+
+        // PDFに追加（縦向きA4）
+        pdf.addPage([210, 297], 'portrait')
+        const cardImgData = cardCanvas.toDataURL('image/png')
+        pdf.addImage(cardImgData, 'PNG', 0, 0, 210, 297)
+      }
 
       // 4. プレビュー表示
       const blobUrl = pdf.output('bloburl')
@@ -266,71 +319,6 @@ function PayslipListContent() {
     } finally {
       setExporting(false)
     }
-  }
-
-  // コンパクトカード描画関数
-  const drawCompactCard = (
-    pdf: jsPDF,
-    x: number,
-    y: number,
-    width: number,
-    height: number,
-    payslip: PayslipSummary
-  ) => {
-    // 枠線
-    pdf.setDrawColor(200)
-    pdf.rect(x, y, width, height)
-
-    // ヘッダー背景
-    pdf.setFillColor(248, 250, 252)
-    pdf.rect(x, y, width, 15, 'F')
-
-    // 店舗名・月
-    pdf.setFontSize(8)
-    pdf.setTextColor(100)
-    pdf.text(storeName || '', x + 3, y + 5)
-    pdf.setFontSize(9)
-    pdf.text(format(selectedMonth, 'yyyy年M月') + ' 報酬明細', x + 3, y + 11)
-
-    // 区切り線
-    pdf.setDrawColor(220)
-    pdf.line(x, y + 15, x + width, y + 15)
-
-    // キャスト名
-    pdf.setFontSize(12)
-    pdf.setTextColor(30)
-    pdf.text(payslip.cast_name, x + 3, y + 24)
-
-    // 区切り線
-    pdf.line(x, y + 28, x + width, y + 28)
-
-    // 金額
-    pdf.setFontSize(9)
-    pdf.setTextColor(70)
-
-    const rightX = x + width - 3
-    let currentY = y + 36
-
-    pdf.text('総支給額', x + 3, currentY)
-    pdf.text(formatCurrency(payslip.gross_total), rightX, currentY, { align: 'right' })
-
-    currentY += 7
-    pdf.text('控除合計', x + 3, currentY)
-    pdf.text(formatCurrency(payslip.total_deduction), rightX, currentY, { align: 'right' })
-
-    // 区切り線（点線）
-    currentY += 4
-    pdf.setLineDashPattern([1, 1], 0)
-    pdf.line(x + 3, currentY, x + width - 3, currentY)
-    pdf.setLineDashPattern([], 0)
-
-    // 残り支給（強調）
-    currentY += 7
-    pdf.setFontSize(10)
-    pdf.setTextColor(30)
-    pdf.text('残り支給', x + 3, currentY)
-    pdf.setFontSize(11)
-    pdf.text(formatCurrency(payslip.net_payment), rightX, currentY, { align: 'right' })
   }
 
   const totals = payslips.reduce((acc, p) => ({
