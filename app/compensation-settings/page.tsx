@@ -962,6 +962,8 @@ function CompensationSettingsPageContent() {
 
       if (error) throw error
 
+      let isExactMatch = !!data
+
       // 年月指定の設定がない場合、直近の設定を探す（過去の月から最新のもの）
       if (!data) {
         const { data: recentData, error: recentError } = await supabase
@@ -998,12 +1000,34 @@ function CompensationSettingsPageContent() {
       }
 
       if (data) {
-        setSettingsState(dbToState(data))
+        const state = dbToState(data)
+        setSettingsState(state)
         setIsLocked(data.is_locked ?? false)
-        // 別の月の設定を読み込んだ場合は、新規保存として扱う（existingIdをクリア）
-        const isExactMatch = data.target_year === year && data.target_month === month
-        setExistingId(isExactMatch ? data.id : undefined)
         setEnabledDeductionIds(data.enabled_deduction_ids || [])
+
+        // 別の月の設定を引き継いだ場合、自動で保存する
+        if (!isExactMatch) {
+          const saveData = {
+            ...stateToDb(state, castId, storeId),
+            target_year: year,
+            target_month: month,
+            enabled_deduction_ids: data.enabled_deduction_ids || [],
+          }
+          const { data: newRecord, error: saveError } = await supabase
+            .from('compensation_settings')
+            .insert(saveData)
+            .select('id')
+            .single()
+
+          if (saveError) {
+            console.error('設定の自動保存エラー:', saveError)
+          } else if (newRecord) {
+            setExistingId(newRecord.id)
+            console.log(`[CompSettings] Auto-saved settings for ${year}/${month}, cast ${castId}`)
+          }
+        } else {
+          setExistingId(data.id)
+        }
       } else {
         // 新規設定
         setSettingsState(getDefaultSettingsState())
