@@ -1836,19 +1836,6 @@ function PayslipPageContent() {
           {/* サマリーカード */}
           <div style={styles.summarySection}>
             <div style={styles.summaryGrid}>
-              {summary.useWageData && (
-                <div
-                  style={{ ...styles.summaryCard, cursor: 'pointer' }}
-                  onClick={() => setShowDailyWageModal(true)}
-                >
-                  <div style={styles.summaryLabel}>勤務時間 / 平均時給 ▶</div>
-                  <div style={styles.summaryValue}>
-                    {summary.totalWorkHours}h / {summary.totalWorkHours > 0
-                      ? currencyFormatter.format(Math.round(summary.totalWageAmount / summary.totalWorkHours))
-                      : '—'}
-                  </div>
-                </div>
-              )}
               <div
                 style={{ ...styles.summaryCard, cursor: summary.useWageData ? 'pointer' : 'default' }}
                 onClick={() => summary.useWageData && setShowDailyWageModal(true)}
@@ -1856,6 +1843,26 @@ function PayslipPageContent() {
                 <div style={styles.summaryLabel}>出勤日数{summary.useWageData ? ' ▶' : ''}</div>
                 <div style={styles.summaryValue}>{dailyDetails.filter(d => d.workHours > 0).length}日</div>
               </div>
+              <div
+                style={{ ...styles.summaryCard, cursor: summary.useWageData ? 'pointer' : 'default' }}
+                onClick={() => summary.useWageData && setShowDailyWageModal(true)}
+              >
+                <div style={styles.summaryLabel}>勤務時間{summary.useWageData ? ' ▶' : ''}</div>
+                <div style={styles.summaryValue}>{summary.totalWorkHours}h</div>
+              </div>
+              {summary.useWageData && (
+                <div
+                  style={{ ...styles.summaryCard, cursor: 'pointer' }}
+                  onClick={() => setShowDailyWageModal(true)}
+                >
+                  <div style={styles.summaryLabel}>平均時給 ▶</div>
+                  <div style={styles.summaryValue}>
+                    {summary.totalWorkHours > 0
+                      ? currencyFormatter.format(Math.round(summary.totalWageAmount / summary.totalWorkHours))
+                      : '—'}
+                  </div>
+                </div>
+              )}
               {summary.useWageData && (
                 <div style={styles.summaryCard}>
                   <div style={styles.summaryLabel}>時給収入</div>
