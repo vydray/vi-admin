@@ -654,6 +654,19 @@ export default function Home() {
           ...styles.dateSelector,
           ...(isMobile ? { width: '100%', flexWrap: 'wrap' } : {})
         }}>
+          <button
+            onClick={() => {
+              if (selectedMonth === 1) {
+                setSelectedYear(prev => prev - 1)
+                setSelectedMonth(12)
+              } else {
+                setSelectedMonth(prev => prev - 1)
+              }
+            }}
+            style={navButtonStyle}
+          >
+            ◀
+          </button>
           <select
             value={selectedYear}
             onChange={(e) => setSelectedYear(Number(e.target.value))}
@@ -682,6 +695,19 @@ export default function Home() {
               </option>
             ))}
           </select>
+          <button
+            onClick={() => {
+              if (selectedMonth === 12) {
+                setSelectedYear(prev => prev + 1)
+                setSelectedMonth(1)
+              } else {
+                setSelectedMonth(prev => prev + 1)
+              }
+            }}
+            style={navButtonStyle}
+          >
+            ▶
+          </button>
 
           {!isMobile && (
             <Button
@@ -1289,6 +1315,15 @@ function DashboardCard({
       )}
     </div>
   )
+}
+
+const navButtonStyle: React.CSSProperties = {
+  padding: '8px 12px',
+  backgroundColor: '#f1f5f9',
+  border: '1px solid #e2e8f0',
+  borderRadius: '6px',
+  cursor: 'pointer',
+  fontSize: '14px',
 }
 
 const styles: { [key: string]: React.CSSProperties } = {
