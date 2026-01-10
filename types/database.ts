@@ -886,9 +886,10 @@ export type AccountType = 'cost' | 'expense'
 // expense: 販売費及び一般管理費（地代家賃、水道光熱費など）
 
 // 支払い方法
-export type PaymentMethod = 'cash' | 'bank'
+export type PaymentMethod = 'cash' | 'bank' | 'register'
 // cash: 小口現金
 // bank: 口座払い
+// register: レジ金（小口現金から移動）
 
 // 小口現金取引タイプ
 export type PettyCashTransactionType = 'deposit' | 'withdrawal' | 'adjustment'

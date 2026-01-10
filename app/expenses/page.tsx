@@ -298,8 +298,8 @@ function ExpensesPageContent() {
 
       if (expenseError) throw expenseError
 
-      // 小口現金払いの場合、出金記録を追加
-      if (newExpense.payment_method === 'cash') {
+      // 小口現金払い・レジ金の場合、出金記録を追加
+      if (newExpense.payment_method === 'cash' || newExpense.payment_method === 'register') {
         const { error: txError } = await supabase
           .from('petty_cash_transactions')
           .insert({
@@ -352,7 +352,7 @@ function ExpensesPageContent() {
 
     try {
       // 関連する小口取引も削除
-      if (expense.payment_method === 'cash') {
+      if (expense.payment_method === 'cash' || expense.payment_method === 'register') {
         await supabase
           .from('petty_cash_transactions')
           .delete()
@@ -580,6 +580,7 @@ function ExpensesPageContent() {
   const monthSummary = {
     totalCash: expenses.filter(e => e.payment_method === 'cash').reduce((sum, e) => sum + e.amount, 0),
     totalBank: expenses.filter(e => e.payment_method === 'bank').reduce((sum, e) => sum + e.amount, 0),
+    totalRegister: expenses.filter(e => e.payment_method === 'register').reduce((sum, e) => sum + e.amount, 0),
     byCategory: categories.map(cat => ({
       category: cat,
       total: expenses.filter(e => e.category_id === cat.id).reduce((sum, e) => sum + e.amount, 0)
@@ -667,6 +668,12 @@ function ExpensesPageContent() {
                 <span style={styles.summaryLabel}>口座払い</span>
                 <span style={styles.summaryValue}>{formatCurrency(monthSummary.totalBank)}</span>
               </div>
+              {monthSummary.totalRegister > 0 && (
+                <div style={styles.summaryItem}>
+                  <span style={styles.summaryLabel}>レジ金</span>
+                  <span style={styles.summaryValue}>{formatCurrency(monthSummary.totalRegister)}</span>
+                </div>
+              )}
             </div>
             {monthSummary.byCategory.length > 0 && (
               <div style={styles.categorySummary}>
@@ -744,6 +751,7 @@ function ExpensesPageContent() {
                         >
                           <option value="cash">小口現金</option>
                           <option value="bank">口座払い</option>
+                          <option value="register">レジ金</option>
                         </select>
                       </div>
                       <div style={styles.formGroup}>
@@ -816,7 +824,8 @@ function ExpensesPageContent() {
                     </div>
                   </div>
 
-                  {/* 右側: 領収書アップロード */}
+                  {/* 右側: 領収書アップロード（レジ金以外） */}
+                  {newExpense.payment_method !== 'register' && (
                   <div style={styles.receiptSection}>
                     <label style={styles.label}>領収書写真</label>
                     {!receiptPreview ? (
@@ -897,6 +906,7 @@ function ExpensesPageContent() {
                       </div>
                     )}
                   </div>
+                  )}
                 </div>
                 <div style={styles.expenseModalFooter}>
                   <Button variant="secondary" onClick={closeAddModal}>
@@ -951,9 +961,9 @@ function ExpensesPageContent() {
                         </span>
                         <span style={{
                           ...styles.paymentBadge,
-                          backgroundColor: expense.payment_method === 'cash' ? '#3498db' : '#27ae60'
+                          backgroundColor: expense.payment_method === 'cash' ? '#3498db' : expense.payment_method === 'register' ? '#e67e22' : '#27ae60'
                         }}>
-                          {expense.payment_method === 'cash' ? '小口' : '口座'}
+                          {expense.payment_method === 'cash' ? '小口' : expense.payment_method === 'register' ? 'レジ金' : '口座'}
                         </span>
                         {expense.entered_by && (
                           <span style={styles.enteredByBadge}>
