@@ -761,8 +761,6 @@ function CompensationSettingsPageContent() {
 
       if (error) throw error
 
-      console.log('時給実績データ:', { castId, storeId, startDate, endDate, data })
-
       if (data && data.length > 0) {
         const totalWorkHours = data.reduce((sum, d) => sum + (d.work_hours || 0), 0)
         const totalWageAmount = data.reduce((sum, d) => sum + (d.wage_amount || 0), 0)
@@ -907,12 +905,6 @@ function CompensationSettingsPageContent() {
 
       if (error) throw error
       if (data) {
-        console.log('=== 売上設定 (from DB) ===', {
-          item_help_distribution_method: data.item_help_distribution_method,
-          item_rounding_method: data.item_rounding_method,
-          item_rounding_position: data.item_rounding_position,
-          published_aggregation: data.published_aggregation,
-        })
         if (data.non_help_staff_names) {
           setNonHelpStaffNames(data.non_help_staff_names)
         }
@@ -939,7 +931,6 @@ function CompensationSettingsPageContent() {
           receipt_help_sales_inclusion: data.receipt_help_sales_inclusion ?? 'both',
           receipt_help_ratio: data.receipt_help_ratio ?? 50,
         }
-        console.log('=== 適用する設定 ===', newSettings)
         setSalesSettings(newSettings)
       }
     } catch (error) {

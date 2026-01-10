@@ -191,8 +191,6 @@ function ProductsPageContent() {
 
         if (insertError) {
           console.error('バック率設定の自動作成エラー:', insertError)
-        } else {
-          console.log(`${newRates.length}件のバック率設定を自動作成しました`)
         }
       }
     } catch (err) {

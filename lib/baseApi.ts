@@ -290,8 +290,6 @@ export async function addItemVariation(
   const currentItem = await fetchItem(accessToken, itemId)
   const existingVariations = currentItem.item.variations || []
 
-  console.log('[BASE API] Current variations:', existingVariations.map(v => v.variation))
-
   // items/editで既存バリエーション + 新規バリエーションを設定
   const params = new URLSearchParams()
   params.set('item_id', itemId.toString())
@@ -310,9 +308,6 @@ export async function addItemVariation(
   params.set(`variation[${index}]`, variationName)
   params.set(`variation_stock[${index}]`, stock.toString())
 
-  console.log('[BASE API] Adding variation:', { itemId, variationName, stock, totalVariations: index + 1 })
-  console.log('[BASE API] Request params:', params.toString())
-
   const response = await fetchWithTimeout(`${BASE_API_URL}/1/items/edit`, {
     method: 'POST',
     headers: {
@@ -323,7 +318,6 @@ export async function addItemVariation(
   })
 
   const responseText = await response.text()
-  console.log('[BASE API] Add variation response:', response.status, responseText.substring(0, 500))
 
   if (!response.ok) {
     throw new Error(`Add variation failed: ${responseText}`)

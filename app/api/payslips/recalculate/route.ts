@@ -438,7 +438,7 @@ async function calculatePayslipForCast(
     const compensationTypes = compensationSettings?.compensation_types || []
 
     if (!compensationSettings) {
-      console.log(`[Payslip] Cast ${cast.id} (${cast.name}): No compensation_settings found`)
+      // No compensation settings found
     }
 
     // アクティブな報酬タイプを取得
@@ -464,12 +464,10 @@ async function calculatePayslipForCast(
     }
 
     let fixedAmount = 0
-    console.log(`[Payslip] Cast ${cast.id} (${cast.name}): compensationTypes count=${compensationTypes.length}, enabledTypes count=${enabledTypes.length}, activeCompType=${activeCompType?.id}`)
 
     if (activeCompType) {
       // 固定額（文字列の場合も考慮）
       fixedAmount = Number(activeCompType.fixed_amount) || 0
-      console.log(`[Payslip] Cast ${cast.id} (${cast.name}): fixedAmount=${fixedAmount}, hourly_rate=${activeCompType.hourly_rate}`)
 
       // 売上バック計算
       if (activeCompType.use_sliding_rate && activeCompType.sliding_rates) {
@@ -488,7 +486,6 @@ async function calculatePayslipForCast(
     const hourlyRate = Number(activeCompType?.hourly_rate) || 0
     const useWageData = hourlyRate > 0
     const grossEarnings = (useWageData ? totalWageAmount : 0) + salesBack + totalProductBack + fixedAmount
-    console.log(`[Payslip] Cast ${cast.id} (${cast.name}): grossEarnings=${grossEarnings} (wage=${useWageData ? totalWageAmount : 0}, salesBack=${salesBack}, productBack=${totalProductBack}, fixed=${fixedAmount})`)
 
     // ===== 控除計算 =====
     const deductions: Array<{ name: string; type: string; count?: number; percentage?: number; amount: number }> = []
@@ -695,12 +692,10 @@ export async function POST(request: NextRequest) {
         .eq('store_id', targetStoreId)
         .eq('is_active', true)
 
-      console.log(`[Payslip] Processing ${(casts || []).length} casts for store ${targetStoreId}`)
       for (const cast of casts || []) {
         const result = await calculatePayslipForCast(targetStoreId, cast, month)
         if (result.success) {
           totalProcessed++
-          console.log(`[Payslip] Cast ${cast.id} (${cast.name}): saved successfully`)
         } else {
           totalErrors++
           console.error(`Payslip error for cast ${cast.id}:`, result.error)
@@ -733,7 +728,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'store_id is required' }, { status: 400 })
     }
 
-    console.log(`[Payslip] Completed: processed=${totalProcessed}, errors=${totalErrors}`)
     return NextResponse.json({
       success: true,
       processed: totalProcessed,

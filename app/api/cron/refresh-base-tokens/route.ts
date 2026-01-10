@@ -58,7 +58,6 @@ export async function GET(request: Request) {
           .eq('store_id', setting.store_id)
 
         results.push({ store_id: setting.store_id, success: true })
-        console.log(`[BASE Token Refresh] Store ${setting.store_id}: Success`)
       } catch (refreshError) {
         const errorMessage = refreshError instanceof Error ? refreshError.message : 'Unknown error'
         results.push({

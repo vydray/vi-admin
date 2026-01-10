@@ -87,7 +87,6 @@ export async function POST(request: NextRequest) {
     }
 
     // BASE APIから注文を取得（ページネーション対応）
-    console.log('Fetching BASE orders:', { effectiveStartDate, effectiveEndDate })
     let allOrders: any[] = []
     let offset = 0
     const PAGE_SIZE = 100
@@ -102,7 +101,6 @@ export async function POST(request: NextRequest) {
 
       const orders = ordersResponse.orders || []
       allOrders = allOrders.concat(orders)
-      console.log(`Fetched ${orders.length} orders (offset: ${offset}, total: ${allOrders.length})`)
 
       if (orders.length < PAGE_SIZE) {
         break // 最後のページ
@@ -135,7 +133,6 @@ export async function POST(request: NextRequest) {
     // キャンセル以外の注文を取得（デジタルコンテンツはdispatchedにならないことがある）
     // dispatch_status: unpaid(入金待ち), ordered(未対応), shipping(配送中), dispatched(対応済み), cancelled(キャンセル)
     const activeOrders = allOrders.filter(order => order.dispatch_status !== 'cancelled')
-    console.log(`Total orders: ${allOrders.length}, Active (non-cancelled): ${activeOrders.length}`)
 
     // 注文詳細を並列取得（5件ずつ）
     let successCount = 0

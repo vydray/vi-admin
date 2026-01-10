@@ -73,7 +73,6 @@ export async function sendDiscordNotification(
 
   const webhookUrl = settings?.setting_value;
   if (!webhookUrl) {
-    console.log('Discord webhook not configured for store:', storeId);
     return { success: false, error: 'Webhook not configured' };
   }
 

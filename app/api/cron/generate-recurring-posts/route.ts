@@ -93,10 +93,8 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    console.log('[Recurring Posts] Starting generation...')
     const todayDate = getTodayDateString()
     const todayDow = getTodayDayOfWeek()
-    console.log(`[Recurring Posts] Today: ${todayDate}, Day of week: ${todayDow}`)
 
     // 有効な定期投稿を取得
     const { data: recurringPosts, error: fetchError } = await supabase
@@ -110,11 +108,8 @@ export async function GET(request: NextRequest) {
     }
 
     if (!recurringPosts || recurringPosts.length === 0) {
-      console.log('[Recurring Posts] No active recurring posts found')
       return NextResponse.json({ message: 'No active recurring posts', generated: 0 })
     }
-
-    console.log(`[Recurring Posts] Found ${recurringPosts.length} active recurring posts`)
 
     let generatedCount = 0
     let skippedCount = 0
@@ -122,21 +117,18 @@ export async function GET(request: NextRequest) {
     for (const post of recurringPosts as RecurringPost[]) {
       // 今日実行すべきかチェック
       if (!shouldRunToday(post)) {
-        console.log(`[Recurring Posts] Post ${post.id}: Not scheduled for today`)
         skippedCount++
         continue
       }
 
       // すでに今日の投稿が生成されているかチェック
       if (alreadyGeneratedToday(post)) {
-        console.log(`[Recurring Posts] Post ${post.id}: Already generated today`)
         skippedCount++
         continue
       }
 
       // 予約投稿を生成
       const scheduledAt = getScheduledDateTime(post.post_time)
-      console.log(`[Recurring Posts] Post ${post.id}: Generating for ${scheduledAt}`)
 
       const { error: insertError } = await supabase
         .from('scheduled_posts')
@@ -164,10 +156,7 @@ export async function GET(request: NextRequest) {
         .eq('id', post.id)
 
       generatedCount++
-      console.log(`[Recurring Posts] Post ${post.id}: Successfully generated`)
     }
-
-    console.log(`[Recurring Posts] Complete. Generated: ${generatedCount}, Skipped: ${skippedCount}`)
 
     return NextResponse.json({
       message: 'Recurring posts generation completed',

@@ -669,7 +669,6 @@ async function recalculateForDate(storeId: number, date: string): Promise<{
         baseSalesByCast.set(order.cast_id, current + (order.actual_price * order.quantity))
       }
     }
-    console.log(`BASE orders for ${date}: ${baseOrders?.length || 0} items, casts with sales: ${baseSalesByCast.size}`)
 
     // 3. キャスト情報を取得
     const { data: casts, error: castsError } = await supabaseAdmin
@@ -1063,8 +1062,6 @@ async function recalculateForDate(storeId: number, date: string): Promise<{
 
       if (baseUpdateError) {
         console.error('BASE orders update error:', baseUpdateError)
-      } else {
-        console.log(`Marked ${baseOrderIds.length} BASE orders as processed`)
       }
     }
 

@@ -136,11 +136,6 @@ export async function POST(request: NextRequest) {
       baseVariationsMap.set(v.variation, v.variation_id)
     }
 
-    // デバッグ情報
-    console.log('[sync-variations] BASE item:', baseItem.item_id, baseItem.title)
-    console.log('[sync-variations] BASE existing variations:', Array.from(baseVariationsMap.keys()))
-    console.log('[sync-variations] Local variations count:', allVariations?.length || 0)
-
     let addedCount = 0
     let deletedCount = 0
     let errorCount = 0
@@ -152,8 +147,6 @@ export async function POST(request: NextRequest) {
       const cast = variation.cast as { id: number; name: string; show_in_pos: boolean; is_active: boolean } | null
       const shouldBeInBase = cast?.show_in_pos && cast?.is_active
       const existsInBase = baseVariationsMap.has(variation.variation_name)
-
-      console.log(`[sync-variations] ${variation.variation_name}: shouldBeInBase=${shouldBeInBase}, existsInBase=${existsInBase}, is_synced=${variation.is_synced}, cast=`, cast)
 
       if (shouldBeInBase && !existsInBase) {
         // POS表示ON & BASEに存在しない → 追加
@@ -226,8 +219,6 @@ export async function POST(request: NextRequest) {
         skippedCount++
       }
     }
-
-    console.log('[sync-variations] Result:', { addedCount, deletedCount, errorCount, skippedCount })
 
     return NextResponse.json({
       success: true,

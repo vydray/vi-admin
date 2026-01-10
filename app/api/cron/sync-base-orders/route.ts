@@ -63,7 +63,6 @@ export async function GET(request: Request) {
                   })
                   .eq('store_id', setting.store_id)
 
-                console.log(`[BASE Sync] Store ${setting.store_id}: Token refreshed`)
               } catch (refreshError) {
                 results.push({
                   store_id: setting.store_id,
@@ -210,7 +209,6 @@ export async function GET(request: Request) {
           success: true,
           imported: successCount,
         })
-        console.log(`[BASE Sync] Store ${setting.store_id}: Imported ${successCount} items, ${errorCount} errors`)
       } catch (storeError) {
         const errorMessage = storeError instanceof Error ? storeError.message : 'Unknown error'
         results.push({

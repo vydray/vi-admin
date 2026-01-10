@@ -64,7 +64,6 @@ function ensureFontsRegistered() {
 
     fontsRegistered = true;
     fontRegistrationLog.push('Font registration complete');
-    console.log('Font registration:', fontRegistrationLog);
   } catch (error) {
     fontRegistrationLog.push(`ERROR: ${error}`);
     console.error('Failed to register fonts:', error);
