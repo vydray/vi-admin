@@ -44,6 +44,10 @@ interface DailySalesData {
   otherSales: number
   orderCount: number
   groups: number
+  dailyPayment: number
+  expense: number
+  cashCollection: number
+  baseSales: number
 }
 
 interface OrderItemExport {
@@ -402,6 +406,32 @@ export default function Home() {
         .gte('business_date', monthStart)
         .lte('business_date', monthEnd)
 
+      // 日別データ用の追加クエリ
+      // 日払い（勤怠から）
+      const { data: attendanceData } = await supabase
+        .from('attendance')
+        .select('date, daily_payment')
+        .eq('store_id', storeId)
+        .gte('date', monthStart)
+        .lte('date', monthEnd)
+
+      // 経費（小口現金払いのみ）
+      const { data: expensesData } = await supabase
+        .from('expenses')
+        .select('payment_date, amount, payment_method')
+        .eq('store_id', storeId)
+        .eq('payment_method', 'cash')
+        .gte('payment_date', monthStart)
+        .lte('payment_date', monthEnd)
+
+      // 現金回収（レジ金チェックから）
+      const { data: cashCountsData } = await supabase
+        .from('cash_counts')
+        .select('business_date, cash_collection')
+        .eq('store_id', storeId)
+        .gte('business_date', monthStart)
+        .lte('business_date', monthEnd)
+
       if (todayError) {
         console.error('Today orders error:', todayError)
       }
@@ -542,6 +572,25 @@ export default function Home() {
         // 日別来店人数（guest_countの合計）
         const dayGuests = dayOrders.reduce((sum, order) => sum + (Number(order.guest_count) || 0), 0)
 
+        // 日払い（勤怠から）
+        const dayDailyPayment = (attendanceData || [])
+          .filter(att => att.date === dateStr)
+          .reduce((sum, att) => sum + (att.daily_payment || 0), 0)
+
+        // 経費（小口現金払いのみ）
+        const dayExpense = (expensesData || [])
+          .filter(exp => exp.payment_date === dateStr)
+          .reduce((sum, exp) => sum + (exp.amount || 0), 0)
+
+        // 現金回収
+        const dayCollectionRecord = (cashCountsData || []).find(cc => cc.business_date === dateStr)
+        const dayCashCollection = dayCollectionRecord?.cash_collection || 0
+
+        // BASE売上
+        const dayBaseSales = (baseOrdersData || [])
+          .filter(bo => bo.business_date === dateStr)
+          .reduce((sum, bo) => sum + ((bo.base_price || 0) * (bo.quantity || 1)), 0)
+
         cumulative += daySales
 
         dailyData.push({
@@ -553,7 +602,11 @@ export default function Home() {
           cardSales: dayCardSales,
           otherSales: dayOtherSales,
           orderCount: dayOrders.length,
-          groups: dayGuests,  // 来店人数
+          groups: dayGuests,
+          dailyPayment: dayDailyPayment,
+          expense: dayExpense,
+          cashCollection: dayCashCollection,
+          baseSales: dayBaseSales,
         })
       }
 
@@ -755,7 +808,7 @@ export default function Home() {
         }}>
           <table style={{
             ...styles.dailyTable,
-            ...(isMobile ? { fontSize: '12px', minWidth: '600px' } : {})
+            ...(isMobile ? { fontSize: '12px', minWidth: '900px' } : {})
           }}>
             <thead>
               <tr style={styles.dailyTableHeader}>
@@ -776,6 +829,10 @@ export default function Home() {
                 <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>現金</th>
                 <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>カード</th>
                 <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>売掛</th>
+                <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>日払い</th>
+                <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>経費</th>
+                <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>回収金</th>
+                <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>BASE</th>
                 <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>客単価</th>
               </tr>
             </thead>
@@ -825,6 +882,18 @@ export default function Home() {
                   <td style={{ ...styles.dailyTableTd, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>
                     ¥{day.otherSales.toLocaleString()}
                   </td>
+                  <td style={{ ...styles.dailyTableTd, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}), color: day.dailyPayment > 0 ? '#e74c3c' : undefined }}>
+                    {day.dailyPayment > 0 ? `¥${day.dailyPayment.toLocaleString()}` : '-'}
+                  </td>
+                  <td style={{ ...styles.dailyTableTd, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}), color: day.expense > 0 ? '#e74c3c' : undefined }}>
+                    {day.expense > 0 ? `¥${day.expense.toLocaleString()}` : '-'}
+                  </td>
+                  <td style={{ ...styles.dailyTableTd, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}), color: day.cashCollection > 0 ? '#007AFF' : undefined }}>
+                    {day.cashCollection > 0 ? `¥${day.cashCollection.toLocaleString()}` : '-'}
+                  </td>
+                  <td style={{ ...styles.dailyTableTd, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}), color: day.baseSales > 0 ? '#9b59b6' : undefined }}>
+                    {day.baseSales > 0 ? `¥${day.baseSales.toLocaleString()}` : '-'}
+                  </td>
                   <td style={{ ...styles.dailyTableTd, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>
                     {day.orderCount > 0 ? `¥${Math.floor(day.sales / day.orderCount).toLocaleString()}` : '-'}
                   </td>
@@ -860,6 +929,18 @@ export default function Home() {
                 </td>
                 <td style={{ ...styles.dailyTableTd, textAlign: 'right', fontWeight: 'bold', ...(isMobile ? { padding: '8px 6px' } : {}) }}>
                   ¥{data.monthlyCredit.toLocaleString()}
+                </td>
+                <td style={{ ...styles.dailyTableTd, textAlign: 'right', fontWeight: 'bold', ...(isMobile ? { padding: '8px 6px' } : {}), color: '#e74c3c' }}>
+                  ¥{dailySales.reduce((sum, d) => sum + d.dailyPayment, 0).toLocaleString()}
+                </td>
+                <td style={{ ...styles.dailyTableTd, textAlign: 'right', fontWeight: 'bold', ...(isMobile ? { padding: '8px 6px' } : {}), color: '#e74c3c' }}>
+                  ¥{dailySales.reduce((sum, d) => sum + d.expense, 0).toLocaleString()}
+                </td>
+                <td style={{ ...styles.dailyTableTd, textAlign: 'right', fontWeight: 'bold', ...(isMobile ? { padding: '8px 6px' } : {}), color: '#007AFF' }}>
+                  ¥{dailySales.reduce((sum, d) => sum + d.cashCollection, 0).toLocaleString()}
+                </td>
+                <td style={{ ...styles.dailyTableTd, textAlign: 'right', fontWeight: 'bold', ...(isMobile ? { padding: '8px 6px' } : {}), color: '#9b59b6' }}>
+                  ¥{data.monthlyBaseSales.toLocaleString()}
                 </td>
                 <td style={{ ...styles.dailyTableTd, textAlign: 'right', fontWeight: 'bold', ...(isMobile ? { padding: '8px 6px' } : {}) }}>
                   ¥{avgMonthly.toLocaleString()}
