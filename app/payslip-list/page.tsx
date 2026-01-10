@@ -204,25 +204,51 @@ function PayslipListContent() {
             flex-direction: column;
           `
           card.innerHTML = `
-            <div style="background: #f8fafc; padding: 8px 12px; border-bottom: 1px solid #ddd;">
-              <div style="font-size: 11px; color: #666;">${storeName || ''}</div>
-              <div style="font-size: 13px; color: #333; font-weight: 500;">${format(selectedMonth, 'yyyy年M月')} 報酬明細</div>
-            </div>
-            <div style="padding: 10px 12px; border-bottom: 1px solid #ddd;">
-              <div style="font-size: 16px; font-weight: 600; color: #1e1e1e;">${p.cast_name}</div>
-            </div>
-            <div style="padding: 10px 12px; flex: 1;">
-              <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
-                <span style="font-size: 12px; color: #555;">総支給額</span>
-                <span style="font-size: 12px; color: #333;">${formatCurrency(p.gross_total)}</span>
+            <div style="background: #f8fafc; padding: 6px 10px; border-bottom: 1px solid #ddd; display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <div style="font-size: 10px; color: #666;">${storeName || ''}</div>
+                <div style="font-size: 12px; color: #333; font-weight: 500;">${format(selectedMonth, 'yyyy年M月')} 報酬明細</div>
               </div>
-              <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                <span style="font-size: 12px; color: #555;">控除合計</span>
-                <span style="font-size: 12px; color: #333;">${formatCurrency(p.total_deduction)}</span>
+              <div style="font-size: 15px; font-weight: 600; color: #1e1e1e;">${p.cast_name}</div>
+            </div>
+            <div style="padding: 8px 10px; flex: 1; font-size: 10px;">
+              <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
+                <span style="color: #666;">出勤</span>
+                <span style="color: #333;">${p.work_days}日 / ${p.total_hours.toFixed(1)}h</span>
               </div>
-              <div style="border-top: 1px dashed #ccc; padding-top: 8px; display: flex; justify-content: space-between;">
-                <span style="font-size: 13px; font-weight: 600; color: #1e1e1e;">残り支給</span>
-                <span style="font-size: 14px; font-weight: 600; color: #1e1e1e;">${formatCurrency(p.net_payment)}</span>
+              <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
+                <span style="color: #666;">時給収入</span>
+                <span style="color: #333;">${formatCurrency(p.hourly_income)}</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
+                <span style="color: #666;">売上バック</span>
+                <span style="color: #333;">${formatCurrency(p.sales_back)}</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
+                <span style="color: #666;">商品バック</span>
+                <span style="color: #333;">${formatCurrency(p.product_back)}</span>
+              </div>
+              ${p.fixed_amount > 0 ? `
+              <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
+                <span style="color: #666;">固定給</span>
+                <span style="color: #333;">${formatCurrency(p.fixed_amount)}</span>
+              </div>
+              ` : ''}
+              <div style="border-top: 1px solid #e5e5e5; margin: 4px 0; padding-top: 4px; display: flex; justify-content: space-between;">
+                <span style="font-weight: 500; color: #333;">総支給額</span>
+                <span style="font-weight: 500; color: #333;">${formatCurrency(p.gross_total)}</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+                <span style="color: #e74c3c;">日払い</span>
+                <span style="color: #e74c3c;">-${formatCurrency(p.daily_payment)}</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+                <span style="color: #e74c3c;">その他控除</span>
+                <span style="color: #e74c3c;">-${formatCurrency(p.withholding_tax + p.other_deductions)}</span>
+              </div>
+              <div style="border-top: 1px dashed #999; margin-top: 4px; padding-top: 5px; display: flex; justify-content: space-between;">
+                <span style="font-size: 11px; font-weight: 600; color: #1e1e1e;">残り支給</span>
+                <span style="font-size: 12px; font-weight: 600; color: #1e1e1e;">${formatCurrency(p.net_payment)}</span>
               </div>
             </div>
           `
