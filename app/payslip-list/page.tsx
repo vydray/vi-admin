@@ -238,15 +238,25 @@ function PayslipListContent() {
                 <span style="font-weight: 500; color: #333;">総支給額</span>
                 <span style="font-weight: 500; color: #333;">${formatCurrency(p.gross_total)}</span>
               </div>
+              ${p.daily_payment > 0 ? `
               <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
                 <span style="color: #e74c3c;">日払い</span>
                 <span style="color: #e74c3c;">-${formatCurrency(p.daily_payment)}</span>
               </div>
+              ` : ''}
+              ${p.withholding_tax > 0 ? `
               <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
-                <span style="color: #e74c3c;">その他控除</span>
-                <span style="color: #e74c3c;">-${formatCurrency(p.withholding_tax + p.other_deductions)}</span>
+                <span style="color: #e74c3c;">源泉徴収</span>
+                <span style="color: #e74c3c;">-${formatCurrency(p.withholding_tax)}</span>
               </div>
-              <div style="border-top: 1px dashed #999; margin-top: 4px; padding-top: 5px; display: flex; justify-content: space-between;">
+              ` : ''}
+              ${p.other_deductions > 0 ? `
+              <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+                <span style="color: #e74c3c;">その他</span>
+                <span style="color: #e74c3c;">-${formatCurrency(p.other_deductions)}</span>
+              </div>
+              ` : ''}
+              <div style="border-top: 1px dashed #999; margin-top: 3px; padding-top: 5px; display: flex; justify-content: space-between;">
                 <span style="font-size: 11px; font-weight: 600; color: #1e1e1e;">残り支給</span>
                 <span style="font-size: 12px; font-weight: 600; color: #1e1e1e;">${formatCurrency(p.net_payment)}</span>
               </div>
