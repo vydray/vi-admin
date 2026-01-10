@@ -1907,7 +1907,7 @@ function PayslipPageContent() {
                   <thead>
                     <tr style={styles.tableHeader}>
                       <th style={styles.th}>日付</th>
-                      {summary.useWageData && <th style={{ ...styles.th, textAlign: 'right' }}>時間</th>}
+                      <th style={{ ...styles.th, textAlign: 'right' }}>時間</th>
                       {summary.useWageData && <th style={{ ...styles.th, textAlign: 'right' }}>時給額</th>}
                       <th style={{ ...styles.th, textAlign: 'right' }}>売上</th>
                       <th style={{ ...styles.th, textAlign: 'right' }}>商品バック</th>
@@ -1937,7 +1937,7 @@ function PayslipPageContent() {
                         }}
                       >
                         <td style={styles.td}>{day.dayOfMonth}日({day.dayOfWeek})</td>
-                        {summary.useWageData && <td style={{ ...styles.td, textAlign: 'right' }}>{day.workHours > 0 ? `${day.workHours}h` : '-'}</td>}
+                        <td style={{ ...styles.td, textAlign: 'right' }}>{day.workHours > 0 ? `${day.workHours}h` : '-'}</td>
                         {summary.useWageData && <td style={{ ...styles.td, textAlign: 'right' }}>{day.wageAmount > 0 ? currencyFormatter.format(day.wageAmount) : '-'}</td>}
                         <td style={{ ...styles.td, textAlign: 'right' }}>{day.sales > 0 ? currencyFormatter.format(day.sales) : '-'}</td>
                         <td style={{ ...styles.td, textAlign: 'right', color: '#FF9500' }}>{day.productBack > 0 ? currencyFormatter.format(day.productBack) : '-'}</td>
@@ -1949,7 +1949,7 @@ function PayslipPageContent() {
                     {/* 合計行 */}
                     <tr style={styles.tableTotal}>
                       <td style={{ ...styles.td, fontWeight: 'bold' }}>合計</td>
-                      {summary.useWageData && <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold' }}>{summary.totalWorkHours}h</td>}
+                      <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold' }}>{summary.totalWorkHours}h</td>
                       {summary.useWageData && <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold' }}>{currencyFormatter.format(summary.totalWageAmount)}</td>}
                       <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold' }}>{currencyFormatter.format(summary.totalSales)}</td>
                       <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold', color: '#FF9500' }}>{currencyFormatter.format(summary.totalProductBack)}</td>

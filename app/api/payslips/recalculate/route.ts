@@ -596,7 +596,7 @@ async function calculatePayslipForCast(
       year_month: yearMonth,
       status: 'draft',
       work_days: workDays,
-      total_hours: useWageData ? Math.round(totalWorkHours * 100) / 100 : 0,
+      total_hours: Math.round(totalWorkHours * 100) / 100,
       average_hourly_wage: useWageData ? averageHourlyWage : 0,
       hourly_income: useWageData ? totalWageAmount : 0,
       sales_back: salesBack,
