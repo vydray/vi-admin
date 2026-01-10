@@ -949,8 +949,6 @@ function CompensationSettingsPageContent() {
 
   const loadSettings = useCallback(async (castId: number, year: number, month: number) => {
     try {
-      console.log(`[loadSettings] Loading for cast ${castId}, ${year}/${month}`)
-
       // まず指定年月の設定を探す
       let { data, error } = await supabase
         .from('compensation_settings')
@@ -963,13 +961,11 @@ function CompensationSettingsPageContent() {
         .maybeSingle()
 
       if (error) throw error
-      console.log(`[loadSettings] Exact match:`, data ? `found (id=${data.id})` : 'not found')
 
       let isExactMatch = !!data
 
       // 年月指定の設定がない場合、直近の設定を探す
       if (!data) {
-        // 全ての設定を取得して直近のものを探す（target_year/monthがnullでないもの）
         const { data: allSettings, error: allError } = await supabase
           .from('compensation_settings')
           .select('*')
@@ -978,8 +974,6 @@ function CompensationSettingsPageContent() {
           .eq('is_active', true)
 
         if (allError) throw allError
-        console.log(`[loadSettings] All settings for this cast:`, allSettings?.length || 0, 'records')
-        allSettings?.forEach(s => console.log(`  - id=${s.id}, target=${s.target_year}/${s.target_month}`))
 
         // target_year/monthが設定されているものから直近を探す
         const recentData = allSettings
@@ -989,12 +983,9 @@ function CompensationSettingsPageContent() {
             return b.target_month - a.target_month
           })[0]
 
-        console.log(`[loadSettings] Recent settings:`, recentData ? `found (id=${recentData.id}, ${recentData.target_year}/${recentData.target_month})` : 'not found')
-
         // 直近の設定がなければデフォルト設定（target_year/month = null）を探す
         if (!recentData) {
           const defaultData = allSettings?.find(s => s.target_year === null && s.target_month === null)
-          console.log(`[loadSettings] Default settings:`, defaultData ? `found (id=${defaultData.id})` : 'not found')
           data = defaultData || null
         } else {
           data = recentData
@@ -1021,11 +1012,8 @@ function CompensationSettingsPageContent() {
             .select('id')
             .single()
 
-          if (saveError) {
-            console.error('設定の自動保存エラー:', saveError)
-          } else if (newRecord) {
+          if (!saveError && newRecord) {
             setExistingId(newRecord.id)
-            console.log(`[CompSettings] Auto-saved settings for ${year}/${month}, cast ${castId}`)
           }
         } else {
           setExistingId(data.id)
@@ -2050,6 +2038,68 @@ function CompensationSettingsPageContent() {
     }
   }
 
+  // 前月から設定をコピー
+  const [copyingFromPrevMonth, setCopyingFromPrevMonth] = useState(false)
+  const copyFromPreviousMonth = async () => {
+    if (!selectedCastId) return
+
+    const prevYear = selectedMonth === 1 ? selectedYear - 1 : selectedYear
+    const prevMonth = selectedMonth === 1 ? 12 : selectedMonth - 1
+
+    setCopyingFromPrevMonth(true)
+    try {
+      // 前月の設定を取得
+      const { data: prevSettings, error } = await supabase
+        .from('compensation_settings')
+        .select('*')
+        .eq('cast_id', selectedCastId)
+        .eq('store_id', storeId)
+        .eq('target_year', prevYear)
+        .eq('target_month', prevMonth)
+        .eq('is_active', true)
+        .maybeSingle()
+
+      if (error) throw error
+
+      if (!prevSettings) {
+        toast.error(`${prevYear}年${prevMonth}月の設定が見つかりません`)
+        return
+      }
+
+      // 現在の月に保存
+      const state = dbToState(prevSettings)
+      const saveData = {
+        ...stateToDb(state, selectedCastId, storeId),
+        target_year: selectedYear,
+        target_month: selectedMonth,
+        enabled_deduction_ids: prevSettings.enabled_deduction_ids || [],
+      }
+
+      if (existingId) {
+        // 既存を更新
+        const { error: updateError } = await supabase
+          .from('compensation_settings')
+          .update(saveData)
+          .eq('id', existingId)
+        if (updateError) throw updateError
+      } else {
+        // 新規作成
+        const { error: insertError } = await supabase
+          .from('compensation_settings')
+          .insert(saveData)
+        if (insertError) throw insertError
+      }
+
+      toast.success(`${prevYear}年${prevMonth}月の設定をコピーしました`)
+      await loadSettings(selectedCastId, selectedYear, selectedMonth)
+    } catch (error) {
+      console.error('コピーエラー:', error)
+      toast.error('コピーに失敗しました')
+    } finally {
+      setCopyingFromPrevMonth(false)
+    }
+  }
+
   // 全キャストに設定を一括適用
   const [showBulkApplyModal, setShowBulkApplyModal] = useState(false)
   const [applyingToAll, setApplyingToAll] = useState(false)
@@ -2326,6 +2376,23 @@ function CompensationSettingsPageContent() {
               }}
             >
               ▶
+            </button>
+            <button
+              onClick={copyFromPreviousMonth}
+              disabled={copyingFromPrevMonth || !selectedCastId}
+              style={{
+                marginLeft: '12px',
+                padding: '6px 12px',
+                backgroundColor: '#8b5cf6',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: copyingFromPrevMonth || !selectedCastId ? 'not-allowed' : 'pointer',
+                fontSize: '12px',
+                opacity: copyingFromPrevMonth || !selectedCastId ? 0.5 : 1,
+              }}
+            >
+              {copyingFromPrevMonth ? 'コピー中...' : '前月からコピー'}
             </button>
             {isLocked && (
               <span style={styles.lockedBadge}>ロック中</span>
