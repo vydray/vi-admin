@@ -148,7 +148,8 @@ function PayslipListContent() {
         '源泉徴収',
         'その他控除',
         '控除合計',
-        '差引支給額',
+        '残り支給額',
+        '支払総額',
         '確定状態',
       ]
 
@@ -167,6 +168,7 @@ function PayslipListContent() {
         p.other_deductions,
         p.total_deduction,
         p.net_payment,
+        p.net_payment + p.daily_payment,
         p.status === 'finalized' ? '確定' : '下書き',
       ])
 
@@ -305,7 +307,8 @@ function PayslipListContent() {
                   <th style={thStyleNum}>源泉徴収</th>
                   <th style={thStyleNum}>その他</th>
                   <th style={thStyleNum}>控除計</th>
-                  <th style={{ ...thStyleNum, backgroundColor: '#dcfce7' }}>差引支給</th>
+                  <th style={{ ...thStyleNum, backgroundColor: '#dcfce7' }}>残り支給</th>
+                  <th style={{ ...thStyleNum, backgroundColor: '#fef3c7' }}>支払総額</th>
                   <th style={thStyle}>状態</th>
                 </tr>
               </thead>
@@ -328,6 +331,9 @@ function PayslipListContent() {
                     <td style={tdStyleNum}>{formatCurrency(p.total_deduction)}</td>
                     <td style={{ ...tdStyleNum, backgroundColor: '#f0fdf4', fontWeight: '600' }}>
                       {formatCurrency(p.net_payment)}
+                    </td>
+                    <td style={{ ...tdStyleNum, backgroundColor: '#fef9c3', fontWeight: '600' }}>
+                      {formatCurrency(p.net_payment + p.daily_payment)}
                     </td>
                     <td style={{ ...tdStyle, textAlign: 'center' }}>
                       <span style={{
@@ -360,6 +366,9 @@ function PayslipListContent() {
                   <td style={tdStyleNum}>{formatCurrency(totals.total_deduction)}</td>
                   <td style={{ ...tdStyleNum, backgroundColor: '#bbf7d0' }}>
                     {formatCurrency(totals.net_payment)}
+                  </td>
+                  <td style={{ ...tdStyleNum, backgroundColor: '#fde68a' }}>
+                    {formatCurrency(totals.net_payment + totals.daily_payment)}
                   </td>
                   <td style={tdStyle}></td>
                 </tr>
