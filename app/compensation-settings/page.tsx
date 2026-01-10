@@ -2281,26 +2281,50 @@ function CompensationSettingsPageContent() {
           </div>
 
           {/* 対象年月 */}
-          <div style={styles.headerBox}>
-            <span style={styles.headerBoxLabel}>対象年月</span>
-            <select
-              value={selectedYear}
-              onChange={(e) => setSelectedYear(Number(e.target.value))}
-              style={styles.headerSelect}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button
+              onClick={() => {
+                if (selectedMonth === 1) {
+                  setSelectedYear(selectedYear - 1)
+                  setSelectedMonth(12)
+                } else {
+                  setSelectedMonth(selectedMonth - 1)
+                }
+              }}
+              style={{
+                padding: '6px 10px',
+                backgroundColor: '#f1f5f9',
+                border: '1px solid #e2e8f0',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '14px',
+              }}
             >
-              {Array.from({ length: 5 }, (_, i) => now.getFullYear() - 2 + i).map((year) => (
-                <option key={year} value={year}>{year}年</option>
-              ))}
-            </select>
-            <select
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(Number(e.target.value))}
-              style={styles.headerSelectSmall}
+              ◀
+            </button>
+            <span style={{ fontSize: '16px', fontWeight: '600', minWidth: '100px', textAlign: 'center' }}>
+              {selectedYear}年{selectedMonth}月
+            </span>
+            <button
+              onClick={() => {
+                if (selectedMonth === 12) {
+                  setSelectedYear(selectedYear + 1)
+                  setSelectedMonth(1)
+                } else {
+                  setSelectedMonth(selectedMonth + 1)
+                }
+              }}
+              style={{
+                padding: '6px 10px',
+                backgroundColor: '#f1f5f9',
+                border: '1px solid #e2e8f0',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '14px',
+              }}
             >
-              {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => (
-                <option key={month} value={month}>{month}月</option>
-              ))}
-            </select>
+              ▶
+            </button>
             {isLocked && (
               <span style={styles.lockedBadge}>ロック中</span>
             )}
