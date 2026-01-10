@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { format, addMonths, subMonths } from 'date-fns'
+import { jsPDF } from 'jspdf'
 import { ja } from 'date-fns/locale'
 import { useStore } from '@/contexts/StoreContext'
 import { exportToPDF } from '@/lib/pdfExport'
@@ -189,6 +190,117 @@ function PayslipListContent() {
     } catch (error) {
       console.error('CSV出力エラー:', error)
       alert('CSV出力に失敗しました')
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  // コンパクトカード描画関数
+  const drawCompactCard = (
+    pdf: jsPDF,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    payslip: PayslipSummary
+  ) => {
+    // 枠線
+    pdf.setDrawColor(200)
+    pdf.rect(x, y, width, height)
+
+    // ヘッダー背景
+    pdf.setFillColor(248, 250, 252)
+    pdf.rect(x, y, width, 15, 'F')
+
+    // 店舗名・月
+    pdf.setFontSize(8)
+    pdf.setTextColor(100)
+    pdf.text(storeName || '', x + 3, y + 5)
+    pdf.setFontSize(9)
+    pdf.text(format(selectedMonth, 'yyyy年M月') + ' 報酬明細', x + 3, y + 11)
+
+    // 区切り線
+    pdf.setDrawColor(220)
+    pdf.line(x, y + 15, x + width, y + 15)
+
+    // キャスト名
+    pdf.setFontSize(12)
+    pdf.setTextColor(30)
+    pdf.text(payslip.cast_name, x + 3, y + 24)
+
+    // 区切り線
+    pdf.line(x, y + 28, x + width, y + 28)
+
+    // 金額
+    pdf.setFontSize(9)
+    pdf.setTextColor(70)
+
+    const rightX = x + width - 3
+    let currentY = y + 36
+
+    pdf.text('総支給額', x + 3, currentY)
+    pdf.text(formatCurrency(payslip.gross_total), rightX, currentY, { align: 'right' })
+
+    currentY += 7
+    pdf.text('控除合計', x + 3, currentY)
+    pdf.text(formatCurrency(payslip.total_deduction), rightX, currentY, { align: 'right' })
+
+    // 区切り線（点線）
+    currentY += 4
+    pdf.setLineDashPattern([1, 1], 0)
+    pdf.line(x + 3, currentY, x + width - 3, currentY)
+    pdf.setLineDashPattern([], 0)
+
+    // 残り支給（強調）
+    currentY += 7
+    pdf.setFontSize(10)
+    pdf.setTextColor(30)
+    pdf.text('残り支給', x + 3, currentY)
+    pdf.setFontSize(11)
+    pdf.text(formatCurrency(payslip.net_payment), rightX, currentY, { align: 'right' })
+  }
+
+  // コンパクトカード出力
+  const handleExportCompactCards = async () => {
+    setExporting(true)
+    setShowExportModal(false)
+
+    try {
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      })
+
+      const pageWidth = 210
+      const pageHeight = 297
+      const margin = 10
+      const cardWidth = 90
+      const cardHeight = 65
+      const cols = 2
+      const rows = 4
+      const gapX = (pageWidth - margin * 2 - cardWidth * cols) / (cols - 1)
+      const gapY = (pageHeight - margin * 2 - cardHeight * rows) / (rows - 1)
+
+      payslips.forEach((p, index) => {
+        if (index > 0 && index % 8 === 0) {
+          pdf.addPage()
+        }
+
+        const pageIndex = index % 8
+        const col = pageIndex % cols
+        const row = Math.floor(pageIndex / cols)
+        const x = margin + col * (cardWidth + gapX)
+        const y = margin + row * (cardHeight + gapY)
+
+        drawCompactCard(pdf, x, y, cardWidth, cardHeight, p)
+      })
+
+      const blobUrl = pdf.output('bloburl')
+      window.open(blobUrl.toString(), '_blank')
+    } catch (error) {
+      console.error('カード出力エラー:', error)
+      alert('カード出力に失敗しました')
     } finally {
       setExporting(false)
     }
@@ -402,6 +514,12 @@ function PayslipListContent() {
                 style={exportOptionBtnStyle('#8b5cf6')}
               >
                 PDF形式でダウンロード
+              </button>
+              <button
+                onClick={handleExportCompactCards}
+                style={exportOptionBtnStyle('#f59e0b')}
+              >
+                カード印刷（封筒添付用）
               </button>
               <button
                 onClick={handleExportCSV}
