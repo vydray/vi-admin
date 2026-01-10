@@ -87,9 +87,10 @@ function CompensationListContent() {
       await exportToPDF(printRef.current, {
         filename: `報酬形態一覧_${storeName}_${new Date().toISOString().split('T')[0]}.pdf`,
         orientation: 'portrait',
-        margin: 10
+        margin: 10,
+        preview: true
       })
-      toast.success('PDFをダウンロードしました')
+      toast.success('PDFを新しいタブで開きました')
     } catch (error) {
       console.error('PDF出力エラー:', error)
       toast.error('PDF出力に失敗しました')

@@ -120,7 +120,8 @@ function PayslipListContent() {
       await exportToPDF(printRef.current, {
         filename: `報酬明細一覧_${storeName}_${format(selectedMonth, 'yyyy年MM月')}.pdf`,
         orientation: 'landscape',
-        margin: 10
+        margin: 10,
+        preview: true  // 新しいタブでプレビュー表示
       })
     } catch (error) {
       console.error('PDF出力エラー:', error)

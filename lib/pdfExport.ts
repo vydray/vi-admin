@@ -7,6 +7,7 @@ interface ExportToPDFOptions {
   format?: 'a4' | 'a3' | 'letter'
   margin?: number
   scale?: number
+  preview?: boolean  // trueで新しいタブでプレビュー表示
 }
 
 export async function exportToPDF(
@@ -18,7 +19,8 @@ export async function exportToPDF(
     orientation = 'portrait',
     format = 'a4',
     margin = 10,
-    scale = 2
+    scale = 2,
+    preview = false
   } = options
 
   // HTML要素をキャンバスに変換
@@ -89,7 +91,14 @@ export async function exportToPDF(
     }
   }
 
-  pdf.save(filename)
+  if (preview) {
+    // 新しいタブでプレビュー表示
+    const blobUrl = pdf.output('bloburl')
+    window.open(blobUrl as string, '_blank')
+  } else {
+    // 直接ダウンロード
+    pdf.save(filename)
+  }
 }
 
 // 印刷プレビュー用のスタイル生成

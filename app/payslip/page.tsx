@@ -1357,7 +1357,8 @@ function PayslipPageContent() {
       await exportToPDF(printRef.current, {
         filename: `報酬明細_${cast.name}_${format(selectedMonth, 'yyyy年MM月')}.pdf`,
         orientation: 'portrait',
-        margin: 10
+        margin: 10,
+        preview: true
       })
     } catch (error) {
       console.error('PDF出力エラー:', error)
