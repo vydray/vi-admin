@@ -962,26 +962,47 @@ function CompensationSettingsPageContent() {
 
       if (error) throw error
 
-      // 年月指定の設定がない場合、デフォルト設定（target_year/month = null）を探す
+      // 年月指定の設定がない場合、直近の設定を探す（過去の月から最新のもの）
       if (!data) {
-        const { data: defaultData, error: defaultError } = await supabase
+        const { data: recentData, error: recentError } = await supabase
           .from('compensation_settings')
           .select('*')
           .eq('cast_id', castId)
           .eq('store_id', storeId)
-          .is('target_year', null)
-          .is('target_month', null)
           .eq('is_active', true)
+          .not('target_year', 'is', null)
+          .order('target_year', { ascending: false })
+          .order('target_month', { ascending: false })
+          .limit(1)
           .maybeSingle()
 
-        if (defaultError) throw defaultError
-        data = defaultData
+        if (recentError) throw recentError
+
+        // 直近の設定がなければデフォルト設定（target_year/month = null）を探す
+        if (!recentData) {
+          const { data: defaultData, error: defaultError } = await supabase
+            .from('compensation_settings')
+            .select('*')
+            .eq('cast_id', castId)
+            .eq('store_id', storeId)
+            .is('target_year', null)
+            .is('target_month', null)
+            .eq('is_active', true)
+            .maybeSingle()
+
+          if (defaultError) throw defaultError
+          data = defaultData
+        } else {
+          data = recentData
+        }
       }
 
       if (data) {
         setSettingsState(dbToState(data))
         setIsLocked(data.is_locked ?? false)
-        setExistingId(data.id)
+        // 別の月の設定を読み込んだ場合は、新規保存として扱う（existingIdをクリア）
+        const isExactMatch = data.target_year === year && data.target_month === month
+        setExistingId(isExactMatch ? data.id : undefined)
         setEnabledDeductionIds(data.enabled_deduction_ids || [])
       } else {
         // 新規設定

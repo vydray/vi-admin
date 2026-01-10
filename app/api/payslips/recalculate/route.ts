@@ -183,17 +183,51 @@ async function calculatePayslipForCast(
       latePenaltyRules = rules || []
     }
 
-    // 報酬設定を取得（store_idが一致するものだけ使用）
-    const { data: compensationSettingsArray } = await supabaseAdmin
+    // 報酬設定を取得（年月指定 → 直近の設定 → デフォルト設定の順で探す）
+    const targetYear = month.getFullYear()
+    const targetMonth = month.getMonth() + 1
+
+    // 1. 指定年月の設定を探す
+    let { data: compensationSettings } = await supabaseAdmin
       .from('compensation_settings')
-      .select('enabled_deduction_ids, compensation_types, payment_selection_method, selected_compensation_type_id, store_id')
+      .select('enabled_deduction_ids, compensation_types, payment_selection_method, selected_compensation_type_id, store_id, target_year, target_month')
       .eq('cast_id', cast.id)
+      .eq('store_id', storeId)
+      .eq('target_year', targetYear)
+      .eq('target_month', targetMonth)
+      .eq('is_active', true)
+      .maybeSingle()
 
-    // store_idが一致するもののみ使用（異なるstore_idのデータは使わない）
-    const compensationSettings = compensationSettingsArray?.find(s => s.store_id === storeId) || null
+    // 2. なければ直近の設定を探す
+    if (!compensationSettings) {
+      const { data: recentSettings } = await supabaseAdmin
+        .from('compensation_settings')
+        .select('enabled_deduction_ids, compensation_types, payment_selection_method, selected_compensation_type_id, store_id, target_year, target_month')
+        .eq('cast_id', cast.id)
+        .eq('store_id', storeId)
+        .eq('is_active', true)
+        .not('target_year', 'is', null)
+        .order('target_year', { ascending: false })
+        .order('target_month', { ascending: false })
+        .limit(1)
+        .maybeSingle()
 
-    if (compensationSettingsArray && compensationSettingsArray.length > 0 && !compensationSettings) {
-      console.log(`[Payslip] Cast ${cast.id} (${cast.name}): compensation_settings found but store_id mismatch. Expected ${storeId}, found store_ids:`, compensationSettingsArray.map(s => s.store_id))
+      compensationSettings = recentSettings
+    }
+
+    // 3. なければデフォルト設定を探す
+    if (!compensationSettings) {
+      const { data: defaultSettings } = await supabaseAdmin
+        .from('compensation_settings')
+        .select('enabled_deduction_ids, compensation_types, payment_selection_method, selected_compensation_type_id, store_id, target_year, target_month')
+        .eq('cast_id', cast.id)
+        .eq('store_id', storeId)
+        .is('target_year', null)
+        .is('target_month', null)
+        .eq('is_active', true)
+        .maybeSingle()
+
+      compensationSettings = defaultSettings
     }
 
     // 日別売上データを取得（cast_daily_itemsから）
