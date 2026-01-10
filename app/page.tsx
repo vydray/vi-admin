@@ -202,135 +202,188 @@ export default function Home() {
     setIsExporting(true)
     setShowExportModal(false)
     try {
-      // 選択された年月の開始日と終了日
-      const monthStr = String(selectedMonth).padStart(2, '0')
-      const monthStart = `${selectedYear}-${monthStr}-01`
-      const lastDay = new Date(selectedYear, selectedMonth, 0).getDate()
-      const monthEnd = `${selectedYear}-${monthStr}-${String(lastDay).padStart(2, '0')}`
+      let csvContent: string
+      let filename: string
 
-      // 伝票データを取得（注文明細と支払情報も含む）
-      const { data: orders, error } = await supabase
-        .from('orders')
-        .select(`
-          *,
-          order_items(*),
-          payments(*)
-        `)
-        .eq('store_id', storeId)
-        .gte('order_date', monthStart)
-        .lte('order_date', monthEnd + 'T23:59:59')
-        .is('deleted_at', null)
-        .order('checkout_datetime', { ascending: true })
+      if (exportType === 'monthly') {
+        // 月別データ（日別テーブルのデータ）をエクスポート
+        if (dailySales.length === 0) {
+          toast.error('エクスポートするデータがありません')
+          return
+        }
 
-      if (error) throw error
+        const headers = [
+          '日付',
+          '店舗売上',
+          '会計数',
+          '人数',
+          '現金',
+          'カード',
+          '売掛',
+          '日払い',
+          '経費',
+          '回収金',
+          'BASE',
+          '客単価'
+        ]
 
-      if (!orders || orders.length === 0) {
-        toast.error('エクスポートするデータがありません')
-        return
-      }
-
-      // 型アサーション
-      const typedOrders = orders as unknown as OrderExport[]
-
-      // CSV作成
-      const headers = [
-        '伝票番号',
-        '営業日',
-        '会計日時',
-        'テーブル番号',
-        '現金',
-        'カード',
-        'その他',
-        '伝票税別小計',
-        '伝票合計',
-        '推し',
-        'カテゴリー',
-        '商品名',
-        'キャスト名',
-        '個数',
-        '個別価格',
-        '合計',
-        '消費税前金額',
-        '合計'
-      ]
-
-      const rows: string[][] = []
-
-      typedOrders.forEach((order: OrderExport) => {
-        const payment = Array.isArray(order.payments) ? order.payments[0] : order.payments
-        const cashAmount = payment?.cash_amount || 0
-        const cardAmount = payment?.credit_card_amount || 0
-        const otherAmount = payment?.other_payment_amount || 0
-
-        const orderDate = order.order_date ? new Date(order.order_date).toLocaleDateString('ja-JP') : ''
-        const checkoutDatetime = order.checkout_datetime ? new Date(order.checkout_datetime).toLocaleString('ja-JP') : ''
-
-        const items = order.order_items || []
-
-        // 商品合計（サービス料・消費税が足される前の金額）
-        const itemsTotal = items.reduce((sum: number, item: OrderItemExport) => sum + (item.subtotal || 0), 0)
-
-        // 1行目：伝票ヘッダー（伝票情報のみ、明細は空欄）
-        rows.push([
-          order.receipt_number || '',
-          orderDate,
-          checkoutDatetime,
-          order.table_number || '',
-          String(cashAmount),
-          String(cardAmount),
-          String(otherAmount),
-          String(itemsTotal), // 商品合計（サービス料・消費税前）
-          String(order.total_incl_tax || 0),
-          order.staff_name || '', // 推し
-          '', // カテゴリー以降は空欄
-          '',
-          '',
-          '',
-          '',
-          '',
-          '',
-          ''
+        const rows = dailySales.map(day => [
+          day.day,
+          String(day.sales),
+          String(day.orderCount),
+          String(day.groups),
+          String(day.cashSales),
+          String(day.cardSales),
+          String(day.otherSales),
+          String(day.dailyPayment),
+          String(day.expense),
+          String(day.cashCollection),
+          String(day.baseSales),
+          day.orderCount > 0 ? String(Math.floor(day.sales / day.orderCount)) : '0'
         ])
 
-        // 2行目以降：明細行（伝票情報は空欄、推しは入力、明細のみ）
-        items.forEach((item: OrderItemExport) => {
-          // 消費税前金額を計算（100円単位で切り捨て）
-          const quantity = item.quantity || 0
-          const unitPrice = item.unit_price || 0
-          const unitPriceExclTax = Math.floor((unitPrice / 1.1) / 100) * 100
+        // 合計行を追加
+        const totals = dailySales.reduce((acc, d) => ({
+          sales: acc.sales + d.sales,
+          orderCount: acc.orderCount + d.orderCount,
+          groups: acc.groups + d.groups,
+          cashSales: acc.cashSales + d.cashSales,
+          cardSales: acc.cardSales + d.cardSales,
+          otherSales: acc.otherSales + d.otherSales,
+          dailyPayment: acc.dailyPayment + d.dailyPayment,
+          expense: acc.expense + d.expense,
+          cashCollection: acc.cashCollection + d.cashCollection,
+          baseSales: acc.baseSales + d.baseSales,
+        }), { sales: 0, orderCount: 0, groups: 0, cashSales: 0, cardSales: 0, otherSales: 0, dailyPayment: 0, expense: 0, cashCollection: 0, baseSales: 0 })
 
-          // 合計を計算
-          const subtotalIncTax = item.subtotal || 0  // 税込合計（既存のsubtotal）
-          const subtotalExclTax = unitPriceExclTax * quantity  // 税抜合計（税抜単価 × 個数）
+        rows.push([
+          '合計',
+          String(totals.sales),
+          String(totals.orderCount),
+          String(totals.groups),
+          String(totals.cashSales),
+          String(totals.cardSales),
+          String(totals.otherSales),
+          String(totals.dailyPayment),
+          String(totals.expense),
+          String(totals.cashCollection),
+          String(totals.baseSales),
+          totals.orderCount > 0 ? String(Math.floor(totals.sales / totals.orderCount)) : '0'
+        ])
+
+        csvContent = [
+          headers.join(','),
+          ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+        ].join('\n')
+
+        filename = `月別データ_${selectedYear}年${selectedMonth}月.csv`
+      } else {
+        // 会計伝票一覧をエクスポート
+        const monthStr = String(selectedMonth).padStart(2, '0')
+        const monthStart = `${selectedYear}-${monthStr}-01`
+        const lastDay = new Date(selectedYear, selectedMonth, 0).getDate()
+        const monthEnd = `${selectedYear}-${monthStr}-${String(lastDay).padStart(2, '0')}`
+
+        const { data: orders, error } = await supabase
+          .from('orders')
+          .select(`
+            *,
+            order_items(*),
+            payments(*)
+          `)
+          .eq('store_id', storeId)
+          .gte('order_date', monthStart)
+          .lte('order_date', monthEnd + 'T23:59:59')
+          .is('deleted_at', null)
+          .order('checkout_datetime', { ascending: true })
+
+        if (error) throw error
+
+        if (!orders || orders.length === 0) {
+          toast.error('エクスポートするデータがありません')
+          return
+        }
+
+        const typedOrders = orders as unknown as OrderExport[]
+
+        const headers = [
+          '伝票番号',
+          '営業日',
+          '会計日時',
+          'テーブル番号',
+          '現金',
+          'カード',
+          'その他',
+          '伝票税別小計',
+          '伝票合計',
+          '推し',
+          'カテゴリー',
+          '商品名',
+          'キャスト名',
+          '個数',
+          '個別価格',
+          '合計',
+          '消費税前金額',
+          '合計'
+        ]
+
+        const rows: string[][] = []
+
+        typedOrders.forEach((order: OrderExport) => {
+          const payment = Array.isArray(order.payments) ? order.payments[0] : order.payments
+          const cashAmount = payment?.cash_amount || 0
+          const cardAmount = payment?.credit_card_amount || 0
+          const otherAmount = payment?.other_payment_amount || 0
+
+          const orderDate = order.order_date ? new Date(order.order_date).toLocaleDateString('ja-JP') : ''
+          const checkoutDatetime = order.checkout_datetime ? new Date(order.checkout_datetime).toLocaleString('ja-JP') : ''
+
+          const items = order.order_items || []
+          const itemsTotal = items.reduce((sum: number, item: OrderItemExport) => sum + (item.subtotal || 0), 0)
 
           rows.push([
-            '', // 伝票番号
-            '', // 営業日
-            '', // 会計日時
-            '', // テーブル番号
-            '', // 現金
-            '', // カード
-            '', // その他
-            '', // 伝票税別小計
-            '', // 伝票合計
-            order.staff_name || '', // 推し（入力）
-            item.category || '',
-            item.product_name || '',
-            item.cast_name || '',
-            String(quantity), // 個数
-            String(unitPrice), // 個別価格（税込単価）
-            String(subtotalIncTax), // 合計（税込）
-            String(unitPriceExclTax), // 消費税前金額（税抜単価・100円単位切り捨て）
-            String(subtotalExclTax) // 合計（税抜）
+            order.receipt_number || '',
+            orderDate,
+            checkoutDatetime,
+            order.table_number || '',
+            String(cashAmount),
+            String(cardAmount),
+            String(otherAmount),
+            String(itemsTotal),
+            String(order.total_incl_tax || 0),
+            order.staff_name || '',
+            '', '', '', '', '', '', '', ''
           ])
-        })
-      })
 
-      // CSV文字列生成
-      const csvContent = [
-        headers.join(','),
-        ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
-      ].join('\n')
+          items.forEach((item: OrderItemExport) => {
+            const quantity = item.quantity || 0
+            const unitPrice = item.unit_price || 0
+            const unitPriceExclTax = Math.floor((unitPrice / 1.1) / 100) * 100
+            const subtotalIncTax = item.subtotal || 0
+            const subtotalExclTax = unitPriceExclTax * quantity
+
+            rows.push([
+              '', '', '', '', '', '', '', '', '',
+              order.staff_name || '',
+              item.category || '',
+              item.product_name || '',
+              item.cast_name || '',
+              String(quantity),
+              String(unitPrice),
+              String(subtotalIncTax),
+              String(unitPriceExclTax),
+              String(subtotalExclTax)
+            ])
+          })
+        })
+
+        csvContent = [
+          headers.join(','),
+          ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+        ].join('\n')
+
+        filename = `会計伝票一覧_${selectedYear}年${selectedMonth}月.csv`
+      }
 
       // BOM付きUTF-8でダウンロード
       const bom = '\uFEFF'
@@ -338,11 +391,6 @@ export default function Home() {
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-
-      const filename = exportType === 'receipts'
-        ? `会計伝票一覧_${selectedYear}年${selectedMonth}月.csv`
-        : `月別データ_${selectedYear}年${selectedMonth}月.csv`
-
       link.download = filename
       link.click()
       URL.revokeObjectURL(url)
