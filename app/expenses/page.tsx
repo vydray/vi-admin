@@ -279,12 +279,12 @@ function ExpensesPageContent() {
 
     setSaving(true)
     try {
-      // 経費を追加
+      // 経費を追加（レジ金はカテゴリなし）
       const { data: expenseData, error: expenseError } = await supabase
         .from('expenses')
         .insert({
           store_id: storeId,
-          category_id: newExpense.category_id || null,
+          category_id: newExpense.payment_method === 'register' ? null : (newExpense.category_id || null),
           target_month: newExpense.target_month,
           payment_date: newExpense.payment_date,
           payment_method: newExpense.payment_method,
@@ -710,6 +710,8 @@ function ExpensesPageContent() {
                   {/* 左側: フォーム */}
                   <div style={styles.expenseFormSection}>
                     <div style={styles.expenseFormGrid}>
+                      {/* レジ金以外はカテゴリ選択 */}
+                      {newExpense.payment_method !== 'register' && (
                       <div style={styles.formGroup}>
                         <label style={styles.label}>カテゴリ</label>
                         <select
@@ -724,6 +726,7 @@ function ExpensesPageContent() {
                           ))}
                         </select>
                       </div>
+                      )}
                       <div style={styles.formGroup}>
                         <label style={styles.label}>対象月</label>
                         <input
