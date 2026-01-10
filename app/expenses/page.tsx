@@ -1093,11 +1093,6 @@ function ExpensesPageContent() {
                         }}>
                           {expense.payment_method === 'cash' ? '小口' : expense.payment_method === 'register' ? 'レジ金' : '口座'}
                         </span>
-                        {expense.entered_by && (
-                          <span style={styles.enteredByBadge}>
-                            {expense.entered_by}
-                          </span>
-                        )}
                       </div>
                       <div style={styles.expenseDescription}>
                         {expense.usage_purpose || expense.description || '（使用用途なし）'}
