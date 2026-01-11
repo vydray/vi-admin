@@ -162,10 +162,35 @@ function aggregateCastDailyItems(
   storeId: number,
   date: string,
   excludeTax: boolean,
-  taxRate: number
+  taxRate: number,
+  roundingMethod: string,
+  roundingPosition: number
 ): CastDailyItemData[] {
   // キャスト×商品×カテゴリ×is_self ごとに集計
   const itemsMap = new Map<string, CastDailyItemData>()
+
+  // 端数処理関数
+  const applyRounding = (amount: number) => {
+    if (roundingPosition <= 0) return amount
+    if (roundingMethod.startsWith('floor')) {
+      return Math.floor(amount / roundingPosition) * roundingPosition
+    } else if (roundingMethod.startsWith('ceil')) {
+      return Math.ceil(amount / roundingPosition) * roundingPosition
+    } else if (roundingMethod === 'round') {
+      return Math.round(amount / roundingPosition) * roundingPosition
+    }
+    return amount
+  }
+
+  // 税抜き計算 + 端数処理
+  const applyTaxAndRounding = (amount: number) => {
+    let result = amount
+    if (excludeTax) {
+      const taxPercent = Math.round(taxRate * 100)
+      result = Math.floor(result * 100 / (100 + taxPercent))
+    }
+    return applyRounding(result)
+  }
 
   for (const order of orders) {
     const staffNames = order.staff_name?.split(', ').map(n => n.trim()) || []
@@ -173,10 +198,8 @@ function aggregateCastDailyItems(
     for (const item of order.order_items || []) {
       if (!item.cast_name || item.cast_name.length === 0) continue
 
-      // 税別設定の場合は税抜き価格に変換
-      const adjustedSubtotal = excludeTax
-        ? Math.round(item.subtotal / (1 + taxRate))
-        : item.subtotal
+      // 税抜き + 端数処理を適用
+      const adjustedSubtotal = applyTaxAndRounding(item.subtotal)
 
       for (const castName of item.cast_name) {
         const cast = castMap.get(castName)
@@ -479,7 +502,14 @@ async function recalculateForStoreAndDate(
     const excludeTax = method === 'item_based'
       ? salesSettings.item_exclude_consumption_tax ?? false
       : salesSettings.receipt_exclude_consumption_tax ?? false
-    const dailyItems = aggregateCastDailyItems(typedOrders, castMap, storeId, date, excludeTax, taxRate)
+    // 端数処理設定
+    const roundingMethod = method === 'item_based'
+      ? salesSettings.item_rounding_method ?? 'floor_100'
+      : salesSettings.receipt_rounding_method ?? 'floor_100'
+    const roundingPosition = method === 'item_based'
+      ? salesSettings.item_rounding_position ?? 100
+      : salesSettings.receipt_rounding_position ?? 100
+    const dailyItems = aggregateCastDailyItems(typedOrders, castMap, storeId, date, excludeTax, taxRate, roundingMethod, roundingPosition)
 
     // 既存データを削除してから挿入（日付・店舗単位で置き換え）
     if (dailyItems.length > 0) {

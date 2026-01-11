@@ -187,10 +187,8 @@ function aggregateCastDailyItems(
       const rawAmount = (item.unit_price || 0) * (item.quantity || 0)
       const itemAmount = applyTaxAndRounding(rawAmount)
 
-      // subtotalも税別設定の場合は税抜きに変換（端数処理なし）
-      const adjustedSubtotal = excludeTax
-        ? Math.round(item.subtotal / (1 + taxRate))
-        : item.subtotal
+      // subtotalも税抜き + 端数処理を適用
+      const adjustedSubtotal = applyTaxAndRounding(item.subtotal)
 
       // SELF/HELP判定
       const selfCastsOnItem = realCastsOnItem.filter(c => realNominations.includes(c))
