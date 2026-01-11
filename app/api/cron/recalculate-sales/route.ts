@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { calculateCastSalesByPublishedMethod, getDefaultSalesSettings } from '@/lib/salesCalculation'
 import { SalesSettings } from '@/types'
-import { getCurrentBusinessDay, getBusinessDayRange } from '@/lib/businessDay'
+import { getCurrentBusinessDay } from '@/lib/businessDay'
 
 // Service Role Key でRLSをバイパス
 const supabaseAdmin = createClient(
@@ -234,12 +234,10 @@ function aggregateCastDailyItems(
   return Array.from(itemsMap.values())
 }
 
-// 指定店舗・日付の売上を再計算（営業日範囲で取得）
+// 指定店舗・日付の売上を再計算（日付ベースで取得）
 async function recalculateForStoreAndDate(
   storeId: number,
-  date: string,
-  dateRangeStart: string,
-  dateRangeEnd: string
+  date: string
 ): Promise<{
   success: boolean
   castsProcessed: number
@@ -252,7 +250,13 @@ async function recalculateForStoreAndDate(
     const taxRate = systemSettings.tax_rate / 100
     const serviceRate = systemSettings.service_fee_rate / 100
 
-    // 伝票とorder_itemsを取得（営業日範囲でフィルタ）
+    // 日付の範囲を計算（日付ベースで検索）
+    // ※ order_dateは日付のみ（00:00:00固定）で保存されているため
+    const nextDate = new Date(date)
+    nextDate.setDate(nextDate.getDate() + 1)
+    const nextDateStr = nextDate.toISOString().split('T')[0]
+
+    // 伝票とorder_itemsを取得（日付ベースでフィルタ）
     const { data: orders, error: ordersError } = await supabaseAdmin
       .from('orders')
       .select(`
@@ -270,8 +274,8 @@ async function recalculateForStoreAndDate(
         )
       `)
       .eq('store_id', storeId)
-      .gte('order_date', dateRangeStart)
-      .lte('order_date', dateRangeEnd)
+      .gte('order_date', `${date}T00:00:00Z`)
+      .lt('order_date', `${nextDateStr}T00:00:00Z`)
       .is('deleted_at', null)
 
     if (ordersError) throw ordersError
@@ -570,10 +574,7 @@ export async function GET(request: NextRequest) {
       // 現在の営業日を取得
       const today = getCurrentBusinessDay(cutoffHour)
 
-      // 営業日の範囲を取得（例: 6:00 AM〜翌日5:59:59 AM）
-      const { start, end } = getBusinessDayRange(today, cutoffHour)
-
-      const result = await recalculateForStoreAndDate(store.id, today, start, end)
+      const result = await recalculateForStoreAndDate(store.id, today)
       results.push({ store_id: store.id, date: today, ...result })
     }
 
