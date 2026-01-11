@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { calculateCastSalesByPublishedMethod, getDefaultSalesSettings } from '@/lib/salesCalculation'
-import { SalesSettings, CastSalesSummary } from '@/types'
+import { SalesSettings } from '@/types'
+import { getCurrentBusinessDay, getBusinessDayRange } from '@/lib/businessDay'
 
 // Service Role Key でRLSをバイパス
 const supabaseAdmin = createClient(
@@ -22,13 +23,16 @@ function validateCronRequest(request: NextRequest): boolean {
   return false
 }
 
-// 今日の日付をYYYY-MM-DD形式で取得（日本時間）
-function getTodayDate(): string {
-  const now = new Date()
-  // 日本時間に変換
-  const jstOffset = 9 * 60 * 60 * 1000
-  const jstDate = new Date(now.getTime() + jstOffset)
-  return jstDate.toISOString().split('T')[0]
+// 営業日切替時刻を取得
+async function getBusinessDayCutoffHour(storeId: number): Promise<number> {
+  const { data } = await supabaseAdmin
+    .from('system_settings')
+    .select('setting_value')
+    .eq('store_id', storeId)
+    .eq('setting_key', 'business_day_start_hour')
+    .single()
+
+  return data?.setting_value ? parseInt(data.setting_value) : 6
 }
 
 interface OrderItemWithTax {
@@ -200,8 +204,13 @@ function aggregateCastDailyItems(
   return Array.from(itemsMap.values())
 }
 
-// 指定店舗・日付の売上を再計算
-async function recalculateForStoreAndDate(storeId: number, date: string): Promise<{
+// 指定店舗・日付の売上を再計算（営業日範囲で取得）
+async function recalculateForStoreAndDate(
+  storeId: number,
+  date: string,
+  dateRangeStart: string,
+  dateRangeEnd: string
+): Promise<{
   success: boolean
   castsProcessed: number
   itemsProcessed: number
@@ -213,7 +222,7 @@ async function recalculateForStoreAndDate(storeId: number, date: string): Promis
     const taxRate = systemSettings.tax_rate / 100
     const serviceRate = systemSettings.service_fee_rate / 100
 
-    // 伝票とorder_itemsを取得
+    // 伝票とorder_itemsを取得（営業日範囲でフィルタ）
     const { data: orders, error: ordersError } = await supabaseAdmin
       .from('orders')
       .select(`
@@ -231,8 +240,8 @@ async function recalculateForStoreAndDate(storeId: number, date: string): Promis
         )
       `)
       .eq('store_id', storeId)
-      .gte('order_date', `${date}T00:00:00`)
-      .lte('order_date', `${date}T23:59:59.999`)
+      .gte('order_date', dateRangeStart)
+      .lte('order_date', dateRangeEnd)
       .is('deleted_at', null)
 
     if (ordersError) throw ordersError
@@ -502,8 +511,6 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const today = getTodayDate()
-
     // 全アクティブ店舗を取得
     const { data: stores, error: storesError } = await supabaseAdmin
       .from('stores')
@@ -512,17 +519,25 @@ export async function GET(request: NextRequest) {
 
     if (storesError) throw storesError
 
-    const results: { store_id: number; success: boolean; castsProcessed: number; itemsProcessed: number; error?: string }[] = []
+    const results: { store_id: number; date: string; success: boolean; castsProcessed: number; itemsProcessed: number; error?: string }[] = []
 
-    // 各店舗の今日の売上を再計算
+    // 各店舗の今日の売上を再計算（店舗ごとの営業日切替時刻を考慮）
     for (const store of stores || []) {
-      const result = await recalculateForStoreAndDate(store.id, today)
-      results.push({ store_id: store.id, ...result })
+      // 店舗ごとの営業日切替時刻を取得
+      const cutoffHour = await getBusinessDayCutoffHour(store.id)
+
+      // 現在の営業日を取得
+      const today = getCurrentBusinessDay(cutoffHour)
+
+      // 営業日の範囲を取得（例: 6:00 AM〜翌日5:59:59 AM）
+      const { start, end } = getBusinessDayRange(today, cutoffHour)
+
+      const result = await recalculateForStoreAndDate(store.id, today, start, end)
+      results.push({ store_id: store.id, date: today, ...result })
     }
 
     return NextResponse.json({
       success: true,
-      date: today,
       stores_processed: results.length,
       results
     })
