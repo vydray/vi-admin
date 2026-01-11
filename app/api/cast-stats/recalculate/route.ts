@@ -650,13 +650,12 @@ async function recalculateForDate(storeId: number, date: string): Promise<{
 
     const typedOrders = (orders || []) as unknown as OrderWithStaff[]
 
-    // 2.5. BASE注文を取得（未処理のもの）
+    // 2.5. BASE注文を取得（再計算なので処理済みも含む）
     const { data: baseOrders, error: baseOrdersError } = await supabaseAdmin
       .from('base_orders')
-      .select('id, cast_id, actual_price, quantity, product_name')
+      .select('id, cast_id, actual_price, quantity, product_name, is_processed')
       .eq('store_id', storeId)
       .eq('business_date', date)
-      .eq('is_processed', false)
       .not('cast_id', 'is', null)
       .not('actual_price', 'is', null)
 
@@ -1055,9 +1054,10 @@ async function recalculateForDate(storeId: number, date: string): Promise<{
       }
     }
 
-    // 11. BASE注文を処理済みにマーク
-    if (baseOrders && baseOrders.length > 0) {
-      const baseOrderIds = baseOrders.map(o => o.id)
+    // 11. 未処理のBASE注文のみを処理済みにマーク
+    const unprocessedBaseOrders = (baseOrders || []).filter(o => !o.is_processed)
+    if (unprocessedBaseOrders.length > 0) {
+      const baseOrderIds = unprocessedBaseOrders.map(o => o.id)
       const { error: baseUpdateError } = await supabaseAdmin
         .from('base_orders')
         .update({ is_processed: true })
