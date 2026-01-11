@@ -187,6 +187,11 @@ function aggregateCastDailyItems(
       const rawAmount = (item.unit_price || 0) * (item.quantity || 0)
       const itemAmount = applyTaxAndRounding(rawAmount)
 
+      // subtotalも税別設定の場合は税抜きに変換（端数処理なし）
+      const adjustedSubtotal = excludeTax
+        ? Math.round(item.subtotal / (1 + taxRate))
+        : item.subtotal
+
       // SELF/HELP判定
       const selfCastsOnItem = realCastsOnItem.filter(c => realNominations.includes(c))
       const helpCastsOnItem = realCastsOnItem.filter(c => !realNominations.includes(c))
@@ -208,7 +213,7 @@ function aggregateCastDailyItems(
             if (itemsMap.has(key)) {
               const existing = itemsMap.get(key)!
               existing.quantity += item.quantity
-              existing.subtotal += item.subtotal
+              existing.subtotal += adjustedSubtotal
             } else {
               itemsMap.set(key, {
                 cast_id: nominationCast.id,
@@ -224,7 +229,7 @@ function aggregateCastDailyItems(
                 self_sales: 0,
                 help_sales: 0,
                 needs_cast: productNeedsCastMap.get(item.product_name) ?? true,
-                subtotal: item.subtotal,
+                subtotal: adjustedSubtotal,
                 back_amount: 0,
                 is_self: true
               })
@@ -240,7 +245,7 @@ function aggregateCastDailyItems(
               const existing = itemsMap.get(key)!
               existing.quantity += item.quantity
               existing.self_sales += perCast
-              existing.subtotal += item.subtotal
+              existing.subtotal += adjustedSubtotal
             } else {
               itemsMap.set(key, {
                 cast_id: nominationCast.id,
@@ -256,7 +261,7 @@ function aggregateCastDailyItems(
                 self_sales: perCast,
                 help_sales: 0,
                 needs_cast: productNeedsCastMap.get(item.product_name) ?? true,
-                subtotal: item.subtotal,
+                subtotal: adjustedSubtotal,
                 back_amount: 0,
                 is_self: true
               })
@@ -303,7 +308,7 @@ function aggregateCastDailyItems(
               existing.quantity += item.quantity
               existing.self_sales += selfShare
               existing.help_sales += helpShare
-              existing.subtotal += item.subtotal
+              existing.subtotal += adjustedSubtotal
             } else {
               itemsMap.set(key, {
                 cast_id: nominationCast.id,
@@ -319,7 +324,7 @@ function aggregateCastDailyItems(
                 self_sales: selfShare,
                 help_sales: helpShare,
                 needs_cast: productNeedsCastMap.get(item.product_name) ?? true,
-                subtotal: item.subtotal,
+                subtotal: adjustedSubtotal,
                 back_amount: 0,
                 is_self: false
               })
@@ -350,7 +355,7 @@ function aggregateCastDailyItems(
             const existing = itemsMap.get(key)!
             existing.quantity += item.quantity
             existing.self_sales += perNomination
-            existing.subtotal += item.subtotal
+            existing.subtotal += adjustedSubtotal
           } else {
             itemsMap.set(key, {
               cast_id: nominationCast.id,
@@ -366,7 +371,7 @@ function aggregateCastDailyItems(
               self_sales: perNomination,
               help_sales: 0,
               needs_cast: productNeedsCastMap.get(item.product_name) ?? true,
-              subtotal: item.subtotal,
+              subtotal: adjustedSubtotal,
               back_amount: 0,
               is_self: true
             })
@@ -383,7 +388,7 @@ function aggregateCastDailyItems(
             const existing = itemsMap.get(key)!
             existing.quantity += item.quantity
             existing.self_sales += perNomination
-            existing.subtotal += item.subtotal
+            existing.subtotal += adjustedSubtotal
           } else {
             itemsMap.set(key, {
               cast_id: nominationCast.id,
@@ -399,7 +404,7 @@ function aggregateCastDailyItems(
               self_sales: perNomination,
               help_sales: 0,
               needs_cast: productNeedsCastMap.get(item.product_name) ?? true,
-              subtotal: item.subtotal,
+              subtotal: adjustedSubtotal,
               back_amount: 0,
               is_self: true
             })
@@ -457,7 +462,7 @@ function aggregateCastDailyItems(
               existing.quantity += item.quantity
               existing.self_sales += selfShare
               existing.help_sales += helpSharePerCast
-              existing.subtotal += item.subtotal
+              existing.subtotal += adjustedSubtotal
             } else {
               itemsMap.set(key, {
                 cast_id: nominationCast.id,
@@ -473,7 +478,7 @@ function aggregateCastDailyItems(
                 self_sales: selfShare,
                 help_sales: helpSharePerCast,
                 needs_cast: productNeedsCastMap.get(item.product_name) ?? true,
-                subtotal: item.subtotal,
+                subtotal: adjustedSubtotal,
                 back_amount: 0,
                 is_self: false
               })
@@ -489,7 +494,7 @@ function aggregateCastDailyItems(
               const existing = itemsMap.get(selfKey)!
               existing.quantity += item.quantity
               existing.self_sales += selfAmount
-              existing.subtotal += item.subtotal
+              existing.subtotal += adjustedSubtotal
             } else {
               itemsMap.set(selfKey, {
                 cast_id: nominationCast.id,
@@ -505,7 +510,7 @@ function aggregateCastDailyItems(
                 self_sales: selfAmount,
                 help_sales: 0,
                 needs_cast: productNeedsCastMap.get(item.product_name) ?? true,
-                subtotal: item.subtotal,
+                subtotal: adjustedSubtotal,
                 back_amount: 0,
                 is_self: true
               })

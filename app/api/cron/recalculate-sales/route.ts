@@ -160,7 +160,9 @@ function aggregateCastDailyItems(
   orders: OrderWithStaff[],
   castMap: Map<string, Cast>,
   storeId: number,
-  date: string
+  date: string,
+  excludeTax: boolean,
+  taxRate: number
 ): CastDailyItemData[] {
   // キャスト×商品×カテゴリ×is_self ごとに集計
   const itemsMap = new Map<string, CastDailyItemData>()
@@ -170,6 +172,11 @@ function aggregateCastDailyItems(
 
     for (const item of order.order_items || []) {
       if (!item.cast_name || item.cast_name.length === 0) continue
+
+      // 税別設定の場合は税抜き価格に変換
+      const adjustedSubtotal = excludeTax
+        ? Math.round(item.subtotal / (1 + taxRate))
+        : item.subtotal
 
       for (const castName of item.cast_name) {
         const cast = castMap.get(castName)
@@ -183,7 +190,7 @@ function aggregateCastDailyItems(
         if (itemsMap.has(key)) {
           const existing = itemsMap.get(key)!
           existing.quantity += item.quantity
-          existing.subtotal += item.subtotal
+          existing.subtotal += adjustedSubtotal
         } else {
           itemsMap.set(key, {
             cast_id: cast.id,
@@ -192,7 +199,7 @@ function aggregateCastDailyItems(
             category: item.category,
             product_name: item.product_name,
             quantity: item.quantity,
-            subtotal: item.subtotal,
+            subtotal: adjustedSubtotal,
             back_amount: 0, // バック計算は後で行う
             is_self: isSelf
           })
@@ -468,7 +475,11 @@ async function recalculateForStoreAndDate(
     }
 
     // cast_daily_items の集計と更新
-    const dailyItems = aggregateCastDailyItems(typedOrders, castMap, storeId, date)
+    // 税別設定を確認（item_based/receipt_basedに応じて適切な設定を参照）
+    const excludeTax = method === 'item_based'
+      ? salesSettings.item_exclude_consumption_tax ?? false
+      : salesSettings.receipt_exclude_consumption_tax ?? false
+    const dailyItems = aggregateCastDailyItems(typedOrders, castMap, storeId, date, excludeTax, taxRate)
 
     // 既存データを削除してから挿入（日付・店舗単位で置き換え）
     if (dailyItems.length > 0) {
