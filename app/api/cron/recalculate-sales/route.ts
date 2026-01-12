@@ -50,6 +50,9 @@ interface OrderWithStaff {
   id: string
   staff_name: string | null
   order_date: string
+  guest_count: number | null
+  table_number: string | null
+  guest_name: string | null
   order_items: OrderItemWithTax[]
 }
 
@@ -145,12 +148,20 @@ async function loadSystemSettings(storeId: number): Promise<{ tax_rate: number; 
 
 // 商品別キャスト売上を集計（cast_daily_items用）
 interface CastDailyItemData {
-  cast_id: number
+  cast_id: number        // テーブルの推し（staff_name）
+  help_cast_id: number | null  // ヘルプしたキャスト（推し自身ならnull）
   store_id: number
   date: string
+  order_id: string | null  // 元の伝票ID（伝票単位で確認用）
+  table_number: string | null  // テーブル番号
+  guest_name: string | null    // お客様名
   category: string | null
   product_name: string
   quantity: number
+  self_sales: number     // 推しにつく売上（分配ロジック適用後）
+  help_sales: number     // ヘルプにつく売上（分配ロジック適用後）
+  needs_cast: boolean    // 指名必須商品か（ランキング表示用）
+  // 後方互換用
   subtotal: number
   back_amount: number
   is_self: boolean
@@ -161,13 +172,36 @@ function aggregateCastDailyItems(
   castMap: Map<string, Cast>,
   storeId: number,
   date: string,
-  excludeTax: boolean,
-  taxRate: number,
-  roundingMethod: string,
-  roundingPosition: number
+  salesSettings: SalesSettings,
+  taxRate: number = 0.1,
+  productNeedsCastMap: Map<string, boolean> = new Map()
 ): CastDailyItemData[] {
-  // キャスト×商品×カテゴリ×is_self ごとに集計
   const itemsMap = new Map<string, CastDailyItemData>()
+  const method = salesSettings.published_aggregation ?? 'item_based'
+  const nonHelpNames = salesSettings.non_help_staff_names || []
+
+  // 設定に応じた税抜き計算と端数処理
+  const isItemBased = method === 'item_based'
+  const excludeTax = isItemBased
+    ? (salesSettings.item_exclude_consumption_tax ?? salesSettings.use_tax_excluded ?? false)
+    : (salesSettings.receipt_exclude_consumption_tax ?? salesSettings.use_tax_excluded ?? false)
+  const helpDistMethod = isItemBased
+    ? (salesSettings.item_help_distribution_method ?? 'all_to_nomination')
+    : (salesSettings.receipt_help_distribution_method ?? 'all_to_nomination')
+  const giveHelpSales = isItemBased
+    ? (salesSettings.item_help_sales_inclusion === 'both')
+    : (salesSettings.receipt_help_sales_inclusion === 'both')
+  const helpRatio = isItemBased
+    ? (salesSettings.item_help_ratio ?? 50)
+    : (salesSettings.receipt_help_ratio ?? 50)
+
+  // 端数処理設定
+  const roundingMethod = isItemBased
+    ? (salesSettings.item_rounding_method ?? 'floor_100')
+    : (salesSettings.receipt_rounding_method ?? 'floor_100')
+  const roundingPosition = isItemBased
+    ? (salesSettings.item_rounding_position ?? 100)
+    : (salesSettings.receipt_rounding_position ?? 100)
 
   // 端数処理関数
   const applyRounding = (amount: number) => {
@@ -193,39 +227,348 @@ function aggregateCastDailyItems(
   }
 
   for (const order of orders) {
-    const staffNames = order.staff_name?.split(', ').map(n => n.trim()) || []
+    // 伝票の推し（staff_name）
+    const staffNames = order.staff_name?.split(',').map(n => n.trim()) || []
+    // ヘルプ除外名を除いた実キャストの推し
+    const realNominations = staffNames.filter(n => !nonHelpNames.includes(n))
+
+    // 推しがいない伝票はスキップ
+    if (realNominations.length === 0) continue
+
+    // 推しのキャストIDを取得
+    const nominationCastIds = realNominations
+      .map(name => castMap.get(name)?.id)
+      .filter((id): id is number => id !== undefined)
+
+    if (nominationCastIds.length === 0) continue
 
     for (const item of order.order_items || []) {
-      if (!item.cast_name || item.cast_name.length === 0) continue
+      const castsOnItem = item.cast_name || []
+      const realCastsOnItem = castsOnItem.filter(c => !nonHelpNames.includes(c))
 
-      // 税抜き + 端数処理を適用
+      // 商品金額（税抜き + 端数処理適用）
+      const rawAmount = (item.unit_price || 0) * (item.quantity || 0)
+      const itemAmount = applyTaxAndRounding(rawAmount)
+
+      // subtotalも税抜き + 端数処理を適用
       const adjustedSubtotal = applyTaxAndRounding(item.subtotal)
 
-      for (const castName of item.cast_name) {
-        const cast = castMap.get(castName)
-        if (!cast) continue
+      // SELF/HELP判定
+      const selfCastsOnItem = realCastsOnItem.filter(c => realNominations.includes(c))
+      const helpCastsOnItem = realCastsOnItem.filter(c => !realNominations.includes(c))
 
-        // selfかどうかを判定（staff_nameに含まれていればself）
-        const isSelf = staffNames.includes(castName)
+      const noCast = realCastsOnItem.length === 0
 
-        const key = `${cast.id}:${item.product_name}:${item.category || ''}:${isSelf}`
+      // ========================================
+      // item_based: cast_id=推し、キャストなし商品はself_sales=0
+      // ========================================
+      if (isItemBased) {
+        for (const nominationName of realNominations) {
+          const nominationCast = castMap.get(nominationName)
+          if (!nominationCast) continue
 
-        if (itemsMap.has(key)) {
-          const existing = itemsMap.get(key)!
-          existing.quantity += item.quantity
-          existing.subtotal += adjustedSubtotal
-        } else {
-          itemsMap.set(key, {
-            cast_id: cast.id,
-            store_id: storeId,
-            date: date,
-            category: item.category,
-            product_name: item.product_name,
-            quantity: item.quantity,
-            subtotal: adjustedSubtotal,
-            back_amount: 0, // バック計算は後で行う
-            is_self: isSelf
-          })
+          // キャストなし商品 → self_sales=0
+          if (noCast) {
+            const key = `${order.id}:${nominationCast.id}:null:${item.product_name}:${item.category || ''}`
+            if (itemsMap.has(key)) {
+              const existing = itemsMap.get(key)!
+              existing.quantity += item.quantity
+              existing.subtotal += adjustedSubtotal
+            } else {
+              itemsMap.set(key, {
+                cast_id: nominationCast.id,
+                help_cast_id: null,
+                store_id: storeId,
+                date: date,
+                order_id: order.id,
+                table_number: order.table_number,
+                guest_name: order.guest_name,
+                category: item.category,
+                product_name: item.product_name,
+                quantity: item.quantity,
+                self_sales: 0,
+                help_sales: 0,
+                needs_cast: productNeedsCastMap.get(item.product_name) ?? true,
+                subtotal: adjustedSubtotal,
+                back_amount: 0,
+                is_self: true
+              })
+            }
+            continue
+          }
+
+          // 推し自身の商品
+          if (selfCastsOnItem.includes(nominationName)) {
+            const perCast = Math.floor(itemAmount / selfCastsOnItem.length)
+            const key = `${order.id}:${nominationCast.id}:null:${item.product_name}:${item.category || ''}`
+            if (itemsMap.has(key)) {
+              const existing = itemsMap.get(key)!
+              existing.quantity += item.quantity
+              existing.self_sales += perCast
+              existing.subtotal += adjustedSubtotal
+            } else {
+              itemsMap.set(key, {
+                cast_id: nominationCast.id,
+                help_cast_id: null,
+                store_id: storeId,
+                date: date,
+                order_id: order.id,
+                table_number: order.table_number,
+                guest_name: order.guest_name,
+                category: item.category,
+                product_name: item.product_name,
+                quantity: item.quantity,
+                self_sales: perCast,
+                help_sales: 0,
+                needs_cast: productNeedsCastMap.get(item.product_name) ?? true,
+                subtotal: adjustedSubtotal,
+                back_amount: 0,
+                is_self: true
+              })
+            }
+          }
+
+          // ヘルプ商品
+          for (const helpCastName of helpCastsOnItem) {
+            const helpCast = castMap.get(helpCastName)
+            if (!helpCast) continue
+
+            let selfShare = 0
+            let helpShare = 0
+            const perItem = Math.floor(itemAmount / helpCastsOnItem.length)
+
+            switch (helpDistMethod) {
+              case 'all_to_nomination':
+                selfShare = perItem
+                helpShare = 0
+                break
+              case 'equal':
+                selfShare = Math.floor(perItem / 2)
+                helpShare = giveHelpSales ? perItem - selfShare : 0
+                break
+              case 'ratio':
+                const helpAmount = Math.floor(perItem * helpRatio / 100)
+                selfShare = perItem - helpAmount
+                helpShare = giveHelpSales ? helpAmount : 0
+                break
+              case 'equal_per_person':
+                const total = realNominations.length + 1
+                selfShare = Math.floor(perItem / total)
+                helpShare = giveHelpSales ? Math.floor(perItem / total) : 0
+                break
+              default:
+                selfShare = perItem
+                helpShare = 0
+            }
+
+            const key = `${order.id}:${nominationCast.id}:${helpCast.id}:${item.product_name}:${item.category || ''}`
+            if (itemsMap.has(key)) {
+              const existing = itemsMap.get(key)!
+              existing.quantity += item.quantity
+              existing.self_sales += selfShare
+              existing.help_sales += helpShare
+              existing.subtotal += adjustedSubtotal
+            } else {
+              itemsMap.set(key, {
+                cast_id: nominationCast.id,
+                help_cast_id: helpCast.id,
+                store_id: storeId,
+                date: date,
+                order_id: order.id,
+                table_number: order.table_number,
+                guest_name: order.guest_name,
+                category: item.category,
+                product_name: item.product_name,
+                quantity: item.quantity,
+                self_sales: selfShare,
+                help_sales: helpShare,
+                needs_cast: productNeedsCastMap.get(item.product_name) ?? true,
+                subtotal: adjustedSubtotal,
+                back_amount: 0,
+                is_self: false
+              })
+            }
+          }
+        }
+        continue
+      }
+
+      // ========================================
+      // receipt_based: 伝票の推しに売上が入る
+      // ========================================
+      const isSelfOnly = selfCastsOnItem.length > 0 && helpCastsOnItem.length === 0
+      const isHelpOnly = helpCastsOnItem.length > 0 && selfCastsOnItem.length === 0
+      const isMixed = selfCastsOnItem.length > 0 && helpCastsOnItem.length > 0
+
+      for (const nominationName of realNominations) {
+        const nominationCast = castMap.get(nominationName)
+        if (!nominationCast) continue
+
+        // キャストなし商品 → 推しの売上としてカウント
+        if (noCast) {
+          const perNomination = Math.floor(itemAmount / realNominations.length)
+          const key = `${order.id}:${nominationCast.id}:null:${item.product_name}:${item.category || ''}`
+
+          if (itemsMap.has(key)) {
+            const existing = itemsMap.get(key)!
+            existing.quantity += item.quantity
+            existing.self_sales += perNomination
+            existing.subtotal += adjustedSubtotal
+          } else {
+            itemsMap.set(key, {
+              cast_id: nominationCast.id,
+              help_cast_id: null,
+              store_id: storeId,
+              date: date,
+              order_id: order.id,
+              table_number: order.table_number,
+              guest_name: order.guest_name,
+              category: item.category,
+              product_name: item.product_name,
+              quantity: item.quantity,
+              self_sales: perNomination,
+              help_sales: 0,
+              needs_cast: productNeedsCastMap.get(item.product_name) ?? true,
+              subtotal: adjustedSubtotal,
+              back_amount: 0,
+              is_self: true
+            })
+          }
+          continue
+        }
+
+        // SELF商品 → 推しのself_salesに全額
+        if (isSelfOnly) {
+          const perNomination = Math.floor(itemAmount / realNominations.length)
+          const key = `${order.id}:${nominationCast.id}:null:${item.product_name}:${item.category || ''}`
+
+          if (itemsMap.has(key)) {
+            const existing = itemsMap.get(key)!
+            existing.quantity += item.quantity
+            existing.self_sales += perNomination
+            existing.subtotal += adjustedSubtotal
+          } else {
+            itemsMap.set(key, {
+              cast_id: nominationCast.id,
+              help_cast_id: null,
+              store_id: storeId,
+              date: date,
+              order_id: order.id,
+              table_number: order.table_number,
+              guest_name: order.guest_name,
+              category: item.category,
+              product_name: item.product_name,
+              quantity: item.quantity,
+              self_sales: perNomination,
+              help_sales: 0,
+              needs_cast: productNeedsCastMap.get(item.product_name) ?? true,
+              subtotal: adjustedSubtotal,
+              back_amount: 0,
+              is_self: true
+            })
+          }
+        }
+
+        // HELP商品またはMIXED → 分配設定に基づく
+        if (isHelpOnly || isMixed) {
+          let selfShare = 0
+          let helpSharePerCast = 0
+          const perNominationBase = Math.floor(itemAmount / realNominations.length)
+
+          switch (helpDistMethod) {
+            case 'all_to_nomination':
+              selfShare = perNominationBase
+              helpSharePerCast = 0
+              break
+            case 'equal':
+              selfShare = Math.floor(perNominationBase / 2)
+              helpSharePerCast = giveHelpSales
+                ? Math.floor((perNominationBase - selfShare) / helpCastsOnItem.length)
+                : 0
+              break
+            case 'ratio':
+              const helpShareTotal = Math.floor(perNominationBase * helpRatio / 100)
+              selfShare = perNominationBase - helpShareTotal
+              helpSharePerCast = giveHelpSales
+                ? Math.floor(helpShareTotal / helpCastsOnItem.length)
+                : 0
+              break
+            case 'equal_per_person':
+              const allCastsCount = realNominations.length + helpCastsOnItem.length
+              const perPerson = Math.floor(itemAmount / allCastsCount)
+              selfShare = perPerson
+              helpSharePerCast = giveHelpSales ? perPerson : 0
+              break
+            default:
+              selfShare = perNominationBase
+              helpSharePerCast = 0
+          }
+
+          for (const helpCastName of helpCastsOnItem) {
+            const helpCast = castMap.get(helpCastName)
+            if (!helpCast) continue
+
+            const key = `${order.id}:${nominationCast.id}:${helpCast.id}:${item.product_name}:${item.category || ''}`
+
+            if (itemsMap.has(key)) {
+              const existing = itemsMap.get(key)!
+              existing.quantity += item.quantity
+              existing.self_sales += selfShare
+              existing.help_sales += helpSharePerCast
+              existing.subtotal += adjustedSubtotal
+            } else {
+              itemsMap.set(key, {
+                cast_id: nominationCast.id,
+                help_cast_id: helpCast.id,
+                store_id: storeId,
+                date: date,
+                order_id: order.id,
+                table_number: order.table_number,
+                guest_name: order.guest_name,
+                category: item.category,
+                product_name: item.product_name,
+                quantity: item.quantity,
+                self_sales: selfShare,
+                help_sales: helpSharePerCast,
+                needs_cast: productNeedsCastMap.get(item.product_name) ?? true,
+                subtotal: adjustedSubtotal,
+                back_amount: 0,
+                is_self: false
+              })
+            }
+          }
+
+          // MIXED商品の場合、推し自身の分もレコードに
+          if (isMixed && selfCastsOnItem.includes(nominationName)) {
+            const selfKey = `${order.id}:${nominationCast.id}:null:${item.product_name}:${item.category || ''}`
+            const selfAmount = Math.floor(itemAmount / (selfCastsOnItem.length + helpCastsOnItem.length))
+
+            if (itemsMap.has(selfKey)) {
+              const existing = itemsMap.get(selfKey)!
+              existing.quantity += item.quantity
+              existing.self_sales += selfAmount
+              existing.subtotal += adjustedSubtotal
+            } else {
+              itemsMap.set(selfKey, {
+                cast_id: nominationCast.id,
+                help_cast_id: null,
+                store_id: storeId,
+                date: date,
+                order_id: order.id,
+                table_number: order.table_number,
+                guest_name: order.guest_name,
+                category: item.category,
+                product_name: item.product_name,
+                quantity: item.quantity,
+                self_sales: selfAmount,
+                help_sales: 0,
+                needs_cast: productNeedsCastMap.get(item.product_name) ?? true,
+                subtotal: adjustedSubtotal,
+                back_amount: 0,
+                is_self: true
+              })
+            }
+          }
         }
       }
     }
@@ -263,6 +606,9 @@ async function recalculateForStoreAndDate(
         id,
         staff_name,
         order_date,
+        guest_count,
+        table_number,
+        guest_name,
         order_items (
           id,
           product_name,
@@ -292,6 +638,39 @@ async function recalculateForStoreAndDate(
 
     const castMap = new Map<string, Cast>()
     casts?.forEach((c: Cast) => castMap.set(c.name, c))
+
+    // 商品のneeds_cast情報を取得（ランキング表示用）
+    const { data: products } = await supabaseAdmin
+      .from('products')
+      .select('name, needs_cast')
+      .eq('store_id', storeId)
+
+    const productNeedsCastMap = new Map<string, boolean>()
+    products?.forEach((p: { name: string; needs_cast: boolean | null }) => {
+      productNeedsCastMap.set(p.name, p.needs_cast ?? true)
+    })
+
+    // BASE注文を取得（再計算なので処理済みも含む）
+    const { data: baseOrders, error: baseOrdersError } = await supabaseAdmin
+      .from('base_orders')
+      .select('id, cast_id, actual_price, quantity, product_name, is_processed')
+      .eq('store_id', storeId)
+      .eq('business_date', date)
+      .not('cast_id', 'is', null)
+      .not('actual_price', 'is', null)
+
+    if (baseOrdersError) {
+      console.warn('BASE orders fetch error:', baseOrdersError)
+    }
+
+    // BASE売上をキャストIDごとに集計
+    const baseSalesByCast = new Map<number, number>()
+    for (const order of baseOrders || []) {
+      if (order.cast_id && order.actual_price) {
+        const current = baseSalesByCast.get(order.cast_id) || 0
+        baseSalesByCast.set(order.cast_id, current + (order.actual_price * order.quantity))
+      }
+    }
 
     // 時給関連データを取得
     const { data: attendances } = await supabaseAdmin
@@ -350,6 +729,17 @@ async function recalculateForStoreAndDate(
       existingStats?.filter((s: { is_finalized: boolean }) => s.is_finalized).map((s: { cast_id: number }) => s.cast_id) || []
     )
 
+    // 指名本数を集計（staff_nameがキャスト名と一致する伝票のguest_countを合計）
+    const nominationCountByCast = new Map<number, number>()
+    for (const order of typedOrders) {
+      if (!order.staff_name || !order.guest_count) continue
+      const cast = castMap.get(order.staff_name)
+      if (cast) {
+        const current = nominationCountByCast.get(cast.id) || 0
+        nominationCountByCast.set(cast.id, current + order.guest_count)
+      }
+    }
+
     // 売上計算
     const castInfos = (casts || []).map((c: Cast) => ({ id: c.id, name: c.name }))
     const calculatedSales = calculateCastSalesByPublishedMethod(
@@ -381,9 +771,14 @@ async function recalculateForStoreAndDate(
       wage_amount: number
       costume_id: number | null
       wage_status_id: number | null
+      nomination_count: number
       is_finalized: boolean
       updated_at: string
     }[] = []
+
+    // BASE売上設定
+    const includeBaseInItem = salesSettings.include_base_in_item_sales ?? false
+    const includeBaseInReceipt = salesSettings.include_base_in_receipt_sales ?? false
 
     const processedCastIds = new Set<number>()
     const method = salesSettings.published_aggregation ?? 'item_based'
@@ -414,17 +809,21 @@ async function recalculateForStoreAndDate(
       const totalHourlyWage = baseHourlyWage + specialDayBonus + costumeBonus
       const wageAmount = Math.round(totalHourlyWage * workHours)
 
+      // BASE売上を加算（設定に応じて）
+      const baseSales = baseSalesByCast.get(summary.cast_id) || 0
+
       statsToUpsert.push({
         cast_id: summary.cast_id,
         store_id: storeId,
         date: date,
-        self_sales_item_based: method === 'item_based' ? summary.self_sales : 0,
+        // BASE売上は推し売上（self_sales）に加算
+        self_sales_item_based: (method === 'item_based' ? summary.self_sales : 0) + (includeBaseInItem ? baseSales : 0),
         help_sales_item_based: method === 'item_based' ? summary.help_sales : 0,
-        total_sales_item_based: method === 'item_based' ? summary.total_sales : 0,
+        total_sales_item_based: (method === 'item_based' ? summary.total_sales : 0) + (includeBaseInItem ? baseSales : 0),
         product_back_item_based: Math.round(summary.total_back),
-        self_sales_receipt_based: method === 'receipt_based' ? summary.self_sales : 0,
+        self_sales_receipt_based: (method === 'receipt_based' ? summary.self_sales : 0) + (includeBaseInReceipt ? baseSales : 0),
         help_sales_receipt_based: method === 'receipt_based' ? summary.help_sales : 0,
-        total_sales_receipt_based: method === 'receipt_based' ? summary.total_sales : 0,
+        total_sales_receipt_based: (method === 'receipt_based' ? summary.total_sales : 0) + (includeBaseInReceipt ? baseSales : 0),
         product_back_receipt_based: method === 'receipt_based' ? Math.round(summary.total_back) : 0,
         work_hours: workHours,
         base_hourly_wage: baseHourlyWage,
@@ -434,6 +833,7 @@ async function recalculateForStoreAndDate(
         wage_amount: wageAmount,
         costume_id: costumeId,
         wage_status_id: wageStatusId,
+        nomination_count: nominationCountByCast.get(summary.cast_id) || 0,
         is_finalized: false,
         updated_at: new Date().toISOString()
       })
@@ -464,17 +864,20 @@ async function recalculateForStoreAndDate(
         const totalHourlyWage = baseHourlyWage + specialDayBonus + costumeBonus
         const wageAmount = Math.round(totalHourlyWage * workHours)
 
+        // BASE売上を加算（設定に応じて）
+        const baseSales = baseSalesByCast.get(cast.id) || 0
+
         statsToUpsert.push({
           cast_id: cast.id,
           store_id: storeId,
           date: date,
-          self_sales_item_based: 0,
+          self_sales_item_based: includeBaseInItem ? baseSales : 0,
           help_sales_item_based: 0,
-          total_sales_item_based: 0,
+          total_sales_item_based: includeBaseInItem ? baseSales : 0,
           product_back_item_based: 0,
-          self_sales_receipt_based: 0,
+          self_sales_receipt_based: includeBaseInReceipt ? baseSales : 0,
           help_sales_receipt_based: 0,
-          total_sales_receipt_based: 0,
+          total_sales_receipt_based: includeBaseInReceipt ? baseSales : 0,
           product_back_receipt_based: 0,
           work_hours: workHours,
           base_hourly_wage: baseHourlyWage,
@@ -484,10 +887,43 @@ async function recalculateForStoreAndDate(
           wage_amount: wageAmount,
           costume_id: costumeId,
           wage_status_id: wageStatusId,
+          nomination_count: nominationCountByCast.get(cast.id) || 0,
           is_finalized: false,
           updated_at: new Date().toISOString()
         })
+        processedCastIds.add(cast.id)
       }
+    }
+
+    // BASE売上があるがPOS/勤怠データがないキャストを処理
+    for (const [castId, baseSales] of baseSalesByCast) {
+      if (processedCastIds.has(castId)) continue
+      if (finalizedCastIds.has(castId)) continue
+
+      statsToUpsert.push({
+        cast_id: castId,
+        store_id: storeId,
+        date: date,
+        self_sales_item_based: includeBaseInItem ? baseSales : 0,
+        help_sales_item_based: 0,
+        total_sales_item_based: includeBaseInItem ? baseSales : 0,
+        product_back_item_based: 0,
+        self_sales_receipt_based: includeBaseInReceipt ? baseSales : 0,
+        help_sales_receipt_based: 0,
+        total_sales_receipt_based: includeBaseInReceipt ? baseSales : 0,
+        product_back_receipt_based: 0,
+        work_hours: 0,
+        base_hourly_wage: 0,
+        special_day_bonus: 0,
+        costume_bonus: 0,
+        total_hourly_wage: 0,
+        wage_amount: 0,
+        costume_id: null,
+        wage_status_id: null,
+        nomination_count: nominationCountByCast.get(castId) || 0,
+        is_finalized: false,
+        updated_at: new Date().toISOString()
+      })
     }
 
     // UPSERT cast_daily_stats
@@ -501,24 +937,50 @@ async function recalculateForStoreAndDate(
       if (upsertError) throw upsertError
     }
 
-    // cast_daily_items の集計と更新
-    // 税別設定を確認（item_based/receipt_basedに応じて適切な設定を参照）
-    const excludeTax = method === 'item_based'
-      ? salesSettings.item_exclude_consumption_tax ?? false
-      : salesSettings.receipt_exclude_consumption_tax ?? false
-    // 端数処理設定
-    const roundingMethod = method === 'item_based'
-      ? salesSettings.item_rounding_method ?? 'floor_100'
-      : salesSettings.receipt_rounding_method ?? 'floor_100'
-    const roundingPosition = method === 'item_based'
-      ? salesSettings.item_rounding_position ?? 100
-      : salesSettings.receipt_rounding_position ?? 100
-    const dailyItems = aggregateCastDailyItems(typedOrders, castMap, storeId, date, excludeTax, taxRate, roundingMethod, roundingPosition)
+    // cast_daily_items の集計と更新（新しい関数シグネチャ）
+    const dailyItems = aggregateCastDailyItems(typedOrders, castMap, storeId, date, salesSettings, taxRate, productNeedsCastMap)
+
+    // BASE注文もcast_daily_itemsに追加（推し扱い、カテゴリは"BASE"）
+    const baseItemsMap = new Map<string, CastDailyItemData>()
+    for (const order of baseOrders || []) {
+      if (!order.cast_id || !order.product_name) continue
+      const key = `${order.cast_id}:${order.product_name}`
+      const amount = order.actual_price * order.quantity
+      if (baseItemsMap.has(key)) {
+        const existing = baseItemsMap.get(key)!
+        existing.quantity += order.quantity
+        existing.self_sales += amount
+        existing.subtotal += amount
+      } else {
+        baseItemsMap.set(key, {
+          cast_id: order.cast_id,
+          help_cast_id: null,  // BASEは全て推し扱い
+          store_id: storeId,
+          date: date,
+          order_id: null,  // BASEは元伝票なし
+          table_number: null,  // BASEはテーブル情報なし
+          guest_name: null,  // BASEはお客様名なし
+          category: 'BASE',
+          product_name: order.product_name,
+          quantity: order.quantity,
+          self_sales: amount,
+          help_sales: 0,
+          needs_cast: true,  // BASEは常に指名必須（キャストに紐づいている）
+          subtotal: amount,
+          back_amount: 0,
+          is_self: true  // 後方互換用
+        })
+      }
+    }
+    const baseItems = Array.from(baseItemsMap.values())
+
+    // POS + BASE を結合
+    const allDailyItems = [...dailyItems, ...baseItems]
 
     // 既存データを削除してから挿入（日付・店舗単位で置き換え）
-    if (dailyItems.length > 0) {
+    if (allDailyItems.length > 0) {
       // 確定済みキャストの商品データは除外
-      const itemsToUpsert = dailyItems.filter(item => !finalizedCastIds.has(item.cast_id))
+      const itemsToUpsert = allDailyItems.filter(item => !finalizedCastIds.has(item.cast_id))
 
       if (itemsToUpsert.length > 0) {
         // 既存の未確定データを削除
@@ -541,7 +1003,21 @@ async function recalculateForStoreAndDate(
       }
     }
 
-    return { success: true, castsProcessed: statsToUpsert.length, itemsProcessed: dailyItems.length }
+    // 未処理のBASE注文のみを処理済みにマーク
+    const unprocessedBaseOrders = (baseOrders || []).filter(o => !o.is_processed)
+    if (unprocessedBaseOrders.length > 0) {
+      const baseOrderIds = unprocessedBaseOrders.map(o => o.id)
+      const { error: baseUpdateError } = await supabaseAdmin
+        .from('base_orders')
+        .update({ is_processed: true })
+        .in('id', baseOrderIds)
+
+      if (baseUpdateError) {
+        console.error('BASE orders update error:', baseUpdateError)
+      }
+    }
+
+    return { success: true, castsProcessed: statsToUpsert.length, itemsProcessed: allDailyItems.length }
   } catch (error) {
     console.error('Recalculate error for store', storeId, ':', error)
     return { success: false, castsProcessed: 0, itemsProcessed: 0, error: String(error) }
