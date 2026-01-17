@@ -511,8 +511,7 @@ function ReceiptsPageContent() {
         return
       }
 
-      // タブを切り替えて詳細を開く
-      setActiveTab('receipts')
+      // 詳細モーダルを開く（タブは切り替えない）
       loadReceiptDetails(receipt)
     } catch (error) {
       console.error('Error opening receipt:', error)
