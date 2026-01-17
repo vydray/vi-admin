@@ -325,11 +325,12 @@ export default function EventPromotionTab({ storeId }: EventPromotionTabProps) {
     setEditForm({ ...editForm, target_categories: updated })
   }
 
-  // CSVダウンロード
+  // CSVダウンロード（達成した伝票のみ）
   const handleDownloadCSV = () => {
-    if (!selectedPromotion || achievements.length === 0) return
+    const achievedOnly = achievements.filter(a => a.achieved_threshold !== null)
+    if (!selectedPromotion || achievedOnly.length === 0) return
 
-    const csv = achievementsToCSV(achievements, selectedPromotion.name)
+    const csv = achievementsToCSV(achievedOnly, selectedPromotion.name)
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
@@ -343,6 +344,8 @@ export default function EventPromotionTab({ storeId }: EventPromotionTabProps) {
   const styles: { [key: string]: React.CSSProperties } = {
     container: {
       padding: '20px',
+      maxWidth: '100%',
+      boxSizing: 'border-box',
     },
     header: {
       display: 'flex',
@@ -356,7 +359,9 @@ export default function EventPromotionTab({ storeId }: EventPromotionTabProps) {
       fontSize: '14px',
       border: '1px solid #ddd',
       borderRadius: '5px',
-      minWidth: '200px',
+      minWidth: '150px',
+      maxWidth: '100%',
+      boxSizing: 'border-box',
     },
     button: {
       padding: '8px 16px',
@@ -417,6 +422,8 @@ export default function EventPromotionTab({ storeId }: EventPromotionTabProps) {
       fontSize: '14px',
       border: '1px solid #ddd',
       borderRadius: '5px',
+      maxWidth: '100%',
+      boxSizing: 'border-box',
     },
     categoryChips: {
       display: 'flex',
@@ -452,10 +459,10 @@ export default function EventPromotionTab({ storeId }: EventPromotionTabProps) {
       borderRadius: '5px',
     },
     thresholdForm: {
-      display: 'flex',
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
       gap: '10px',
-      alignItems: 'flex-end',
-      flexWrap: 'wrap',
+      alignItems: 'end',
       marginTop: '10px',
       padding: '10px',
       backgroundColor: '#fff',
@@ -724,7 +731,7 @@ export default function EventPromotionTab({ storeId }: EventPromotionTabProps) {
                 <label style={styles.label}>金額（以上）</label>
                 <input
                   type="number"
-                  style={{ ...styles.input, width: '120px' }}
+                  style={styles.input}
                   value={newThreshold.min_amount}
                   onChange={(e) => setNewThreshold({ ...newThreshold, min_amount: parseInt(e.target.value) || 0 })}
                 />
@@ -733,7 +740,7 @@ export default function EventPromotionTab({ storeId }: EventPromotionTabProps) {
                 <label style={styles.label}>金額（未満・任意）</label>
                 <input
                   type="number"
-                  style={{ ...styles.input, width: '120px' }}
+                  style={styles.input}
                   value={newThreshold.max_amount || ''}
                   onChange={(e) => setNewThreshold({
                     ...newThreshold,
@@ -746,7 +753,7 @@ export default function EventPromotionTab({ storeId }: EventPromotionTabProps) {
                 <label style={styles.label}>特典名 *</label>
                 <input
                   type="text"
-                  style={{ ...styles.input, width: '150px' }}
+                  style={styles.input}
                   value={newThreshold.reward_name}
                   onChange={(e) => setNewThreshold({ ...newThreshold, reward_name: e.target.value })}
                   placeholder="例: シャンパングラス"
@@ -756,7 +763,7 @@ export default function EventPromotionTab({ storeId }: EventPromotionTabProps) {
                 <label style={styles.label}>説明（任意）</label>
                 <input
                   type="text"
-                  style={{ ...styles.input, width: '200px' }}
+                  style={styles.input}
                   value={newThreshold.reward_description || ''}
                   onChange={(e) => setNewThreshold({ ...newThreshold, reward_description: e.target.value })}
                   placeholder="例: オリジナルグラス1個"
@@ -781,13 +788,22 @@ export default function EventPromotionTab({ storeId }: EventPromotionTabProps) {
               {saving ? '保存中...' : '保存'}
             </button>
             {!isCreating && (
-              <button
-                style={{ ...styles.button, ...styles.dangerButton }}
-                onClick={handleDelete}
-                disabled={saving}
-              >
-                削除
-              </button>
+              <>
+                <button
+                  style={{ ...styles.button, ...styles.dangerButton }}
+                  onClick={handleDelete}
+                  disabled={saving}
+                >
+                  削除
+                </button>
+                <button
+                  style={{ ...styles.button, ...styles.secondaryButton }}
+                  onClick={() => selectedPromotion && loadAchievements(selectedPromotion)}
+                  disabled={loadingAchievements}
+                >
+                  {loadingAchievements ? '更新中...' : '更新'}
+                </button>
+              </>
             )}
           </div>
         </>
@@ -798,7 +814,7 @@ export default function EventPromotionTab({ storeId }: EventPromotionTabProps) {
         <div style={styles.section}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={styles.sectionTitle}>達成状況一覧</div>
-            {achievements.length > 0 && (
+            {achievements.filter(a => a.achieved_threshold !== null).length > 0 && (
               <button
                 style={{ ...styles.button, ...styles.secondaryButton }}
                 onClick={handleDownloadCSV}
@@ -848,48 +864,41 @@ export default function EventPromotionTab({ storeId }: EventPromotionTabProps) {
 
           {loadingAchievements ? (
             <LoadingSpinner />
-          ) : achievements.length === 0 ? (
+          ) : achievements.filter(a => a.achieved_threshold !== null).length === 0 ? (
             <div style={styles.emptyState}>
-              期間内の伝票がありません
+              達成した伝票がありません
             </div>
           ) : (
-            <table style={styles.table}>
-              <thead>
-                <tr>
-                  <th style={styles.th}>テーブル</th>
-                  <th style={styles.th}>お客様名</th>
-                  <th style={styles.th}>推し</th>
-                  <th style={styles.th}>会計日時</th>
-                  <th style={{ ...styles.th, textAlign: 'right' }}>対象金額</th>
-                  <th style={styles.th}>達成特典</th>
-                </tr>
-              </thead>
-              <tbody>
-                {achievements.map((a, i) => (
-                  <tr key={i}>
-                    <td style={styles.td}>{a.table_number}</td>
-                    <td style={styles.td}>{a.guest_name || '-'}</td>
-                    <td style={styles.td}>{a.staff_name || '-'}</td>
-                    <td style={styles.td}>{formatDateTime(a.checkout_datetime)}</td>
-                    <td style={{ ...styles.td, textAlign: 'right' }}>{formatCurrency(a.target_amount)}</td>
-                    <td style={styles.td}>
-                      {a.achieved_threshold ? (
-                        <span style={styles.achievedBadge}>{a.achieved_threshold.reward_name}</span>
-                      ) : (
-                        <>
-                          <span style={styles.notAchievedBadge}>未達成</span>
-                          {a.remaining_amount && (
-                            <div style={styles.remainingText}>
-                              → あと {formatCurrency(a.remaining_amount)} で {a.next_threshold?.reward_name}
-                            </div>
-                          )}
-                        </>
-                      )}
-                    </td>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th style={styles.th}>テーブル</th>
+                    <th style={styles.th}>お客様名</th>
+                    <th style={styles.th}>推し</th>
+                    <th style={styles.th}>会計日時</th>
+                    <th style={{ ...styles.th, textAlign: 'right' }}>対象金額</th>
+                    <th style={styles.th}>達成特典</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {achievements
+                    .filter(a => a.achieved_threshold !== null)
+                    .map((a, i) => (
+                    <tr key={i}>
+                      <td style={styles.td}>{a.table_number}</td>
+                      <td style={styles.td}>{a.guest_name || '-'}</td>
+                      <td style={styles.td}>{a.staff_name || '-'}</td>
+                      <td style={styles.td}>{formatDateTime(a.checkout_datetime)}</td>
+                      <td style={{ ...styles.td, textAlign: 'right' }}>{formatCurrency(a.target_amount)}</td>
+                      <td style={styles.td}>
+                        <span style={styles.achievedBadge}>{a.achieved_threshold!.reward_name}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       )}
