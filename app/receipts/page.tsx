@@ -1653,373 +1653,6 @@ function ReceiptsPageContent() {
         </table>
       </div>
 
-      {/* Edit Modal */}
-      {isEditModalOpen && selectedReceipt && (
-        <div style={styles.modalOverlay} onClick={() => setIsEditModalOpen(false)}>
-          <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
-            <div style={styles.modalHeader}>
-              <h2 style={styles.modalTitle}>伝票編集 - ID: {selectedReceipt.id}</h2>
-              <Button
-                onClick={() => setIsEditModalOpen(false)}
-                variant="outline"
-                style={{
-                  fontSize: '28px',
-                  backgroundColor: 'transparent',
-                  border: 'none',
-                  padding: '0',
-                  width: '30px',
-                  height: '30px',
-                  color: '#6c757d'
-                }}
-              >
-                ×
-              </Button>
-            </div>
-
-            <div style={styles.modalBody}>
-              <div style={styles.formGroup}>
-                <label style={styles.label}>テーブル番号</label>
-                <input
-                  type="text"
-                  value={editFormData.table_number}
-                  onChange={(e) => setEditFormData({ ...editFormData, table_number: e.target.value })}
-                  style={styles.input}
-                />
-              </div>
-
-              <div style={styles.formGroup}>
-                <label style={styles.label}>お客様名</label>
-                <input
-                  type="text"
-                  value={editFormData.guest_name}
-                  onChange={(e) => setEditFormData({ ...editFormData, guest_name: e.target.value })}
-                  style={styles.input}
-                />
-              </div>
-
-              <div style={styles.formGroup}>
-                <label style={styles.label}>推し{allowMultipleNominations && '（複数選択可）'}</label>
-                {allowMultipleNominations ? (
-                  <div style={{ position: 'relative' }} ref={editStaffDropdownRef}>
-                    <div
-                      onClick={() => setShowEditStaffDropdown(!showEditStaffDropdown)}
-                      style={styles.multiSelectInputContainer}
-                    >
-                      {editFormData.staff_names.length > 0 ? (
-                        editFormData.staff_names.map((name, idx) => (
-                          <span key={idx} style={styles.selectedCastTag}>
-                            {name}
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                setEditFormData({
-                                  ...editFormData,
-                                  staff_names: editFormData.staff_names.filter((_, i) => i !== idx)
-                                })
-                              }}
-                              style={styles.removeCastBtn}
-                            >
-                              ×
-                            </button>
-                          </span>
-                        ))
-                      ) : (
-                        <span style={styles.multiSelectPlaceholder}>選択してください</span>
-                      )}
-                    </div>
-                    {showEditStaffDropdown && (
-                      <div style={styles.castDropdownMenu}>
-                        {casts.map((cast) => {
-                          const isSelected = editFormData.staff_names.includes(cast.name)
-                          return (
-                            <div
-                              key={cast.id}
-                              onClick={() => {
-                                if (isSelected) {
-                                  setEditFormData({
-                                    ...editFormData,
-                                    staff_names: editFormData.staff_names.filter(n => n !== cast.name)
-                                  })
-                                } else {
-                                  setEditFormData({
-                                    ...editFormData,
-                                    staff_names: [...editFormData.staff_names, cast.name]
-                                  })
-                                }
-                              }}
-                              style={{
-                                ...styles.castDropdownItem,
-                                backgroundColor: isSelected ? '#e0f2fe' : 'transparent'
-                              }}
-                            >
-                              <span style={styles.castCheckbox}>{isSelected ? '✓' : ''}</span>
-                              {cast.name}
-                            </div>
-                          )
-                        })}
-                        <button
-                          type="button"
-                          onClick={() => setShowEditStaffDropdown(false)}
-                          style={styles.castDropdownClose}
-                        >
-                          閉じる
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  /* 単一選択モード：通常のselect */
-                  <select
-                    value={editFormData.staff_names[0] || ''}
-                    onChange={(e) => setEditFormData({
-                      ...editFormData,
-                      staff_names: e.target.value ? [e.target.value] : []
-                    })}
-                    style={styles.input}
-                  >
-                    <option value="">選択してください</option>
-                    {casts.map((cast) => (
-                      <option key={cast.id} value={cast.name}>
-                        {cast.name}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </div>
-
-              <div style={styles.formGroup}>
-                <label style={styles.label}>注文日</label>
-                <input
-                  type="date"
-                  value={editFormData.order_date}
-                  onChange={(e) => setEditFormData({ ...editFormData, order_date: e.target.value })}
-                  style={styles.input}
-                />
-              </div>
-
-              <div style={styles.formGroup}>
-                <label style={styles.label}>会計日時</label>
-                <input
-                  type="datetime-local"
-                  value={editFormData.checkout_datetime}
-                  onChange={(e) => setEditFormData({ ...editFormData, checkout_datetime: e.target.value })}
-                  style={styles.input}
-                />
-              </div>
-
-              {/* Order Items Display */}
-              {selectedReceipt.order_items && selectedReceipt.order_items.length > 0 && (
-                <div style={styles.orderItemsSection}>
-                  <h3 style={styles.sectionTitle}>注文明細</h3>
-                  <table style={styles.itemsTable}>
-                    <thead>
-                      <tr>
-                        <th style={styles.itemTh}>商品名</th>
-                        <th style={styles.itemTh}>キャスト</th>
-                        <th style={styles.itemTh}>数量</th>
-                        <th style={styles.itemTh}>単価</th>
-                        <th style={styles.itemTh}>合計</th>
-                        <th style={styles.itemTh}>操作</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {selectedReceipt.order_items.map((item) => (
-                        <tr
-                          key={item.id}
-                          onClick={() => startEditItem(item)}
-                          style={styles.itemRow}
-                        >
-                          <td style={styles.itemTd}>{item.product_name}</td>
-                          <td style={styles.itemTd}>{formatCastName(item.cast_name)}</td>
-                          <td style={styles.itemTd}>{item.quantity}</td>
-                          <td style={styles.itemTd}>{formatCurrency(item.unit_price)}</td>
-                          <td style={styles.itemTd}>{formatCurrency(item.subtotal)}</td>
-                          <td style={styles.itemTd}>
-                            <Button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                deleteOrderItem(item.id)
-                              }}
-                              variant="danger"
-                              size="small"
-                            >
-                              削除
-                            </Button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  <Button
-                    onClick={openAddItemModal}
-                    variant="primary"
-                    fullWidth
-                  >
-                    + 注文明細を追加
-                  </Button>
-                </div>
-              )}
-
-              {/* Totals Summary */}
-              {selectedReceipt.order_items && selectedReceipt.order_items.length > 0 && (() => {
-                // 商品小計
-                const itemsSubtotal = selectedReceipt.order_items.reduce((sum, item) => sum + item.subtotal, 0)
-
-                // サービス料
-                const serviceFee = Math.floor(itemsSubtotal * (serviceChargeRate / 100))
-
-                // サービス料込み小計（端数処理前）
-                const subtotalBeforeRounding = itemsSubtotal + serviceFee
-
-                // 端数処理を適用
-                const roundedSubtotal = getRoundedTotal(subtotalBeforeRounding, roundingUnit, roundingMethod)
-                const roundingAdjustment1 = roundedSubtotal - subtotalBeforeRounding
-
-                // カード手数料（カード支払いがある場合のみ計算）
-                const remainingAmount = roundedSubtotal - editPaymentData.cash_amount - editPaymentData.other_payment_amount
-                const cardFee = editPaymentData.credit_card_amount > 0 && remainingAmount > 0 && cardFeeRate > 0
-                  ? Math.floor(remainingAmount * (cardFeeRate / 100))
-                  : 0
-
-                // 最終合計（端数処理前）
-                const totalBeforeRounding = roundedSubtotal + cardFee
-
-                // 端数処理を適用
-                const finalTotal = getRoundedTotal(totalBeforeRounding, roundingUnit, roundingMethod)
-                const roundingAdjustment2 = finalTotal - totalBeforeRounding
-
-                return (
-                  <div style={styles.totalsSummarySection}>
-                    <div style={styles.summaryRow}>
-                      <span style={styles.summaryLabel}>小計</span>
-                      <span style={styles.summaryValue}>
-                        {formatCurrency(itemsSubtotal)}
-                      </span>
-                    </div>
-                    {serviceFee > 0 && (
-                      <div style={styles.summaryRow}>
-                        <span style={styles.summaryLabel}>サービス料 {serviceChargeRate}% +</span>
-                        <span style={styles.summaryValue}>
-                          {formatCurrency(serviceFee)}
-                        </span>
-                      </div>
-                    )}
-                    {roundingAdjustment1 !== 0 && (
-                      <div style={styles.summaryRow}>
-                        <span style={styles.summaryLabel}>端数調整</span>
-                        <span style={{ ...styles.summaryValue, color: roundingAdjustment1 < 0 ? '#d32f2f' : '#388e3c' }}>
-                          {roundingAdjustment1 < 0 ? '' : '+'}¥{roundingAdjustment1.toLocaleString()}
-                        </span>
-                      </div>
-                    )}
-                    <div style={styles.summaryDivider}></div>
-                    <div style={styles.summaryRow}>
-                      <span style={styles.summaryLabel}>小計（端数処理後）</span>
-                      <span style={styles.summaryValue}>
-                        {formatCurrency(roundedSubtotal)}
-                      </span>
-                    </div>
-                    {cardFee > 0 && (
-                      <div style={styles.summaryRow}>
-                        <span style={styles.summaryLabel}>カード手数料 {cardFeeRate}% +</span>
-                        <span style={styles.summaryValue}>
-                          {formatCurrency(cardFee)}
-                        </span>
-                      </div>
-                    )}
-                    {roundingAdjustment2 !== 0 && (
-                      <div style={styles.summaryRow}>
-                        <span style={styles.summaryLabel}>端数調整</span>
-                        <span style={{ ...styles.summaryValue, color: roundingAdjustment2 < 0 ? '#d32f2f' : '#388e3c' }}>
-                          {roundingAdjustment2 < 0 ? '' : '+'}¥{roundingAdjustment2.toLocaleString()}
-                        </span>
-                      </div>
-                    )}
-                    <div style={styles.summaryDivider}></div>
-                    <div style={styles.summaryRow}>
-                      <span style={styles.summaryLabelBold}>合計金額</span>
-                      <span style={styles.summaryValueBold}>
-                        {formatCurrency(finalTotal)}
-                      </span>
-                    </div>
-                  </div>
-                )
-              })()}
-
-              {/* Payment Details Display (Read-only) */}
-              <div style={styles.paymentSection}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-                  <h3 style={{ ...styles.sectionTitle, marginBottom: 0 }}>支払情報</h3>
-                  <Button
-                    onClick={calculateReceiptTotals}
-                    variant="primary"
-                    style={{ backgroundColor: '#ffc107', color: '#000' }}
-                  >
-                    合計を計算
-                  </Button>
-                </div>
-                <div style={styles.paymentEditGrid}>
-                  <div style={styles.formGroup}>
-                    <label style={styles.label}>現金</label>
-                    <div style={styles.totalDisplay}>
-                      {formatCurrency(editPaymentData.cash_amount)}
-                    </div>
-                  </div>
-                  <div style={styles.formGroup}>
-                    <label style={styles.label}>クレジットカード</label>
-                    <div style={styles.totalDisplay}>
-                      {formatCurrency(editPaymentData.credit_card_amount)}
-                    </div>
-                  </div>
-                  <div style={styles.formGroup}>
-                    <label style={styles.label}>その他金額</label>
-                    <div style={styles.totalDisplay}>
-                      {formatCurrency(editPaymentData.other_payment_amount)}
-                    </div>
-                  </div>
-                  <div style={styles.formGroup}>
-                    <label style={styles.label}>お釣り</label>
-                    <div style={styles.totalDisplay}>
-                      {formatCurrency(editPaymentData.change_amount)}
-                    </div>
-                  </div>
-                </div>
-                <div style={{ fontSize: '13px', color: '#6c757d', marginTop: '10px', fontStyle: 'italic' }}>
-                  ※ 支払い情報を変更するには「合計を計算」ボタンをクリックしてください
-                </div>
-              </div>
-            </div>
-
-            <div style={styles.modalFooter}>
-              <div style={styles.modalFooterLeft}>
-                <Button
-                  onClick={() => deleteReceipt(selectedReceipt.id)}
-                  variant="danger"
-                >
-                  削除
-                </Button>
-                <Button
-                  onClick={duplicateReceipt}
-                  variant="primary"
-                  style={{ backgroundColor: '#17a2b8' }}
-                >
-                  複製
-                </Button>
-              </div>
-              <div style={styles.modalFooterRight}>
-                <Button onClick={() => setIsEditModalOpen(false)} variant="secondary">
-                  キャンセル
-                </Button>
-                <Button onClick={saveReceiptChanges} variant="success">
-                  保存
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Edit Item Modal */}
       {isEditItemModalOpen && editingItem && (
         <div style={styles.modalOverlay} onClick={cancelEditItem}>
@@ -3028,6 +2661,373 @@ function ReceiptsPageContent() {
         </div>
       )}
       </>
+      )}
+
+      {/* Edit Modal - タブに関係なく表示 */}
+      {isEditModalOpen && selectedReceipt && (
+        <div style={styles.modalOverlay} onClick={() => setIsEditModalOpen(false)}>
+          <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+            <div style={styles.modalHeader}>
+              <h2 style={styles.modalTitle}>伝票編集 - ID: {selectedReceipt.id}</h2>
+              <Button
+                onClick={() => setIsEditModalOpen(false)}
+                variant="outline"
+                style={{
+                  fontSize: '28px',
+                  backgroundColor: 'transparent',
+                  border: 'none',
+                  padding: '0',
+                  width: '30px',
+                  height: '30px',
+                  color: '#6c757d'
+                }}
+              >
+                ×
+              </Button>
+            </div>
+
+            <div style={styles.modalBody}>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>テーブル番号</label>
+                <input
+                  type="text"
+                  value={editFormData.table_number}
+                  onChange={(e) => setEditFormData({ ...editFormData, table_number: e.target.value })}
+                  style={styles.input}
+                />
+              </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.label}>お客様名</label>
+                <input
+                  type="text"
+                  value={editFormData.guest_name}
+                  onChange={(e) => setEditFormData({ ...editFormData, guest_name: e.target.value })}
+                  style={styles.input}
+                />
+              </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.label}>推し{allowMultipleNominations && '（複数選択可）'}</label>
+                {allowMultipleNominations ? (
+                  <div style={{ position: 'relative' }} ref={editStaffDropdownRef}>
+                    <div
+                      onClick={() => setShowEditStaffDropdown(!showEditStaffDropdown)}
+                      style={styles.multiSelectInputContainer}
+                    >
+                      {editFormData.staff_names.length > 0 ? (
+                        editFormData.staff_names.map((name, idx) => (
+                          <span key={idx} style={styles.selectedCastTag}>
+                            {name}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setEditFormData({
+                                  ...editFormData,
+                                  staff_names: editFormData.staff_names.filter((_, i) => i !== idx)
+                                })
+                              }}
+                              style={styles.removeCastBtn}
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ))
+                      ) : (
+                        <span style={styles.multiSelectPlaceholder}>選択してください</span>
+                      )}
+                    </div>
+                    {showEditStaffDropdown && (
+                      <div style={styles.castDropdownMenu}>
+                        {casts.map((cast) => {
+                          const isSelected = editFormData.staff_names.includes(cast.name)
+                          return (
+                            <div
+                              key={cast.id}
+                              onClick={() => {
+                                if (isSelected) {
+                                  setEditFormData({
+                                    ...editFormData,
+                                    staff_names: editFormData.staff_names.filter(n => n !== cast.name)
+                                  })
+                                } else {
+                                  setEditFormData({
+                                    ...editFormData,
+                                    staff_names: [...editFormData.staff_names, cast.name]
+                                  })
+                                }
+                              }}
+                              style={{
+                                ...styles.castDropdownItem,
+                                backgroundColor: isSelected ? '#e0f2fe' : 'transparent'
+                              }}
+                            >
+                              <span style={styles.castCheckbox}>{isSelected ? '✓' : ''}</span>
+                              {cast.name}
+                            </div>
+                          )
+                        })}
+                        <button
+                          type="button"
+                          onClick={() => setShowEditStaffDropdown(false)}
+                          style={styles.castDropdownClose}
+                        >
+                          閉じる
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  /* 単一選択モード：通常のselect */
+                  <select
+                    value={editFormData.staff_names[0] || ''}
+                    onChange={(e) => setEditFormData({
+                      ...editFormData,
+                      staff_names: e.target.value ? [e.target.value] : []
+                    })}
+                    style={styles.input}
+                  >
+                    <option value="">選択してください</option>
+                    {casts.map((cast) => (
+                      <option key={cast.id} value={cast.name}>
+                        {cast.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.label}>注文日</label>
+                <input
+                  type="date"
+                  value={editFormData.order_date}
+                  onChange={(e) => setEditFormData({ ...editFormData, order_date: e.target.value })}
+                  style={styles.input}
+                />
+              </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.label}>会計日時</label>
+                <input
+                  type="datetime-local"
+                  value={editFormData.checkout_datetime}
+                  onChange={(e) => setEditFormData({ ...editFormData, checkout_datetime: e.target.value })}
+                  style={styles.input}
+                />
+              </div>
+
+              {/* Order Items Display */}
+              {selectedReceipt.order_items && selectedReceipt.order_items.length > 0 && (
+                <div style={styles.orderItemsSection}>
+                  <h3 style={styles.sectionTitle}>注文明細</h3>
+                  <table style={styles.itemsTable}>
+                    <thead>
+                      <tr>
+                        <th style={styles.itemTh}>商品名</th>
+                        <th style={styles.itemTh}>キャスト</th>
+                        <th style={styles.itemTh}>数量</th>
+                        <th style={styles.itemTh}>単価</th>
+                        <th style={styles.itemTh}>合計</th>
+                        <th style={styles.itemTh}>操作</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selectedReceipt.order_items.map((item) => (
+                        <tr
+                          key={item.id}
+                          onClick={() => startEditItem(item)}
+                          style={styles.itemRow}
+                        >
+                          <td style={styles.itemTd}>{item.product_name}</td>
+                          <td style={styles.itemTd}>{formatCastName(item.cast_name)}</td>
+                          <td style={styles.itemTd}>{item.quantity}</td>
+                          <td style={styles.itemTd}>{formatCurrency(item.unit_price)}</td>
+                          <td style={styles.itemTd}>{formatCurrency(item.subtotal)}</td>
+                          <td style={styles.itemTd}>
+                            <Button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                deleteOrderItem(item.id)
+                              }}
+                              variant="danger"
+                              size="small"
+                            >
+                              削除
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <Button
+                    onClick={openAddItemModal}
+                    variant="primary"
+                    fullWidth
+                  >
+                    + 注文明細を追加
+                  </Button>
+                </div>
+              )}
+
+              {/* Totals Summary */}
+              {selectedReceipt.order_items && selectedReceipt.order_items.length > 0 && (() => {
+                // 商品小計
+                const itemsSubtotal = selectedReceipt.order_items.reduce((sum, item) => sum + item.subtotal, 0)
+
+                // サービス料
+                const serviceFee = Math.floor(itemsSubtotal * (serviceChargeRate / 100))
+
+                // サービス料込み小計（端数処理前）
+                const subtotalBeforeRounding = itemsSubtotal + serviceFee
+
+                // 端数処理を適用
+                const roundedSubtotal = getRoundedTotal(subtotalBeforeRounding, roundingUnit, roundingMethod)
+                const roundingAdjustment1 = roundedSubtotal - subtotalBeforeRounding
+
+                // カード手数料（カード支払いがある場合のみ計算）
+                const remainingAmount = roundedSubtotal - editPaymentData.cash_amount - editPaymentData.other_payment_amount
+                const cardFee = editPaymentData.credit_card_amount > 0 && remainingAmount > 0 && cardFeeRate > 0
+                  ? Math.floor(remainingAmount * (cardFeeRate / 100))
+                  : 0
+
+                // 最終合計（端数処理前）
+                const totalBeforeRounding = roundedSubtotal + cardFee
+
+                // 端数処理を適用
+                const finalTotal = getRoundedTotal(totalBeforeRounding, roundingUnit, roundingMethod)
+                const roundingAdjustment2 = finalTotal - totalBeforeRounding
+
+                return (
+                  <div style={styles.totalsSummarySection}>
+                    <div style={styles.summaryRow}>
+                      <span style={styles.summaryLabel}>小計</span>
+                      <span style={styles.summaryValue}>
+                        {formatCurrency(itemsSubtotal)}
+                      </span>
+                    </div>
+                    {serviceFee > 0 && (
+                      <div style={styles.summaryRow}>
+                        <span style={styles.summaryLabel}>サービス料 {serviceChargeRate}% +</span>
+                        <span style={styles.summaryValue}>
+                          {formatCurrency(serviceFee)}
+                        </span>
+                      </div>
+                    )}
+                    {roundingAdjustment1 !== 0 && (
+                      <div style={styles.summaryRow}>
+                        <span style={styles.summaryLabel}>端数調整</span>
+                        <span style={{ ...styles.summaryValue, color: roundingAdjustment1 < 0 ? '#d32f2f' : '#388e3c' }}>
+                          {roundingAdjustment1 < 0 ? '' : '+'}¥{roundingAdjustment1.toLocaleString()}
+                        </span>
+                      </div>
+                    )}
+                    <div style={styles.summaryDivider}></div>
+                    <div style={styles.summaryRow}>
+                      <span style={styles.summaryLabel}>小計（端数処理後）</span>
+                      <span style={styles.summaryValue}>
+                        {formatCurrency(roundedSubtotal)}
+                      </span>
+                    </div>
+                    {cardFee > 0 && (
+                      <div style={styles.summaryRow}>
+                        <span style={styles.summaryLabel}>カード手数料 {cardFeeRate}% +</span>
+                        <span style={styles.summaryValue}>
+                          {formatCurrency(cardFee)}
+                        </span>
+                      </div>
+                    )}
+                    {roundingAdjustment2 !== 0 && (
+                      <div style={styles.summaryRow}>
+                        <span style={styles.summaryLabel}>端数調整</span>
+                        <span style={{ ...styles.summaryValue, color: roundingAdjustment2 < 0 ? '#d32f2f' : '#388e3c' }}>
+                          {roundingAdjustment2 < 0 ? '' : '+'}¥{roundingAdjustment2.toLocaleString()}
+                        </span>
+                      </div>
+                    )}
+                    <div style={styles.summaryDivider}></div>
+                    <div style={styles.summaryRow}>
+                      <span style={styles.summaryLabelBold}>合計金額</span>
+                      <span style={styles.summaryValueBold}>
+                        {formatCurrency(finalTotal)}
+                      </span>
+                    </div>
+                  </div>
+                )
+              })()}
+
+              {/* Payment Details Display (Read-only) */}
+              <div style={styles.paymentSection}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+                  <h3 style={{ ...styles.sectionTitle, marginBottom: 0 }}>支払情報</h3>
+                  <Button
+                    onClick={calculateReceiptTotals}
+                    variant="primary"
+                    style={{ backgroundColor: '#ffc107', color: '#000' }}
+                  >
+                    合計を計算
+                  </Button>
+                </div>
+                <div style={styles.paymentEditGrid}>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>現金</label>
+                    <div style={styles.totalDisplay}>
+                      {formatCurrency(editPaymentData.cash_amount)}
+                    </div>
+                  </div>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>クレジットカード</label>
+                    <div style={styles.totalDisplay}>
+                      {formatCurrency(editPaymentData.credit_card_amount)}
+                    </div>
+                  </div>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>その他金額</label>
+                    <div style={styles.totalDisplay}>
+                      {formatCurrency(editPaymentData.other_payment_amount)}
+                    </div>
+                  </div>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>お釣り</label>
+                    <div style={styles.totalDisplay}>
+                      {formatCurrency(editPaymentData.change_amount)}
+                    </div>
+                  </div>
+                </div>
+                <div style={{ fontSize: '13px', color: '#6c757d', marginTop: '10px', fontStyle: 'italic' }}>
+                  ※ 支払い情報を変更するには「合計を計算」ボタンをクリックしてください
+                </div>
+              </div>
+            </div>
+
+            <div style={styles.modalFooter}>
+              <div style={styles.modalFooterLeft}>
+                <Button
+                  onClick={() => deleteReceipt(selectedReceipt.id)}
+                  variant="danger"
+                >
+                  削除
+                </Button>
+                <Button
+                  onClick={duplicateReceipt}
+                  variant="primary"
+                  style={{ backgroundColor: '#17a2b8' }}
+                >
+                  複製
+                </Button>
+              </div>
+              <div style={styles.modalFooterRight}>
+                <Button onClick={() => setIsEditModalOpen(false)} variant="secondary">
+                  キャンセル
+                </Button>
+                <Button onClick={saveReceiptChanges} variant="success">
+                  保存
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
