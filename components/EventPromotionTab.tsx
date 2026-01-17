@@ -163,7 +163,7 @@ export default function EventPromotionTab({ storeId, onReceiptClick }: EventProm
 
       // 達成状況を計算
       const ordersForCalc = (orders || []).map(o => ({
-        id: o.id.toString(),
+        id: o.id,
         table_number: o.table_number,
         guest_name: o.guest_name,
         staff_name: o.staff_name,
@@ -889,7 +889,7 @@ export default function EventPromotionTab({ storeId, onReceiptClick }: EventProm
                     .map((a, i) => (
                     <tr
                       key={i}
-                      onClick={() => onReceiptClick?.(parseInt(a.order_id))}
+                      onClick={() => onReceiptClick?.(a.order_id)}
                       style={{
                         cursor: onReceiptClick ? 'pointer' : 'default',
                         transition: 'background-color 0.2s',

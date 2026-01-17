@@ -20,7 +20,7 @@ interface OrderItemForPromotion {
 
 // 計算用の注文型
 interface OrderForPromotion {
-  id: string
+  id: number
   table_number: string
   guest_name: string | null
   staff_name: string | string[] | null

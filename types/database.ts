@@ -1006,7 +1006,7 @@ export interface EventPromotion {
 
 // 達成状況（計算結果）
 export interface PromotionAchievement {
-  order_id: string
+  order_id: number
   table_number: string
   guest_name: string | null
   staff_name: string | null
