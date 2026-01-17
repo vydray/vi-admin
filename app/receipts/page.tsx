@@ -496,6 +496,30 @@ function ReceiptsPageContent() {
     }
   }
 
+  // IDで伝票を開く（イベント特典集計から呼び出し用）
+  const openReceiptById = async (orderId: number) => {
+    try {
+      const { data: receipt, error } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('id', orderId)
+        .single()
+
+      if (error) throw error
+      if (!receipt) {
+        toast.error('伝票が見つかりません')
+        return
+      }
+
+      // タブを切り替えて詳細を開く
+      setActiveTab('receipts')
+      loadReceiptDetails(receipt)
+    } catch (error) {
+      console.error('Error opening receipt:', error)
+      toast.error('伝票の読み込みに失敗しました')
+    }
+  }
+
   const saveReceiptChanges = async () => {
     if (!selectedReceipt) return
 
@@ -1433,7 +1457,7 @@ function ReceiptsPageContent() {
 
       {/* イベント特典集計タブ */}
       {activeTab === 'event-promotions' && storeId && (
-        <EventPromotionTab storeId={storeId} />
+        <EventPromotionTab storeId={storeId} onReceiptClick={openReceiptById} />
       )}
 
       {/* 伝票一覧タブ */}

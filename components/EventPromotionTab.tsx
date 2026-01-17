@@ -21,6 +21,7 @@ import LoadingSpinner from './LoadingSpinner'
 
 interface EventPromotionTabProps {
   storeId: number
+  onReceiptClick?: (orderId: number) => void
 }
 
 // 金額フォーマット
@@ -64,7 +65,7 @@ const getNewPromotion = (storeId: number): Omit<EventPromotion, 'id' | 'created_
   is_active: true,
 })
 
-export default function EventPromotionTab({ storeId }: EventPromotionTabProps) {
+export default function EventPromotionTab({ storeId, onReceiptClick }: EventPromotionTabProps) {
   // 状態
   const [promotions, setPromotions] = useState<EventPromotion[]>([])
   const [selectedPromotion, setSelectedPromotion] = useState<EventPromotion | null>(null)
@@ -873,6 +874,7 @@ export default function EventPromotionTab({ storeId }: EventPromotionTabProps) {
               <table style={styles.table}>
                 <thead>
                   <tr>
+                    <th style={styles.th}>伝票番号</th>
                     <th style={styles.th}>テーブル</th>
                     <th style={styles.th}>お客様名</th>
                     <th style={styles.th}>推し</th>
@@ -885,7 +887,21 @@ export default function EventPromotionTab({ storeId }: EventPromotionTabProps) {
                   {achievements
                     .filter(a => a.achieved_threshold !== null)
                     .map((a, i) => (
-                    <tr key={i}>
+                    <tr
+                      key={i}
+                      onClick={() => onReceiptClick?.(parseInt(a.order_id))}
+                      style={{
+                        cursor: onReceiptClick ? 'pointer' : 'default',
+                        transition: 'background-color 0.2s',
+                      }}
+                      onMouseEnter={(e) => {
+                        if (onReceiptClick) e.currentTarget.style.backgroundColor = '#f3f4f6'
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'transparent'
+                      }}
+                    >
+                      <td style={styles.td}>{a.order_id}</td>
                       <td style={styles.td}>{a.table_number}</td>
                       <td style={styles.td}>{a.guest_name || '-'}</td>
                       <td style={styles.td}>{a.staff_name || '-'}</td>
