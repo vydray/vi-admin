@@ -964,3 +964,55 @@ export interface PettyCashCheck {
   yen1_count: number
   created_at: string
 }
+
+// ============================================================================
+// Event Promotions (イベント特典)
+// ============================================================================
+
+// 集計対象タイプ
+export type PromotionAggregationType = 'category_based' | 'total_based'
+// category_based: 特定カテゴリのみ
+// total_based: 伝票全体
+
+// 丸め処理方法（イベント特典用）
+export type PromotionRoundingMethod = 'floor' | 'ceil' | 'round' | 'none'
+
+// 特典閾値
+export interface PromotionThreshold {
+  min_amount: number           // 最低金額（以上）
+  max_amount: number | null    // 最大金額（未満、nullは上限なし）
+  reward_name: string          // 特典名
+  reward_description?: string  // 特典詳細説明
+}
+
+// イベント特典設定
+export interface EventPromotion {
+  id: number
+  store_id: number
+  name: string
+  description: string | null
+  start_date: string
+  end_date: string
+  aggregation_type: PromotionAggregationType
+  target_categories: string[] | null
+  exclude_tax: boolean
+  rounding_method: PromotionRoundingMethod
+  rounding_position: number
+  thresholds: PromotionThreshold[]
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+// 達成状況（計算結果）
+export interface PromotionAchievement {
+  order_id: string
+  table_number: string
+  guest_name: string | null
+  staff_name: string | null
+  checkout_datetime: string
+  target_amount: number                       // 対象金額（税抜き/カテゴリフィルタ後）
+  achieved_threshold: PromotionThreshold | null  // 達成した閾値（未達成はnull）
+  next_threshold: PromotionThreshold | null      // 次の閾値（あれば）
+  remaining_amount: number | null                // 次の閾値までの金額
+}

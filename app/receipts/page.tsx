@@ -9,6 +9,7 @@ import { OrderItem, Receipt, ReceiptWithDetails, Product, Category, CastPOS } fr
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
 import ProtectedPage from '@/components/ProtectedPage'
+import EventPromotionTab from '@/components/EventPromotionTab'
 
 // cast_nameが配列の場合はカンマ区切りで表示（JSON文字列・カンマ区切り文字列も対応）
 const formatCastName = (castName: string[] | string | null | undefined): string => {
@@ -85,6 +86,7 @@ function ReceiptsPageContent() {
   const { confirm } = useConfirm()
   const [receipts, setReceipts] = useState<ReceiptWithDetails[]>([])
   const [loading, setLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState<'receipts' | 'event-promotions'>('receipts')
   const [searchTerm, setSearchTerm] = useState('')
   const [itemSearchTerm, setItemSearchTerm] = useState('')
   const [matchingOrderIds, setMatchingOrderIds] = useState<number[] | null>(null)
@@ -1386,6 +1388,57 @@ function ReceiptsPageContent() {
         </div>
       </div>
 
+      {/* タブ切り替え */}
+      <div style={{
+        display: 'flex',
+        gap: '0',
+        marginBottom: '20px',
+        borderBottom: '2px solid #e5e7eb',
+      }}>
+        <button
+          onClick={() => setActiveTab('receipts')}
+          style={{
+            padding: '12px 24px',
+            fontSize: '14px',
+            fontWeight: activeTab === 'receipts' ? '600' : '400',
+            color: activeTab === 'receipts' ? '#3b82f6' : '#6b7280',
+            backgroundColor: 'transparent',
+            border: 'none',
+            borderBottom: activeTab === 'receipts' ? '2px solid #3b82f6' : '2px solid transparent',
+            marginBottom: '-2px',
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+          }}
+        >
+          伝票一覧
+        </button>
+        <button
+          onClick={() => setActiveTab('event-promotions')}
+          style={{
+            padding: '12px 24px',
+            fontSize: '14px',
+            fontWeight: activeTab === 'event-promotions' ? '600' : '400',
+            color: activeTab === 'event-promotions' ? '#3b82f6' : '#6b7280',
+            backgroundColor: 'transparent',
+            border: 'none',
+            borderBottom: activeTab === 'event-promotions' ? '2px solid #3b82f6' : '2px solid transparent',
+            marginBottom: '-2px',
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+          }}
+        >
+          イベント特典集計
+        </button>
+      </div>
+
+      {/* イベント特典集計タブ */}
+      {activeTab === 'event-promotions' && storeId && (
+        <EventPromotionTab storeId={storeId} />
+      )}
+
+      {/* 伝票一覧タブ */}
+      {activeTab === 'receipts' && (
+      <>
       <div style={styles.filterSection}>
         <input
           type="text"
@@ -2950,6 +3003,8 @@ function ReceiptsPageContent() {
             </div>
           </div>
         </div>
+      )}
+      </>
       )}
     </div>
   )
