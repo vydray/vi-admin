@@ -404,7 +404,7 @@ export default function EventPromotionTab({ storeId }: EventPromotionTabProps) {
     },
     formGrid: {
       display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+      gridTemplateColumns: 'repeat(3, 1fr)',
       gap: '15px',
     },
     formGroup: {
@@ -460,7 +460,7 @@ export default function EventPromotionTab({ storeId }: EventPromotionTabProps) {
     },
     thresholdForm: {
       display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+      gridTemplateColumns: 'repeat(5, 1fr)',
       gap: '10px',
       alignItems: 'end',
       marginTop: '10px',
