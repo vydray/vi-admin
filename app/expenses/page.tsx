@@ -592,8 +592,9 @@ function ExpensesPageContent() {
       reader.onload = () => setReceiptPreview(reader.result as string)
       reader.readAsDataURL(file)
     } else {
-      // PDFの場合はプレビュー用にファイル名を表示
-      setReceiptPreview(`pdf:${file.name}`)
+      // PDFの場合はBlobURLを作成してiframeで表示
+      const blobUrl = URL.createObjectURL(file)
+      setReceiptPreview(`pdfblob:${blobUrl}`)
     }
   }
 
@@ -619,6 +620,10 @@ function ExpensesPageContent() {
 
   // 選択した領収書をクリア
   const clearSelectedReceipt = () => {
+    // Blob URLのクリーンアップ
+    if (receiptPreview?.startsWith('pdfblob:')) {
+      URL.revokeObjectURL(receiptPreview.replace('pdfblob:', ''))
+    }
     setSelectedReceiptFile(null)
     setReceiptPreview(null)
     setImageZoom(1)
@@ -1104,11 +1109,12 @@ function ExpensesPageContent() {
                     ) : (
                       <div style={styles.receiptPreviewArea}>
                         <div style={styles.imageContainer}>
-                          {receiptPreview.startsWith('pdf:') ? (
-                            <div style={styles.pdfPreview}>
-                              <span style={styles.pdfIcon}>📄</span>
-                              <span style={styles.pdfFileName}>{receiptPreview.replace('pdf:', '')}</span>
-                            </div>
+                          {receiptPreview.startsWith('pdfblob:') ? (
+                            <iframe
+                              src={receiptPreview.replace('pdfblob:', '')}
+                              style={styles.receiptPdfEmbed}
+                              title="領収書PDFプレビュー"
+                            />
                           ) : (
                             <img
                               src={receiptPreview}
@@ -1122,31 +1128,45 @@ function ExpensesPageContent() {
                           )}
                         </div>
                         <div style={styles.imageControls}>
-                          <button
-                            type="button"
-                            onClick={() => setImageZoom(z => Math.max(0.5, z - 0.25))}
-                            style={styles.zoomButton}
-                            disabled={imageZoom <= 0.5}
-                          >
-                            −
-                          </button>
-                          <span style={styles.zoomLevel}>{Math.round(imageZoom * 100)}%</span>
-                          <button
-                            type="button"
-                            onClick={() => setImageZoom(z => Math.min(3, z + 0.25))}
-                            style={styles.zoomButton}
-                            disabled={imageZoom >= 3}
-                          >
-                            +
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setShowZoomModal(true)}
-                            style={styles.expandButton}
-                            title="拡大表示"
-                          >
-                            🔍
-                          </button>
+                          {!receiptPreview.startsWith('pdfblob:') && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => setImageZoom(z => Math.max(0.5, z - 0.25))}
+                                style={styles.zoomButton}
+                                disabled={imageZoom <= 0.5}
+                              >
+                                −
+                              </button>
+                              <span style={styles.zoomLevel}>{Math.round(imageZoom * 100)}%</span>
+                              <button
+                                type="button"
+                                onClick={() => setImageZoom(z => Math.min(3, z + 0.25))}
+                                style={styles.zoomButton}
+                                disabled={imageZoom >= 3}
+                              >
+                                +
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setShowZoomModal(true)}
+                                style={styles.expandButton}
+                                title="拡大表示"
+                              >
+                                🔍
+                              </button>
+                            </>
+                          )}
+                          {receiptPreview.startsWith('pdfblob:') && (
+                            <button
+                              type="button"
+                              onClick={() => window.open(receiptPreview.replace('pdfblob:', ''), '_blank')}
+                              style={styles.expandButton}
+                              title="新しいタブで開く"
+                            >
+                              🔗
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={clearSelectedReceipt}
