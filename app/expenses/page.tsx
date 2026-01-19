@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
 import { useConfirm } from '@/contexts/ConfirmContext'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import { ExpenseCategory, Expense, ExpenseWithCategory, PettyCashTransaction, PettyCashCheck, PaymentMethod, PettyCashTransactionType } from '@/types'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
@@ -18,6 +19,7 @@ export default function ExpensesPage() {
 function ExpensesPageContent() {
   const { storeId, storeName, isLoading: storeLoading } = useStore()
   const { confirm } = useConfirm()
+  const { isMobile } = useIsMobile()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // UI状態
@@ -842,19 +844,29 @@ function ExpensesPageContent() {
   }
 
   return (
-    <div style={styles.container}>
+    <div style={{
+      ...styles.container,
+      ...(isMobile ? { padding: '60px 12px 20px' } : {}),
+    }}>
       <div style={styles.header}>
-        <h1 style={styles.title}>経費管理</h1>
+        <h1 style={{
+          ...styles.title,
+          ...(isMobile ? { fontSize: '20px' } : {}),
+        }}>経費管理</h1>
         <p style={styles.storeName}>{storeName}</p>
       </div>
 
       {/* タブ */}
-      <div style={styles.tabs}>
+      <div style={{
+        ...styles.tabs,
+        ...(isMobile ? { gap: '8px' } : {}),
+      }}>
         <button
           onClick={() => setActiveTab('expenses')}
           style={{
             ...styles.tab,
             ...(activeTab === 'expenses' ? styles.tabActive : {}),
+            ...(isMobile ? { padding: '10px 16px', fontSize: '14px', flex: 1 } : {}),
           }}
         >
           経費一覧
@@ -864,6 +876,7 @@ function ExpensesPageContent() {
           style={{
             ...styles.tab,
             ...(activeTab === 'petty-cash' ? styles.tabActive : {}),
+            ...(isMobile ? { padding: '10px 16px', fontSize: '14px', flex: 1 } : {}),
           }}
         >
           小口現金
@@ -943,7 +956,16 @@ function ExpensesPageContent() {
           {showAddForm && (
             <div style={styles.modalOverlay} onClick={closeAddModal}>
               <div
-                style={styles.expenseModalContent}
+                style={{
+                  ...styles.expenseModalContent,
+                  ...(isMobile ? {
+                    width: '100%',
+                    maxWidth: '100%',
+                    height: '100%',
+                    maxHeight: '100%',
+                    borderRadius: 0,
+                  } : {}),
+                }}
                 onClick={e => e.stopPropagation()}
               >
                 <div style={styles.expenseModalHeader}>
@@ -1242,7 +1264,16 @@ function ExpensesPageContent() {
           {selectedExpense && (
             <div style={styles.modalOverlay} onClick={() => { if (!isEditingDetail) { setSelectedExpense(null) } }}>
               <div
-                style={styles.detailModalContent}
+                style={{
+                  ...styles.detailModalContent,
+                  ...(isMobile ? {
+                    width: '100%',
+                    maxWidth: '100%',
+                    height: '100%',
+                    maxHeight: '100%',
+                    borderRadius: 0,
+                  } : {}),
+                }}
                 onClick={e => e.stopPropagation()}
               >
                 <div style={styles.detailModalHeader}>
@@ -1660,62 +1691,119 @@ function ExpensesPageContent() {
                       {sortedExpenses.length}件 / 全{expenses.length}件
                     </p>
                   )}
-                  <table style={styles.expenseTable}>
-                    <thead>
-                      <tr style={styles.tableHeaderRow}>
-                        <th
-                          style={{ ...styles.tableHeader, ...styles.sortableHeader }}
+                  {isMobile ? (
+                    /* モバイル: カード形式 */
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                        <button
                           onClick={() => setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc')}
+                          style={{ padding: '6px 12px', fontSize: '13px', backgroundColor: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: '6px', cursor: 'pointer' }}
                         >
                           日付 {sortOrder === 'desc' ? '▼' : '▲'}
-                        </th>
-                        <th style={styles.tableHeader}>購入先</th>
-                        <th style={styles.tableHeader}>カテゴリ</th>
-                        <th style={styles.tableHeader}>支払方法</th>
-                        <th style={{ ...styles.tableHeader, textAlign: 'right' }}>金額</th>
-                        <th style={{ ...styles.tableHeader, width: '30px' }}></th>
-                      </tr>
-                    </thead>
-                    <tbody>
+                        </button>
+                      </div>
                       {sortedExpenses.map(expense => (
-                    <tr
-                      key={expense.id}
-                      style={styles.tableRow}
-                      onClick={() => setSelectedExpense(expense)}
-                    >
-                      <td style={styles.tableCell}>
-                        {format(new Date(expense.payment_date), 'M/d')}
-                      </td>
-                      <td style={styles.tableCell}>
-                        {expense.vendor || '-'}
-                      </td>
-                      <td style={styles.tableCell}>
-                        {expense.category?.name || '未分類'}
-                      </td>
-                      <td style={styles.tableCell}>
-                        <span style={{
-                          ...styles.paymentBadge,
-                          backgroundColor: expense.payment_method === 'cash' ? '#3498db' : expense.payment_method === 'register' ? '#e67e22' : '#27ae60'
-                        }}>
-                          {expense.payment_method === 'cash' ? '小口' : expense.payment_method === 'register' ? 'レジ金' : '口座'}
-                        </span>
-                      </td>
-                      <td style={{ ...styles.tableCell, textAlign: 'right', fontWeight: '600' }}>
-                        {formatCurrency(expense.amount)}
-                      </td>
-                      <td style={{ ...styles.tableCell, textAlign: 'center' }}>
-                        {expense.receipt_path && (
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2">
-                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-                            <circle cx="8.5" cy="8.5" r="1.5"/>
-                            <polyline points="21 15 16 10 5 21"/>
-                          </svg>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                    </tbody>
-                  </table>
+                        <div
+                          key={expense.id}
+                          onClick={() => setSelectedExpense(expense)}
+                          style={{
+                            backgroundColor: '#fff',
+                            borderRadius: '12px',
+                            padding: '14px',
+                            boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span style={{ fontSize: '14px', color: '#666' }}>{format(new Date(expense.payment_date), 'M/d')}</span>
+                              <span style={{
+                                fontSize: '11px',
+                                padding: '3px 8px',
+                                borderRadius: '4px',
+                                color: '#fff',
+                                backgroundColor: expense.payment_method === 'cash' ? '#3498db' : expense.payment_method === 'register' ? '#e67e22' : '#27ae60'
+                              }}>
+                                {expense.payment_method === 'cash' ? '小口' : expense.payment_method === 'register' ? 'レジ金' : '口座'}
+                              </span>
+                              {expense.receipt_path && (
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2">
+                                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                                  <circle cx="8.5" cy="8.5" r="1.5"/>
+                                  <polyline points="21 15 16 10 5 21"/>
+                                </svg>
+                              )}
+                            </div>
+                            <span style={{ fontSize: '18px', fontWeight: '700', color: '#1a1a2e' }}>{formatCurrency(expense.amount)}</span>
+                          </div>
+                          <div style={{ fontSize: '14px', fontWeight: '600', color: '#333', marginBottom: '4px' }}>
+                            {expense.category?.name || '未分類'}
+                          </div>
+                          {expense.vendor && (
+                            <div style={{ fontSize: '13px', color: '#666' }}>{expense.vendor}</div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    /* PC: テーブル形式 */
+                    <table style={styles.expenseTable}>
+                      <thead>
+                        <tr style={styles.tableHeaderRow}>
+                          <th
+                            style={{ ...styles.tableHeader, ...styles.sortableHeader }}
+                            onClick={() => setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc')}
+                          >
+                            日付 {sortOrder === 'desc' ? '▼' : '▲'}
+                          </th>
+                          <th style={styles.tableHeader}>購入先</th>
+                          <th style={styles.tableHeader}>カテゴリ</th>
+                          <th style={styles.tableHeader}>支払方法</th>
+                          <th style={{ ...styles.tableHeader, textAlign: 'right' }}>金額</th>
+                          <th style={{ ...styles.tableHeader, width: '30px' }}></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sortedExpenses.map(expense => (
+                          <tr
+                            key={expense.id}
+                            style={styles.tableRow}
+                            onClick={() => setSelectedExpense(expense)}
+                          >
+                            <td style={styles.tableCell}>
+                              {format(new Date(expense.payment_date), 'M/d')}
+                            </td>
+                            <td style={styles.tableCell}>
+                              {expense.vendor || '-'}
+                            </td>
+                            <td style={styles.tableCell}>
+                              {expense.category?.name || '未分類'}
+                            </td>
+                            <td style={styles.tableCell}>
+                              <span style={{
+                                ...styles.paymentBadge,
+                                backgroundColor: expense.payment_method === 'cash' ? '#3498db' : expense.payment_method === 'register' ? '#e67e22' : '#27ae60'
+                              }}>
+                                {expense.payment_method === 'cash' ? '小口' : expense.payment_method === 'register' ? 'レジ金' : '口座'}
+                              </span>
+                            </td>
+                            <td style={{ ...styles.tableCell, textAlign: 'right', fontWeight: '600' }}>
+                              {formatCurrency(expense.amount)}
+                            </td>
+                            <td style={{ ...styles.tableCell, textAlign: 'center' }}>
+                              {expense.receipt_path && (
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2">
+                                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                                  <circle cx="8.5" cy="8.5" r="1.5"/>
+                                  <polyline points="21 15 16 10 5 21"/>
+                                </svg>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
                 </>
               )
             })()}
@@ -1727,14 +1815,26 @@ function ExpensesPageContent() {
       {activeTab === 'petty-cash' && (
         <div style={styles.tabContent}>
           {/* 残高表示 */}
-          <div style={styles.balanceCard}>
-            <h3 style={styles.balanceTitle}>現在のシステム残高</h3>
-            <p style={styles.balanceAmount}>{formatCurrency(systemBalance)}</p>
+          <div style={{
+            ...styles.balanceCard,
+            ...(isMobile ? { padding: '20px' } : {}),
+          }}>
+            <h3 style={{
+              ...styles.balanceTitle,
+              ...(isMobile ? { fontSize: '14px' } : {}),
+            }}>現在のシステム残高</h3>
+            <p style={{
+              ...styles.balanceAmount,
+              ...(isMobile ? { fontSize: '28px' } : {}),
+            }}>{formatCurrency(systemBalance)}</p>
           </div>
 
           {/* アクションボタン */}
-          <div style={styles.actionButtons}>
-            <Button onClick={() => setShowDepositForm(true)}>
+          <div style={{
+            ...styles.actionButtons,
+            ...(isMobile ? { flexDirection: 'column' } : {}),
+          }}>
+            <Button onClick={() => setShowDepositForm(true)} style={isMobile ? { width: '100%' } : undefined}>
               💰 補充
             </Button>
             <Button onClick={() => {
@@ -1751,7 +1851,7 @@ function ExpensesPageContent() {
                 yen1: 0,
               })
               setCheckNote('')
-            }}>
+            }} style={isMobile ? { width: '100%' } : undefined}>
               ✓ 残高確認
             </Button>
           </div>
@@ -1759,7 +1859,10 @@ function ExpensesPageContent() {
           {/* 補充モーダル */}
           {showDepositForm && (
             <div style={styles.modalOverlay} onClick={() => setShowDepositForm(false)}>
-              <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
+              <div style={{
+                ...styles.modalContent,
+                ...(isMobile ? { width: '90%', maxWidth: '400px' } : {}),
+              }} onClick={e => e.stopPropagation()}>
                 <h3 style={styles.modalTitle}>小口現金補充</h3>
                 <div style={styles.modalBody}>
                   <div style={styles.formGroup}>
@@ -1808,7 +1911,10 @@ function ExpensesPageContent() {
           {/* 補充編集モーダル */}
           {editingDeposit && (
             <div style={styles.modalOverlay} onClick={() => setEditingDeposit(null)}>
-              <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
+              <div style={{
+                ...styles.modalContent,
+                ...(isMobile ? { width: '90%', maxWidth: '400px' } : {}),
+              }} onClick={e => e.stopPropagation()}>
                 <h3 style={styles.modalTitle}>補充を編集</h3>
                 <div style={styles.modalBody}>
                   <div style={styles.formGroup}>
@@ -1869,7 +1975,12 @@ function ExpensesPageContent() {
 
             return (
               <div style={styles.modalOverlay} onClick={() => setShowCheckForm(false)}>
-                <div style={{ ...styles.modalContent, maxWidth: '500px', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+                <div style={{
+                  ...styles.modalContent,
+                  maxWidth: isMobile ? '95%' : '500px',
+                  maxHeight: '90vh',
+                  overflowY: 'auto',
+                }} onClick={e => e.stopPropagation()}>
                   <h3 style={styles.modalTitle}>残高確認</h3>
                   <div style={styles.modalBody}>
                     <div style={styles.cashCountGrid}>
@@ -1999,15 +2110,28 @@ function ExpensesPageContent() {
           })()}
 
           {/* 入出金履歴 */}
-          <div style={styles.listCard}>
+          <div style={{
+            ...styles.listCard,
+            ...(isMobile ? { padding: '15px' } : {}),
+          }}>
             <h3 style={styles.listTitle}>入出金履歴</h3>
             {mergedTransactions.length === 0 ? (
               <p style={styles.emptyText}>履歴がありません</p>
             ) : (
               <div style={styles.transactionList}>
                 {mergedTransactions.map(tx => (
-                  <div key={tx.id} style={styles.transactionItem}>
-                    <div style={styles.transactionInfo}>
+                  <div key={tx.id} style={{
+                    ...styles.transactionItem,
+                    ...(isMobile ? {
+                      flexDirection: 'column',
+                      alignItems: 'flex-start',
+                      gap: '8px',
+                    } : {}),
+                  }}>
+                    <div style={{
+                      ...styles.transactionInfo,
+                      ...(isMobile ? { flexWrap: 'wrap' } : {}),
+                    }}>
                       <span style={{
                         ...styles.transactionType,
                         color: tx.type === 'deposit' ? '#27ae60' :
@@ -2019,14 +2143,20 @@ function ExpensesPageContent() {
                       <span style={styles.transactionDate}>
                         {format(new Date(tx.date), 'M/d')}
                       </span>
-                      <span style={styles.transactionDesc}>
+                      <span style={{
+                        ...styles.transactionDesc,
+                        ...(isMobile ? { flex: '1 1 100%', marginTop: '4px' } : {}),
+                      }}>
                         {tx.description}
                       </span>
                       {tx.source === 'daily_report' && (
                         <span style={styles.dailyReportBadge}>日報</span>
                       )}
                     </div>
-                    <div style={styles.transactionRight}>
+                    <div style={{
+                      ...styles.transactionRight,
+                      ...(isMobile ? { width: '100%', justifyContent: 'space-between' } : {}),
+                    }}>
                       <span style={{
                         ...styles.transactionAmount,
                         color: tx.type === 'deposit' ? '#27ae60' :
@@ -2064,7 +2194,10 @@ function ExpensesPageContent() {
           </div>
 
           {/* 残高確認履歴 */}
-          <div style={styles.listCard}>
+          <div style={{
+            ...styles.listCard,
+            ...(isMobile ? { padding: '15px' } : {}),
+          }}>
             <h3 style={styles.listTitle}>残高確認履歴</h3>
             {recentChecks.length === 0 ? (
               <p style={styles.emptyText}>確認履歴がありません</p>
@@ -2072,12 +2205,26 @@ function ExpensesPageContent() {
               <div style={styles.checkList}>
                 {recentChecks.map(check => (
                   <div key={check.id} style={styles.checkItemExpanded}>
-                    <div style={styles.checkItemHeader}>
-                      <div style={styles.checkInfo}>
+                    <div style={{
+                      ...styles.checkItemHeader,
+                      ...(isMobile ? {
+                        flexDirection: 'column',
+                        alignItems: 'flex-start',
+                        gap: '8px',
+                      } : {}),
+                    }}>
+                      <div style={{
+                        ...styles.checkInfo,
+                        ...(isMobile ? {
+                          flexDirection: 'column',
+                          alignItems: 'flex-start',
+                          gap: '4px',
+                        } : {}),
+                      }}>
                         <span style={styles.checkDate}>
                           {format(new Date(check.check_date), 'M/d')}
                         </span>
-                        <span>
+                        <span style={isMobile ? { fontSize: '13px' } : undefined}>
                           システム: {formatCurrency(check.system_balance)} /
                           実際: {formatCurrency(check.actual_balance)}
                         </span>
