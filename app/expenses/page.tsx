@@ -37,6 +37,7 @@ function ExpensesPageContent() {
     payment_date: format(new Date(), 'yyyy-MM-dd'),
     payment_method: 'cash' as PaymentMethod,
     amount: 0,
+    vendor: '',
     usage_purpose: '',
     description: '',
     entered_by: '',
@@ -48,9 +49,11 @@ function ExpensesPageContent() {
   const [isEditingDetail, setIsEditingDetail] = useState(false)
   const [editExpenseData, setEditExpenseData] = useState<{
     category_id: number | null
+    target_month: string
     payment_date: string
     payment_method: PaymentMethod
     amount: number
+    vendor: string
     usage_purpose: string
     description: string
     entered_by: string
@@ -309,6 +312,7 @@ function ExpensesPageContent() {
           payment_date: newExpense.payment_date,
           payment_method: newExpense.payment_method,
           amount: newExpense.amount,
+          vendor: newExpense.vendor.trim() || null,
           usage_purpose: newExpense.usage_purpose.trim(),
           description: newExpense.description || null,
           entered_by: newExpense.entered_by.trim(),
@@ -347,6 +351,7 @@ function ExpensesPageContent() {
         payment_date: format(new Date(), 'yyyy-MM-dd'),
         payment_method: 'cash',
         amount: 0,
+        vendor: '',
         usage_purpose: '',
         description: '',
         entered_by: '',
@@ -422,9 +427,11 @@ function ExpensesPageContent() {
         .from('expenses')
         .update({
           category_id: editExpenseData.payment_method === 'register' ? null : (editExpenseData.category_id || null),
+          target_month: editExpenseData.target_month,
           payment_date: editExpenseData.payment_date,
           payment_method: editExpenseData.payment_method,
           amount: editExpenseData.amount,
+          vendor: editExpenseData.vendor.trim() || null,
           usage_purpose: editExpenseData.usage_purpose.trim(),
           description: editExpenseData.description || null,
           entered_by: editExpenseData.entered_by.trim(),
@@ -486,9 +493,11 @@ function ExpensesPageContent() {
     if (!selectedExpense) return
     setEditExpenseData({
       category_id: selectedExpense.category_id,
+      target_month: selectedExpense.target_month,
       payment_date: selectedExpense.payment_date,
       payment_method: selectedExpense.payment_method,
       amount: selectedExpense.amount,
+      vendor: selectedExpense.vendor || '',
       usage_purpose: selectedExpense.usage_purpose || '',
       description: selectedExpense.description || '',
       entered_by: selectedExpense.entered_by || '',
@@ -526,6 +535,35 @@ function ExpensesPageContent() {
     } catch (err) {
       console.error('画像アップロードエラー:', err)
       toast.error('画像のアップロードに失敗しました')
+    } finally {
+      setUploadingImage(false)
+    }
+  }
+
+  // 領収書を削除
+  const handleDeleteReceipt = async (expenseId: number) => {
+    const result = await confirm('領収書を削除しますか？')
+    if (!result) return
+
+    setUploadingImage(true)
+    try {
+      const response = await fetch(`/api/expenses/upload-image?storeId=${storeId}&expenseId=${expenseId}`, {
+        method: 'DELETE',
+      })
+
+      if (!response.ok) {
+        throw new Error('削除に失敗しました')
+      }
+
+      toast.success('領収書を削除しました')
+      // selectedExpenseを更新
+      if (selectedExpense && selectedExpense.id === expenseId) {
+        setSelectedExpense({ ...selectedExpense, receipt_path: null })
+      }
+      loadData()
+    } catch (err) {
+      console.error('領収書削除エラー:', err)
+      toast.error('領収書の削除に失敗しました')
     } finally {
       setUploadingImage(false)
     }
@@ -597,6 +635,7 @@ function ExpensesPageContent() {
       payment_date: format(new Date(), 'yyyy-MM-dd'),
       payment_method: 'cash',
       amount: 0,
+      vendor: '',
       usage_purpose: '',
       description: '',
       entered_by: '',
@@ -1007,7 +1046,17 @@ function ExpensesPageContent() {
                           placeholder="必須"
                         />
                       </div>
-                      <div style={{ ...styles.formGroup, gridColumn: '1 / -1' }}>
+                      <div style={styles.formGroup}>
+                        <label style={styles.label}>購入先</label>
+                        <input
+                          type="text"
+                          value={newExpense.vendor}
+                          onChange={(e) => setNewExpense({ ...newExpense, vendor: e.target.value })}
+                          style={styles.input}
+                          placeholder="任意"
+                        />
+                      </div>
+                      <div style={styles.formGroup}>
                         <label style={styles.label}>備考</label>
                         <input
                           type="text"
@@ -1200,7 +1249,12 @@ function ExpensesPageContent() {
                       </div>
                       <div style={styles.detailItem}>
                         <span style={styles.detailLabel}>対象月</span>
-                        <span style={styles.detailValue}>{selectedExpense.target_month}</span>
+                        <input
+                          type="month"
+                          value={editExpenseData.target_month}
+                          onChange={(e) => setEditExpenseData({ ...editExpenseData, target_month: e.target.value })}
+                          style={styles.editInput}
+                        />
                       </div>
                       <div style={styles.detailItem}>
                         <span style={styles.detailLabel}>支払日</span>
@@ -1247,7 +1301,16 @@ function ExpensesPageContent() {
                           }}
                         />
                       </div>
-                      <div style={{ ...styles.detailItem, gridColumn: '1 / -1' }}>
+                      <div style={styles.detailItem}>
+                        <span style={styles.detailLabel}>購入先</span>
+                        <input
+                          type="text"
+                          value={editExpenseData.vendor}
+                          onChange={(e) => setEditExpenseData({ ...editExpenseData, vendor: e.target.value })}
+                          style={styles.editInput}
+                        />
+                      </div>
+                      <div style={styles.detailItem}>
                         <span style={styles.detailLabel}>備考</span>
                         <textarea
                           value={editExpenseData.description}
@@ -1292,8 +1355,12 @@ function ExpensesPageContent() {
                         <span style={styles.detailLabel}>使用用途</span>
                         <span style={styles.detailValue}>{selectedExpense.usage_purpose || '-'}</span>
                       </div>
+                      <div style={styles.detailItem}>
+                        <span style={styles.detailLabel}>購入先</span>
+                        <span style={styles.detailValue}>{selectedExpense.vendor || '-'}</span>
+                      </div>
                       {selectedExpense.description && (
-                        <div style={{ ...styles.detailItem, gridColumn: '1 / -1' }}>
+                        <div style={styles.detailItem}>
                           <span style={styles.detailLabel}>備考</span>
                           <span style={styles.detailValue}>{selectedExpense.description}</span>
                         </div>
@@ -1307,17 +1374,50 @@ function ExpensesPageContent() {
                       <div style={styles.receiptHeader}>
                         <span style={styles.detailLabel}>領収書</span>
                         {selectedExpense.receipt_path && (
-                          <button
-                            onClick={() => window.open(selectedExpense.receipt_path!, '_blank')}
-                            style={styles.openNewTabButton}
-                          >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
-                              <polyline points="15 3 21 3 21 9"/>
-                              <line x1="10" y1="14" x2="21" y2="3"/>
-                            </svg>
-                            新しいタブで開く
-                          </button>
+                          <div style={styles.receiptActions}>
+                            <button
+                              onClick={() => window.open(selectedExpense.receipt_path!, '_blank')}
+                              style={styles.openNewTabButton}
+                            >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                                <polyline points="15 3 21 3 21 9"/>
+                                <line x1="10" y1="14" x2="21" y2="3"/>
+                              </svg>
+                              新しいタブ
+                            </button>
+                            <label style={styles.receiptReplaceButton}>
+                              <input
+                                type="file"
+                                accept="image/*,application/pdf"
+                                style={{ display: 'none' }}
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0]
+                                  if (file) {
+                                    handleImageUpload(selectedExpense.id, file)
+                                  }
+                                }}
+                                disabled={uploadingImage}
+                              />
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                <polyline points="17 8 12 3 7 8"/>
+                                <line x1="12" y1="3" x2="12" y2="15"/>
+                              </svg>
+                              差替
+                            </label>
+                            <button
+                              onClick={() => handleDeleteReceipt(selectedExpense.id)}
+                              style={styles.receiptDeleteButton}
+                              disabled={uploadingImage}
+                            >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <polyline points="3 6 5 6 21 6"/>
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                              </svg>
+                              削除
+                            </button>
+                          </div>
                         )}
                       </div>
                       {selectedExpense.receipt_path ? (
@@ -1347,7 +1447,6 @@ function ExpensesPageContent() {
                               const file = e.target.files?.[0]
                               if (file) {
                                 handleImageUpload(selectedExpense.id, file)
-                                setSelectedExpense(null)
                               }
                             }}
                             disabled={uploadingImage}
@@ -2642,6 +2741,10 @@ const styles: { [key: string]: React.CSSProperties } = {
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  receiptActions: {
+    display: 'flex',
+    gap: '6px',
+  },
   openNewTabButton: {
     display: 'flex',
     alignItems: 'center',
@@ -2651,6 +2754,30 @@ const styles: { [key: string]: React.CSSProperties } = {
     borderRadius: '4px',
     backgroundColor: '#f9f9f9',
     color: '#666',
+    fontSize: '12px',
+    cursor: 'pointer',
+  },
+  receiptReplaceButton: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+    padding: '4px 8px',
+    border: '1px solid #dbeafe',
+    borderRadius: '4px',
+    backgroundColor: '#eff6ff',
+    color: '#2563eb',
+    fontSize: '12px',
+    cursor: 'pointer',
+  },
+  receiptDeleteButton: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+    padding: '4px 8px',
+    border: '1px solid #fee2e2',
+    borderRadius: '4px',
+    backgroundColor: '#fef2f2',
+    color: '#dc2626',
     fontSize: '12px',
     cursor: 'pointer',
   },
