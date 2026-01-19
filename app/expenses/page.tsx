@@ -274,7 +274,7 @@ function ExpensesPageContent() {
     } finally {
       setLoading(false)
     }
-  }, [loadCategories, loadExpenses, calculateSystemBalance, loadTransactions, loadRecentChecks, loadDailyReportExpenses, newExpense.category_id])
+  }, [loadCategories, loadExpenses, calculateSystemBalance, loadTransactions, loadRecentChecks, loadDailyReportExpenses])
 
   useEffect(() => {
     if (!storeLoading && storeId) {
