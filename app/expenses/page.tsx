@@ -1256,33 +1256,7 @@ function ExpensesPageContent() {
                   {isEditingDetail && editExpenseData ? (
                     // 編集モード
                     <div style={styles.detailGrid}>
-                      {editExpenseData.payment_method !== 'register' && (
-                        <div style={styles.detailItem}>
-                          <span style={styles.detailLabel}>カテゴリ</span>
-                          <select
-                            value={editExpenseData.category_id || 0}
-                            onChange={(e) => setEditExpenseData({ ...editExpenseData, category_id: parseInt(e.target.value) || null })}
-                            style={styles.editInput}
-                          >
-                            <option value={0}>未分類</option>
-                            {categories.map(cat => (
-                              <option key={cat.id} value={cat.id}>{cat.name}</option>
-                            ))}
-                          </select>
-                        </div>
-                      )}
-                      <div style={styles.detailItem}>
-                        <span style={styles.detailLabel}>支払方法</span>
-                        <select
-                          value={editExpenseData.payment_method}
-                          onChange={(e) => setEditExpenseData({ ...editExpenseData, payment_method: e.target.value as PaymentMethod })}
-                          style={styles.editInput}
-                        >
-                          <option value="cash">小口現金</option>
-                          <option value="bank">口座払い</option>
-                          <option value="register">レジ金</option>
-                        </select>
-                      </div>
+                      {/* 1行目: 対象月 | 支払日 */}
                       <div style={styles.detailItem}>
                         <span style={styles.detailLabel}>対象月</span>
                         <input
@@ -1301,30 +1275,45 @@ function ExpensesPageContent() {
                           style={styles.editInput}
                         />
                       </div>
+                      {/* 2行目: 支払方法 | カテゴリ */}
                       <div style={styles.detailItem}>
-                        <span style={styles.detailLabel}>金額 <span style={{ color: '#e74c3c' }}>*</span></span>
-                        <input
-                          type="number"
-                          value={editExpenseData.amount || ''}
-                          onChange={(e) => setEditExpenseData({ ...editExpenseData, amount: parseInt(e.target.value) || 0 })}
-                          style={{
-                            ...styles.editInput,
-                            borderColor: formErrors.amount ? '#e74c3c' : '#ddd',
-                          }}
-                        />
+                        <span style={styles.detailLabel}>支払方法</span>
+                        <select
+                          value={editExpenseData.payment_method}
+                          onChange={(e) => setEditExpenseData({ ...editExpenseData, payment_method: e.target.value as PaymentMethod })}
+                          style={styles.editInput}
+                        >
+                          <option value="cash">小口現金</option>
+                          <option value="bank">口座払い</option>
+                          <option value="register">レジ金</option>
+                        </select>
                       </div>
-                      <div style={styles.detailItem}>
-                        <span style={styles.detailLabel}>入力者 <span style={{ color: '#e74c3c' }}>*</span></span>
+                      {editExpenseData.payment_method !== 'register' && (
+                        <div style={styles.detailItem}>
+                          <span style={styles.detailLabel}>カテゴリ</span>
+                          <select
+                            value={editExpenseData.category_id || 0}
+                            onChange={(e) => setEditExpenseData({ ...editExpenseData, category_id: parseInt(e.target.value) || null })}
+                            style={styles.editInput}
+                          >
+                            <option value={0}>未分類</option>
+                            {categories.map(cat => (
+                              <option key={cat.id} value={cat.id}>{cat.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                      {/* 3行目: 購入先 */}
+                      <div style={{ ...styles.detailItem, gridColumn: '1 / -1' }}>
+                        <span style={styles.detailLabel}>購入先</span>
                         <input
                           type="text"
-                          value={editExpenseData.entered_by}
-                          onChange={(e) => setEditExpenseData({ ...editExpenseData, entered_by: e.target.value })}
-                          style={{
-                            ...styles.editInput,
-                            borderColor: formErrors.entered_by ? '#e74c3c' : '#ddd',
-                          }}
+                          value={editExpenseData.vendor}
+                          onChange={(e) => setEditExpenseData({ ...editExpenseData, vendor: e.target.value })}
+                          style={styles.editInput}
                         />
                       </div>
+                      {/* 4行目: 使用用途 */}
                       <div style={{ ...styles.detailItem, gridColumn: '1 / -1' }}>
                         <span style={styles.detailLabel}>使用用途 <span style={{ color: '#e74c3c' }}>*</span></span>
                         <input
@@ -1337,16 +1326,33 @@ function ExpensesPageContent() {
                           }}
                         />
                       </div>
+                      {/* 5行目: 入力者 | 金額 */}
                       <div style={styles.detailItem}>
-                        <span style={styles.detailLabel}>購入先</span>
+                        <span style={styles.detailLabel}>入力者 <span style={{ color: '#e74c3c' }}>*</span></span>
                         <input
                           type="text"
-                          value={editExpenseData.vendor}
-                          onChange={(e) => setEditExpenseData({ ...editExpenseData, vendor: e.target.value })}
-                          style={styles.editInput}
+                          value={editExpenseData.entered_by}
+                          onChange={(e) => setEditExpenseData({ ...editExpenseData, entered_by: e.target.value })}
+                          style={{
+                            ...styles.editInput,
+                            borderColor: formErrors.entered_by ? '#e74c3c' : '#ddd',
+                          }}
                         />
                       </div>
                       <div style={styles.detailItem}>
+                        <span style={styles.detailLabel}>金額 <span style={{ color: '#e74c3c' }}>*</span></span>
+                        <input
+                          type="number"
+                          value={editExpenseData.amount || ''}
+                          onChange={(e) => setEditExpenseData({ ...editExpenseData, amount: parseInt(e.target.value) || 0 })}
+                          style={{
+                            ...styles.editInput,
+                            borderColor: formErrors.amount ? '#e74c3c' : '#ddd',
+                          }}
+                        />
+                      </div>
+                      {/* 6行目: 備考 */}
+                      <div style={{ ...styles.detailItem, gridColumn: '1 / -1' }}>
                         <span style={styles.detailLabel}>備考</span>
                         <textarea
                           value={editExpenseData.description}
@@ -1358,10 +1364,16 @@ function ExpensesPageContent() {
                   ) : (
                     // 表示モード
                     <div style={styles.detailGrid}>
+                      {/* 1行目: 対象月 | 支払日 */}
                       <div style={styles.detailItem}>
-                        <span style={styles.detailLabel}>カテゴリ</span>
-                        <span style={styles.detailValue}>{selectedExpense.category?.name || '未分類'}</span>
+                        <span style={styles.detailLabel}>対象月</span>
+                        <span style={styles.detailValue}>{selectedExpense.target_month}</span>
                       </div>
+                      <div style={styles.detailItem}>
+                        <span style={styles.detailLabel}>支払日</span>
+                        <span style={styles.detailValue}>{format(new Date(selectedExpense.payment_date), 'yyyy/M/d')}</span>
+                      </div>
+                      {/* 2行目: 支払方法 | カテゴリ */}
                       <div style={styles.detailItem}>
                         <span style={styles.detailLabel}>支払方法</span>
                         <span style={{
@@ -1371,32 +1383,34 @@ function ExpensesPageContent() {
                           {selectedExpense.payment_method === 'cash' ? '小口現金' : selectedExpense.payment_method === 'register' ? 'レジ金' : '口座払い'}
                         </span>
                       </div>
-                      <div style={styles.detailItem}>
-                        <span style={styles.detailLabel}>対象月</span>
-                        <span style={styles.detailValue}>{selectedExpense.target_month}</span>
+                      {selectedExpense.payment_method !== 'register' && (
+                        <div style={styles.detailItem}>
+                          <span style={styles.detailLabel}>カテゴリ</span>
+                          <span style={styles.detailValue}>{selectedExpense.category?.name || '未分類'}</span>
+                        </div>
+                      )}
+                      {/* 3行目: 購入先 */}
+                      <div style={{ ...styles.detailItem, gridColumn: '1 / -1' }}>
+                        <span style={styles.detailLabel}>購入先</span>
+                        <span style={styles.detailValue}>{selectedExpense.vendor || '-'}</span>
                       </div>
+                      {/* 4行目: 使用用途 */}
+                      <div style={{ ...styles.detailItem, gridColumn: '1 / -1' }}>
+                        <span style={styles.detailLabel}>使用用途</span>
+                        <span style={styles.detailValue}>{selectedExpense.usage_purpose || '-'}</span>
+                      </div>
+                      {/* 5行目: 入力者 | 金額 */}
                       <div style={styles.detailItem}>
-                        <span style={styles.detailLabel}>支払日</span>
-                        <span style={styles.detailValue}>{format(new Date(selectedExpense.payment_date), 'yyyy/M/d')}</span>
+                        <span style={styles.detailLabel}>入力者</span>
+                        <span style={styles.detailValue}>{selectedExpense.entered_by || '-'}</span>
                       </div>
                       <div style={styles.detailItem}>
                         <span style={styles.detailLabel}>金額</span>
                         <span style={styles.detailAmount}>{formatCurrency(selectedExpense.amount)}</span>
                       </div>
-                      <div style={styles.detailItem}>
-                        <span style={styles.detailLabel}>入力者</span>
-                        <span style={styles.detailValue}>{selectedExpense.entered_by || '-'}</span>
-                      </div>
-                      <div style={{ ...styles.detailItem, gridColumn: '1 / -1' }}>
-                        <span style={styles.detailLabel}>使用用途</span>
-                        <span style={styles.detailValue}>{selectedExpense.usage_purpose || '-'}</span>
-                      </div>
-                      <div style={styles.detailItem}>
-                        <span style={styles.detailLabel}>購入先</span>
-                        <span style={styles.detailValue}>{selectedExpense.vendor || '-'}</span>
-                      </div>
+                      {/* 6行目: 備考 */}
                       {selectedExpense.description && (
-                        <div style={styles.detailItem}>
+                        <div style={{ ...styles.detailItem, gridColumn: '1 / -1' }}>
                           <span style={styles.detailLabel}>備考</span>
                           <span style={styles.detailValue}>{selectedExpense.description}</span>
                         </div>
