@@ -29,6 +29,11 @@ function ExpensesPageContent() {
   const [categories, setCategories] = useState<ExpenseCategory[]>([])
   const [expenses, setExpenses] = useState<ExpenseWithCategory[]>([])
 
+  // フィルター
+  const [filterVendor, setFilterVendor] = useState<string>('')
+  const [filterCategory, setFilterCategory] = useState<number | null>(null)
+  const [filterPaymentMethod, setFilterPaymentMethod] = useState<PaymentMethod | ''>('')
+
   // 新規経費フォーム
   const [showAddForm, setShowAddForm] = useState(false)
   const [newExpense, setNewExpense] = useState({
@@ -1561,23 +1566,102 @@ function ExpensesPageContent() {
 
           {/* 経費一覧 */}
           <div style={styles.listCard}>
-            <h3 style={styles.listTitle}>経費一覧</h3>
-            {expenses.length === 0 ? (
-              <p style={styles.emptyText}>この月の経費はありません</p>
-            ) : (
-              <table style={styles.expenseTable}>
-                <thead>
-                  <tr style={styles.tableHeaderRow}>
-                    <th style={styles.tableHeader}>日付</th>
-                    <th style={styles.tableHeader}>購入先</th>
-                    <th style={styles.tableHeader}>カテゴリ</th>
-                    <th style={styles.tableHeader}>支払方法</th>
-                    <th style={{ ...styles.tableHeader, textAlign: 'right' }}>金額</th>
-                    <th style={{ ...styles.tableHeader, width: '30px' }}></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {expenses.map(expense => (
+            <div style={styles.listHeader}>
+              <h3 style={styles.listTitle}>経費一覧</h3>
+              {(filterVendor || filterCategory !== null || filterPaymentMethod) && (
+                <button
+                  onClick={() => {
+                    setFilterVendor('')
+                    setFilterCategory(null)
+                    setFilterPaymentMethod('')
+                  }}
+                  style={styles.clearFilterButton}
+                >
+                  フィルタークリア
+                </button>
+              )}
+            </div>
+
+            {/* フィルター */}
+            {expenses.length > 0 && (
+              <div style={styles.filterRow}>
+                <div style={styles.filterGroup}>
+                  <label style={styles.filterLabel}>購入先</label>
+                  <select
+                    value={filterVendor}
+                    onChange={(e) => setFilterVendor(e.target.value)}
+                    style={styles.filterSelect}
+                  >
+                    <option value="">すべて</option>
+                    {Array.from(new Set(expenses.map(e => e.vendor).filter((v): v is string => !!v))).sort().map(vendor => (
+                      <option key={vendor} value={vendor}>{vendor}</option>
+                    ))}
+                  </select>
+                </div>
+                <div style={styles.filterGroup}>
+                  <label style={styles.filterLabel}>カテゴリ</label>
+                  <select
+                    value={filterCategory ?? ''}
+                    onChange={(e) => setFilterCategory(e.target.value ? Number(e.target.value) : null)}
+                    style={styles.filterSelect}
+                  >
+                    <option value="">すべて</option>
+                    {categories.map(cat => (
+                      <option key={cat.id} value={cat.id}>{cat.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div style={styles.filterGroup}>
+                  <label style={styles.filterLabel}>支払方法</label>
+                  <select
+                    value={filterPaymentMethod}
+                    onChange={(e) => setFilterPaymentMethod(e.target.value as PaymentMethod | '')}
+                    style={styles.filterSelect}
+                  >
+                    <option value="">すべて</option>
+                    <option value="cash">小口現金</option>
+                    <option value="bank">口座払い</option>
+                    <option value="register">レジ金</option>
+                  </select>
+                </div>
+              </div>
+            )}
+
+            {(() => {
+              const filteredExpenses = expenses.filter(expense => {
+                if (filterVendor && expense.vendor !== filterVendor) return false
+                if (filterCategory !== null && expense.category_id !== filterCategory) return false
+                if (filterPaymentMethod && expense.payment_method !== filterPaymentMethod) return false
+                return true
+              })
+              const isFiltered = filterVendor || filterCategory !== null || filterPaymentMethod
+
+              if (expenses.length === 0) {
+                return <p style={styles.emptyText}>この月の経費はありません</p>
+              }
+              if (filteredExpenses.length === 0) {
+                return <p style={styles.emptyText}>条件に一致する経費はありません</p>
+              }
+              return (
+                <>
+                  {isFiltered && (
+                    <p style={styles.filterResultText}>
+                      {filteredExpenses.length}件 / 全{expenses.length}件
+                    </p>
+                  )}
+                  <table style={styles.expenseTable}>
+                    <thead>
+                      <tr style={styles.tableHeaderRow}>
+                        <th style={styles.tableHeader}>日付</th>
+                        <th style={styles.tableHeader}>購入先</th>
+                        <th style={styles.tableHeader}>カテゴリ</th>
+                        <th style={styles.tableHeader}>支払方法</th>
+                        <th style={{ ...styles.tableHeader, textAlign: 'right' }}>金額</th>
+                        <th style={{ ...styles.tableHeader, width: '30px' }}></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredExpenses.map(expense => (
                     <tr
                       key={expense.id}
                       style={styles.tableRow}
@@ -1614,9 +1698,11 @@ function ExpensesPageContent() {
                       </td>
                     </tr>
                   ))}
-                </tbody>
-              </table>
-            )}
+                    </tbody>
+                  </table>
+                </>
+              )
+            })()}
           </div>
         </div>
       )}
@@ -2187,7 +2273,51 @@ const styles: { [key: string]: React.CSSProperties } = {
   listTitle: {
     fontSize: '16px',
     fontWeight: 'bold',
+    marginBottom: '0',
+  },
+  listHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: '15px',
+  },
+  clearFilterButton: {
+    padding: '6px 12px',
+    fontSize: '12px',
+    backgroundColor: '#f1f5f9',
+    border: '1px solid #e2e8f0',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    color: '#64748b',
+  },
+  filterRow: {
+    display: 'flex',
+    gap: '15px',
+    marginBottom: '15px',
+    flexWrap: 'wrap',
+  },
+  filterGroup: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '4px',
+    minWidth: '150px',
+  },
+  filterLabel: {
+    fontSize: '11px',
+    color: '#64748b',
+    fontWeight: '500',
+  },
+  filterSelect: {
+    padding: '8px 10px',
+    border: '1px solid #e2e8f0',
+    borderRadius: '5px',
+    fontSize: '13px',
+    backgroundColor: 'white',
+  },
+  filterResultText: {
+    fontSize: '13px',
+    color: '#64748b',
+    marginBottom: '10px',
   },
   emptyText: {
     color: '#999',
