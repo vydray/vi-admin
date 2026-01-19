@@ -62,6 +62,7 @@ function ExpensesPageContent() {
     entered_by?: boolean
     usage_purpose?: boolean
     amount?: boolean
+    category_id?: boolean
   }>({})
 
   // 新規経費の領収書写真
@@ -267,10 +268,6 @@ function ExpensesPageContent() {
       const dailyExpenseTotal = dailyExpenses.reduce((sum, d) => sum + d.expense_amount, 0)
       setSystemBalance(balance + dailyExpenseTotal)
 
-      // 初期カテゴリ設定
-      if (categoriesData.length > 0 && newExpense.category_id === 0) {
-        setNewExpense(prev => ({ ...prev, category_id: categoriesData[0].id }))
-      }
     } catch (err) {
       console.error('データ読み込みエラー:', err)
       toast.error('データの読み込みに失敗しました')
@@ -292,6 +289,8 @@ function ExpensesPageContent() {
     if (!newExpense.entered_by.trim()) errors.entered_by = true
     if (!newExpense.usage_purpose.trim()) errors.usage_purpose = true
     if (newExpense.amount <= 0) errors.amount = true
+    // レジ金以外はカテゴリ必須
+    if (newExpense.payment_method !== 'register' && !newExpense.category_id) errors.category_id = true
 
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors)
@@ -346,7 +345,7 @@ function ExpensesPageContent() {
       toast.success('経費を追加しました')
       setShowAddForm(false)
       setNewExpense({
-        category_id: categories.length > 0 ? categories[0].id : 0,
+        category_id: 0,
         target_month: format(selectedMonth, 'yyyy-MM'),
         payment_date: format(new Date(), 'yyyy-MM-dd'),
         payment_method: 'cash',
@@ -635,7 +634,7 @@ function ExpensesPageContent() {
     clearSelectedReceipt()
     setFormErrors({})
     setNewExpense({
-      category_id: categories.length > 0 ? categories[0].id : 0,
+      category_id: 0,
       target_month: format(selectedMonth, 'yyyy-MM'),
       payment_date: format(new Date(), 'yyyy-MM-dd'),
       payment_method: 'cash',
@@ -981,12 +980,22 @@ function ExpensesPageContent() {
                       </div>
                       {newExpense.payment_method !== 'register' ? (
                         <div style={styles.formGroup}>
-                          <label style={styles.label}>カテゴリ</label>
+                          <label style={{
+                            ...styles.label,
+                            ...(formErrors.category_id ? styles.labelError : {}),
+                          }}>カテゴリ *</label>
                           <select
                             value={newExpense.category_id}
-                            onChange={(e) => setNewExpense({ ...newExpense, category_id: Number(e.target.value) })}
-                            style={styles.select}
+                            onChange={(e) => {
+                              setNewExpense({ ...newExpense, category_id: Number(e.target.value) })
+                              if (formErrors.category_id) setFormErrors(prev => ({ ...prev, category_id: false }))
+                            }}
+                            style={{
+                              ...styles.select,
+                              ...(formErrors.category_id ? styles.inputError : {}),
+                            }}
                           >
+                            <option value={0}>選択してください</option>
                             {categories.map(cat => (
                               <option key={cat.id} value={cat.id}>
                                 {cat.name} ({cat.account_type === 'cost' ? '売上原価' : '販管費'})
@@ -1542,53 +1551,57 @@ function ExpensesPageContent() {
             {expenses.length === 0 ? (
               <p style={styles.emptyText}>この月の経費はありません</p>
             ) : (
-              <div style={styles.expenseList}>
-                {expenses.map(expense => (
-                  <div
-                    key={expense.id}
-                    style={styles.expenseItem}
-                    onClick={() => setSelectedExpense(expense)}
-                  >
-                    <div style={styles.expenseMain}>
-                      <div style={styles.expenseInfo}>
-                        <span style={styles.expenseCategory}>
-                          {expense.category?.name || '未分類'}
-                        </span>
-                        <span style={styles.expenseDate}>
-                          {format(new Date(expense.payment_date), 'M/d')}
-                        </span>
+              <table style={styles.expenseTable}>
+                <thead>
+                  <tr style={styles.tableHeaderRow}>
+                    <th style={styles.tableHeader}>日付</th>
+                    <th style={styles.tableHeader}>購入先</th>
+                    <th style={styles.tableHeader}>カテゴリ</th>
+                    <th style={styles.tableHeader}>支払方法</th>
+                    <th style={{ ...styles.tableHeader, textAlign: 'right' }}>金額</th>
+                    <th style={{ ...styles.tableHeader, width: '30px' }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {expenses.map(expense => (
+                    <tr
+                      key={expense.id}
+                      style={styles.tableRow}
+                      onClick={() => setSelectedExpense(expense)}
+                    >
+                      <td style={styles.tableCell}>
+                        {format(new Date(expense.payment_date), 'M/d')}
+                      </td>
+                      <td style={styles.tableCell}>
+                        {expense.vendor || '-'}
+                      </td>
+                      <td style={styles.tableCell}>
+                        {expense.category?.name || '未分類'}
+                      </td>
+                      <td style={styles.tableCell}>
                         <span style={{
                           ...styles.paymentBadge,
                           backgroundColor: expense.payment_method === 'cash' ? '#3498db' : expense.payment_method === 'register' ? '#e67e22' : '#27ae60'
                         }}>
                           {expense.payment_method === 'cash' ? '小口' : expense.payment_method === 'register' ? 'レジ金' : '口座'}
                         </span>
-                      </div>
-                      <div style={styles.expenseDescription}>
-                        {expense.usage_purpose || expense.description || '（使用用途なし）'}
-                        {expense.usage_purpose && expense.description && (
-                          <span style={styles.expenseNote}> / {expense.description}</span>
-                        )}
-                      </div>
-                    </div>
-                    <div style={styles.expenseRight}>
-                      <span style={styles.expenseAmount}>
+                      </td>
+                      <td style={{ ...styles.tableCell, textAlign: 'right', fontWeight: '600' }}>
                         {formatCurrency(expense.amount)}
-                      </span>
-                      {expense.receipt_path && (
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2">
-                          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-                          <circle cx="8.5" cy="8.5" r="1.5"/>
-                          <polyline points="21 15 16 10 5 21"/>
-                        </svg>
-                      )}
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="2">
-                        <polyline points="9 18 15 12 9 6"/>
-                      </svg>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                      </td>
+                      <td style={{ ...styles.tableCell, textAlign: 'center' }}>
+                        {expense.receipt_path && (
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2">
+                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                            <circle cx="8.5" cy="8.5" r="1.5"/>
+                            <polyline points="21 15 16 10 5 21"/>
+                          </svg>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             )}
           </div>
         </div>
@@ -2171,6 +2184,31 @@ const styles: { [key: string]: React.CSSProperties } = {
     display: 'flex',
     flexDirection: 'column',
     gap: '10px',
+  },
+  expenseTable: {
+    width: '100%',
+    borderCollapse: 'collapse',
+    fontSize: '14px',
+  },
+  tableHeaderRow: {
+    backgroundColor: '#f1f5f9',
+    borderBottom: '2px solid #e2e8f0',
+  },
+  tableHeader: {
+    padding: '12px 10px',
+    textAlign: 'left',
+    fontWeight: '600',
+    color: '#64748b',
+    fontSize: '12px',
+  },
+  tableRow: {
+    borderBottom: '1px solid #e2e8f0',
+    cursor: 'pointer',
+    transition: 'background-color 0.2s',
+  },
+  tableCell: {
+    padding: '12px 10px',
+    verticalAlign: 'middle',
   },
   expenseItem: {
     display: 'flex',
