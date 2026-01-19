@@ -45,6 +45,16 @@ function ExpensesPageContent() {
   const [uploadingImage, setUploadingImage] = useState(false)
   const [editingExpenseId, setEditingExpenseId] = useState<number | null>(null)
   const [selectedExpense, setSelectedExpense] = useState<ExpenseWithCategory | null>(null)
+  const [isEditingDetail, setIsEditingDetail] = useState(false)
+  const [editExpenseData, setEditExpenseData] = useState<{
+    category_id: number | null
+    payment_date: string
+    payment_method: PaymentMethod
+    amount: number
+    usage_purpose: string
+    description: string
+    entered_by: string
+  } | null>(null)
   const [formErrors, setFormErrors] = useState<{
     entered_by?: boolean
     usage_purpose?: boolean
@@ -382,6 +392,115 @@ function ExpensesPageContent() {
       console.error('経費削除エラー:', err)
       toast.error('経費の削除に失敗しました')
     }
+  }
+
+  // 経費更新
+  const handleUpdateExpense = async () => {
+    if (!selectedExpense || !editExpenseData) return
+
+    // バリデーション
+    const errors: typeof formErrors = {}
+    if (!editExpenseData.entered_by.trim()) errors.entered_by = true
+    if (!editExpenseData.usage_purpose.trim()) errors.usage_purpose = true
+    if (editExpenseData.amount <= 0) errors.amount = true
+
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors)
+      toast.error('必須項目を入力してください')
+      return
+    }
+    setFormErrors({})
+
+    setSaving(true)
+    try {
+      const oldPaymentMethod = selectedExpense.payment_method
+      const newPaymentMethod = editExpenseData.payment_method
+      const newAmount = editExpenseData.amount
+
+      // 経費を更新
+      const { error: expenseError } = await supabase
+        .from('expenses')
+        .update({
+          category_id: editExpenseData.payment_method === 'register' ? null : (editExpenseData.category_id || null),
+          payment_date: editExpenseData.payment_date,
+          payment_method: editExpenseData.payment_method,
+          amount: editExpenseData.amount,
+          usage_purpose: editExpenseData.usage_purpose.trim(),
+          description: editExpenseData.description || null,
+          entered_by: editExpenseData.entered_by.trim(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', selectedExpense.id)
+
+      if (expenseError) throw expenseError
+
+      // 小口取引の更新処理
+      const wasCashOrRegister = oldPaymentMethod === 'cash' || oldPaymentMethod === 'register'
+      const isCashOrRegister = newPaymentMethod === 'cash' || newPaymentMethod === 'register'
+
+      if (wasCashOrRegister && isCashOrRegister) {
+        // 両方とも小口系：金額と日付を更新
+        await supabase
+          .from('petty_cash_transactions')
+          .update({
+            amount: newAmount,
+            transaction_date: editExpenseData.payment_date,
+            description: editExpenseData.description || null,
+          })
+          .eq('expense_id', selectedExpense.id)
+      } else if (wasCashOrRegister && !isCashOrRegister) {
+        // 小口系から口座払いに変更：小口取引を削除
+        await supabase
+          .from('petty_cash_transactions')
+          .delete()
+          .eq('expense_id', selectedExpense.id)
+      } else if (!wasCashOrRegister && isCashOrRegister) {
+        // 口座払いから小口系に変更：小口取引を追加
+        await supabase
+          .from('petty_cash_transactions')
+          .insert({
+            store_id: storeId,
+            transaction_date: editExpenseData.payment_date,
+            transaction_type: 'withdrawal',
+            amount: newAmount,
+            expense_id: selectedExpense.id,
+            description: editExpenseData.description || null,
+          })
+      }
+
+      toast.success('経費を更新しました')
+      setIsEditingDetail(false)
+      setEditExpenseData(null)
+      setSelectedExpense(null)
+      loadData()
+    } catch (err) {
+      console.error('経費更新エラー:', err)
+      toast.error('経費の更新に失敗しました')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // 編集モード開始
+  const startEditingExpense = () => {
+    if (!selectedExpense) return
+    setEditExpenseData({
+      category_id: selectedExpense.category_id,
+      payment_date: selectedExpense.payment_date,
+      payment_method: selectedExpense.payment_method,
+      amount: selectedExpense.amount,
+      usage_purpose: selectedExpense.usage_purpose || '',
+      description: selectedExpense.description || '',
+      entered_by: selectedExpense.entered_by || '',
+    })
+    setIsEditingDetail(true)
+  }
+
+  // 編集モードキャンセル
+  const cancelEditingExpense = () => {
+    setIsEditingDetail(false)
+    setEditExpenseData(null)
+    setFormErrors({})
   }
 
   // 画像アップロード
@@ -1028,14 +1147,20 @@ function ExpensesPageContent() {
 
           {/* 経費詳細モーダル */}
           {selectedExpense && (
-            <div style={styles.modalOverlay} onClick={() => setSelectedExpense(null)}>
+            <div style={styles.modalOverlay} onClick={() => { if (!isEditingDetail) { setSelectedExpense(null) } }}>
               <div
                 style={styles.detailModalContent}
                 onClick={e => e.stopPropagation()}
               >
                 <div style={styles.detailModalHeader}>
-                  <h3 style={styles.detailModalTitle}>経費詳細</h3>
-                  <button onClick={() => setSelectedExpense(null)} style={styles.closeButton}>
+                  <h3 style={styles.detailModalTitle}>{isEditingDetail ? '経費編集' : '経費詳細'}</h3>
+                  <button onClick={() => {
+                    if (isEditingDetail) {
+                      cancelEditingExpense()
+                    } else {
+                      setSelectedExpense(null)
+                    }
+                  }} style={styles.closeButton}>
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <line x1="18" y1="6" x2="6" y2="18"/>
                       <line x1="6" y1="6" x2="18" y2="18"/>
@@ -1043,62 +1168,166 @@ function ExpensesPageContent() {
                   </button>
                 </div>
                 <div style={styles.detailModalBody}>
-                  <div style={styles.detailGrid}>
-                    <div style={styles.detailItem}>
-                      <span style={styles.detailLabel}>カテゴリ</span>
-                      <span style={styles.detailValue}>{selectedExpense.category?.name || '未分類'}</span>
-                    </div>
-                    <div style={styles.detailItem}>
-                      <span style={styles.detailLabel}>支払方法</span>
-                      <span style={{
-                        ...styles.paymentBadge,
-                        backgroundColor: selectedExpense.payment_method === 'cash' ? '#3498db' : selectedExpense.payment_method === 'register' ? '#e67e22' : '#27ae60'
-                      }}>
-                        {selectedExpense.payment_method === 'cash' ? '小口現金' : selectedExpense.payment_method === 'register' ? 'レジ金' : '口座払い'}
-                      </span>
-                    </div>
-                    <div style={styles.detailItem}>
-                      <span style={styles.detailLabel}>対象月</span>
-                      <span style={styles.detailValue}>{selectedExpense.target_month}</span>
-                    </div>
-                    <div style={styles.detailItem}>
-                      <span style={styles.detailLabel}>支払日</span>
-                      <span style={styles.detailValue}>{format(new Date(selectedExpense.payment_date), 'yyyy/M/d')}</span>
-                    </div>
-                    <div style={styles.detailItem}>
-                      <span style={styles.detailLabel}>金額</span>
-                      <span style={styles.detailAmount}>{formatCurrency(selectedExpense.amount)}</span>
-                    </div>
-                    <div style={styles.detailItem}>
-                      <span style={styles.detailLabel}>入力者</span>
-                      <span style={styles.detailValue}>{selectedExpense.entered_by || '-'}</span>
-                    </div>
-                    <div style={{ ...styles.detailItem, gridColumn: '1 / -1' }}>
-                      <span style={styles.detailLabel}>使用用途</span>
-                      <span style={styles.detailValue}>{selectedExpense.usage_purpose || '-'}</span>
-                    </div>
-                    {selectedExpense.description && (
+                  {isEditingDetail && editExpenseData ? (
+                    // 編集モード
+                    <div style={styles.detailGrid}>
+                      {editExpenseData.payment_method !== 'register' && (
+                        <div style={styles.detailItem}>
+                          <span style={styles.detailLabel}>カテゴリ</span>
+                          <select
+                            value={editExpenseData.category_id || 0}
+                            onChange={(e) => setEditExpenseData({ ...editExpenseData, category_id: parseInt(e.target.value) || null })}
+                            style={styles.editInput}
+                          >
+                            <option value={0}>未分類</option>
+                            {categories.map(cat => (
+                              <option key={cat.id} value={cat.id}>{cat.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                      <div style={styles.detailItem}>
+                        <span style={styles.detailLabel}>支払方法</span>
+                        <select
+                          value={editExpenseData.payment_method}
+                          onChange={(e) => setEditExpenseData({ ...editExpenseData, payment_method: e.target.value as PaymentMethod })}
+                          style={styles.editInput}
+                        >
+                          <option value="cash">小口現金</option>
+                          <option value="bank">口座払い</option>
+                          <option value="register">レジ金</option>
+                        </select>
+                      </div>
+                      <div style={styles.detailItem}>
+                        <span style={styles.detailLabel}>対象月</span>
+                        <span style={styles.detailValue}>{selectedExpense.target_month}</span>
+                      </div>
+                      <div style={styles.detailItem}>
+                        <span style={styles.detailLabel}>支払日</span>
+                        <input
+                          type="date"
+                          value={editExpenseData.payment_date}
+                          onChange={(e) => setEditExpenseData({ ...editExpenseData, payment_date: e.target.value })}
+                          style={styles.editInput}
+                        />
+                      </div>
+                      <div style={styles.detailItem}>
+                        <span style={styles.detailLabel}>金額 <span style={{ color: '#e74c3c' }}>*</span></span>
+                        <input
+                          type="number"
+                          value={editExpenseData.amount || ''}
+                          onChange={(e) => setEditExpenseData({ ...editExpenseData, amount: parseInt(e.target.value) || 0 })}
+                          style={{
+                            ...styles.editInput,
+                            borderColor: formErrors.amount ? '#e74c3c' : '#ddd',
+                          }}
+                        />
+                      </div>
+                      <div style={styles.detailItem}>
+                        <span style={styles.detailLabel}>入力者 <span style={{ color: '#e74c3c' }}>*</span></span>
+                        <input
+                          type="text"
+                          value={editExpenseData.entered_by}
+                          onChange={(e) => setEditExpenseData({ ...editExpenseData, entered_by: e.target.value })}
+                          style={{
+                            ...styles.editInput,
+                            borderColor: formErrors.entered_by ? '#e74c3c' : '#ddd',
+                          }}
+                        />
+                      </div>
+                      <div style={{ ...styles.detailItem, gridColumn: '1 / -1' }}>
+                        <span style={styles.detailLabel}>使用用途 <span style={{ color: '#e74c3c' }}>*</span></span>
+                        <input
+                          type="text"
+                          value={editExpenseData.usage_purpose}
+                          onChange={(e) => setEditExpenseData({ ...editExpenseData, usage_purpose: e.target.value })}
+                          style={{
+                            ...styles.editInput,
+                            borderColor: formErrors.usage_purpose ? '#e74c3c' : '#ddd',
+                          }}
+                        />
+                      </div>
                       <div style={{ ...styles.detailItem, gridColumn: '1 / -1' }}>
                         <span style={styles.detailLabel}>備考</span>
-                        <span style={styles.detailValue}>{selectedExpense.description}</span>
+                        <textarea
+                          value={editExpenseData.description}
+                          onChange={(e) => setEditExpenseData({ ...editExpenseData, description: e.target.value })}
+                          style={{ ...styles.editInput, minHeight: '60px', resize: 'vertical' }}
+                        />
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  ) : (
+                    // 表示モード
+                    <div style={styles.detailGrid}>
+                      <div style={styles.detailItem}>
+                        <span style={styles.detailLabel}>カテゴリ</span>
+                        <span style={styles.detailValue}>{selectedExpense.category?.name || '未分類'}</span>
+                      </div>
+                      <div style={styles.detailItem}>
+                        <span style={styles.detailLabel}>支払方法</span>
+                        <span style={{
+                          ...styles.paymentBadge,
+                          backgroundColor: selectedExpense.payment_method === 'cash' ? '#3498db' : selectedExpense.payment_method === 'register' ? '#e67e22' : '#27ae60'
+                        }}>
+                          {selectedExpense.payment_method === 'cash' ? '小口現金' : selectedExpense.payment_method === 'register' ? 'レジ金' : '口座払い'}
+                        </span>
+                      </div>
+                      <div style={styles.detailItem}>
+                        <span style={styles.detailLabel}>対象月</span>
+                        <span style={styles.detailValue}>{selectedExpense.target_month}</span>
+                      </div>
+                      <div style={styles.detailItem}>
+                        <span style={styles.detailLabel}>支払日</span>
+                        <span style={styles.detailValue}>{format(new Date(selectedExpense.payment_date), 'yyyy/M/d')}</span>
+                      </div>
+                      <div style={styles.detailItem}>
+                        <span style={styles.detailLabel}>金額</span>
+                        <span style={styles.detailAmount}>{formatCurrency(selectedExpense.amount)}</span>
+                      </div>
+                      <div style={styles.detailItem}>
+                        <span style={styles.detailLabel}>入力者</span>
+                        <span style={styles.detailValue}>{selectedExpense.entered_by || '-'}</span>
+                      </div>
+                      <div style={{ ...styles.detailItem, gridColumn: '1 / -1' }}>
+                        <span style={styles.detailLabel}>使用用途</span>
+                        <span style={styles.detailValue}>{selectedExpense.usage_purpose || '-'}</span>
+                      </div>
+                      {selectedExpense.description && (
+                        <div style={{ ...styles.detailItem, gridColumn: '1 / -1' }}>
+                          <span style={styles.detailLabel}>備考</span>
+                          <span style={styles.detailValue}>{selectedExpense.description}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
-                  {/* 領収書セクション */}
-                  {selectedExpense.payment_method !== 'register' && (
+                  {/* 領収書セクション（表示モードのみ） */}
+                  {!isEditingDetail && selectedExpense.payment_method !== 'register' && (
                     <div style={styles.detailReceiptSection}>
-                      <span style={styles.detailLabel}>領収書</span>
+                      <div style={styles.receiptHeader}>
+                        <span style={styles.detailLabel}>領収書</span>
+                        {selectedExpense.receipt_path && (
+                          <button
+                            onClick={() => window.open(selectedExpense.receipt_path!, '_blank')}
+                            style={styles.openNewTabButton}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                              <polyline points="15 3 21 3 21 9"/>
+                              <line x1="10" y1="14" x2="21" y2="3"/>
+                            </svg>
+                            新しいタブで開く
+                          </button>
+                        )}
+                      </div>
                       {selectedExpense.receipt_path ? (
                         <div style={styles.detailReceiptPreview}>
                           {selectedExpense.receipt_path.toLowerCase().endsWith('.pdf') ? (
-                            <div
-                              style={{ ...styles.pdfPreview, cursor: 'pointer' }}
-                              onClick={() => window.open(selectedExpense.receipt_path!, '_blank')}
-                            >
-                              <span style={styles.pdfIcon}>📄</span>
-                              <span style={styles.pdfFileName}>PDFファイル（クリックで開く）</span>
-                            </div>
+                            <iframe
+                              src={selectedExpense.receipt_path}
+                              style={styles.receiptPdfEmbed}
+                              title="領収書PDF"
+                            />
                           ) : (
                             <img
                               src={selectedExpense.receipt_path}
@@ -1135,22 +1364,47 @@ function ExpensesPageContent() {
                   )}
                 </div>
                 <div style={styles.detailModalFooter}>
-                  <button
-                    onClick={async () => {
-                      await handleDeleteExpense(selectedExpense)
-                      setSelectedExpense(null)
-                    }}
-                    style={styles.detailDeleteButton}
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <polyline points="3 6 5 6 21 6"/>
-                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                    </svg>
-                    削除
-                  </button>
-                  <Button variant="secondary" onClick={() => setSelectedExpense(null)}>
-                    閉じる
-                  </Button>
+                  {isEditingDetail ? (
+                    // 編集モードのフッター
+                    <>
+                      <Button variant="secondary" onClick={cancelEditingExpense}>
+                        キャンセル
+                      </Button>
+                      <Button onClick={handleUpdateExpense} disabled={saving}>
+                        {saving ? '保存中...' : '保存'}
+                      </Button>
+                    </>
+                  ) : (
+                    // 表示モードのフッター
+                    <>
+                      <button
+                        onClick={async () => {
+                          await handleDeleteExpense(selectedExpense)
+                          setSelectedExpense(null)
+                        }}
+                        style={styles.detailDeleteButton}
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <polyline points="3 6 5 6 21 6"/>
+                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                        </svg>
+                        削除
+                      </button>
+                      <button
+                        onClick={startEditingExpense}
+                        style={styles.detailEditButton}
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                        </svg>
+                        編集
+                      </button>
+                      <Button variant="secondary" onClick={() => setSelectedExpense(null)}>
+                        閉じる
+                      </Button>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
@@ -2333,7 +2587,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     backgroundColor: 'white',
     borderRadius: '10px',
     width: '90%',
-    maxWidth: '500px',
+    maxWidth: '650px',
     maxHeight: '90vh',
     overflow: 'auto',
   },
@@ -2383,16 +2637,40 @@ const styles: { [key: string]: React.CSSProperties } = {
     flexDirection: 'column',
     gap: '10px',
   },
+  receiptHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  openNewTabButton: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+    padding: '4px 8px',
+    border: '1px solid #ddd',
+    borderRadius: '4px',
+    backgroundColor: '#f9f9f9',
+    color: '#666',
+    fontSize: '12px',
+    cursor: 'pointer',
+  },
+  receiptPdfEmbed: {
+    width: '100%',
+    height: '400px',
+    border: '1px solid #ddd',
+    borderRadius: '5px',
+  } as React.CSSProperties,
   detailReceiptPreview: {
     display: 'flex',
     justifyContent: 'center',
   },
   detailReceiptImage: {
     maxWidth: '100%',
-    maxHeight: '200px',
+    maxHeight: '400px',
     objectFit: 'contain',
     borderRadius: '5px',
     cursor: 'pointer',
+    border: '1px solid #ddd',
   },
   detailUploadButton: {
     display: 'flex',
@@ -2427,6 +2705,26 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '14px',
     cursor: 'pointer',
   },
+  detailEditButton: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '8px 16px',
+    border: 'none',
+    borderRadius: '5px',
+    backgroundColor: '#dbeafe',
+    color: '#2563eb',
+    fontSize: '14px',
+    cursor: 'pointer',
+  },
+  editInput: {
+    width: '100%',
+    padding: '8px 12px',
+    border: '1px solid #ddd',
+    borderRadius: '5px',
+    fontSize: '14px',
+    outline: 'none',
+  } as React.CSSProperties,
   // PDFプレビュー
   pdfPreview: {
     display: 'flex',
