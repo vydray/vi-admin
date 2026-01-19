@@ -479,6 +479,15 @@ export default function Home() {
         .gte('business_date', monthStart)
         .lte('business_date', monthEnd)
 
+      // 経費（expensesテーブルから小口現金・レジ金払いのみ）
+      const { data: expensesData } = await supabase
+        .from('expenses')
+        .select('payment_date, amount, payment_method')
+        .eq('store_id', storeId)
+        .in('payment_method', ['cash', 'register'])
+        .gte('payment_date', monthStart)
+        .lte('payment_date', monthEnd)
+
       if (todayError) {
         console.error('Today orders error:', todayError)
       }
@@ -624,9 +633,10 @@ export default function Home() {
           .filter(att => att.date === dateStr)
           .reduce((sum, att) => sum + (att.daily_payment || 0), 0)
 
-        // 経費（業務日報から）
-        const dayExpenseRecord = (dailyReportsData || []).find(dr => dr.business_date === dateStr)
-        const dayExpense = dayExpenseRecord?.expense_amount || 0
+        // 経費（expensesテーブルから小口現金・レジ金払い）
+        const dayExpense = (expensesData || [])
+          .filter(exp => exp.payment_date === dateStr)
+          .reduce((sum, exp) => sum + (exp.amount || 0), 0)
 
         // 現金回収
         const dayCollectionRecord = (cashCountsData || []).find(cc => cc.business_date === dateStr)
@@ -1177,8 +1187,8 @@ export default function Home() {
                   <div style={{ padding: '20px', textAlign: 'center', color: '#999' }}>読み込み中...</div>
                 ) : cashCountData ? (
                   (() => {
-                    // 業務日報からの調整項目
-                    const expenseAmount = dailyReportData?.expense_amount || 0
+                    // 経費（expensesテーブルから計算済みの値を使用）
+                    const expenseAmount = selectedDayData.expense
                     const unpaidAmount = dailyReportData?.unpaid_amount || 0
                     const unknownAmount = dailyReportData?.unknown_amount || 0
                     // 理論値 = 釣銭準備金 + 現金売上 - 日払い - 経費 - 未収金 - 未送伝票額
