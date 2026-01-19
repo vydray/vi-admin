@@ -34,6 +34,9 @@ function ExpensesPageContent() {
   const [filterCategory, setFilterCategory] = useState<number | null>(null)
   const [filterPaymentMethod, setFilterPaymentMethod] = useState<PaymentMethod | ''>('')
 
+  // ソート
+  const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc')
+
   // 新規経費フォーム
   const [showAddForm, setShowAddForm] = useState(false)
   const [newExpense, setNewExpense] = useState({
@@ -1634,25 +1637,38 @@ function ExpensesPageContent() {
                 if (filterPaymentMethod && expense.payment_method !== filterPaymentMethod) return false
                 return true
               })
+
+              // ソート適用
+              const sortedExpenses = [...filteredExpenses].sort((a, b) => {
+                const dateA = new Date(a.payment_date).getTime()
+                const dateB = new Date(b.payment_date).getTime()
+                return sortOrder === 'desc' ? dateB - dateA : dateA - dateB
+              })
+
               const isFiltered = filterVendor || filterCategory !== null || filterPaymentMethod
 
               if (expenses.length === 0) {
                 return <p style={styles.emptyText}>この月の経費はありません</p>
               }
-              if (filteredExpenses.length === 0) {
+              if (sortedExpenses.length === 0) {
                 return <p style={styles.emptyText}>条件に一致する経費はありません</p>
               }
               return (
                 <>
                   {isFiltered && (
                     <p style={styles.filterResultText}>
-                      {filteredExpenses.length}件 / 全{expenses.length}件
+                      {sortedExpenses.length}件 / 全{expenses.length}件
                     </p>
                   )}
                   <table style={styles.expenseTable}>
                     <thead>
                       <tr style={styles.tableHeaderRow}>
-                        <th style={styles.tableHeader}>日付</th>
+                        <th
+                          style={{ ...styles.tableHeader, ...styles.sortableHeader }}
+                          onClick={() => setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc')}
+                        >
+                          日付 {sortOrder === 'desc' ? '▼' : '▲'}
+                        </th>
                         <th style={styles.tableHeader}>購入先</th>
                         <th style={styles.tableHeader}>カテゴリ</th>
                         <th style={styles.tableHeader}>支払方法</th>
@@ -1661,7 +1677,7 @@ function ExpensesPageContent() {
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredExpenses.map(expense => (
+                      {sortedExpenses.map(expense => (
                     <tr
                       key={expense.id}
                       style={styles.tableRow}
@@ -2344,6 +2360,10 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontWeight: '600',
     color: '#64748b',
     fontSize: '12px',
+  },
+  sortableHeader: {
+    cursor: 'pointer',
+    userSelect: 'none',
   },
   tableRow: {
     borderBottom: '1px solid #e2e8f0',
