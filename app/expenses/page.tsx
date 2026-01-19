@@ -947,23 +947,7 @@ function ExpensesPageContent() {
                   {/* 左側: フォーム */}
                   <div style={styles.expenseFormSection}>
                     <div style={styles.expenseFormGrid}>
-                      {/* レジ金以外はカテゴリ選択 */}
-                      {newExpense.payment_method !== 'register' && (
-                      <div style={styles.formGroup}>
-                        <label style={styles.label}>カテゴリ</label>
-                        <select
-                          value={newExpense.category_id}
-                          onChange={(e) => setNewExpense({ ...newExpense, category_id: Number(e.target.value) })}
-                          style={styles.select}
-                        >
-                          {categories.map(cat => (
-                            <option key={cat.id} value={cat.id}>
-                              {cat.name} ({cat.account_type === 'cost' ? '売上原価' : '販管費'})
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      )}
+                      {/* 1行目: 対象月 | 支払日 */}
                       <div style={styles.formGroup}>
                         <label style={styles.label}>対象月</label>
                         <input
@@ -982,6 +966,7 @@ function ExpensesPageContent() {
                           style={styles.input}
                         />
                       </div>
+                      {/* 2行目: 支払方法 | カテゴリ */}
                       <div style={styles.formGroup}>
                         <label style={styles.label}>支払方法</label>
                         <select
@@ -993,6 +978,75 @@ function ExpensesPageContent() {
                           <option value="bank">口座払い</option>
                           <option value="register">レジ金</option>
                         </select>
+                      </div>
+                      {newExpense.payment_method !== 'register' ? (
+                        <div style={styles.formGroup}>
+                          <label style={styles.label}>カテゴリ</label>
+                          <select
+                            value={newExpense.category_id}
+                            onChange={(e) => setNewExpense({ ...newExpense, category_id: Number(e.target.value) })}
+                            style={styles.select}
+                          >
+                            {categories.map(cat => (
+                              <option key={cat.id} value={cat.id}>
+                                {cat.name} ({cat.account_type === 'cost' ? '売上原価' : '販管費'})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      ) : (
+                        <div style={styles.formGroup} />
+                      )}
+                      {/* 3行目: 購入先 */}
+                      <div style={{ ...styles.formGroup, gridColumn: '1 / -1' }}>
+                        <label style={styles.label}>購入先</label>
+                        <input
+                          type="text"
+                          value={newExpense.vendor}
+                          onChange={(e) => setNewExpense({ ...newExpense, vendor: e.target.value })}
+                          style={styles.input}
+                          placeholder="任意"
+                        />
+                      </div>
+                      {/* 4行目: 使用用途 */}
+                      <div style={{ ...styles.formGroup, gridColumn: '1 / -1' }}>
+                        <label style={{
+                          ...styles.label,
+                          ...(formErrors.usage_purpose ? styles.labelError : {}),
+                        }}>使用用途 *</label>
+                        <input
+                          type="text"
+                          value={newExpense.usage_purpose}
+                          onChange={(e) => {
+                            setNewExpense({ ...newExpense, usage_purpose: e.target.value })
+                            if (formErrors.usage_purpose) setFormErrors(prev => ({ ...prev, usage_purpose: false }))
+                          }}
+                          style={{
+                            ...styles.input,
+                            ...(formErrors.usage_purpose ? styles.inputError : {}),
+                          }}
+                          placeholder="必須"
+                        />
+                      </div>
+                      {/* 5行目: 入力者 | 金額 */}
+                      <div style={styles.formGroup}>
+                        <label style={{
+                          ...styles.label,
+                          ...(formErrors.entered_by ? styles.labelError : {}),
+                        }}>入力者 *</label>
+                        <input
+                          type="text"
+                          value={newExpense.entered_by}
+                          onChange={(e) => {
+                            setNewExpense({ ...newExpense, entered_by: e.target.value })
+                            if (formErrors.entered_by) setFormErrors(prev => ({ ...prev, entered_by: false }))
+                          }}
+                          style={{
+                            ...styles.input,
+                            ...(formErrors.entered_by ? styles.inputError : {}),
+                          }}
+                          placeholder="必須"
+                        />
                       </div>
                       <div style={styles.formGroup}>
                         <label style={{
@@ -1013,55 +1067,8 @@ function ExpensesPageContent() {
                           placeholder="0"
                         />
                       </div>
-                      <div style={styles.formGroup}>
-                        <label style={{
-                          ...styles.label,
-                          ...(formErrors.entered_by ? styles.labelError : {}),
-                        }}>入力者 *</label>
-                        <input
-                          type="text"
-                          value={newExpense.entered_by}
-                          onChange={(e) => {
-                            setNewExpense({ ...newExpense, entered_by: e.target.value })
-                            if (formErrors.entered_by) setFormErrors(prev => ({ ...prev, entered_by: false }))
-                          }}
-                          style={{
-                            ...styles.input,
-                            ...(formErrors.entered_by ? styles.inputError : {}),
-                          }}
-                          placeholder="必須"
-                        />
-                      </div>
+                      {/* 6行目: 備考 */}
                       <div style={{ ...styles.formGroup, gridColumn: '1 / -1' }}>
-                        <label style={{
-                          ...styles.label,
-                          ...(formErrors.usage_purpose ? styles.labelError : {}),
-                        }}>使用用途 *</label>
-                        <input
-                          type="text"
-                          value={newExpense.usage_purpose}
-                          onChange={(e) => {
-                            setNewExpense({ ...newExpense, usage_purpose: e.target.value })
-                            if (formErrors.usage_purpose) setFormErrors(prev => ({ ...prev, usage_purpose: false }))
-                          }}
-                          style={{
-                            ...styles.input,
-                            ...(formErrors.usage_purpose ? styles.inputError : {}),
-                          }}
-                          placeholder="必須"
-                        />
-                      </div>
-                      <div style={styles.formGroup}>
-                        <label style={styles.label}>購入先</label>
-                        <input
-                          type="text"
-                          value={newExpense.vendor}
-                          onChange={(e) => setNewExpense({ ...newExpense, vendor: e.target.value })}
-                          style={styles.input}
-                          placeholder="任意"
-                        />
-                      </div>
-                      <div style={styles.formGroup}>
                         <label style={styles.label}>備考</label>
                         <input
                           type="text"
