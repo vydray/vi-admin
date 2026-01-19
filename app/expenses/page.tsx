@@ -972,10 +972,16 @@ function ExpensesPageContent() {
                   <h3 style={styles.expenseModalTitle}>新規経費</h3>
                   <button onClick={closeAddModal} style={styles.closeButton}>✕</button>
                 </div>
-                <div style={styles.expenseModalBody}>
+                <div style={{
+                  ...styles.expenseModalBody,
+                  ...(isMobile ? { flexDirection: 'column', padding: '15px' } : {}),
+                }}>
                   {/* 左側: フォーム */}
                   <div style={styles.expenseFormSection}>
-                    <div style={styles.expenseFormGrid}>
+                    <div style={{
+                      ...styles.expenseFormGrid,
+                      ...(isMobile ? { gridTemplateColumns: '1fr' } : {}),
+                    }}>
                       {/* 1行目: 対象月 | 支払日 */}
                       <div style={styles.formGroup}>
                         <label style={styles.label}>対象月</label>
@@ -1122,7 +1128,10 @@ function ExpensesPageContent() {
 
                   {/* 右側: 領収書アップロード（レジ金以外） */}
                   {newExpense.payment_method !== 'register' && (
-                  <div style={styles.receiptSection}>
+                  <div style={{
+                    ...styles.receiptSection,
+                    ...(isMobile ? { width: '100%' } : {}),
+                  }}>
                     <label style={styles.label}>領収書写真</label>
                     {!receiptPreview ? (
                       <div
