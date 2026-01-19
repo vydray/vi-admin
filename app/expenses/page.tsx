@@ -67,6 +67,15 @@ function ExpensesPageContent() {
   const [showDepositForm, setShowDepositForm] = useState(false)
   const [depositAmount, setDepositAmount] = useState(0)
   const [depositDescription, setDepositDescription] = useState('')
+  const [depositDate, setDepositDate] = useState(format(new Date(), 'yyyy-MM-dd'))
+
+  // 補充編集用
+  const [editingDeposit, setEditingDeposit] = useState<{
+    id: number
+    date: string
+    amount: number
+    description: string
+  } | null>(null)
 
   // 残高確認フォーム
   const [showCheckForm, setShowCheckForm] = useState(false)
@@ -488,7 +497,7 @@ function ExpensesPageContent() {
         .from('petty_cash_transactions')
         .insert({
           store_id: storeId,
-          transaction_date: format(new Date(), 'yyyy-MM-dd'),
+          transaction_date: depositDate,
           transaction_type: 'deposit',
           amount: depositAmount,
           description: depositDescription || '小口現金補充',
@@ -500,12 +509,67 @@ function ExpensesPageContent() {
       setShowDepositForm(false)
       setDepositAmount(0)
       setDepositDescription('')
+      setDepositDate(format(new Date(), 'yyyy-MM-dd'))
       loadData()
     } catch (err) {
       console.error('補充記録エラー:', err)
       toast.error('補充の記録に失敗しました')
     } finally {
       setSaving(false)
+    }
+  }
+
+  // 補充を編集
+  const handleUpdateDeposit = async () => {
+    if (!editingDeposit) return
+    if (editingDeposit.amount <= 0) {
+      toast.error('金額を入力してください')
+      return
+    }
+
+    setSaving(true)
+    try {
+      const { error } = await supabase
+        .from('petty_cash_transactions')
+        .update({
+          transaction_date: editingDeposit.date,
+          amount: editingDeposit.amount,
+          description: editingDeposit.description || '小口現金補充',
+        })
+        .eq('id', editingDeposit.id)
+        .eq('store_id', storeId)
+
+      if (error) throw error
+
+      toast.success('補充を更新しました')
+      setEditingDeposit(null)
+      loadData()
+    } catch (err) {
+      console.error('補充更新エラー:', err)
+      toast.error('補充の更新に失敗しました')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // 補充を削除
+  const handleDeleteDeposit = async (id: number) => {
+    if (!confirm('この補充記録を削除しますか？')) return
+
+    try {
+      const { error } = await supabase
+        .from('petty_cash_transactions')
+        .delete()
+        .eq('id', id)
+        .eq('store_id', storeId)
+
+      if (error) throw error
+
+      toast.success('補充を削除しました')
+      loadData()
+    } catch (err) {
+      console.error('補充削除エラー:', err)
+      toast.error('補充の削除に失敗しました')
     }
   }
 
@@ -567,6 +631,7 @@ function ExpensesPageContent() {
     // petty_cash_transactions
     ...transactions.map(tx => ({
       id: `tx-${tx.id}`,
+      originalId: tx.id,
       date: tx.transaction_date,
       type: tx.transaction_type as 'deposit' | 'withdrawal' | 'adjustment',
       amount: tx.amount,
@@ -576,6 +641,7 @@ function ExpensesPageContent() {
     // daily_reports の入金
     ...dailyReportExpenses.map(dr => ({
       id: `dr-${dr.id}`,
+      originalId: null as number | null,
       date: dr.business_date,
       type: 'deposit' as const,
       amount: dr.expense_amount,
@@ -1188,6 +1254,15 @@ function ExpensesPageContent() {
                 <h3 style={styles.modalTitle}>小口現金補充</h3>
                 <div style={styles.modalBody}>
                   <div style={styles.formGroup}>
+                    <label style={styles.label}>日付</label>
+                    <input
+                      type="date"
+                      value={depositDate}
+                      onChange={(e) => setDepositDate(e.target.value)}
+                      style={styles.input}
+                    />
+                  </div>
+                  <div style={styles.formGroup}>
                     <label style={styles.label}>補充金額</label>
                     <input
                       type="number"
@@ -1215,6 +1290,54 @@ function ExpensesPageContent() {
                   </Button>
                   <Button onClick={handleDeposit} disabled={saving}>
                     {saving ? '保存中...' : '補充を記録'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 補充編集モーダル */}
+          {editingDeposit && (
+            <div style={styles.modalOverlay} onClick={() => setEditingDeposit(null)}>
+              <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
+                <h3 style={styles.modalTitle}>補充を編集</h3>
+                <div style={styles.modalBody}>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>日付</label>
+                    <input
+                      type="date"
+                      value={editingDeposit.date}
+                      onChange={(e) => setEditingDeposit({ ...editingDeposit, date: e.target.value })}
+                      style={styles.input}
+                    />
+                  </div>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>補充金額</label>
+                    <input
+                      type="number"
+                      value={editingDeposit.amount || ''}
+                      onChange={(e) => setEditingDeposit({ ...editingDeposit, amount: Number(e.target.value) })}
+                      style={styles.input}
+                      placeholder="0"
+                    />
+                  </div>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>メモ</label>
+                    <input
+                      type="text"
+                      value={editingDeposit.description}
+                      onChange={(e) => setEditingDeposit({ ...editingDeposit, description: e.target.value })}
+                      style={styles.input}
+                      placeholder="任意"
+                    />
+                  </div>
+                </div>
+                <div style={styles.modalFooter}>
+                  <Button variant="secondary" onClick={() => setEditingDeposit(null)}>
+                    キャンセル
+                  </Button>
+                  <Button onClick={handleUpdateDeposit} disabled={saving}>
+                    {saving ? '保存中...' : '更新'}
                   </Button>
                 </div>
               </div>
@@ -1394,14 +1517,37 @@ function ExpensesPageContent() {
                         <span style={styles.dailyReportBadge}>日報</span>
                       )}
                     </div>
-                    <span style={{
-                      ...styles.transactionAmount,
-                      color: tx.type === 'deposit' ? '#27ae60' :
-                             tx.type === 'withdrawal' ? '#e74c3c' : '#3498db'
-                    }}>
-                      {tx.type === 'deposit' ? '+' : '-'}
-                      {formatCurrency(tx.amount)}
-                    </span>
+                    <div style={styles.transactionRight}>
+                      <span style={{
+                        ...styles.transactionAmount,
+                        color: tx.type === 'deposit' ? '#27ae60' :
+                               tx.type === 'withdrawal' ? '#e74c3c' : '#3498db'
+                      }}>
+                        {tx.type === 'deposit' ? '+' : '-'}
+                        {formatCurrency(tx.amount)}
+                      </span>
+                      {tx.source === 'petty_cash' && tx.type === 'deposit' && tx.originalId && (
+                        <div style={styles.transactionActions}>
+                          <button
+                            onClick={() => setEditingDeposit({
+                              id: tx.originalId!,
+                              date: tx.date,
+                              amount: tx.amount,
+                              description: tx.description,
+                            })}
+                            style={styles.transactionEditBtn}
+                          >
+                            編集
+                          </button>
+                          <button
+                            onClick={() => handleDeleteDeposit(tx.originalId!)}
+                            style={styles.transactionDeleteBtn}
+                          >
+                            削除
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1868,6 +2014,33 @@ const styles: { [key: string]: React.CSSProperties } = {
   transactionAmount: {
     fontSize: '16px',
     fontWeight: 'bold',
+  },
+  transactionRight: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+  },
+  transactionActions: {
+    display: 'flex',
+    gap: '6px',
+  },
+  transactionEditBtn: {
+    padding: '4px 10px',
+    fontSize: '12px',
+    backgroundColor: '#e3f2fd',
+    color: '#1976d2',
+    border: 'none',
+    borderRadius: '4px',
+    cursor: 'pointer',
+  },
+  transactionDeleteBtn: {
+    padding: '4px 10px',
+    fontSize: '12px',
+    backgroundColor: '#ffebee',
+    color: '#d32f2f',
+    border: 'none',
+    borderRadius: '4px',
+    cursor: 'pointer',
   },
   checkList: {
     display: 'flex',
