@@ -45,7 +45,8 @@ interface DailySalesData {
   orderCount: number
   groups: number
   dailyPayment: number
-  expense: number
+  expenseDeposit: number  // 経費入金（レジから小口へ）
+  expense: number         // 経費支出（小口から支払い）
   cashCollection: number
   baseSales: number
 }
@@ -221,7 +222,8 @@ export default function Home() {
           'カード',
           '売掛',
           '日払い',
-          '経費',
+          '経費入金',
+          '経費支出',
           '回収金',
           'BASE',
           '客単価'
@@ -236,6 +238,7 @@ export default function Home() {
           String(day.cardSales),
           String(day.otherSales),
           String(day.dailyPayment),
+          String(day.expenseDeposit),
           String(day.expense),
           String(day.cashCollection),
           String(day.baseSales),
@@ -251,10 +254,11 @@ export default function Home() {
           cardSales: acc.cardSales + d.cardSales,
           otherSales: acc.otherSales + d.otherSales,
           dailyPayment: acc.dailyPayment + d.dailyPayment,
+          expenseDeposit: acc.expenseDeposit + d.expenseDeposit,
           expense: acc.expense + d.expense,
           cashCollection: acc.cashCollection + d.cashCollection,
           baseSales: acc.baseSales + d.baseSales,
-        }), { sales: 0, orderCount: 0, groups: 0, cashSales: 0, cardSales: 0, otherSales: 0, dailyPayment: 0, expense: 0, cashCollection: 0, baseSales: 0 })
+        }), { sales: 0, orderCount: 0, groups: 0, cashSales: 0, cardSales: 0, otherSales: 0, dailyPayment: 0, expenseDeposit: 0, expense: 0, cashCollection: 0, baseSales: 0 })
 
         rows.push([
           '合計',
@@ -265,6 +269,7 @@ export default function Home() {
           String(totals.cardSales),
           String(totals.otherSales),
           String(totals.dailyPayment),
+          String(totals.expenseDeposit),
           String(totals.expense),
           String(totals.cashCollection),
           String(totals.baseSales),
@@ -633,7 +638,11 @@ export default function Home() {
           .filter(att => att.date === dateStr)
           .reduce((sum, att) => sum + (att.daily_payment || 0), 0)
 
-        // 経費（expensesテーブルから小口現金・レジ金払い）
+        // 経費入金（業務日報から：レジ→小口へ入金）
+        const dayExpenseDepositRecord = (dailyReportsData || []).find(dr => dr.business_date === dateStr)
+        const dayExpenseDeposit = dayExpenseDepositRecord?.expense_amount || 0
+
+        // 経費支出（expensesテーブルから小口現金・レジ金払い）
         const dayExpense = (expensesData || [])
           .filter(exp => exp.payment_date === dateStr)
           .reduce((sum, exp) => sum + (exp.amount || 0), 0)
@@ -660,6 +669,7 @@ export default function Home() {
           orderCount: dayOrders.length,
           groups: dayGuests,
           dailyPayment: dayDailyPayment,
+          expenseDeposit: dayExpenseDeposit,
           expense: dayExpense,
           cashCollection: dayCashCollection,
           baseSales: dayBaseSales,
@@ -890,7 +900,7 @@ export default function Home() {
         }}>
           <table style={{
             ...styles.dailyTable,
-            ...(isMobile ? { fontSize: '12px', minWidth: '900px' } : {})
+            ...(isMobile ? { fontSize: '12px', minWidth: '1000px' } : {})
           }}>
             <thead>
               <tr style={styles.dailyTableHeader}>
@@ -912,7 +922,8 @@ export default function Home() {
                 <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>カード</th>
                 <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>売掛</th>
                 <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>日払い</th>
-                <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>経費</th>
+                <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>経費入金</th>
+                <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>経費支出</th>
                 <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>回収金</th>
                 <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>BASE</th>
                 <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>客単価</th>
@@ -967,6 +978,9 @@ export default function Home() {
                   <td style={{ ...styles.dailyTableTd, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}), color: day.dailyPayment > 0 ? '#e74c3c' : undefined }}>
                     {day.dailyPayment > 0 ? `¥${day.dailyPayment.toLocaleString()}` : '-'}
                   </td>
+                  <td style={{ ...styles.dailyTableTd, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}), color: day.expenseDeposit > 0 ? '#f59e0b' : undefined }}>
+                    {day.expenseDeposit > 0 ? `¥${day.expenseDeposit.toLocaleString()}` : '-'}
+                  </td>
                   <td style={{ ...styles.dailyTableTd, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}), color: day.expense > 0 ? '#e74c3c' : undefined }}>
                     {day.expense > 0 ? `¥${day.expense.toLocaleString()}` : '-'}
                   </td>
@@ -1014,6 +1028,9 @@ export default function Home() {
                 </td>
                 <td style={{ ...styles.dailyTableTd, textAlign: 'right', fontWeight: 'bold', ...(isMobile ? { padding: '8px 6px' } : {}), color: '#e74c3c' }}>
                   ¥{dailySales.reduce((sum, d) => sum + d.dailyPayment, 0).toLocaleString()}
+                </td>
+                <td style={{ ...styles.dailyTableTd, textAlign: 'right', fontWeight: 'bold', ...(isMobile ? { padding: '8px 6px' } : {}), color: '#f59e0b' }}>
+                  ¥{dailySales.reduce((sum, d) => sum + d.expenseDeposit, 0).toLocaleString()}
                 </td>
                 <td style={{ ...styles.dailyTableTd, textAlign: 'right', fontWeight: 'bold', ...(isMobile ? { padding: '8px 6px' } : {}), color: '#e74c3c' }}>
                   ¥{dailySales.reduce((sum, d) => sum + d.expense, 0).toLocaleString()}
@@ -1187,12 +1204,14 @@ export default function Home() {
                   <div style={{ padding: '20px', textAlign: 'center', color: '#999' }}>読み込み中...</div>
                 ) : cashCountData ? (
                   (() => {
-                    // 経費（expensesテーブルから計算済みの値を使用）
+                    // 経費入金（レジから小口へ入金）
+                    const expenseDepositAmount = selectedDayData.expenseDeposit
+                    // 経費支出（小口・レジから支払い）
                     const expenseAmount = selectedDayData.expense
                     const unpaidAmount = dailyReportData?.unpaid_amount || 0
                     const unknownAmount = dailyReportData?.unknown_amount || 0
-                    // 理論値 = 釣銭準備金 + 現金売上 - 日払い - 経費 - 未収金 - 未送伝票額
-                    const theoreticalCash = cashCountData.register_amount + selectedDayData.cashSales - dailyPaymentTotal - expenseAmount - unpaidAmount - unknownAmount
+                    // 理論値 = 釣銭準備金 + 現金売上 - 日払い - 経費入金 - 経費支出 - 未収金 - 未送伝票額
+                    const theoreticalCash = cashCountData.register_amount + selectedDayData.cashSales - dailyPaymentTotal - expenseDepositAmount - expenseAmount - unpaidAmount - unknownAmount
                     // 差額 = 実際の現金 - 理論値
                     const difference = cashCountData.total_amount - theoreticalCash
                     return (
@@ -1232,9 +1251,15 @@ export default function Home() {
                               <span style={{ fontWeight: '600', color: '#e74c3c' }}>-¥{dailyPaymentTotal.toLocaleString()}</span>
                             </div>
                           )}
+                          {expenseDepositAmount > 0 && (
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                              <span style={{ color: '#f59e0b', fontSize: '13px' }}>経費入金</span>
+                              <span style={{ fontWeight: '600', color: '#f59e0b' }}>-¥{expenseDepositAmount.toLocaleString()}</span>
+                            </div>
+                          )}
                           {expenseAmount > 0 && (
                             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                              <span style={{ color: '#e74c3c', fontSize: '13px' }}>経費</span>
+                              <span style={{ color: '#e74c3c', fontSize: '13px' }}>経費支出</span>
                               <span style={{ fontWeight: '600', color: '#e74c3c' }}>-¥{expenseAmount.toLocaleString()}</span>
                             </div>
                           )}
