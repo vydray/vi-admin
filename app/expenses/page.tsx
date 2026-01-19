@@ -413,15 +413,22 @@ function ExpensesPageContent() {
 
   // ファイル処理共通関数
   const processReceiptFile = (file: File) => {
-    if (!file.type.startsWith('image/')) {
-      toast.error('画像ファイルを選択してください')
+    const isImage = file.type.startsWith('image/')
+    const isPdf = file.type === 'application/pdf'
+    if (!isImage && !isPdf) {
+      toast.error('画像またはPDFファイルを選択してください')
       return
     }
     setSelectedReceiptFile(file)
     setImageZoom(1)
-    const reader = new FileReader()
-    reader.onload = () => setReceiptPreview(reader.result as string)
-    reader.readAsDataURL(file)
+    if (isImage) {
+      const reader = new FileReader()
+      reader.onload = () => setReceiptPreview(reader.result as string)
+      reader.readAsDataURL(file)
+    } else {
+      // PDFの場合はプレビュー用にファイル名を表示
+      setReceiptPreview(`pdf:${file.name}`)
+    }
   }
 
   // ドラッグ&ドロップハンドラ
@@ -845,15 +852,15 @@ function ExpensesPageContent() {
                         <div style={styles.dropZoneContent}>
                           <span style={styles.dropIcon}>📷</span>
                           <p style={styles.dropText}>
-                            ここにドラッグ&ドロップ
+                            画像またはPDFを
                             <br />
-                            または
+                            ドラッグ&ドロップ
                           </p>
                           <label style={styles.fileSelectButton}>
                             ファイルを選択
                             <input
                               type="file"
-                              accept="image/*"
+                              accept="image/*,application/pdf"
                               onChange={handleReceiptSelect}
                               style={{ display: 'none' }}
                             />
@@ -863,15 +870,22 @@ function ExpensesPageContent() {
                     ) : (
                       <div style={styles.receiptPreviewArea}>
                         <div style={styles.imageContainer}>
-                          <img
-                            src={receiptPreview}
-                            alt="領収書プレビュー"
-                            style={{
-                              ...styles.receiptImage,
-                              transform: `scale(${imageZoom})`,
-                            }}
-                            onClick={() => setShowZoomModal(true)}
-                          />
+                          {receiptPreview.startsWith('pdf:') ? (
+                            <div style={styles.pdfPreview}>
+                              <span style={styles.pdfIcon}>📄</span>
+                              <span style={styles.pdfFileName}>{receiptPreview.replace('pdf:', '')}</span>
+                            </div>
+                          ) : (
+                            <img
+                              src={receiptPreview}
+                              alt="領収書プレビュー"
+                              style={{
+                                ...styles.receiptImage,
+                                transform: `scale(${imageZoom})`,
+                              }}
+                              onClick={() => setShowZoomModal(true)}
+                            />
+                          )}
                         </div>
                         <div style={styles.imageControls}>
                           <button
@@ -1011,18 +1025,28 @@ function ExpensesPageContent() {
                       <span style={styles.detailLabel}>領収書</span>
                       {selectedExpense.receipt_path ? (
                         <div style={styles.detailReceiptPreview}>
-                          <img
-                            src={selectedExpense.receipt_path}
-                            alt="領収書"
-                            style={styles.detailReceiptImage}
-                            onClick={() => window.open(selectedExpense.receipt_path!, '_blank')}
-                          />
+                          {selectedExpense.receipt_path.toLowerCase().endsWith('.pdf') ? (
+                            <div
+                              style={{ ...styles.pdfPreview, cursor: 'pointer' }}
+                              onClick={() => window.open(selectedExpense.receipt_path!, '_blank')}
+                            >
+                              <span style={styles.pdfIcon}>📄</span>
+                              <span style={styles.pdfFileName}>PDFファイル（クリックで開く）</span>
+                            </div>
+                          ) : (
+                            <img
+                              src={selectedExpense.receipt_path}
+                              alt="領収書"
+                              style={styles.detailReceiptImage}
+                              onClick={() => window.open(selectedExpense.receipt_path!, '_blank')}
+                            />
+                          )}
                         </div>
                       ) : (
                         <label style={styles.detailUploadButton}>
                           <input
                             type="file"
-                            accept="image/*"
+                            accept="image/*,application/pdf"
                             style={{ display: 'none' }}
                             onChange={(e) => {
                               const file = e.target.files?.[0]
@@ -2229,5 +2253,24 @@ const styles: { [key: string]: React.CSSProperties } = {
     color: '#dc2626',
     fontSize: '14px',
     cursor: 'pointer',
+  },
+  // PDFプレビュー
+  pdfPreview: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '10px',
+    padding: '30px',
+  },
+  pdfIcon: {
+    fontSize: '64px',
+  },
+  pdfFileName: {
+    fontSize: '14px',
+    color: '#666',
+    textAlign: 'center',
+    wordBreak: 'break-all',
+    maxWidth: '200px',
   },
 }
