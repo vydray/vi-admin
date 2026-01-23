@@ -1052,6 +1052,25 @@ export async function GET(request: NextRequest) {
 
       const result = await recalculateForStoreAndDate(store.id, today)
       results.push({ store_id: store.id, date: today, ...result })
+
+      // 未処理のBASE注文がある日付も再計算
+      const { data: unprocessedDates } = await supabaseAdmin
+        .from('base_orders')
+        .select('business_date')
+        .eq('store_id', store.id)
+        .eq('is_processed', false)
+        .neq('business_date', today)
+
+      if (unprocessedDates && unprocessedDates.length > 0) {
+        // 重複を除去
+        const uniqueDates = [...new Set(unprocessedDates.map(d => d.business_date))]
+        for (const date of uniqueDates) {
+          if (date) {
+            const pastResult = await recalculateForStoreAndDate(store.id, date)
+            results.push({ store_id: store.id, date, ...pastResult })
+          }
+        }
+      }
     }
 
     return NextResponse.json({
