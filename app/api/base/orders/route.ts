@@ -183,6 +183,7 @@ export async function POST(request: NextRequest) {
           // 店舗価格（税抜）を決定: store_priceがあればそれを使用、なければbase_priceを税抜換算
           const actualPrice = baseProduct?.store_price ?? Math.floor(item.price / 1.1)
 
+          // local_product_idはproductsテーブルを参照するので、base_products.idは使わない
           const { error: upsertError } = await supabase
             .from('base_orders')
             .upsert({
@@ -192,7 +193,7 @@ export async function POST(request: NextRequest) {
               product_name: item.title,
               variation_name: item.variation || null,
               cast_id: cast?.id || null,
-              local_product_id: baseProduct?.id || null,
+              local_product_id: null, // base_products.idは外部キー制約違反になるためnull
               base_price: item.price,
               actual_price: actualPrice,
               quantity: item.amount,

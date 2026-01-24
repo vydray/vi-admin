@@ -33,7 +33,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Database error' }, { status: 500 })
     }
 
-    const results: { store_id: number; success: boolean; imported?: number; error?: string }[] = []
+    const results: { store_id: number; success: boolean; imported?: number; errors?: number; error?: string; errorDetails?: string[] }[] = []
 
     for (const setting of settings || []) {
       try {
@@ -138,6 +138,9 @@ export async function GET(request: Request) {
         let successCount = 0
         let errorCount = 0
         const BATCH_SIZE = 5
+        const errorDetails: string[] = []
+
+        console.log(`[BASE Sync] Store ${setting.store_id}: Processing ${activeOrders.length} orders`)
 
         for (let i = 0; i < activeOrders.length; i += BATCH_SIZE) {
           const batch = activeOrders.slice(i, i + BATCH_SIZE)
@@ -152,6 +155,9 @@ export async function GET(request: Request) {
           for (const result of detailResults) {
             if (result.status === 'rejected') {
               errorCount++
+              const errorMsg = result.reason instanceof Error ? result.reason.message : String(result.reason)
+              errorDetails.push(`fetchOrderDetail failed: ${errorMsg}`)
+              console.error(`[BASE Sync] Store ${setting.store_id}: fetchOrderDetail failed -`, errorMsg)
               continue
             }
 
@@ -176,6 +182,8 @@ export async function GET(request: Request) {
               // 店舗価格（税抜）を決定: store_priceがあればそれを使用、なければbase_priceを税抜換算
               const actualPrice = baseProduct?.store_price ?? Math.floor(item.price / 1.1)
 
+              // local_product_idはproductsテーブルを参照するので、base_products.idは使わない
+              // 将来的にはbase_productsにlocal_product_id（products.id）を持たせるべき
               const { error: upsertError } = await supabase
                 .from('base_orders')
                 .upsert({
@@ -185,7 +193,7 @@ export async function GET(request: Request) {
                   product_name: item.title,
                   variation_name: item.variation || null,
                   cast_id: cast?.id || null,
-                  local_product_id: baseProduct?.id || null,
+                  local_product_id: null, // base_products.idは外部キー制約違反になるためnull
                   base_price: item.price,
                   actual_price: actualPrice,
                   quantity: item.amount,
@@ -197,6 +205,8 @@ export async function GET(request: Request) {
 
               if (upsertError) {
                 errorCount++
+                errorDetails.push(`upsert failed for ${orderSummary.unique_key}: ${upsertError.message}`)
+                console.error(`[BASE Sync] Store ${setting.store_id}: upsert failed -`, upsertError.message)
               } else {
                 successCount++
               }
@@ -204,10 +214,14 @@ export async function GET(request: Request) {
           }
         }
 
+        console.log(`[BASE Sync] Store ${setting.store_id}: Completed - ${successCount} success, ${errorCount} errors`)
+
         results.push({
           store_id: setting.store_id,
           success: true,
           imported: successCount,
+          errors: errorCount,
+          errorDetails: errorDetails.length > 0 ? errorDetails.slice(0, 10) : undefined, // 最大10件
         })
       } catch (storeError) {
         const errorMessage = storeError instanceof Error ? storeError.message : 'Unknown error'
