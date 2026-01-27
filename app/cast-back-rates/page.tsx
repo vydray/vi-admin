@@ -299,8 +299,15 @@ function CastBackRatesPageContent() {
         // 全キャストに適用
         let totalUpdated = 0
         for (const targetCast of filteredCasts) {
-          const targetCastRates = backRates.filter(r => r.cast_id === targetCast.id)
-          const existingRate = targetCastRates.find(r =>
+          // このキャストの既存バック率を直接DBから取得（最新データを確保）
+          const { data: targetCastRates } = await supabase
+            .from('cast_back_rates')
+            .select('*')
+            .eq('cast_id', targetCast.id)
+            .eq('store_id', storeId)
+            .eq('is_active', true)
+
+          const existingRate = (targetCastRates || []).find(r =>
             r.category === editingRate.category &&
             r.product_name === editingRate.product_name
           )
@@ -377,7 +384,7 @@ function CastBackRatesPageContent() {
       setShowRateModal(false)
       setEditingRate(null)
       setRateApplyToAll(false)
-      loadData()
+      await loadData()
     } catch (err) {
       console.error('保存エラー:', err)
       toast.error('保存に失敗しました')
@@ -426,12 +433,17 @@ function CastBackRatesPageContent() {
       let totalUpdated = 0
 
       for (const targetCast of targetCasts) {
-        // このキャストの既存バック率を取得
-        const targetCastRates = backRates.filter(r => r.cast_id === targetCast.id)
+        // このキャストの既存バック率を直接DBから取得（最新データを確保）
+        const { data: targetCastRates } = await supabase
+          .from('cast_back_rates')
+          .select('*')
+          .eq('cast_id', targetCast.id)
+          .eq('store_id', storeId)
+          .eq('is_active', true)
 
         // 各商品に対してバック率を設定/更新
         for (const productName of categoryProductNames) {
-          const existingRate = targetCastRates.find(r =>
+          const existingRate = (targetCastRates || []).find(r =>
             r.category === bulkCategory &&
             r.product_name === productName
           )
@@ -473,7 +485,7 @@ function CastBackRatesPageContent() {
         : `${categoryProductNames.length}件の商品に一括設定しました`
       toast.success(message)
       setShowBulkModal(false)
-      loadData()
+      await loadData()
     } catch (err) {
       console.error('保存エラー:', err)
       toast.error('保存に失敗しました')
@@ -496,7 +508,7 @@ function CastBackRatesPageContent() {
 
           if (error) throw error
           toast.success('削除しました')
-          loadData()
+          await loadData()
         } catch (err) {
           console.error('削除エラー:', err)
           toast.error('削除に失敗しました')
@@ -531,7 +543,7 @@ function CastBackRatesPageContent() {
 
           if (error) throw error
           toast.success(`${rateCount}件の設定を削除しました`)
-          loadData()
+          await loadData()
         } catch (err) {
           console.error('一括削除エラー:', err)
           toast.error('削除に失敗しました')
