@@ -189,7 +189,7 @@ function CastBackRatesPageContent() {
   const castRates = useMemo(() => {
     if (!selectedCastId) return []
     const filtered = backRates.filter((r) => r.cast_id === selectedCastId)
-    console.log('🔍 Debug - selectedCastId:', selectedCastId)
+    console.log('🔍 Debug v3 (2026-01-27 15:30) - selectedCastId:', selectedCastId)
     console.log('🔍 Debug - backRates.length:', backRates.length)
     console.log('🔍 Debug - castRates.length:', filtered.length)
     if (filtered.length > 0) {
