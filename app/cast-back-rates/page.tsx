@@ -188,12 +188,19 @@ function CastBackRatesPageContent() {
   // 選択中のキャストのバック率一覧
   const castRates = useMemo(() => {
     if (!selectedCastId) return []
-    return backRates.filter((r) => r.cast_id === selectedCastId)
+    const filtered = backRates.filter((r) => r.cast_id === selectedCastId)
+    console.log('🔍 Debug - selectedCastId:', selectedCastId)
+    console.log('🔍 Debug - backRates.length:', backRates.length)
+    console.log('🔍 Debug - castRates.length:', filtered.length)
+    if (filtered.length > 0) {
+      console.log('🔍 Debug - castRates sample:', filtered.slice(0, 3))
+    }
+    return filtered
   }, [backRates, selectedCastId])
 
   // 全商品とそのバック率設定をマージ
   const allProductsWithRates = useMemo((): ProductWithRate[] => {
-    return products.map(product => {
+    const result = products.map(product => {
       const category = categories.find(c => c.id === product.category_id)
       const categoryName = category?.name || ''
 
@@ -205,6 +212,16 @@ function CastBackRatesPageContent() {
 
       return { product, categoryName, rate }
     })
+
+    const withRates = result.filter(r => r.rate !== null).length
+    console.log('🔍 Debug - allProductsWithRates:', result.length, 'with rates:', withRates)
+    if (castRates.length > 0 && withRates === 0) {
+      console.log('🔍 Debug - No matches! Sample comparison:')
+      console.log('  Product:', result[0]?.product.name, 'Category:', result[0]?.categoryName)
+      console.log('  Rate:', castRates[0]?.product_name, 'Category:', castRates[0]?.category)
+    }
+
+    return result
   }, [products, categories, castRates])
 
   // カテゴリでグループ化（BASE商品も含む）
