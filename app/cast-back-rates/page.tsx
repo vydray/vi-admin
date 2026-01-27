@@ -145,22 +145,38 @@ function CastBackRatesPageContent() {
       }
       setBaseProducts(baseProductsData || [])
 
-      // バック率設定（全件取得するため limit を大きめに設定）
-      const { data: ratesData, error: ratesError } = await supabase
-        .from('cast_back_rates')
-        .select('*')
-        .eq('store_id', storeId)
-        .eq('is_active', true)
-        .order('created_at', { ascending: false })
-        .limit(10000)
+      // バック率設定（ページネーションで全件取得）
+      let allRates: CastBackRate[] = []
+      let page = 0
+      const pageSize = 1000
+      let hasMore = true
 
-      if (ratesError) throw ratesError
-      console.log('🔍 loadData - Fetched rates:', ratesData?.length || 0)
-      if (ratesData && ratesData.length > 0) {
-        const categoriesInData = new Set(ratesData.map(r => r.category))
+      while (hasMore) {
+        const { data: ratesData, error: ratesError } = await supabase
+          .from('cast_back_rates')
+          .select('*')
+          .eq('store_id', storeId)
+          .eq('is_active', true)
+          .order('created_at', { ascending: false })
+          .range(page * pageSize, (page + 1) * pageSize - 1)
+
+        if (ratesError) throw ratesError
+
+        if (ratesData && ratesData.length > 0) {
+          allRates = [...allRates, ...ratesData]
+          hasMore = ratesData.length === pageSize
+          page++
+        } else {
+          hasMore = false
+        }
+      }
+
+      console.log('🔍 loadData - Fetched rates:', allRates.length)
+      if (allRates.length > 0) {
+        const categoriesInData = new Set(allRates.map(r => r.category))
         console.log('🔍 loadData - Categories in fetched data:', Array.from(categoriesInData))
       }
-      setBackRates((ratesData || []) as CastBackRate[])
+      setBackRates(allRates)
 
       // 最初のキャストを選択
       if (castsData && castsData.length > 0 && !selectedCastId) {
