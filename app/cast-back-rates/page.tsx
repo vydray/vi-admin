@@ -200,6 +200,20 @@ function CastBackRatesPageContent() {
 
   // 全商品とそのバック率設定をマージ
   const allProductsWithRates = useMemo((): ProductWithRate[] => {
+    // デバッグ: castRatesのカテゴリ一覧
+    const rateCategoriesSet = new Set(castRates.map(r => r.category))
+    console.log('🔍 Debug - Categories in castRates:', Array.from(rateCategoriesSet))
+
+    // デバッグ: productsのカテゴリ一覧
+    const productCategoriesMap = new Map<string, number>()
+    products.forEach(p => {
+      const cat = categories.find(c => c.id === p.category_id)
+      if (cat) {
+        productCategoriesMap.set(cat.name, (productCategoriesMap.get(cat.name) || 0) + 1)
+      }
+    })
+    console.log('🔍 Debug - Categories in products:', Object.fromEntries(productCategoriesMap))
+
     const result = products.map(product => {
       const category = categories.find(c => c.id === product.category_id)
       const categoryName = category?.name || ''
@@ -213,13 +227,19 @@ function CastBackRatesPageContent() {
       return { product, categoryName, rate }
     })
 
+    // カテゴリ別のマッチング状況を出力
+    const matchingByCategory: { [key: string]: { total: number, matched: number } } = {}
+    result.forEach(item => {
+      if (!matchingByCategory[item.categoryName]) {
+        matchingByCategory[item.categoryName] = { total: 0, matched: 0 }
+      }
+      matchingByCategory[item.categoryName].total++
+      if (item.rate) matchingByCategory[item.categoryName].matched++
+    })
+    console.log('🔍 Debug - Matching by category:', matchingByCategory)
+
     const withRates = result.filter(r => r.rate !== null).length
     console.log('🔍 Debug - allProductsWithRates:', result.length, 'with rates:', withRates)
-    if (castRates.length > 0 && withRates === 0) {
-      console.log('🔍 Debug - No matches! Sample comparison:')
-      console.log('  Product:', result[0]?.product.name, 'Category:', result[0]?.categoryName)
-      console.log('  Rate:', castRates[0]?.product_name, 'Category:', castRates[0]?.category)
-    }
 
     return result
   }, [products, categories, castRates])
