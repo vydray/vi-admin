@@ -730,7 +730,7 @@ export interface WageStatus {
 }
 
 // 昇格/降格条件タイプ
-export type WageConditionType = 'attendance_days' | 'sales' | 'nominations'
+export type WageConditionType = 'attendance_days' | 'cumulative_attendance_days' | 'sales' | 'nominations'
 
 // 条件演算子
 export type WageConditionOperator = '>=' | '<=' | '>' | '<' | '='
@@ -749,6 +749,32 @@ export interface WageStatusCondition {
   logic_group: number  // 同グループはAND、別グループはOR
   created_at: string
   updated_at: string
+}
+
+// キャストステータス進捗管理
+export interface CastStatusProgress {
+  id: number
+  cast_id: number
+  store_id: number
+  current_status_id: number | null
+  cumulative_attendance_days: number  // このステータスになってからの累計出勤日数
+  status_start_date: string  // このステータスになった日付
+  last_updated_at: string
+  created_at: string
+}
+
+// キャストステータス変更履歴
+export interface CastStatusHistory {
+  id: number
+  cast_id: number
+  store_id: number
+  previous_status_id: number | null
+  new_status_id: number | null
+  changed_at: string
+  changed_by: string | null
+  reason: string | null
+  trigger_type: 'auto' | 'manual'
+  created_at: string
 }
 
 // 特別日カレンダー（クリスマス等の時給加算日）

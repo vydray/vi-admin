@@ -590,7 +590,8 @@ function StatusesTab({ storeId, statuses, conditions, onReload }: StatusesTabPro
                       onChange={(e) => updatePromotionCondition(index, { condition_type: e.target.value as any })}
                       style={styles.input}
                     >
-                      <option value="attendance_days">出勤日数</option>
+                      <option value="attendance_days">月間出勤日数</option>
+                      <option value="cumulative_attendance_days">累計出勤日数</option>
                       <option value="sales">売上</option>
                       <option value="nominations">指名数</option>
                     </select>
@@ -635,7 +636,8 @@ function StatusesTab({ storeId, statuses, conditions, onReload }: StatusesTabPro
                       onChange={(e) => updateDemotionCondition(index, { condition_type: e.target.value as any })}
                       style={styles.input}
                     >
-                      <option value="attendance_days">出勤日数</option>
+                      <option value="attendance_days">月間出勤日数</option>
+                      <option value="cumulative_attendance_days">累計出勤日数</option>
                       <option value="sales">売上</option>
                       <option value="nominations">指名数</option>
                     </select>
