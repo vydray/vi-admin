@@ -238,6 +238,24 @@ function CastBackRatesPageContent() {
     })
     console.log('🔍 Debug - Matching by category:', matchingByCategory)
 
+    // キャスト用 の詳細デバッグ
+    const castYouProducts = result.filter(r => r.categoryName === 'キャスト用')
+    const castYouRates = castRates.filter(r => r.category === 'キャスト用')
+    if (castYouProducts.length > 0 || castYouRates.length > 0) {
+      console.log('🔍 Debug - キャスト用 detailed:')
+      console.log('  Products:', castYouProducts.length, castYouProducts.map(p => p.product.name).slice(0, 3))
+      console.log('  Rates:', castYouRates.length, castYouRates.map(r => r.product_name).slice(0, 3))
+      if (castYouProducts.length > 0 && castYouRates.length > 0) {
+        const sampleProduct = castYouProducts[0]
+        const sampleRate = castYouRates[0]
+        console.log('  Sample comparison:')
+        console.log('    Product name:', JSON.stringify(sampleProduct.product.name), 'chars:', sampleProduct.product.name.split('').map(c => c.charCodeAt(0)))
+        console.log('    Rate product_name:', JSON.stringify(sampleRate.product_name), 'chars:', sampleRate.product_name.split('').map(c => c.charCodeAt(0)))
+        console.log('    Category from product:', JSON.stringify(sampleProduct.categoryName), 'chars:', sampleProduct.categoryName.split('').map(c => c.charCodeAt(0)))
+        console.log('    Category from rate:', JSON.stringify(sampleRate.category), 'chars:', sampleRate.category.split('').map(c => c.charCodeAt(0)))
+      }
+    }
+
     const withRates = result.filter(r => r.rate !== null).length
     console.log('🔍 Debug - allProductsWithRates:', result.length, 'with rates:', withRates)
 
