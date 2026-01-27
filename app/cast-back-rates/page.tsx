@@ -339,13 +339,18 @@ function CastBackRatesPageContent() {
           source: 'all',
         }))
 
-        const { error: insertError } = await supabase
-          .from('cast_back_rates')
-          .insert(newRecords)
+        // バッチサイズを500に分割して挿入（Supabaseの制限対策）
+        const BATCH_SIZE = 500
+        for (let i = 0; i < newRecords.length; i += BATCH_SIZE) {
+          const batch = newRecords.slice(i, i + BATCH_SIZE)
+          const { error: insertError } = await supabase
+            .from('cast_back_rates')
+            .insert(batch)
 
-        if (insertError) {
-          console.error('Batch insert error:', insertError)
-          throw insertError
+          if (insertError) {
+            console.error(`Batch insert error (batch ${i / BATCH_SIZE + 1}):`, insertError)
+            throw insertError
+          }
         }
 
         toast.success(`${filteredCasts.length}人のキャストに設定しました`)
@@ -483,13 +488,18 @@ function CastBackRatesPageContent() {
         }
       }
 
-      const { error: insertError } = await supabase
-        .from('cast_back_rates')
-        .insert(newRecords)
+      // バッチサイズを500に分割して挿入（Supabaseの制限対策）
+      const BATCH_SIZE = 500
+      for (let i = 0; i < newRecords.length; i += BATCH_SIZE) {
+        const batch = newRecords.slice(i, i + BATCH_SIZE)
+        const { error: insertError } = await supabase
+          .from('cast_back_rates')
+          .insert(batch)
 
-      if (insertError) {
-        console.error('Bulk insert error:', insertError)
-        throw insertError
+        if (insertError) {
+          console.error(`Bulk insert error (batch ${i / BATCH_SIZE + 1}):`, insertError)
+          throw insertError
+        }
       }
 
       const message = bulkApplyToAll
