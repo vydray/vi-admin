@@ -9,6 +9,8 @@ import Button from '@/components/Button'
 import ProtectedPage from '@/components/ProtectedPage'
 import toast from 'react-hot-toast'
 
+type TabType = 'basic' | 'statuses' | 'costumes' | 'special-days'
+
 export default function WageSettingsPage() {
   return (
     <ProtectedPage permissionKey="wage_settings">
@@ -19,6 +21,7 @@ export default function WageSettingsPage() {
 
 function WageSettingsPageContent() {
   const { storeId, storeName, isLoading: storeLoading } = useStore()
+  const [activeTab, setActiveTab] = useState<TabType>('basic')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
@@ -142,7 +145,21 @@ function WageSettingsPageContent() {
     }
   }
 
-  // タブコンテンツ
+  // タブコンテンツ描画
+  const renderTabContent = () => {
+    switch (activeTab) {
+      case 'basic':
+        return <BasicSettingsTab settings={wageSettings} setSettings={setWageSettings} onSave={saveBasicSettings} saving={saving} />
+      case 'statuses':
+        return <StatusesTab storeId={storeId} statuses={statuses} conditions={conditions} onReload={loadData} />
+      case 'costumes':
+        return <CostumesTab storeId={storeId} costumes={costumes} onReload={loadData} />
+      case 'special-days':
+        return <SpecialDaysTab storeId={storeId} specialDays={specialDays} onReload={loadData} />
+      default:
+        return null
+    }
+  }
 
   if (storeLoading || loading) {
     return (
@@ -159,11 +176,37 @@ function WageSettingsPageContent() {
         <p style={styles.storeName}>{storeName}</p>
       </div>
 
+      {/* タブ */}
+      <div style={styles.tabContainer}>
+        <button
+          style={{ ...styles.tab, ...(activeTab === 'basic' ? styles.tabActive : {}) }}
+          onClick={() => setActiveTab('basic')}
+        >
+          基本設定
+        </button>
+        <button
+          style={{ ...styles.tab, ...(activeTab === 'statuses' ? styles.tabActive : {}) }}
+          onClick={() => setActiveTab('statuses')}
+        >
+          ステータス管理
+        </button>
+        <button
+          style={{ ...styles.tab, ...(activeTab === 'costumes' ? styles.tabActive : {}) }}
+          onClick={() => setActiveTab('costumes')}
+        >
+          衣装マスタ
+        </button>
+        <button
+          style={{ ...styles.tab, ...(activeTab === 'special-days' ? styles.tabActive : {}) }}
+          onClick={() => setActiveTab('special-days')}
+        >
+          特別日カレンダー
+        </button>
+      </div>
+
+      {/* タブコンテンツ */}
       <div style={styles.content}>
-        <BasicSettingsTab settings={wageSettings} setSettings={setWageSettings} onSave={saveBasicSettings} saving={saving} />
-        <StatusesTab storeId={storeId} statuses={statuses} conditions={conditions} onReload={loadData} />
-        <CostumesTab storeId={storeId} costumes={costumes} onReload={loadData} />
-        <SpecialDaysTab storeId={storeId} specialDays={specialDays} onReload={loadData} />
+        {renderTabContent()}
       </div>
     </div>
   )
