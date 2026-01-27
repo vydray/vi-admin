@@ -971,6 +971,46 @@ function PayslipPageContent() {
     loadOrderDetail()
   }, [selectedOrderId])
 
+  // 報酬形態ごとの総報酬額を計算する関数
+  const calculateTotalCompensation = useCallback((
+    compensationType: CompensationType,
+    totalWorkHours: number,
+    totalWageAmount: number,
+    totalSales: number,
+    totalProductBack: number
+  ): number => {
+    let total = 0
+
+    // 時給収入（時給がオンの場合のみ）
+    if (compensationType.hourly_rate && compensationType.hourly_rate > 0) {
+      total += totalWageAmount
+    }
+
+    // 売上バック
+    if (compensationType.use_sliding_rate && compensationType.sliding_rates) {
+      // スライド式
+      const rate = compensationType.sliding_rates.find(
+        r => totalSales >= r.min && (r.max === 0 || totalSales <= r.max)
+      )
+      if (rate) {
+        total += Math.round(totalSales * rate.rate / 100)
+      }
+    } else {
+      // 固定率
+      total += Math.round(totalSales * compensationType.commission_rate / 100)
+    }
+
+    // 商品バック（use_product_backがtrueの場合のみ）
+    if (compensationType.use_product_back) {
+      total += totalProductBack
+    }
+
+    // 固定額
+    total += compensationType.fixed_amount || 0
+
+    return total
+  }, [])
+
   // アクティブな報酬形態を取得
   const activeCompensationType = useMemo((): CompensationType | null => {
     if (!compensationSettings?.compensation_types) return null
@@ -982,9 +1022,36 @@ function PayslipPageContent() {
       return types.find(t => t.id === compensationSettings.selected_compensation_type_id) || types[0]
     }
 
-    // highest: とりあえず最初の有効なものを返す（実際は売上に応じて計算が必要）
+    // highest: 各報酬形態で計算して最も高いものを選択
+    if (compensationSettings.payment_selection_method === 'highest') {
+      // 集計データを計算
+      const totalWorkHours = dailyStats.reduce((sum, d) => sum + (d.work_hours || 0), 0)
+      const totalWageAmount = dailyStats.reduce((sum, d) => sum + (d.wage_amount || 0), 0)
+
+      let totalSales = 0
+      let totalProductBack = 0
+      dailySalesData.forEach(day => {
+        totalSales += day.totalSales
+        totalProductBack += day.productBack
+      })
+
+      // 各報酬形態で総報酬額を計算
+      const compensationsWithTotal = types.map(type => ({
+        type,
+        total: calculateTotalCompensation(type, totalWorkHours, totalWageAmount, totalSales, totalProductBack)
+      }))
+
+      // 最も高い報酬額の形態を選択
+      const highest = compensationsWithTotal.reduce((max, current) =>
+        current.total > max.total ? current : max
+      , compensationsWithTotal[0])
+
+      return highest.type
+    }
+
+    // デフォルト（念のため）
     return types[0]
-  }, [compensationSettings])
+  }, [compensationSettings, dailyStats, dailySalesData, calculateTotalCompensation])
 
   // 集計値を計算
   const summary = useMemo(() => {
@@ -1023,15 +1090,18 @@ function PayslipPageContent() {
     // 時給がオンの場合のみ時給収入を含める
     const useWageData = activeCompensationType?.hourly_rate && activeCompensationType.hourly_rate > 0
 
+    // 商品バックを含めるかどうか
+    const useProductBack = activeCompensationType?.use_product_back ?? false
+
     // 総支給額
-    const grossEarnings = (useWageData ? totalWageAmount : 0) + salesBack + totalProductBack + fixedAmount
+    const grossEarnings = (useWageData ? totalWageAmount : 0) + salesBack + (useProductBack ? totalProductBack : 0) + fixedAmount
 
     return {
       totalWorkHours: Math.round(totalWorkHours * 100) / 100,
       totalWageAmount,
       totalSales,
       salesBack,
-      totalProductBack,
+      totalProductBack: useProductBack ? totalProductBack : 0,
       fixedAmount,
       grossEarnings,
       useWageData: !!useWageData
