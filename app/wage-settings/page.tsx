@@ -56,7 +56,6 @@ function WageSettingsPageContent() {
         setWageSettings({
           id: 0,
           store_id: storeId,
-          default_hourly_wage: 0,
           min_hours_for_full_day: 5.0,
           min_days_for_back: 5,
           wage_only_max_days: 4,
@@ -130,7 +129,6 @@ function WageSettingsPageContent() {
         .from('store_wage_settings')
         .upsert({
           store_id: storeId,
-          default_hourly_wage: wageSettings.default_hourly_wage,
           min_hours_for_full_day: wageSettings.min_hours_for_full_day,
           min_days_for_back: wageSettings.min_days_for_back,
           wage_only_max_days: wageSettings.wage_only_max_days,
@@ -237,20 +235,6 @@ function BasicSettingsTab({ settings, setSettings, onSave, saving }: BasicSettin
       <p style={styles.cardDescription}>時給計算の基本ルールを設定します</p>
 
       <div style={styles.formGrid}>
-        <div style={styles.formGroup}>
-          <label style={styles.label}>デフォルト時給</label>
-          <div style={styles.inputWithUnit}>
-            <input
-              type="number"
-              value={settings.default_hourly_wage}
-              onChange={(e) => updateField('default_hourly_wage', parseInt(e.target.value) || 0)}
-              style={styles.inputInUnit}
-            />
-            <span style={styles.unit}>円</span>
-          </div>
-          <p style={styles.helpText}>新規ステータスのデフォルト時給</p>
-        </div>
-
         <div style={styles.formGroup}>
           <label style={styles.label}>1日出勤の最低時間</label>
           <div style={styles.inputWithUnit}>

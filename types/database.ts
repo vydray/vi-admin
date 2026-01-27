@@ -775,7 +775,6 @@ export interface Costume {
 export interface StoreWageSettings {
   id: number
   store_id: number
-  default_hourly_wage: number
   min_hours_for_full_day: number  // 1日出勤とカウントする最低時間（例: 5.0）
   min_days_for_back: number       // バック対象となる最低出勤日数
   wage_only_max_days: number      // この日数以下は時給のみ（バックなし）
