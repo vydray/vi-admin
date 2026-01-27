@@ -735,11 +735,15 @@ export type WageConditionType = 'attendance_days' | 'sales' | 'nominations'
 // 条件演算子
 export type WageConditionOperator = '>=' | '<=' | '>' | '<' | '='
 
+// 条件の方向（昇格・降格）
+export type WageConditionDirection = 'promotion' | 'demotion'
+
 // ステータス昇格/降格条件
 export interface WageStatusCondition {
   id: number
   status_id: number
   condition_type: WageConditionType
+  condition_direction: WageConditionDirection
   operator: WageConditionOperator
   value: number
   logic_group: number  // 同グループはAND、別グループはOR

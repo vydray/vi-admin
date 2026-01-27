@@ -9,8 +9,6 @@ import Button from '@/components/Button'
 import ProtectedPage from '@/components/ProtectedPage'
 import toast from 'react-hot-toast'
 
-type TabType = 'basic' | 'statuses' | 'costumes' | 'special-days'
-
 export default function WageSettingsPage() {
   return (
     <ProtectedPage permissionKey="wage_settings">
@@ -21,7 +19,6 @@ export default function WageSettingsPage() {
 
 function WageSettingsPageContent() {
   const { storeId, storeName, isLoading: storeLoading } = useStore()
-  const [activeTab, setActiveTab] = useState<TabType>('basic')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
@@ -146,20 +143,6 @@ function WageSettingsPageContent() {
   }
 
   // タブコンテンツ
-  const renderTabContent = () => {
-    switch (activeTab) {
-      case 'basic':
-        return <BasicSettingsTab settings={wageSettings} setSettings={setWageSettings} onSave={saveBasicSettings} saving={saving} />
-      case 'statuses':
-        return <StatusesTab storeId={storeId} statuses={statuses} conditions={conditions} onReload={loadData} />
-      case 'costumes':
-        return <CostumesTab storeId={storeId} costumes={costumes} onReload={loadData} />
-      case 'special-days':
-        return <SpecialDaysTab storeId={storeId} specialDays={specialDays} onReload={loadData} />
-      default:
-        return null
-    }
-  }
 
   if (storeLoading || loading) {
     return (
@@ -176,37 +159,11 @@ function WageSettingsPageContent() {
         <p style={styles.storeName}>{storeName}</p>
       </div>
 
-      {/* タブ */}
-      <div style={styles.tabContainer}>
-        <button
-          style={{ ...styles.tab, ...(activeTab === 'basic' ? styles.tabActive : {}) }}
-          onClick={() => setActiveTab('basic')}
-        >
-          基本設定
-        </button>
-        <button
-          style={{ ...styles.tab, ...(activeTab === 'statuses' ? styles.tabActive : {}) }}
-          onClick={() => setActiveTab('statuses')}
-        >
-          ステータス管理
-        </button>
-        <button
-          style={{ ...styles.tab, ...(activeTab === 'costumes' ? styles.tabActive : {}) }}
-          onClick={() => setActiveTab('costumes')}
-        >
-          衣装マスタ
-        </button>
-        <button
-          style={{ ...styles.tab, ...(activeTab === 'special-days' ? styles.tabActive : {}) }}
-          onClick={() => setActiveTab('special-days')}
-        >
-          特別日カレンダー
-        </button>
-      </div>
-
-      {/* タブコンテンツ */}
       <div style={styles.content}>
-        {renderTabContent()}
+        <BasicSettingsTab settings={wageSettings} setSettings={setWageSettings} onSave={saveBasicSettings} saving={saving} />
+        <StatusesTab storeId={storeId} statuses={statuses} conditions={conditions} onReload={loadData} />
+        <CostumesTab storeId={storeId} costumes={costumes} onReload={loadData} />
+        <SpecialDaysTab storeId={storeId} specialDays={specialDays} onReload={loadData} />
       </div>
     </div>
   )
@@ -314,6 +271,8 @@ interface StatusesTabProps {
 
 function StatusesTab({ storeId, statuses, conditions, onReload }: StatusesTabProps) {
   const [editingStatus, setEditingStatus] = useState<Partial<WageStatus> | null>(null)
+  const [editingPromotionConditions, setEditingPromotionConditions] = useState<Partial<WageStatusCondition>[]>([])
+  const [editingDemotionConditions, setEditingDemotionConditions] = useState<Partial<WageStatusCondition>[]>([])
   const [saving, setSaving] = useState(false)
 
   const handleAdd = () => {
@@ -325,10 +284,16 @@ function StatusesTab({ storeId, statuses, conditions, onReload }: StatusesTabPro
       is_default: statuses.length === 0,
       is_active: true,
     })
+    setEditingPromotionConditions([])
+    setEditingDemotionConditions([])
   }
 
   const handleEdit = (status: WageStatus) => {
     setEditingStatus({ ...status })
+    // 既存の昇格・降格条件を読み込む
+    const statusConditions = conditions.filter(c => c.status_id === status.id)
+    setEditingPromotionConditions(statusConditions.filter(c => c.condition_direction === 'promotion'))
+    setEditingDemotionConditions(statusConditions.filter(c => c.condition_direction === 'demotion'))
   }
 
   const handleSave = async () => {
@@ -339,6 +304,8 @@ function StatusesTab({ storeId, statuses, conditions, onReload }: StatusesTabPro
 
     setSaving(true)
     try {
+      let statusId: number
+
       if (editingStatus.id) {
         // 更新
         const { error } = await supabase
@@ -352,9 +319,10 @@ function StatusesTab({ storeId, statuses, conditions, onReload }: StatusesTabPro
           .eq('id', editingStatus.id)
 
         if (error) throw error
+        statusId = editingStatus.id
       } else {
         // 新規作成
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from('wage_statuses')
           .insert({
             store_id: storeId,
@@ -363,12 +331,61 @@ function StatusesTab({ storeId, statuses, conditions, onReload }: StatusesTabPro
             priority: editingStatus.priority || 0,
             is_default: editingStatus.is_default || false,
           })
+          .select('id')
+          .single()
 
+        if (error) throw error
+        statusId = data.id
+      }
+
+      // 既存の条件を削除
+      await supabase
+        .from('wage_status_conditions')
+        .delete()
+        .eq('status_id', statusId)
+
+      // 昇格条件を保存
+      const promotionConditionsToInsert = editingPromotionConditions
+        .filter(c => c.condition_type && c.value != null)
+        .map((c, index) => ({
+          status_id: statusId,
+          condition_type: c.condition_type!,
+          condition_direction: 'promotion' as const,
+          operator: c.operator || '>=',
+          value: c.value!,
+          logic_group: c.logic_group || index + 1,
+        }))
+
+      // 降格条件を保存
+      const demotionConditionsToInsert = editingDemotionConditions
+        .filter(c => c.condition_type && c.value != null)
+        .map((c, index) => ({
+          status_id: statusId,
+          condition_type: c.condition_type!,
+          condition_direction: 'demotion' as const,
+          operator: c.operator || '<=',
+          value: c.value!,
+          logic_group: c.logic_group || index + 1,
+        }))
+
+      if (promotionConditionsToInsert.length > 0) {
+        const { error } = await supabase
+          .from('wage_status_conditions')
+          .insert(promotionConditionsToInsert)
+        if (error) throw error
+      }
+
+      if (demotionConditionsToInsert.length > 0) {
+        const { error } = await supabase
+          .from('wage_status_conditions')
+          .insert(demotionConditionsToInsert)
         if (error) throw error
       }
 
       toast.success('保存しました')
       setEditingStatus(null)
+      setEditingPromotionConditions([])
+      setEditingDemotionConditions([])
       onReload()
     } catch (error) {
       console.error('保存エラー:', error)
@@ -394,6 +411,56 @@ function StatusesTab({ storeId, statuses, conditions, onReload }: StatusesTabPro
       console.error('削除エラー:', error)
       toast.error('削除に失敗しました')
     }
+  }
+
+  // 昇格条件の追加
+  const addPromotionCondition = () => {
+    setEditingPromotionConditions([
+      ...editingPromotionConditions,
+      {
+        condition_type: 'attendance_days',
+        operator: '>=',
+        value: 0,
+        logic_group: editingPromotionConditions.length + 1,
+      }
+    ])
+  }
+
+  // 昇格条件の削除
+  const removePromotionCondition = (index: number) => {
+    setEditingPromotionConditions(editingPromotionConditions.filter((_, i) => i !== index))
+  }
+
+  // 昇格条件の更新
+  const updatePromotionCondition = (index: number, updates: Partial<WageStatusCondition>) => {
+    const newConditions = [...editingPromotionConditions]
+    newConditions[index] = { ...newConditions[index], ...updates }
+    setEditingPromotionConditions(newConditions)
+  }
+
+  // 降格条件の追加
+  const addDemotionCondition = () => {
+    setEditingDemotionConditions([
+      ...editingDemotionConditions,
+      {
+        condition_type: 'attendance_days',
+        operator: '<=',
+        value: 0,
+        logic_group: editingDemotionConditions.length + 1,
+      }
+    ])
+  }
+
+  // 降格条件の削除
+  const removeDemotionCondition = (index: number) => {
+    setEditingDemotionConditions(editingDemotionConditions.filter((_, i) => i !== index))
+  }
+
+  // 降格条件の更新
+  const updateDemotionCondition = (index: number, updates: Partial<WageStatusCondition>) => {
+    const newConditions = [...editingDemotionConditions]
+    newConditions[index] = { ...newConditions[index], ...updates }
+    setEditingDemotionConditions(newConditions)
   }
 
   const getConditionsForStatus = (statusId: number) => {
@@ -461,8 +528,103 @@ function StatusesTab({ storeId, statuses, conditions, onReload }: StatusesTabPro
               </label>
             </div>
           </div>
+
+          {/* 昇格条件 */}
+          <div style={{ marginTop: '24px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+              <h4 style={{ fontSize: '16px', fontWeight: '600', margin: 0 }}>昇格条件</h4>
+              <Button onClick={addPromotionCondition} size="small" variant="outline">+ 条件を追加</Button>
+            </div>
+            <p style={styles.helpText}>このステータスに昇格するための条件（全て満たす必要があります）</p>
+            {editingPromotionConditions.length === 0 ? (
+              <p style={{ ...styles.helpText, fontStyle: 'italic' }}>昇格条件が設定されていません</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {editingPromotionConditions.map((condition, index) => (
+                  <div key={index} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <select
+                      value={condition.condition_type || 'attendance_days'}
+                      onChange={(e) => updatePromotionCondition(index, { condition_type: e.target.value as any })}
+                      style={styles.input}
+                    >
+                      <option value="attendance_days">出勤日数</option>
+                      <option value="sales">売上</option>
+                      <option value="nominations">指名数</option>
+                    </select>
+                    <select
+                      value={condition.operator || '>='}
+                      onChange={(e) => updatePromotionCondition(index, { operator: e.target.value as any })}
+                      style={styles.input}
+                    >
+                      <option value=">=">&gt;=</option>
+                      <option value=">">&gt;</option>
+                      <option value="=">=</option>
+                    </select>
+                    <input
+                      type="number"
+                      value={condition.value || 0}
+                      onChange={(e) => updatePromotionCondition(index, { value: parseInt(e.target.value) || 0 })}
+                      style={styles.input}
+                      placeholder="値"
+                    />
+                    <Button onClick={() => removePromotionCondition(index)} variant="outline" size="small" style={{ color: '#dc2626' }}>削除</Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* 降格条件 */}
+          <div style={{ marginTop: '24px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+              <h4 style={{ fontSize: '16px', fontWeight: '600', margin: 0 }}>降格条件</h4>
+              <Button onClick={addDemotionCondition} size="small" variant="outline">+ 条件を追加</Button>
+            </div>
+            <p style={styles.helpText}>このステータスから降格する条件（いずれかを満たすと降格）</p>
+            {editingDemotionConditions.length === 0 ? (
+              <p style={{ ...styles.helpText, fontStyle: 'italic' }}>降格条件が設定されていません</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {editingDemotionConditions.map((condition, index) => (
+                  <div key={index} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <select
+                      value={condition.condition_type || 'attendance_days'}
+                      onChange={(e) => updateDemotionCondition(index, { condition_type: e.target.value as any })}
+                      style={styles.input}
+                    >
+                      <option value="attendance_days">出勤日数</option>
+                      <option value="sales">売上</option>
+                      <option value="nominations">指名数</option>
+                    </select>
+                    <select
+                      value={condition.operator || '<='}
+                      onChange={(e) => updateDemotionCondition(index, { operator: e.target.value as any })}
+                      style={styles.input}
+                    >
+                      <option value="<=">&lt;=</option>
+                      <option value="<">&lt;</option>
+                      <option value="=">=</option>
+                    </select>
+                    <input
+                      type="number"
+                      value={condition.value || 0}
+                      onChange={(e) => updateDemotionCondition(index, { value: parseInt(e.target.value) || 0 })}
+                      style={styles.input}
+                      placeholder="値"
+                    />
+                    <Button onClick={() => removeDemotionCondition(index)} variant="outline" size="small" style={{ color: '#dc2626' }}>削除</Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div style={styles.editFormButtons}>
-            <Button onClick={() => setEditingStatus(null)} variant="outline" size="small">キャンセル</Button>
+            <Button onClick={() => {
+              setEditingStatus(null)
+              setEditingPromotionConditions([])
+              setEditingDemotionConditions([])
+            }} variant="outline" size="small">キャンセル</Button>
             <Button onClick={handleSave} disabled={saving} size="small">
               {saving ? '保存中...' : '保存'}
             </Button>
@@ -483,6 +645,7 @@ function StatusesTab({ storeId, statuses, conditions, onReload }: StatusesTabPro
               <th style={styles.th}>時給</th>
               <th style={styles.th}>デフォルト</th>
               <th style={styles.th}>昇格条件</th>
+              <th style={styles.th}>降格条件</th>
               <th style={styles.th}>操作</th>
             </tr>
           </thead>
@@ -494,8 +657,13 @@ function StatusesTab({ storeId, statuses, conditions, onReload }: StatusesTabPro
                 <td style={styles.td}>{status.hourly_wage.toLocaleString()}円</td>
                 <td style={styles.td}>{status.is_default ? '◯' : ''}</td>
                 <td style={styles.td}>
-                  {getConditionsForStatus(status.id).length > 0
-                    ? `${getConditionsForStatus(status.id).length}件`
+                  {getConditionsForStatus(status.id).filter(c => c.condition_direction === 'promotion').length > 0
+                    ? `${getConditionsForStatus(status.id).filter(c => c.condition_direction === 'promotion').length}件`
+                    : '-'}
+                </td>
+                <td style={styles.td}>
+                  {getConditionsForStatus(status.id).filter(c => c.condition_direction === 'demotion').length > 0
+                    ? `${getConditionsForStatus(status.id).filter(c => c.condition_direction === 'demotion').length}件`
                     : '-'}
                 </td>
                 <td style={styles.td}>
