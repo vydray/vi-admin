@@ -145,13 +145,14 @@ function CastBackRatesPageContent() {
       }
       setBaseProducts(baseProductsData || [])
 
-      // バック率設定
+      // バック率設定（全件取得するため limit を大きめに設定）
       const { data: ratesData, error: ratesError } = await supabase
         .from('cast_back_rates')
         .select('*')
         .eq('store_id', storeId)
         .eq('is_active', true)
         .order('created_at', { ascending: false })
+        .limit(10000)
 
       if (ratesError) throw ratesError
       setBackRates((ratesData || []) as CastBackRate[])
@@ -188,33 +189,12 @@ function CastBackRatesPageContent() {
   // 選択中のキャストのバック率一覧
   const castRates = useMemo(() => {
     if (!selectedCastId) return []
-    const filtered = backRates.filter((r) => r.cast_id === selectedCastId)
-    console.log('🔍 Debug v3 (2026-01-27 15:30) - selectedCastId:', selectedCastId)
-    console.log('🔍 Debug - backRates.length:', backRates.length)
-    console.log('🔍 Debug - castRates.length:', filtered.length)
-    if (filtered.length > 0) {
-      console.log('🔍 Debug - castRates sample:', filtered.slice(0, 3))
-    }
-    return filtered
+    return backRates.filter((r) => r.cast_id === selectedCastId)
   }, [backRates, selectedCastId])
 
   // 全商品とそのバック率設定をマージ
   const allProductsWithRates = useMemo((): ProductWithRate[] => {
-    // デバッグ: castRatesのカテゴリ一覧
-    const rateCategoriesSet = new Set(castRates.map(r => r.category))
-    console.log('🔍 Debug - Categories in castRates:', Array.from(rateCategoriesSet))
-
-    // デバッグ: productsのカテゴリ一覧
-    const productCategoriesMap = new Map<string, number>()
-    products.forEach(p => {
-      const cat = categories.find(c => c.id === p.category_id)
-      if (cat) {
-        productCategoriesMap.set(cat.name, (productCategoriesMap.get(cat.name) || 0) + 1)
-      }
-    })
-    console.log('🔍 Debug - Categories in products:', Object.fromEntries(productCategoriesMap))
-
-    const result = products.map(product => {
+    return products.map(product => {
       const category = categories.find(c => c.id === product.category_id)
       const categoryName = category?.name || ''
 
@@ -226,40 +206,6 @@ function CastBackRatesPageContent() {
 
       return { product, categoryName, rate }
     })
-
-    // カテゴリ別のマッチング状況を出力
-    const matchingByCategory: { [key: string]: { total: number, matched: number } } = {}
-    result.forEach(item => {
-      if (!matchingByCategory[item.categoryName]) {
-        matchingByCategory[item.categoryName] = { total: 0, matched: 0 }
-      }
-      matchingByCategory[item.categoryName].total++
-      if (item.rate) matchingByCategory[item.categoryName].matched++
-    })
-    console.log('🔍 Debug - Matching by category:', matchingByCategory)
-
-    // キャスト用 の詳細デバッグ
-    const castYouProducts = result.filter(r => r.categoryName === 'キャスト用')
-    const castYouRates = castRates.filter(r => r.category === 'キャスト用')
-    if (castYouProducts.length > 0 || castYouRates.length > 0) {
-      console.log('🔍 Debug - キャスト用 detailed:')
-      console.log('  Products:', castYouProducts.length, castYouProducts.map(p => p.product.name).slice(0, 3))
-      console.log('  Rates:', castYouRates.length, castYouRates.map(r => r.product_name).slice(0, 3))
-      if (castYouProducts.length > 0 && castYouRates.length > 0) {
-        const sampleProduct = castYouProducts[0]
-        const sampleRate = castYouRates[0]
-        console.log('  Sample comparison:')
-        console.log('    Product name:', JSON.stringify(sampleProduct.product.name), 'chars:', sampleProduct.product.name.split('').map(c => c.charCodeAt(0)))
-        console.log('    Rate product_name:', JSON.stringify(sampleRate.product_name), 'chars:', sampleRate.product_name.split('').map(c => c.charCodeAt(0)))
-        console.log('    Category from product:', JSON.stringify(sampleProduct.categoryName), 'chars:', sampleProduct.categoryName.split('').map(c => c.charCodeAt(0)))
-        console.log('    Category from rate:', JSON.stringify(sampleRate.category), 'chars:', sampleRate.category.split('').map(c => c.charCodeAt(0)))
-      }
-    }
-
-    const withRates = result.filter(r => r.rate !== null).length
-    console.log('🔍 Debug - allProductsWithRates:', result.length, 'with rates:', withRates)
-
-    return result
   }, [products, categories, castRates])
 
   // カテゴリでグループ化（BASE商品も含む）
