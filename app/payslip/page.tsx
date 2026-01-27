@@ -1011,6 +1011,32 @@ function PayslipPageContent() {
     return total
   }, [])
 
+  // 各報酬形態の比較結果を保持
+  const compensationComparison = useMemo((): Array<{ type: CompensationType; total: number }> | null => {
+    if (!compensationSettings?.compensation_types) return null
+    if (compensationSettings.payment_selection_method !== 'highest') return null
+
+    const types = compensationSettings.compensation_types.filter(t => t.is_enabled)
+    if (types.length === 0) return null
+
+    // 集計データを計算
+    const totalWorkHours = dailyStats.reduce((sum, d) => sum + (d.work_hours || 0), 0)
+    const totalWageAmount = dailyStats.reduce((sum, d) => sum + (d.wage_amount || 0), 0)
+
+    let totalSales = 0
+    let totalProductBack = 0
+    dailySalesData.forEach(day => {
+      totalSales += day.totalSales
+      totalProductBack += day.productBack
+    })
+
+    // 各報酬形態で総報酬額を計算
+    return types.map(type => ({
+      type,
+      total: calculateTotalCompensation(type, totalWorkHours, totalWageAmount, totalSales, totalProductBack)
+    }))
+  }, [compensationSettings, dailyStats, dailySalesData, calculateTotalCompensation])
+
   // アクティブな報酬形態を取得
   const activeCompensationType = useMemo((): CompensationType | null => {
     if (!compensationSettings?.compensation_types) return null
@@ -1023,35 +1049,18 @@ function PayslipPageContent() {
     }
 
     // highest: 各報酬形態で計算して最も高いものを選択
-    if (compensationSettings.payment_selection_method === 'highest') {
-      // 集計データを計算
-      const totalWorkHours = dailyStats.reduce((sum, d) => sum + (d.work_hours || 0), 0)
-      const totalWageAmount = dailyStats.reduce((sum, d) => sum + (d.wage_amount || 0), 0)
-
-      let totalSales = 0
-      let totalProductBack = 0
-      dailySalesData.forEach(day => {
-        totalSales += day.totalSales
-        totalProductBack += day.productBack
-      })
-
-      // 各報酬形態で総報酬額を計算
-      const compensationsWithTotal = types.map(type => ({
-        type,
-        total: calculateTotalCompensation(type, totalWorkHours, totalWageAmount, totalSales, totalProductBack)
-      }))
-
+    if (compensationSettings.payment_selection_method === 'highest' && compensationComparison) {
       // 最も高い報酬額の形態を選択
-      const highest = compensationsWithTotal.reduce((max, current) =>
+      const highest = compensationComparison.reduce((max, current) =>
         current.total > max.total ? current : max
-      , compensationsWithTotal[0])
+      , compensationComparison[0])
 
       return highest.type
     }
 
     // デフォルト（念のため）
     return types[0]
-  }, [compensationSettings, dailyStats, dailySalesData, calculateTotalCompensation])
+  }, [compensationSettings, compensationComparison])
 
   // 集計値を計算
   const summary = useMemo(() => {
@@ -1900,6 +1909,58 @@ function PayslipPageContent() {
                 }
                 return parts.length > 0 ? `（${parts.join(' + ')}）` : ''
               })()}
+            </div>
+          )}
+
+          {/* 報酬形態比較表示（高い方選択時のみ） */}
+          {compensationComparison && compensationComparison.length > 1 && (
+            <div style={{
+              margin: '8px 24px 16px',
+              padding: '12px',
+              backgroundColor: '#f8fafc',
+              borderRadius: '8px',
+              border: '1px solid #e2e8f0'
+            }}>
+              <div style={{ fontSize: '13px', color: '#64748b', marginBottom: '8px', fontWeight: '500' }}>
+                報酬形態比較:
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                {compensationComparison
+                  .sort((a, b) => b.total - a.total)
+                  .map((comp, index) => {
+                    const isSelected = comp.type.id === activeCompensationType?.id
+                    return (
+                      <div
+                        key={comp.type.id}
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          padding: '6px 8px',
+                          backgroundColor: isSelected ? '#dbeafe' : 'white',
+                          borderRadius: '4px',
+                          fontSize: '13px',
+                          border: isSelected ? '1px solid #3b82f6' : '1px solid #e2e8f0'
+                        }}
+                      >
+                        <span style={{
+                          fontWeight: isSelected ? '600' : '400',
+                          color: isSelected ? '#1e40af' : '#475569'
+                        }}>
+                          {comp.type.name}
+                          {index === 0 && !isSelected && ' (最高額)'}
+                          {isSelected && ' ★'}
+                        </span>
+                        <span style={{
+                          fontWeight: isSelected ? '600' : '400',
+                          color: isSelected ? '#1e40af' : '#475569'
+                        }}>
+                          {currencyFormatter.format(comp.total)}
+                        </span>
+                      </div>
+                    )
+                  })}
+              </div>
             </div>
           )}
 
