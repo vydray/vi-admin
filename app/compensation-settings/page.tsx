@@ -2589,9 +2589,25 @@ function CompensationSettingsPageContent() {
                         <input
                           type="checkbox"
                           checked={activeCompensationType.hourly_rate > 0}
-                          onChange={(e) => updateCompensationType(activeCompensationType.id, {
-                            hourly_rate: e.target.checked ? (wageStats?.averageHourlyWage || 1500) : 0
-                          })}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              // 時給の優先順位: オーバーライド > ステータス時給 > 平均時給 > デフォルト1500
+                              let defaultHourlyRate = 1500
+                              if (settingsState.hourlyWageOverride != null) {
+                                defaultHourlyRate = settingsState.hourlyWageOverride
+                              } else if (settingsState.statusId) {
+                                const status = wageStatuses.find(s => s.id === settingsState.statusId)
+                                if (status) {
+                                  defaultHourlyRate = status.hourly_wage
+                                }
+                              } else if (wageStats?.averageHourlyWage) {
+                                defaultHourlyRate = wageStats.averageHourlyWage
+                              }
+                              updateCompensationType(activeCompensationType.id, { hourly_rate: defaultHourlyRate })
+                            } else {
+                              updateCompensationType(activeCompensationType.id, { hourly_rate: 0 })
+                            }
+                          }}
                           style={styles.checkbox}
                         />
                         <span>時給</span>
@@ -2604,7 +2620,18 @@ function CompensationSettingsPageContent() {
                           alignItems: 'center',
                           color: activeCompensationType.hourly_rate === 0 ? '#999' : '#333'
                         }}>
-                          {wageStats?.averageHourlyWage?.toLocaleString() || '-'}
+                          {(() => {
+                            // 表示する時給を決定（オーバーライド > ステータス時給 > 平均時給）
+                            if (settingsState.hourlyWageOverride != null) {
+                              return settingsState.hourlyWageOverride.toLocaleString()
+                            } else if (settingsState.statusId) {
+                              const status = wageStatuses.find(s => s.id === settingsState.statusId)
+                              if (status) {
+                                return status.hourly_wage.toLocaleString()
+                              }
+                            }
+                            return wageStats?.averageHourlyWage?.toLocaleString() || '-'
+                          })()}
                         </div>
                         <span style={styles.payUnit}>円/時</span>
                       </div>
