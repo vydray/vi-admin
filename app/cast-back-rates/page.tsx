@@ -460,7 +460,7 @@ function CastBackRatesPageContent() {
       }
 
       // 全レコードをまとめて挿入
-      const newRecords = []
+      const newRecords: any[] = []
       for (const cast of targetCasts) {
         for (const productName of categoryProductNames) {
           newRecords.push({
