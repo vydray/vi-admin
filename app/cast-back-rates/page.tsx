@@ -296,53 +296,59 @@ function CastBackRatesPageContent() {
     setSaving(true)
     try {
       if (rateApplyToAll) {
-        // 全キャストに適用
-        let totalUpdated = 0
-        for (const targetCast of filteredCasts) {
-          // このキャストの既存バック率を直接DBから取得（最新データを確保）
-          const { data: targetCastRates } = await supabase
+        // 全キャストに適用（バッチ処理で高速化）
+        const castIds = filteredCasts.map(c => c.id)
+
+        // 全キャストの既存レコードを1回で取得
+        const { data: existingRates } = await supabase
+          .from('cast_back_rates')
+          .select('id, cast_id')
+          .in('cast_id', castIds)
+          .eq('store_id', storeId)
+          .eq('category', editingRate.category)
+          .eq('product_name', editingRate.product_name)
+          .eq('is_active', true)
+
+        const existingCastIds = new Set((existingRates || []).map(r => r.cast_id))
+        const existingIds = (existingRates || []).map(r => r.id)
+
+        // 既存レコードをまとめて論理削除
+        if (existingIds.length > 0) {
+          await supabase
             .from('cast_back_rates')
-            .select('*')
-            .eq('cast_id', targetCast.id)
-            .eq('store_id', storeId)
-            .eq('is_active', true)
-
-          const existingRate = (targetCastRates || []).find(r =>
-            r.category === editingRate.category &&
-            r.product_name === editingRate.product_name
-          )
-
-          const payload = {
-            cast_id: targetCast.id,
-            store_id: storeId,
-            category: editingRate.category,
-            product_name: editingRate.product_name,
-            back_type: editingRate.back_type,
-            back_ratio: editingRate.back_ratio,
-            back_fixed_amount: editingRate.back_fixed_amount,
-            self_back_ratio: editingRate.self_back_ratio,
-            help_back_ratio: editingRate.help_back_ratio,
-            // スライド式バック率
-            use_sliding_back: editingRate.use_sliding_back,
-            back_sales_aggregation: editingRate.back_sales_aggregation,
-            sliding_back_rates: editingRate.sliding_back_rates,
-            hourly_wage: null,
-            is_active: true,
-          }
-
-          if (existingRate) {
-            await supabase
-              .from('cast_back_rates')
-              .update(payload)
-              .eq('id', existingRate.id)
-          } else {
-            await supabase
-              .from('cast_back_rates')
-              .insert(payload)
-          }
-          totalUpdated++
+            .update({ is_active: false })
+            .in('id', existingIds)
         }
-        toast.success(`${totalUpdated}人のキャストに設定しました`)
+
+        // 全キャスト分の新しいレコードをまとめて挿入
+        const newRecords = filteredCasts.map(cast => ({
+          cast_id: cast.id,
+          store_id: storeId,
+          category: editingRate.category,
+          product_name: editingRate.product_name,
+          back_type: editingRate.back_type,
+          back_ratio: editingRate.back_ratio,
+          back_fixed_amount: editingRate.back_fixed_amount,
+          self_back_ratio: editingRate.self_back_ratio,
+          help_back_ratio: editingRate.help_back_ratio,
+          use_sliding_back: editingRate.use_sliding_back,
+          back_sales_aggregation: editingRate.back_sales_aggregation,
+          sliding_back_rates: editingRate.sliding_back_rates,
+          hourly_wage: null,
+          is_active: true,
+          source: 'all',
+        }))
+
+        const { error: insertError } = await supabase
+          .from('cast_back_rates')
+          .insert(newRecords)
+
+        if (insertError) {
+          console.error('Batch insert error:', insertError)
+          throw insertError
+        }
+
+        toast.success(`${filteredCasts.length}人のキャストに設定しました`)
       } else {
         // 選択中のキャストのみ
         const payload = {
@@ -361,6 +367,7 @@ function CastBackRatesPageContent() {
           sliding_back_rates: editingRate.sliding_back_rates,
           hourly_wage: null,
           is_active: true,
+          source: 'all',
         }
 
         if (editingRate.id) {
@@ -430,26 +437,34 @@ function CastBackRatesPageContent() {
 
       // 適用対象のキャストを決定
       const targetCasts = bulkApplyToAll ? filteredCasts : [{ id: selectedCastId! }]
-      let totalUpdated = 0
+      const castIds = targetCasts.map(c => c.id)
 
-      for (const targetCast of targetCasts) {
-        // このキャストの既存バック率を直接DBから取得（最新データを確保）
-        const { data: targetCastRates } = await supabase
+      // 既存レコードを一括取得
+      const { data: existingRates } = await supabase
+        .from('cast_back_rates')
+        .select('id, cast_id, product_name')
+        .in('cast_id', castIds)
+        .eq('store_id', storeId)
+        .eq('category', bulkCategory)
+        .in('product_name', categoryProductNames)
+        .eq('is_active', true)
+
+      const existingIds = (existingRates || []).map(r => r.id)
+
+      // 既存レコードをまとめて論理削除
+      if (existingIds.length > 0) {
+        await supabase
           .from('cast_back_rates')
-          .select('*')
-          .eq('cast_id', targetCast.id)
-          .eq('store_id', storeId)
-          .eq('is_active', true)
+          .update({ is_active: false })
+          .in('id', existingIds)
+      }
 
-        // 各商品に対してバック率を設定/更新
+      // 全レコードをまとめて挿入
+      const newRecords = []
+      for (const cast of targetCasts) {
         for (const productName of categoryProductNames) {
-          const existingRate = (targetCastRates || []).find(r =>
-            r.category === bulkCategory &&
-            r.product_name === productName
-          )
-
-          const payload = {
-            cast_id: targetCast.id,
+          newRecords.push({
+            cast_id: cast.id,
             store_id: storeId,
             category: bulkCategory,
             product_name: productName,
@@ -458,30 +473,27 @@ function CastBackRatesPageContent() {
             back_fixed_amount: 0,
             self_back_ratio: bulkSelfRate,
             help_back_ratio: bulkHelpRate,
-            // スライド式バック率
             use_sliding_back: bulkUseSlidingBack,
             back_sales_aggregation: bulkBackSalesAggregation,
             sliding_back_rates: bulkUseSlidingBack ? bulkSlidingBackRates : null,
             hourly_wage: null,
             is_active: true,
-          }
-
-          if (existingRate) {
-            await supabase
-              .from('cast_back_rates')
-              .update(payload)
-              .eq('id', existingRate.id)
-          } else {
-            await supabase
-              .from('cast_back_rates')
-              .insert(payload)
-          }
-          totalUpdated++
+            source: 'all',
+          })
         }
       }
 
+      const { error: insertError } = await supabase
+        .from('cast_back_rates')
+        .insert(newRecords)
+
+      if (insertError) {
+        console.error('Bulk insert error:', insertError)
+        throw insertError
+      }
+
       const message = bulkApplyToAll
-        ? `${targetCasts.length}人のキャスト × ${categoryProductNames.length}商品 = ${totalUpdated}件を一括設定しました`
+        ? `${targetCasts.length}人のキャスト × ${categoryProductNames.length}商品 = ${newRecords.length}件を一括設定しました`
         : `${categoryProductNames.length}件の商品に一括設定しました`
       toast.success(message)
       setShowBulkModal(false)
