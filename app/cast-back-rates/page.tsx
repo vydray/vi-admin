@@ -155,6 +155,11 @@ function CastBackRatesPageContent() {
         .limit(10000)
 
       if (ratesError) throw ratesError
+      console.log('🔍 loadData - Fetched rates:', ratesData?.length || 0)
+      if (ratesData && ratesData.length > 0) {
+        const categoriesInData = new Set(ratesData.map(r => r.category))
+        console.log('🔍 loadData - Categories in fetched data:', Array.from(categoriesInData))
+      }
       setBackRates((ratesData || []) as CastBackRate[])
 
       // 最初のキャストを選択
@@ -189,7 +194,13 @@ function CastBackRatesPageContent() {
   // 選択中のキャストのバック率一覧
   const castRates = useMemo(() => {
     if (!selectedCastId) return []
-    return backRates.filter((r) => r.cast_id === selectedCastId)
+    const filtered = backRates.filter((r) => r.cast_id === selectedCastId)
+    console.log('🔍 castRates - selectedCastId:', selectedCastId, 'filtered:', filtered.length)
+    if (filtered.length > 0) {
+      const categoriesInFiltered = new Set(filtered.map(r => r.category))
+      console.log('🔍 castRates - Categories for this cast:', Array.from(categoriesInFiltered))
+    }
+    return filtered
   }, [backRates, selectedCastId])
 
   // 全商品とそのバック率設定をマージ
@@ -445,24 +456,35 @@ function CastBackRatesPageContent() {
       const targetCasts = bulkApplyToAll ? filteredCasts : [{ id: selectedCastId! }]
       const castIds = targetCasts.map(c => c.id)
 
+      console.log('🔍 Bulk Save - Category:', bulkCategory)
+      console.log('🔍 Bulk Save - Target casts:', castIds)
+      console.log('🔍 Bulk Save - Products:', categoryProductNames)
+
       // 既存レコードを一括取得
       const { data: existingRates } = await supabase
         .from('cast_back_rates')
-        .select('id, cast_id, product_name')
+        .select('id, cast_id, product_name, category')
         .in('cast_id', castIds)
         .eq('store_id', storeId)
         .eq('category', bulkCategory)
         .in('product_name', categoryProductNames)
         .eq('is_active', true)
 
+      console.log('🔍 Bulk Save - Existing rates to delete:', existingRates?.length || 0)
       const existingIds = (existingRates || []).map(r => r.id)
 
       // 既存レコードをまとめて論理削除
       if (existingIds.length > 0) {
-        await supabase
+        const { error: deleteError } = await supabase
           .from('cast_back_rates')
           .update({ is_active: false })
           .in('id', existingIds)
+
+        if (deleteError) {
+          console.error('🔍 Bulk Save - Delete error:', deleteError)
+          throw deleteError
+        }
+        console.log('🔍 Bulk Save - Deleted:', existingIds.length, 'records')
       }
 
       // 全レコードをまとめて挿入
@@ -489,6 +511,8 @@ function CastBackRatesPageContent() {
         }
       }
 
+      console.log('🔍 Bulk Save - New records to insert:', newRecords.length)
+
       // バッチサイズを500に分割して挿入（Supabaseの制限対策）
       const BATCH_SIZE = 500
       for (let i = 0; i < newRecords.length; i += BATCH_SIZE) {
@@ -498,17 +522,22 @@ function CastBackRatesPageContent() {
           .insert(batch)
 
         if (insertError) {
-          console.error(`Bulk insert error (batch ${i / BATCH_SIZE + 1}):`, insertError)
+          console.error(`🔍 Bulk insert error (batch ${i / BATCH_SIZE + 1}):`, insertError)
           throw insertError
         }
       }
+
+      console.log('🔍 Bulk Save - Successfully inserted:', newRecords.length, 'records')
 
       const message = bulkApplyToAll
         ? `${targetCasts.length}人のキャスト × ${categoryProductNames.length}商品 = ${newRecords.length}件を一括設定しました`
         : `${categoryProductNames.length}件の商品に一括設定しました`
       toast.success(message)
       setShowBulkModal(false)
+
+      console.log('🔍 Bulk Save - Reloading data...')
       await loadData()
+      console.log('🔍 Bulk Save - Data reloaded, backRates.length:', backRates.length)
     } catch (err) {
       console.error('保存エラー:', err)
       toast.error('保存に失敗しました')
