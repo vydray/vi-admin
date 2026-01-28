@@ -82,10 +82,9 @@ export async function GET(request: Request) {
           }
         }
 
-        // 当月1日からの注文を取得（ページネーション対応）
+        // 過去3日分の注文を取得（ページネーション対応、月またぎにも対応）
         const endDate = new Date().toISOString().split('T')[0]
-        const now = new Date()
-        const startDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]
+        const startDate = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
 
         let allOrders: any[] = []
         let offset = 0
