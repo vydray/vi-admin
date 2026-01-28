@@ -262,12 +262,17 @@ export async function notifyShiftConfirmed(storeId: number, month: string) {
   const message = `${month}のシフトが確定しました`;
 
   // その月のシフトに入っているキャスト全員を取得
+  // 翌月1日を計算
+  const [year, monthNum] = month.split('-').map(Number)
+  const nextMonth = new Date(year, monthNum, 1) // monthは0始まりなので、monthNumはそのまま翌月になる
+  const nextMonthStr = nextMonth.toISOString().split('T')[0]
+
   const { data: shifts } = await supabase
     .from('shifts')
     .select('cast_id, casts(id, name, line_user_id)')
     .eq('store_id', storeId)
     .gte('work_date', `${month}-01`)
-    .lt('work_date', `${month}-32`)
+    .lt('work_date', nextMonthStr)
     .eq('is_cancelled', false);
 
   if (!shifts) return;

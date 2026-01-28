@@ -74,6 +74,11 @@ export async function GET(request: NextRequest) {
         continue
       }
 
+      // TODO: Twitter OAuth 2.0トークンの有効期限チェック実装
+      // store_twitter_settingsテーブルにtoken_expires_atカラムを追加し、
+      // 有効期限切れの場合はrefresh_tokenで自動更新する機能が必要
+      // 現状: トークン期限切れの場合、API呼び出し時に401エラーで検知される
+
       // 画像URLをパース（JSON配列または単一URL）
       let imageUrls: string[] = []
       if (post.image_url) {
@@ -111,13 +116,21 @@ export async function GET(request: NextRequest) {
       )
 
       // 結果を保存
+      // 認証エラー（401）の場合はトークン期限切れの可能性を示唆
+      let errorMessage = result.error || null
+      if (!result.success && errorMessage) {
+        if (errorMessage.includes('401') || errorMessage.toLowerCase().includes('unauthorized')) {
+          errorMessage += ' (トークン期限切れの可能性があります。Twitter設定で再認証してください)'
+        }
+      }
+
       await supabase
         .from('scheduled_posts')
         .update({
           status: result.success ? 'posted' : 'failed',
           posted_at: result.success ? new Date().toISOString() : null,
           twitter_post_id: result.tweetId || null,
-          error_message: result.error || null,
+          error_message: errorMessage,
           updated_at: new Date().toISOString(),
         })
         .eq('id', post.id)
@@ -130,6 +143,10 @@ export async function GET(request: NextRequest) {
         }
       } else {
         failCount++
+        // 認証エラーの場合はログ出力
+        if (errorMessage && (errorMessage.includes('401') || errorMessage.toLowerCase().includes('unauthorized'))) {
+          console.error(`[Twitter Post Cron] Authentication error for post ${post.id} (store ${post.store_id}): Token may be expired`)
+        }
       }
 
       // レート制限対策で少し待つ

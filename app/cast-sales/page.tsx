@@ -527,13 +527,14 @@ function CastSalesPageContent() {
 
   // 確定状態を確認
   const checkFinalizedStatus = useCallback(async () => {
-    const yearMonth = format(selectedMonth, 'yyyy-MM')
+    const monthStart = format(startOfMonth(selectedMonth), 'yyyy-MM-dd')
+    const monthEnd = format(endOfMonth(selectedMonth), 'yyyy-MM-dd')
     const { data } = await supabase
       .from('cast_daily_stats')
       .select('is_finalized')
       .eq('store_id', storeId)
-      .gte('date', `${yearMonth}-01`)
-      .lte('date', `${yearMonth}-31`)
+      .gte('date', monthStart)
+      .lte('date', monthEnd)
       .eq('is_finalized', true)
       .limit(1)
 
