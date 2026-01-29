@@ -1,13 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { cookies } from 'next/headers';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
   process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 );
 
+// セッション検証関数
+async function validateSession(): Promise<{ storeId: number; isAllStore: boolean } | null> {
+  const cookieStore = await cookies()
+  const sessionCookie = cookieStore.get('admin_session')
+  if (!sessionCookie) return null
+
+  try {
+    const session = JSON.parse(sessionCookie.value)
+    return {
+      storeId: session.storeId,
+      isAllStore: session.isAllStore || false
+    }
+  } catch {
+    return null
+  }
+}
+
 // GET: 店舗のテンプレートを取得
 export async function GET(request: NextRequest) {
+  const session = await validateSession()
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
   try {
     const { searchParams } = new URL(request.url);
     const storeId = searchParams.get('storeId');
@@ -45,6 +68,11 @@ export async function GET(request: NextRequest) {
 
 // POST: テンプレート画像をアップロード
 export async function POST(request: NextRequest) {
+  const session = await validateSession()
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
   try {
     const formData = await request.formData();
     const file = formData.get('file') as File;
@@ -103,6 +131,11 @@ export async function POST(request: NextRequest) {
 
 // PUT: テンプレート設定を更新
 export async function PUT(request: NextRequest) {
+  const session = await validateSession()
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
   try {
     const body = await request.json();
     const { storeId, name, mode, imagePath, placeholderPath, frames, frameSize, nameStyle, gridSettings } = body;

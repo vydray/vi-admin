@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { cookies } from 'next/headers'
 import crypto from 'crypto'
 
 const supabase = createClient(
@@ -10,7 +11,29 @@ const supabase = createClient(
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
 const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB
 
+// セッション検証関数
+async function validateSession(): Promise<{ storeId: number; isAllStore: boolean } | null> {
+  const cookieStore = await cookies()
+  const sessionCookie = cookieStore.get('admin_session')
+  if (!sessionCookie) return null
+
+  try {
+    const session = JSON.parse(sessionCookie.value)
+    return {
+      storeId: session.storeId,
+      isAllStore: session.isAllStore || false
+    }
+  } catch {
+    return null
+  }
+}
+
 export async function POST(request: NextRequest) {
+  const session = await validateSession()
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
   try {
     const formData = await request.formData()
     const file = formData.get('file') as File | null
@@ -86,6 +109,11 @@ export async function POST(request: NextRequest) {
 
 // 画像削除API
 export async function DELETE(request: NextRequest) {
+  const session = await validateSession()
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
   try {
     const { searchParams } = new URL(request.url)
     const path = searchParams.get('path')

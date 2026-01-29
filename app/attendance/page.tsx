@@ -541,7 +541,9 @@ function AttendancePageContent() {
 
   // 祝日判定
   const getHoliday = (date: Date) => {
-    return holidayJp.isHoliday(date) ? holidayJp.between(date, date)[0] : null
+    if (!holidayJp.isHoliday(date)) return null
+    const holidays = holidayJp.between(date, date)
+    return holidays && holidays.length > 0 ? holidays[0] : null
   }
 
   const handleRecalculate = async () => {

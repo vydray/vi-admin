@@ -231,7 +231,7 @@ function ReceiptsPageContent() {
           // paymentsは配列で返ってくるので、最初の要素を取得
           const paymentData = order.payments?.[0]
 
-          if (paymentData) {
+          if (paymentData && paymentData.cash_amount !== undefined && paymentData.credit_card_amount !== undefined && paymentData.other_payment_amount !== undefined) {
             const methods: string[] = []
             if (paymentData.cash_amount > 0) methods.push('現金')
             if (paymentData.credit_card_amount > 0) methods.push('カード')
@@ -525,8 +525,8 @@ function ReceiptsPageContent() {
     try {
       // 注文情報を更新（基本情報のみ）
       // staff_nameは単一の文字列またはカンマ区切りで保存（配列だとJSON文字列化されるため）
-      const staffNameValue = editFormData.staff_names.length > 0
-        ? (editFormData.staff_names.length === 1 ? editFormData.staff_names[0] : editFormData.staff_names.join(','))
+      const staffNameValue = editFormData.staff_names && editFormData.staff_names.length > 0
+        ? (editFormData.staff_names.length === 1 && editFormData.staff_names[0] ? editFormData.staff_names[0] : editFormData.staff_names.join(','))
         : null
       const { error: orderError } = await supabase
         .from('orders')
@@ -862,8 +862,8 @@ function ReceiptsPageContent() {
             order_date: new Date(createFormData.order_date).toISOString(),
             table_number: createFormData.table_number,
             guest_name: createFormData.guest_name || null,
-            staff_name: createFormData.staff_names.length > 0
-              ? (createFormData.staff_names.length === 1 ? createFormData.staff_names[0] : createFormData.staff_names.join(','))
+            staff_name: createFormData.staff_names && createFormData.staff_names.length > 0
+              ? (createFormData.staff_names.length === 1 && createFormData.staff_names[0] ? createFormData.staff_names[0] : createFormData.staff_names.join(','))
               : null,
             visit_type: null,
             subtotal_incl_tax: itemsSubtotal,
@@ -1081,8 +1081,8 @@ function ReceiptsPageContent() {
           order_date: new Date(createFormData.order_date).toISOString(),
           table_number: createFormData.table_number,
           guest_name: createFormData.guest_name || null,
-          staff_name: createFormData.staff_names.length > 0
-            ? (createFormData.staff_names.length === 1 ? createFormData.staff_names[0] : createFormData.staff_names.join(','))
+          staff_name: createFormData.staff_names && createFormData.staff_names.length > 0
+            ? (createFormData.staff_names.length === 1 && createFormData.staff_names[0] ? createFormData.staff_names[0] : createFormData.staff_names.join(','))
             : null,
           visit_type: null,
           subtotal_incl_tax: itemsSubtotal,

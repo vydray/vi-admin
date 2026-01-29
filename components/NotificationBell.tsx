@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
-import { getCurrentUser } from '../lib/auth';
-import type { Notification } from '../types/ai';
+import { supabase } from '@/lib/supabase';
+import { getCurrentUser } from '@/lib/auth';
+import type { Notification } from '@/types/ai';
 
 export default function NotificationBell() {
   const [notifications, setNotifications] = useState<Notification[]>([]);

@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { checkRequestValidity } from '../../../../lib/ai/claude';
-import { notifyNewRequest } from '../../../../lib/notifications';
-import type { RequestType, RequestData } from '../../../../types/ai';
+import { cookies } from 'next/headers';
+import { checkRequestValidity } from '@/lib/ai/claude';
+import { notifyNewRequest } from '@/lib/notifications';
+import type { RequestType, RequestData } from '@/types/ai';
 
 // Supabase Admin Client
 const supabase = createClient(
@@ -10,7 +11,28 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 );
 
+// セッション検証関数
+async function validateSession(): Promise<{ storeId: number; isAllStore: boolean } | null> {
+  const cookieStore = await cookies()
+  const sessionCookie = cookieStore.get('admin_session')
+  if (!sessionCookie) return null
+
+  try {
+    const session = JSON.parse(sessionCookie.value)
+    return {
+      storeId: session.storeId,
+      isAllStore: session.isAllStore || false
+    }
+  } catch {
+    return null
+  }
+}
+
 export async function POST(request: NextRequest) {
+  const session = await validateSession()
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
   try {
     const body = await request.json();
     const { castId, storeId, requestType, requestData } = body as {

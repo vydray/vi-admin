@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
 
       // 既存のSupabase Authユーザーを確認
       const { data: existingUsers } = await supabase.auth.admin.listUsers()
-      const existingUser = existingUsers?.users?.find((u: { email?: string }) => u.email === email)
+      const existingUser = existingUsers?.users?.find((u: { email?: string }) => u.email === email) ?? null
 
       if (!existingUser) {
         // 初回：Supabase Authユーザーを作成

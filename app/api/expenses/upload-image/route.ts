@@ -1,13 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { cookies } from 'next/headers'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
   process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 )
 
+// セッション検証関数
+async function validateSession(): Promise<{ storeId: number; isAllStore: boolean } | null> {
+  const cookieStore = await cookies()
+  const sessionCookie = cookieStore.get('admin_session')
+  if (!sessionCookie) return null
+
+  try {
+    const session = JSON.parse(sessionCookie.value)
+    return {
+      storeId: session.storeId,
+      isAllStore: session.isAllStore || false
+    }
+  } catch {
+    return null
+  }
+}
+
 // POST: 領収書画像をアップロード
 export async function POST(request: NextRequest) {
+  const session = await validateSession()
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
   try {
     const formData = await request.formData()
     const file = formData.get('file') as File
@@ -81,6 +103,10 @@ export async function POST(request: NextRequest) {
 
 // DELETE: 領収書画像を削除
 export async function DELETE(request: NextRequest) {
+  const session = await validateSession()
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
   try {
     const { searchParams } = new URL(request.url)
     const storeId = searchParams.get('storeId')

@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import type { CreateNotificationInput, NotificationType } from '../types/ai';
+import type { CreateNotificationInput, NotificationType } from '@/types/ai';
 
 // Supabase Admin Client
 const supabase = createClient(

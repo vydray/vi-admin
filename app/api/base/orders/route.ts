@@ -1,6 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { cookies } from 'next/headers'
 import { getSupabaseServerClient } from '@/lib/supabase'
 import { fetchOrders, fetchOrderDetail, refreshAccessToken } from '@/lib/baseApi'
+
+/**
+ * セッション検証関数
+ */
+async function validateSession(): Promise<{ storeId: number; isAllStore: boolean } | null> {
+  const cookieStore = await cookies()
+  const sessionCookie = cookieStore.get('admin_session')
+  if (!sessionCookie) return null
+
+  try {
+    const session = JSON.parse(sessionCookie.value)
+    return {
+      storeId: session.storeId,
+      isAllStore: session.isAllStore || false
+    }
+  } catch {
+    return null
+  }
+}
 
 /**
  * BASE注文を取得してDBに保存
@@ -8,6 +28,10 @@ import { fetchOrders, fetchOrderDetail, refreshAccessToken } from '@/lib/baseApi
  * body: { store_id, start_date?, end_date? }
  */
 export async function POST(request: NextRequest) {
+  const session = await validateSession()
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
   try {
     const { store_id, start_date, end_date } = await request.json()
 
