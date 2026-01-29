@@ -261,7 +261,7 @@ export async function GET(request: Request) {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'x-cron-secret': secret,
+              'x-cron-secret': process.env.CRON_SECRET || '',
             },
             body: JSON.stringify({
               store_id: result.store_id,
