@@ -16,7 +16,15 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const session = JSON.parse(sessionCookie.value)
+    let session
+    try {
+      session = JSON.parse(sessionCookie.value)
+    } catch {
+      return NextResponse.json(
+        { error: 'セッション情報が不正です' },
+        { status: 401 }
+      )
+    }
     const { currentPassword, newPassword, confirmPassword } = await request.json()
 
     // バリデーション

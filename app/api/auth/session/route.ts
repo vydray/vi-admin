@@ -11,7 +11,14 @@ export async function GET() {
       return NextResponse.json({ user: null }, { status: 401 })
     }
 
-    const session = JSON.parse(sessionCookie.value)
+    let session
+    try {
+      session = JSON.parse(sessionCookie.value)
+    } catch {
+      // 不正なセッションCookieの場合は削除
+      cookieStore.delete('admin_session')
+      return NextResponse.json({ user: null, reason: 'invalid_session' }, { status: 401 })
+    }
 
     // セッション有効期限チェック（24時間）
     if (session.session_created_at) {
