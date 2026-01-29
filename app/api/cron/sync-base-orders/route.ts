@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getSupabaseServerClient } from '@/lib/supabase'
 import { fetchOrders, fetchOrderDetail, refreshAccessToken } from '@/lib/baseApi'
+import { withCronLock } from '@/lib/cronLock'
 
 /**
  * BASE注文自動同期
@@ -19,6 +20,30 @@ export async function GET(request: Request) {
     if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+
+    // Cron Job重複実行防止（ロック取得）
+    const result = await withCronLock('sync-base-orders', async () => {
+      return await executeSyncBaseOrders()
+    }, 600) // 10分タイムアウト
+
+    if (result === null) {
+      return NextResponse.json({
+        message: 'Job is already running, skipped'
+      })
+    }
+
+    return result
+  } catch (error) {
+    console.error('[CRON] sync-base-orders error:', error)
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Internal server error' },
+      { status: 500 }
+    )
+  }
+}
+
+async function executeSyncBaseOrders() {
+  try {
 
     const supabase = getSupabaseServerClient()
 
@@ -46,22 +71,64 @@ export async function GET(request: Request) {
             // トークンをリフレッシュ
             if (setting.refresh_token && setting.client_id && setting.client_secret) {
               try {
-                const newTokens = await refreshAccessToken(
-                  setting.client_id,
-                  setting.client_secret,
-                  setting.refresh_token
-                )
-                accessToken = newTokens.access_token
-                const newExpiresAt = new Date(Date.now() + newTokens.expires_in * 1000)
-
-                await supabase
+                // Optimistic Locking: リフレッシュ前に再度有効期限をチェック
+                const { data: currentSetting } = await supabase
                   .from('base_settings')
-                  .update({
-                    access_token: newTokens.access_token,
-                    refresh_token: newTokens.refresh_token,
-                    token_expires_at: newExpiresAt.toISOString(),
-                  })
+                  .select('token_expires_at, access_token')
                   .eq('store_id', setting.store_id)
+                  .single()
+
+                // 他のプロセスが既に更新した場合、最新のトークンを使用
+                if (currentSetting && currentSetting.token_expires_at !== setting.token_expires_at) {
+                  const currentExpiresAt = new Date(currentSetting.token_expires_at)
+                  if (currentExpiresAt >= new Date()) {
+                    // 既に有効なトークンがある
+                    accessToken = currentSetting.access_token
+                    console.log(`[BASE Sync] Store ${setting.store_id}: Token already refreshed by another process`)
+                  } else {
+                    // まだ期限切れのまま → リフレッシュ
+                    const newTokens = await refreshAccessToken(
+                      setting.client_id,
+                      setting.client_secret,
+                      setting.refresh_token
+                    )
+                    accessToken = newTokens.access_token
+                    const newExpiresAt = new Date(Date.now() + newTokens.expires_in * 1000)
+
+                    // Optimistic Locking: 元の有効期限が変わっていない場合のみ更新
+                    const { count } = await supabase
+                      .from('base_settings')
+                      .update({
+                        access_token: newTokens.access_token,
+                        refresh_token: newTokens.refresh_token,
+                        token_expires_at: newExpiresAt.toISOString(),
+                      })
+                      .eq('store_id', setting.store_id)
+                      .eq('token_expires_at', setting.token_expires_at)
+
+                    if (count === 0) {
+                      console.warn(`[BASE Sync] Store ${setting.store_id}: Token update conflict, using latest token`)
+                    }
+                  }
+                } else {
+                  // 変更なし → リフレッシュ実行
+                  const newTokens = await refreshAccessToken(
+                    setting.client_id,
+                    setting.client_secret,
+                    setting.refresh_token
+                  )
+                  accessToken = newTokens.access_token
+                  const newExpiresAt = new Date(Date.now() + newTokens.expires_in * 1000)
+
+                  await supabase
+                    .from('base_settings')
+                    .update({
+                      access_token: newTokens.access_token,
+                      refresh_token: newTokens.refresh_token,
+                      token_expires_at: newExpiresAt.toISOString(),
+                    })
+                    .eq('store_id', setting.store_id)
+                }
 
               } catch (refreshError) {
                 results.push({
@@ -293,7 +360,7 @@ export async function GET(request: Request) {
       syncedAt: new Date().toISOString(),
     })
   } catch (error) {
-    console.error('BASE sync cron error:', error)
+    console.error('[BASE Sync] executeSyncBaseOrders error:', error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Internal server error' },
       { status: 500 }

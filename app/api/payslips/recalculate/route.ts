@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { cookies } from 'next/headers'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns'
 import { calculateCastSalesByPublishedMethod } from '@/lib/salesCalculation'
 import type { SalesSettings } from '@/types/database'
@@ -666,10 +667,54 @@ export async function POST(request: NextRequest) {
     let targetYearMonth: string | null = null
     try {
       const body = await request.json()
-      targetStoreId = body.store_id || null
-      targetYearMonth = body.year_month || null // 例: '2025-12'
+
+      // store_idのバリデーション
+      if (body.store_id !== undefined) {
+        if (typeof body.store_id !== 'number' || body.store_id <= 0) {
+          return NextResponse.json({ error: 'Invalid store_id: must be a positive number' }, { status: 400 })
+        }
+        targetStoreId = body.store_id
+      }
+
+      // year_monthのバリデーション
+      if (body.year_month !== undefined) {
+        const yearMonthRegex = /^\d{4}-(0[1-9]|1[0-2])$/
+        if (typeof body.year_month !== 'string' || !yearMonthRegex.test(body.year_month)) {
+          return NextResponse.json({ error: 'Invalid year_month format: must be YYYY-MM' }, { status: 400 })
+        }
+        const [year, month] = body.year_month.split('-').map(Number)
+        if (year < 2000 || year > 2100) {
+          return NextResponse.json({ error: 'Invalid year: must be between 2000 and 2100' }, { status: 400 })
+        }
+        targetYearMonth = body.year_month
+      }
     } catch {
       // bodyがない場合（Cronからの呼び出し）
+    }
+
+    // 手動実行時の権限チェック
+    if (targetStoreId && !isCron) {
+      const cookieStore = await cookies()
+      const sessionCookie = cookieStore.get('admin_session')
+
+      if (!sessionCookie) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+
+      let session
+      try {
+        session = JSON.parse(sessionCookie.value)
+      } catch {
+        return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
+      }
+
+      // super_adminは全店舗にアクセス可能、それ以外は自店舗のみ
+      if (session.role !== 'super_admin' && session.storeId !== targetStoreId) {
+        return NextResponse.json(
+          { error: 'Forbidden: You can only recalculate payslips for your own store' },
+          { status: 403 }
+        )
+      }
     }
 
     // 計算対象月を決定（指定がなければ当月）

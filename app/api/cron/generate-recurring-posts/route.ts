@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { withCronLock } from '@/lib/cronLock'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -92,6 +93,21 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  // Cron Job重複実行防止（ロック取得）
+  const result = await withCronLock('generate-recurring-posts', async () => {
+    return await executeGenerateRecurringPosts()
+  }, 600) // 10分タイムアウト
+
+  if (result === null) {
+    return NextResponse.json({
+      message: 'Job is already running, skipped'
+    })
+  }
+
+  return result
+}
+
+async function executeGenerateRecurringPosts() {
   try {
     const todayDate = getTodayDateString()
     const todayDow = getTodayDayOfWeek()

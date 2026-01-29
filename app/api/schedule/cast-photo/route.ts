@@ -32,6 +32,10 @@ interface PhotoCrop {
   height: number;
 }
 
+// 許可されたファイルタイプ
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/jpg', 'image/png']
+const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB
+
 // POST: キャスト写真をアップロード（元画像をそのまま保存）
 export async function POST(request: NextRequest) {
   const session = await validateSession()
@@ -54,11 +58,37 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // ファイルサイズチェック
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json(
+        { error: `File size exceeds ${MAX_FILE_SIZE / (1024 * 1024)}MB limit` },
+        { status: 400 }
+      );
+    }
+
+    // MIMEタイプチェック（画像のみ）
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      return NextResponse.json(
+        { error: 'Invalid file type. Only JPEG and PNG images are allowed' },
+        { status: 400 }
+      );
+    }
+
     // photo_cropをパース
     let photoCrop: PhotoCrop | null = null;
     if (photoCropStr) {
       try {
         photoCrop = JSON.parse(photoCropStr);
+        // photo_cropの値が正の数かチェック
+        if (photoCrop && (
+          photoCrop.x < 0 || photoCrop.y < 0 ||
+          photoCrop.width <= 0 || photoCrop.height <= 0
+        )) {
+          return NextResponse.json(
+            { error: 'Invalid photoCrop values' },
+            { status: 400 }
+          );
+        }
       } catch {
         // パース失敗時は無視
       }

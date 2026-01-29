@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
     cookieStore.set('base_oauth_state', state, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      sameSite: 'strict',
       maxAge: 60 * 10, // 10分
       path: '/',
     })

@@ -1085,9 +1085,31 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { store_id, date, date_from, date_to } = body
 
+    // store_idのバリデーション
+    if (store_id !== undefined && (typeof store_id !== 'number' || store_id <= 0)) {
+      return NextResponse.json({ error: 'Invalid store_id: must be a positive number' }, { status: 400 })
+    }
+
     // Cronリクエストの場合はstore_idが必須
     if (isCronRequest && !store_id) {
       return NextResponse.json({ error: 'store_id is required for cron requests' }, { status: 400 })
+    }
+
+    // 日付形式のバリデーション（YYYY-MM-DD）
+    const dateRegex = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/
+    if (date && (typeof date !== 'string' || !dateRegex.test(date))) {
+      return NextResponse.json({ error: 'Invalid date format: must be YYYY-MM-DD' }, { status: 400 })
+    }
+    if (date_from && (typeof date_from !== 'string' || !dateRegex.test(date_from))) {
+      return NextResponse.json({ error: 'Invalid date_from format: must be YYYY-MM-DD' }, { status: 400 })
+    }
+    if (date_to && (typeof date_to !== 'string' || !dateRegex.test(date_to))) {
+      return NextResponse.json({ error: 'Invalid date_to format: must be YYYY-MM-DD' }, { status: 400 })
+    }
+
+    // 日付範囲の前後関係チェック
+    if (date_from && date_to && date_from > date_to) {
+      return NextResponse.json({ error: 'date_from must be before or equal to date_to' }, { status: 400 })
     }
 
     const storeId = store_id || session?.storeId

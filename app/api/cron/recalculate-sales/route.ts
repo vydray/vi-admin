@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { calculateCastSalesByPublishedMethod, getDefaultSalesSettings } from '@/lib/salesCalculation'
 import { SalesSettings } from '@/types'
 import { getCurrentBusinessDay } from '@/lib/businessDay'
+import { withCronLock } from '@/lib/cronLock'
 
 // Service Role Key でRLSをバイパス
 const supabaseAdmin = createClient(
@@ -1031,6 +1032,21 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  // Cron Job重複実行防止（ロック取得）
+  const result = await withCronLock('recalculate-sales', async () => {
+    return await executeRecalculateSales()
+  }, 600) // 10分タイムアウト
+
+  if (result === null) {
+    return NextResponse.json({
+      message: 'Job is already running, skipped'
+    })
+  }
+
+  return result
+}
+
+async function executeRecalculateSales() {
   try {
     // 全アクティブ店舗を取得
     const { data: stores, error: storesError } = await supabaseAdmin
@@ -1079,7 +1095,7 @@ export async function GET(request: NextRequest) {
       results
     })
   } catch (error) {
-    console.error('Cron Error:', error)
+    console.error('[Cron] executeRecalculateSales error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

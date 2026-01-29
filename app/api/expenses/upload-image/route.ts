@@ -24,6 +24,11 @@ async function validateSession(): Promise<{ storeId: number; isAllStore: boolean
   }
 }
 
+// 許可されたファイル拡張子とMIMEタイプ
+const ALLOWED_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'pdf']
+const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'application/pdf']
+const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
+
 // POST: 領収書画像をアップロード
 export async function POST(request: NextRequest) {
   const session = await validateSession()
@@ -43,10 +48,35 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // ファイル拡張子を取得
-    const fileExt = file.name.split('.').pop()?.toLowerCase() || 'jpg'
+    // ファイルサイズチェック
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json(
+        { error: `File size exceeds ${MAX_FILE_SIZE / (1024 * 1024)}MB limit` },
+        { status: 400 }
+      )
+    }
+
+    // MIMEタイプチェック
+    if (!ALLOWED_MIME_TYPES.includes(file.type)) {
+      return NextResponse.json(
+        { error: 'Invalid file type. Only images (JPEG, PNG, GIF) and PDF are allowed' },
+        { status: 400 }
+      )
+    }
+
+    // ファイル拡張子を取得・検証
+    const fileExt = file.name.split('.').pop()?.toLowerCase() || ''
+    if (!ALLOWED_EXTENSIONS.includes(fileExt)) {
+      return NextResponse.json(
+        { error: 'Invalid file extension' },
+        { status: 400 }
+      )
+    }
+
+    // Path Traversal対策: ファイル名をサニタイズ
+    const sanitizedExt = fileExt.replace(/[^a-z0-9]/gi, '')
     const timestamp = Date.now()
-    const fileName = `${storeId}/${expenseId}/${timestamp}.${fileExt}`
+    const fileName = `${storeId}/${expenseId}/${timestamp}.${sanitizedExt}`
 
     // ファイルをBufferに変換
     const buffer = Buffer.from(await file.arrayBuffer())

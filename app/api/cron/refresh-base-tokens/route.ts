@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getSupabaseServerClient } from '@/lib/supabase'
 import { refreshAccessToken } from '@/lib/baseApi'
+import { withCronLock } from '@/lib/cronLock'
 
 /**
  * BASEトークン自動リフレッシュ
@@ -13,6 +14,30 @@ export async function GET(request: Request) {
     if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+
+    // Cron Job重複実行防止（ロック取得）
+    const result = await withCronLock('refresh-base-tokens', async () => {
+      return await executeRefreshBaseTokens()
+    }, 600) // 10分タイムアウト
+
+    if (result === null) {
+      return NextResponse.json({
+        message: 'Job is already running, skipped'
+      })
+    }
+
+    return result
+  } catch (error) {
+    console.error('[CRON] refresh-base-tokens error:', error)
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Internal server error' },
+      { status: 500 }
+    )
+  }
+}
+
+async function executeRefreshBaseTokens() {
+  try {
 
     const supabase = getSupabaseServerClient()
 
@@ -75,7 +100,7 @@ export async function GET(request: Request) {
       refreshedAt: new Date().toISOString(),
     })
   } catch (error) {
-    console.error('BASE token refresh cron error:', error)
+    console.error('[BASE Token Refresh] executeRefreshBaseTokens error:', error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Internal server error' },
       { status: 500 }
