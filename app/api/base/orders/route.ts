@@ -114,8 +114,10 @@ export async function POST(request: NextRequest) {
     let allOrders: any[] = []
     let offset = 0
     const PAGE_SIZE = 100
+    const MAX_PAGES = 100 // 最大10,000件まで（DoS対策）
+    let pageCount = 0
 
-    while (true) {
+    while (pageCount < MAX_PAGES) {
       const ordersResponse = await fetchOrders(accessToken, {
         start_ordered: effectiveStartDate,
         end_ordered: effectiveEndDate,
@@ -125,11 +127,16 @@ export async function POST(request: NextRequest) {
 
       const orders = ordersResponse.orders || []
       allOrders = allOrders.concat(orders)
+      pageCount++
 
       if (orders.length < PAGE_SIZE) {
         break // 最後のページ
       }
       offset += PAGE_SIZE
+    }
+
+    if (pageCount >= MAX_PAGES) {
+      console.warn(`[BASE Orders] Reached max page limit (${MAX_PAGES}), results may be incomplete`)
     }
 
     // 売上設定から締め時間を取得

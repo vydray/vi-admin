@@ -168,7 +168,7 @@ export async function POST(request: NextRequest) {
           debugInfo.push(`${variation.variation_name}: 追加成功`)
         } catch (err) {
           console.error(`Failed to add variation ${variation.variation_name}:`, err)
-          errors.push(`追加失敗: ${variation.variation_name} - ${err instanceof Error ? err.message : 'Unknown error'}`)
+          errors.push(`追加失敗: ${variation.variation_name}`)
           errorCount++
         }
       } else if (shouldBeInBase && existsInBase && !variation.is_synced) {
@@ -234,7 +234,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('BASE sync-variations error:', error)
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Internal server error' },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }

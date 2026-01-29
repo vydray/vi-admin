@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 新しいパスワードをハッシュ化（自動的にbcryptでハッシュ化）
-    const saltRounds = 10
+    const saltRounds = 12
     const newPasswordHash = await bcrypt.hash(newPassword, saltRounds)
 
     // データベースを更新

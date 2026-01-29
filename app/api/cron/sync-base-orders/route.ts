@@ -36,7 +36,7 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error('[CRON] sync-base-orders error:', error)
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Internal server error' },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }
@@ -156,8 +156,10 @@ async function executeSyncBaseOrders() {
         let allOrders: any[] = []
         let offset = 0
         const PAGE_SIZE = 100
+        const MAX_PAGES = 100 // 最大10,000件まで（DoS対策）
+        let pageCount = 0
 
-        while (true) {
+        while (pageCount < MAX_PAGES) {
           const ordersResponse = await fetchOrders(accessToken, {
             start_ordered: startDate,
             end_ordered: endDate,
@@ -167,11 +169,16 @@ async function executeSyncBaseOrders() {
 
           const orders = ordersResponse.orders || []
           allOrders = allOrders.concat(orders)
+          pageCount++
 
           if (orders.length < PAGE_SIZE) {
             break // 最後のページ
           }
           offset += PAGE_SIZE
+        }
+
+        if (pageCount >= MAX_PAGES) {
+          console.warn(`[BASE Sync] Store ${setting.store_id}: Reached max page limit (${MAX_PAGES}), results may be incomplete`)
         }
 
         // 売上設定から締め時間を取得
@@ -362,7 +369,7 @@ async function executeSyncBaseOrders() {
   } catch (error) {
     console.error('[BASE Sync] executeSyncBaseOrders error:', error)
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Internal server error' },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }

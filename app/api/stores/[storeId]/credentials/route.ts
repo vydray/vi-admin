@@ -129,7 +129,7 @@ export async function PUT(
       }
       if (password) {
         // bcryptでハッシュ化
-        const saltRounds = 10
+        const saltRounds = 12
         updateData.password_hash = await bcrypt.hash(password, saltRounds)
       }
 
@@ -205,7 +205,7 @@ export async function POST(
 
     } else if (type === 'admin') {
       // vi-adminユーザー作成（パスワードはbcryptハッシュ化）
-      const saltRounds = 10
+      const saltRounds = 12
       const passwordHash = await bcrypt.hash(password, saltRounds)
       const { permissions } = body
 

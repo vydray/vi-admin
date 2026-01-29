@@ -647,12 +647,14 @@ async function calculatePayslipForCast(
       .upsert(payslipData, { onConflict: 'cast_id,store_id,year_month' })
 
     if (error) {
-      return { success: false, error: error.message }
+      console.error('Payslip upsert error:', error)
+      return { success: false, error: 'Failed to save payslip' }
     }
 
     return { success: true }
   } catch (err) {
-    return { success: false, error: String(err) }
+    console.error('Payslip calculation error:', err)
+    return { success: false, error: 'Failed to calculate payslip' }
   }
 }
 

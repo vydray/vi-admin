@@ -29,14 +29,15 @@ interface ScheduledPostWithSettings {
 // Cron認証（Vercel Cron Jobs用）
 function validateCronRequest(request: NextRequest): boolean {
   const authHeader = request.headers.get('authorization')
-  if (authHeader === `Bearer ${process.env.CRON_SECRET}`) {
-    return true
+  const cronSecret = process.env.CRON_SECRET
+
+  // CRON_SECRETが未設定の場合は全てブロック
+  if (!cronSecret) {
+    console.error('[Cron Auth] CRON_SECRET is not configured')
+    return false
   }
-  // 開発環境ではスキップ
-  if (process.env.NODE_ENV === 'development') {
-    return true
-  }
-  return false
+
+  return authHeader === `Bearer ${cronSecret}`
 }
 
 export async function GET(request: NextRequest) {
@@ -389,7 +390,7 @@ async function postTweet(
     console.error('Post tweet error:', error)
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: 'Failed to post tweet',
     }
   }
 }

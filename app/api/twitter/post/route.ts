@@ -193,7 +193,7 @@ async function postTweet(
     console.error('Post tweet error:', error)
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: 'Failed to post tweet',
     }
   }
 }

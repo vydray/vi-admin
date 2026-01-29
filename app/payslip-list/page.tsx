@@ -206,10 +206,10 @@ function PayslipListContent() {
           card.innerHTML = `
             <div style="background: #f8fafc; padding: 6px 10px; border-bottom: 1px solid #ddd; display: flex; justify-content: space-between; align-items: center;">
               <div>
-                <div style="font-size: 10px; color: #666;">${storeName || ''}</div>
+                <div style="font-size: 10px; color: #666;">${escapeHtml(storeName)}</div>
                 <div style="font-size: 12px; color: #333; font-weight: 500;">${format(selectedMonth, 'yyyy年M月')} 報酬明細</div>
               </div>
-              <div style="font-size: 15px; font-weight: 600; color: #1e1e1e;">${p.cast_name}</div>
+              <div style="font-size: 15px; font-weight: 600; color: #1e1e1e;">${escapeHtml(p.cast_name)}</div>
             </div>
             <div style="padding: 8px 10px; flex: 1; font-size: 10px;">
               <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
@@ -582,6 +582,17 @@ function PayslipListContent() {
 
 const formatCurrency = (value: number) => {
   return '¥' + value.toLocaleString()
+}
+
+// HTML escape function to prevent XSS
+const escapeHtml = (str: string | null | undefined): string => {
+  if (!str) return ''
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
 }
 
 const navButtonStyle: React.CSSProperties = {

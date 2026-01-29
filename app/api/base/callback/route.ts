@@ -3,6 +3,12 @@ import { getSupabaseServerClient } from '@/lib/supabase'
 import { exchangeCodeForToken } from '@/lib/baseApi'
 import { cookies } from 'next/headers'
 
+// 環境変数チェック: NEXT_PUBLIC_SITE_URLは必須（本番環境）
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ||
+  (process.env.NODE_ENV === 'production'
+    ? (() => { throw new Error('NEXT_PUBLIC_SITE_URL is required in production') })()
+    : 'http://localhost:3000')
+
 /**
  * BASE OAuthコールバック
  * GET /api/base/callback?code=xxx&state=xxx
@@ -18,13 +24,13 @@ export async function GET(request: NextRequest) {
     if (error) {
       const errorDescription = searchParams.get('error_description') || 'Unknown error'
       return NextResponse.redirect(
-        `${process.env.NEXT_PUBLIC_SITE_URL}/base-settings?error=${encodeURIComponent(errorDescription)}`
+        `${SITE_URL}/base-settings?error=${encodeURIComponent(errorDescription)}`
       )
     }
 
     if (!code || !state) {
       return NextResponse.redirect(
-        `${process.env.NEXT_PUBLIC_SITE_URL}/base-settings?error=${encodeURIComponent('Missing code or state')}`
+        `${SITE_URL}/base-settings?error=${encodeURIComponent('Missing code or state')}`
       )
     }
 
@@ -34,13 +40,24 @@ export async function GET(request: NextRequest) {
 
     if (!savedState || savedState !== state) {
       return NextResponse.redirect(
-        `${process.env.NEXT_PUBLIC_SITE_URL}/base-settings?error=${encodeURIComponent('Invalid state')}`
+        `${SITE_URL}/base-settings?error=${encodeURIComponent('Invalid state')}`
       )
     }
 
-    // stateからstore_idを取得
-    const stateData = JSON.parse(Buffer.from(state, 'base64').toString())
-    const storeId = parseInt(stateData.store_id)
+    // stateからstore_idを取得（JSON.parseエラーハンドリング）
+    let stateData: any
+    let storeId: number
+    try {
+      stateData = JSON.parse(Buffer.from(state, 'base64').toString())
+      storeId = parseInt(stateData.store_id)
+      if (isNaN(storeId)) {
+        throw new Error('Invalid store_id in state')
+      }
+    } catch (parseError) {
+      return NextResponse.redirect(
+        `${SITE_URL}/base-settings?error=${encodeURIComponent('Invalid state data')}`
+      )
+    }
 
     const supabase = getSupabaseServerClient()
 
@@ -53,7 +70,7 @@ export async function GET(request: NextRequest) {
 
     if (settingsError || !settings?.client_id || !settings?.client_secret) {
       return NextResponse.redirect(
-        `${process.env.NEXT_PUBLIC_SITE_URL}/base-settings?error=${encodeURIComponent('API credentials not found')}`
+        `${SITE_URL}/base-settings?error=${encodeURIComponent('API credentials not found')}`
       )
     }
 
@@ -81,7 +98,7 @@ export async function GET(request: NextRequest) {
     if (updateError) {
       console.error('Token save error:', updateError)
       return NextResponse.redirect(
-        `${process.env.NEXT_PUBLIC_SITE_URL}/base-settings?error=${encodeURIComponent('Failed to save tokens')}`
+        `${SITE_URL}/base-settings?error=${encodeURIComponent('Failed to save tokens')}`
       )
     }
 
@@ -90,12 +107,12 @@ export async function GET(request: NextRequest) {
 
     // 成功
     return NextResponse.redirect(
-      `${process.env.NEXT_PUBLIC_SITE_URL}/base-settings?success=true`
+      `${SITE_URL}/base-settings?success=true`
     )
   } catch (error) {
     console.error('BASE callback error:', error)
     return NextResponse.redirect(
-      `${process.env.NEXT_PUBLIC_SITE_URL}/base-settings?error=${encodeURIComponent('Internal server error')}`
+      `${SITE_URL}/base-settings?error=${encodeURIComponent('Internal server error')}`
     )
   }
 }

@@ -3,6 +3,12 @@ import { getSupabaseServerClient } from '@/lib/supabase'
 import { getAuthorizationUrl } from '@/lib/baseApi'
 import { cookies } from 'next/headers'
 
+// 環境変数チェック: NEXT_PUBLIC_SITE_URLは必須（本番環境）
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ||
+  (process.env.NODE_ENV === 'production'
+    ? (() => { throw new Error('NEXT_PUBLIC_SITE_URL is required in production') })()
+    : 'http://localhost:3000')
+
 /**
  * BASE OAuth認可フロー開始
  * GET /api/base/auth?store_id=1
@@ -48,7 +54,7 @@ export async function GET(request: NextRequest) {
       path: '/',
     })
 
-    const redirectUri = `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/base/callback`
+    const redirectUri = `${SITE_URL}/api/base/callback`
     const authUrl = getAuthorizationUrl(settings.client_id, redirectUri, state)
 
     return NextResponse.redirect(authUrl)

@@ -30,7 +30,7 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error('[CRON] refresh-base-tokens error:', error)
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Internal server error' },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }
@@ -84,13 +84,12 @@ async function executeRefreshBaseTokens() {
 
         results.push({ store_id: setting.store_id, success: true })
       } catch (refreshError) {
-        const errorMessage = refreshError instanceof Error ? refreshError.message : 'Unknown error'
+        console.error(`[BASE Token Refresh] Store ${setting.store_id}: Failed -`, refreshError)
         results.push({
           store_id: setting.store_id,
           success: false,
-          error: errorMessage,
+          error: 'Token refresh failed',
         })
-        console.error(`[BASE Token Refresh] Store ${setting.store_id}: Failed -`, errorMessage)
       }
     }
 
@@ -102,7 +101,7 @@ async function executeRefreshBaseTokens() {
   } catch (error) {
     console.error('[BASE Token Refresh] executeRefreshBaseTokens error:', error)
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Internal server error' },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }
