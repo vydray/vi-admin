@@ -11,6 +11,29 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 );
 
+/**
+ * shiftTime の検証関数
+ * @param shiftTime - "HH:mm-HH:mm" 形式の文字列
+ * @returns { start: string; end: string } | null
+ */
+function validateShiftTime(shiftTime: string | undefined): { start: string; end: string } | null {
+  if (!shiftTime || typeof shiftTime !== 'string') {
+    return null;
+  }
+
+  const parts = shiftTime.split('-');
+  if (parts.length !== 2) {
+    return null;
+  }
+
+  const [start, end] = parts;
+  if (!start || !end) {
+    return null;
+  }
+
+  return { start, end };
+}
+
 // セッション検証関数
 async function validateSession(): Promise<{ storeId: number; isAllStore: boolean } | null> {
   const cookieStore = await cookies()
@@ -162,13 +185,20 @@ async function executeAutoApprovedRequest(
 ) {
   switch (requestType) {
     case 'request_shift': {
+      // shiftTime の検証
+      const shiftTimes = validateShiftTime(requestData.shiftTime);
+      if (!shiftTimes) {
+        console.error('Invalid shiftTime format in auto-approved request:', requestData.shiftTime);
+        throw new Error('Invalid shiftTime format (expected: "HH:mm-HH:mm")');
+      }
+
       // シフトを追加
       await supabase.from('shifts').insert({
         store_id: storeId,
         cast_id: castId,
         work_date: requestData.date,
-        start_time: requestData.shiftTime.split('-')[0],
-        end_time: requestData.shiftTime.split('-')[1],
+        start_time: shiftTimes.start,
+        end_time: shiftTimes.end,
         is_confirmed: true,
       });
       break;

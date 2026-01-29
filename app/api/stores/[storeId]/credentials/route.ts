@@ -3,17 +3,29 @@ import { getSupabaseServerClient } from '@/lib/supabase'
 import bcrypt from 'bcryptjs'
 import { cookies } from 'next/headers'
 
-// 認証チェック
-async function checkSuperAdmin() {
+// 認証と店舗アクセス権限をチェック
+async function validateStoreAccess(storeId: string): Promise<{ session: any; hasAccess: boolean }> {
   const cookieStore = await cookies()
   const sessionCookie = cookieStore.get('admin_session')
-  if (!sessionCookie) return false
+  if (!sessionCookie) return { session: null, hasAccess: false }
 
   try {
     const session = JSON.parse(sessionCookie.value)
-    return session.role === 'super_admin'
+    const targetStoreId = parseInt(storeId)
+
+    // super_admin は全店舗アクセス可能
+    if (session.role === 'super_admin') {
+      return { session, hasAccess: true }
+    }
+
+    // store_admin は自店舗のみアクセス可能
+    if (session.role === 'store_admin' && session.storeId === targetStoreId) {
+      return { session, hasAccess: true }
+    }
+
+    return { session, hasAccess: false }
   } catch {
-    return false
+    return { session: null, hasAccess: false }
   }
 }
 
@@ -23,12 +35,11 @@ export async function GET(
   { params }: { params: Promise<{ storeId: string }> }
 ) {
   try {
-    const isSuperAdmin = await checkSuperAdmin()
-    if (!isSuperAdmin) {
+    const { storeId } = await params
+    const { session, hasAccess } = await validateStoreAccess(storeId)
+    if (!hasAccess) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-
-    const { storeId } = await params
     const supabase = getSupabaseServerClient()
 
     // POSユーザーを取得（passwordカラムを使用）
@@ -69,12 +80,11 @@ export async function PUT(
   { params }: { params: Promise<{ storeId: string }> }
 ) {
   try {
-    const isSuperAdmin = await checkSuperAdmin()
-    if (!isSuperAdmin) {
+    const { storeId } = await params
+    const { session, hasAccess } = await validateStoreAccess(storeId)
+    if (!hasAccess) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-
-    const { storeId } = await params
     const body = await request.json()
     const { type, userId, username, password } = body
 
@@ -159,12 +169,11 @@ export async function POST(
   { params }: { params: Promise<{ storeId: string }> }
 ) {
   try {
-    const isSuperAdmin = await checkSuperAdmin()
-    if (!isSuperAdmin) {
+    const { storeId } = await params
+    const { session, hasAccess } = await validateStoreAccess(storeId)
+    if (!hasAccess) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-
-    const { storeId } = await params
     const body = await request.json()
     const { type, username, password, role } = body
 

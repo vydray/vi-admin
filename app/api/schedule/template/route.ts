@@ -140,11 +140,189 @@ export async function PUT(request: NextRequest) {
     const body = await request.json();
     const { storeId, name, mode, imagePath, placeholderPath, frames, frameSize, nameStyle, gridSettings } = body;
 
+    // 必須フィールドチェック
     if (!storeId) {
       return NextResponse.json(
-        { error: 'Missing storeId' },
+        { error: 'storeId is required' },
         { status: 400 }
       );
+    }
+
+    // storeId の型チェック
+    if (typeof storeId !== 'number' || storeId <= 0) {
+      return NextResponse.json(
+        { error: 'Invalid storeId format' },
+        { status: 400 }
+      );
+    }
+
+    // name の型チェック（任意）
+    if (name !== undefined && name !== null && typeof name !== 'string') {
+      return NextResponse.json(
+        { error: 'Invalid name format' },
+        { status: 400 }
+      );
+    }
+
+    // mode の型チェック（任意）
+    if (mode !== undefined && typeof mode !== 'string') {
+      return NextResponse.json(
+        { error: 'Invalid mode format' },
+        { status: 400 }
+      );
+    }
+
+    // imagePath の型チェック（任意）
+    if (imagePath !== undefined && imagePath !== null && typeof imagePath !== 'string') {
+      return NextResponse.json(
+        { error: 'Invalid imagePath format' },
+        { status: 400 }
+      );
+    }
+
+    // placeholderPath の型チェック（任意）
+    if (placeholderPath !== undefined && placeholderPath !== null && typeof placeholderPath !== 'string') {
+      return NextResponse.json(
+        { error: 'Invalid placeholderPath format' },
+        { status: 400 }
+      );
+    }
+
+    // frames の配列サイズ制限（DoS対策）
+    if (frames !== undefined) {
+      if (!Array.isArray(frames)) {
+        return NextResponse.json(
+          { error: 'frames must be an array' },
+          { status: 400 }
+        );
+      }
+      if (frames.length > 100) {
+        return NextResponse.json(
+          { error: 'Too many frames (max 100)' },
+          { status: 400 }
+        );
+      }
+      // 各フレームの型チェック
+      for (const frame of frames) {
+        if (typeof frame !== 'object' || frame === null) {
+          return NextResponse.json(
+            { error: 'Invalid frame format' },
+            { status: 400 }
+          );
+        }
+        // x, y の型チェック
+        if (typeof frame.x !== 'number' || typeof frame.y !== 'number') {
+          return NextResponse.json(
+            { error: 'Frame x and y must be numbers' },
+            { status: 400 }
+          );
+        }
+      }
+    }
+
+    // frameSize の型チェック
+    if (frameSize !== undefined) {
+      if (typeof frameSize !== 'object' || frameSize === null) {
+        return NextResponse.json(
+          { error: 'Invalid frameSize format' },
+          { status: 400 }
+        );
+      }
+      if (typeof frameSize.width !== 'number' || typeof frameSize.height !== 'number') {
+        return NextResponse.json(
+          { error: 'frameSize width and height must be numbers' },
+          { status: 400 }
+        );
+      }
+      // サイズの妥当性チェック
+      if (frameSize.width <= 0 || frameSize.height <= 0 || frameSize.width > 10000 || frameSize.height > 10000) {
+        return NextResponse.json(
+          { error: 'Invalid frameSize dimensions (1-10000)' },
+          { status: 400 }
+        );
+      }
+    }
+
+    // nameStyle の型チェック
+    if (nameStyle !== undefined) {
+      if (typeof nameStyle !== 'object' || nameStyle === null) {
+        return NextResponse.json(
+          { error: 'Invalid nameStyle format' },
+          { status: 400 }
+        );
+      }
+      // 各プロパティの型チェック
+      if (nameStyle.font_size !== undefined && typeof nameStyle.font_size !== 'number') {
+        return NextResponse.json(
+          { error: 'nameStyle.font_size must be a number' },
+          { status: 400 }
+        );
+      }
+      if (nameStyle.font_family !== undefined && typeof nameStyle.font_family !== 'string') {
+        return NextResponse.json(
+          { error: 'nameStyle.font_family must be a string' },
+          { status: 400 }
+        );
+      }
+      if (nameStyle.color !== undefined && typeof nameStyle.color !== 'string') {
+        return NextResponse.json(
+          { error: 'nameStyle.color must be a string' },
+          { status: 400 }
+        );
+      }
+    }
+
+    // gridSettings の型チェック
+    if (gridSettings !== undefined) {
+      if (typeof gridSettings !== 'object' || gridSettings === null) {
+        return NextResponse.json(
+          { error: 'Invalid gridSettings format' },
+          { status: 400 }
+        );
+      }
+      // 各プロパティの型チェック
+      if (gridSettings.columns !== undefined && typeof gridSettings.columns !== 'number') {
+        return NextResponse.json(
+          { error: 'gridSettings.columns must be a number' },
+          { status: 400 }
+        );
+      }
+      if (gridSettings.rows !== undefined && typeof gridSettings.rows !== 'number') {
+        return NextResponse.json(
+          { error: 'gridSettings.rows must be a number' },
+          { status: 400 }
+        );
+      }
+      if (gridSettings.photo_width !== undefined && typeof gridSettings.photo_width !== 'number') {
+        return NextResponse.json(
+          { error: 'gridSettings.photo_width must be a number' },
+          { status: 400 }
+        );
+      }
+      if (gridSettings.photo_height !== undefined && typeof gridSettings.photo_height !== 'number') {
+        return NextResponse.json(
+          { error: 'gridSettings.photo_height must be a number' },
+          { status: 400 }
+        );
+      }
+      if (gridSettings.gap !== undefined && typeof gridSettings.gap !== 'number') {
+        return NextResponse.json(
+          { error: 'gridSettings.gap must be a number' },
+          { status: 400 }
+        );
+      }
+      if (gridSettings.background_color !== undefined && typeof gridSettings.background_color !== 'string') {
+        return NextResponse.json(
+          { error: 'gridSettings.background_color must be a string' },
+          { status: 400 }
+        );
+      }
+      if (gridSettings.show_names !== undefined && typeof gridSettings.show_names !== 'boolean') {
+        return NextResponse.json(
+          { error: 'gridSettings.show_names must be a boolean' },
+          { status: 400 }
+        );
+      }
     }
 
     // upsert: 存在すれば更新、なければ作成
@@ -198,6 +376,13 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ success: true, template: data });
   } catch (error) {
     console.error('Update template error:', error);
+    // JSON パースエラーの場合
+    if (error instanceof SyntaxError) {
+      return NextResponse.json(
+        { error: 'Invalid JSON format' },
+        { status: 400 }
+      );
+    }
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

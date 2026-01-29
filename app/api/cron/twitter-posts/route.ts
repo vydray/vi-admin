@@ -7,6 +7,24 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
+// 型定義
+interface TwitterSettings {
+  api_key: string
+  api_secret: string
+  access_token: string
+  refresh_token: string
+}
+
+interface ScheduledPostWithSettings {
+  id: string
+  store_id: number
+  content: string
+  image_url: string | null
+  scheduled_at: string
+  status: string
+  store_twitter_settings: TwitterSettings
+}
+
 // Cron認証（Vercel Cron Jobs用）
 function validateCronRequest(request: NextRequest): boolean {
   const authHeader = request.headers.get('authorization')
@@ -58,7 +76,8 @@ export async function GET(request: NextRequest) {
     let failCount = 0
 
     for (const post of pendingPosts) {
-      const settings = (post as any).store_twitter_settings
+      const typedPost = post as ScheduledPostWithSettings
+      const settings = typedPost.store_twitter_settings
 
       if (!settings?.access_token) {
         // 認証情報がない場合はスキップ
