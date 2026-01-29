@@ -1068,16 +1068,29 @@ async function recalculateForDate(storeId: number, date: string): Promise<{
 
 // POST: 指定日のデータを再計算
 export async function POST(request: NextRequest) {
-  const session = await validateSession()
-  if (!session) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  // Cron認証チェック（x-cron-secretヘッダーがある場合）
+  const cronSecret = request.headers.get('x-cron-secret')
+  const isCronRequest = cronSecret === process.env.CRON_SECRET
+
+  // Cron以外の場合はセッション検証
+  let session: { storeId: number; isAllStore: boolean } | null = null
+  if (!isCronRequest) {
+    session = await validateSession()
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
   }
 
   try {
     const body = await request.json()
     const { store_id, date, date_from, date_to } = body
 
-    const storeId = store_id || session.storeId
+    // Cronリクエストの場合はstore_idが必須
+    if (isCronRequest && !store_id) {
+      return NextResponse.json({ error: 'store_id is required for cron requests' }, { status: 400 })
+    }
+
+    const storeId = store_id || session?.storeId
 
     // 日付範囲が指定されている場合
     if (date_from && date_to) {

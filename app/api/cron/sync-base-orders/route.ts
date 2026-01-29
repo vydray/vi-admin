@@ -233,9 +233,63 @@ export async function GET(request: Request) {
       }
     }
 
+    // BASE注文同期後、過去3日分の売上を自動再計算
+    console.log('[BASE Sync] Starting automatic sales recalculation for past 3 days...')
+    const recalcResults: any[] = []
+
+    for (const result of results) {
+      if (!result.success || result.imported === 0) continue
+
+      // 過去3日分の日付を生成
+      const today = new Date()
+      const dates: string[] = []
+      for (let i = 0; i < 3; i++) {
+        const date = new Date(today)
+        date.setDate(date.getDate() - i)
+        dates.push(date.toISOString().split('T')[0])
+      }
+
+      // 各日付の売上を再計算
+      for (const date of dates) {
+        try {
+          // VercelのデプロイURL、またはローカル開発時はlocalhost
+          const baseUrl = process.env.VERCEL_URL
+            ? `https://${process.env.VERCEL_URL}`
+            : 'http://localhost:3000'
+
+          const recalcResponse = await fetch(`${baseUrl}/api/cast-stats/recalculate`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-cron-secret': secret,
+            },
+            body: JSON.stringify({
+              store_id: result.store_id,
+              date: date,
+            }),
+          })
+
+          if (recalcResponse.ok) {
+            const recalcData = await recalcResponse.json()
+            recalcResults.push({ store_id: result.store_id, date, success: true, ...recalcData })
+            console.log(`[BASE Sync] Store ${result.store_id}: Sales recalculated for ${date}`)
+          } else {
+            const errorText = await recalcResponse.text()
+            recalcResults.push({ store_id: result.store_id, date, success: false, error: errorText })
+            console.error(`[BASE Sync] Store ${result.store_id}: Sales recalc failed for ${date} -`, errorText)
+          }
+        } catch (recalcError) {
+          const errorMsg = recalcError instanceof Error ? recalcError.message : 'Unknown error'
+          recalcResults.push({ store_id: result.store_id, date, success: false, error: errorMsg })
+          console.error(`[BASE Sync] Store ${result.store_id}: Sales recalc error for ${date} -`, errorMsg)
+        }
+      }
+    }
+
     return NextResponse.json({
       success: true,
       results,
+      recalcResults,
       syncedAt: new Date().toISOString(),
     })
   } catch (error) {
