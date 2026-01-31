@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getSupabaseServerClient } from '@/lib/supabase'
 import { fetchOrders, fetchOrderDetail, refreshAccessToken } from '@/lib/baseApi'
 import { withCronLock } from '@/lib/cronLock'
+import { recalculateForDate } from '@/lib/recalculateSales'
 
 /**
  * BASE注文自動同期
@@ -323,35 +324,23 @@ async function executeSyncBaseOrders() {
         dates.push(date.toISOString().split('T')[0])
       }
 
-      // 各日付の売上を再計算
+      // 各日付の売上を再計算（直接関数呼び出しでDeployment Protectionを回避）
       for (const date of dates) {
         try {
-          // VercelのデプロイURL、またはローカル開発時はlocalhost
-          const baseUrl = process.env.VERCEL_URL
-            ? `https://${process.env.VERCEL_URL}`
-            : 'http://localhost:3000'
+          const recalcResult = await recalculateForDate(result.store_id, date)
 
-          const recalcResponse = await fetch(`${baseUrl}/api/cast-stats/recalculate`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-cron-secret': process.env.CRON_SECRET || '',
-              'x-vercel-protection-bypass': process.env.VERCEL_PROTECTION_BYPASS || '',
-            },
-            body: JSON.stringify({
+          if (recalcResult.success) {
+            recalcResults.push({
               store_id: result.store_id,
-              date: date,
-            }),
-          })
-
-          if (recalcResponse.ok) {
-            const recalcData = await recalcResponse.json()
-            recalcResults.push({ store_id: result.store_id, date, success: true, ...recalcData })
-            console.log(`[BASE Sync] Store ${result.store_id}: Sales recalculated for ${date}`)
+              date,
+              success: true,
+              castsProcessed: recalcResult.castsProcessed,
+              itemsProcessed: recalcResult.itemsProcessed
+            })
+            console.log(`[BASE Sync] Store ${result.store_id}: Sales recalculated for ${date} (${recalcResult.castsProcessed} casts, ${recalcResult.itemsProcessed} items)`)
           } else {
-            const errorText = await recalcResponse.text()
-            recalcResults.push({ store_id: result.store_id, date, success: false, error: errorText })
-            console.error(`[BASE Sync] Store ${result.store_id}: Sales recalc failed for ${date} -`, errorText)
+            recalcResults.push({ store_id: result.store_id, date, success: false, error: recalcResult.error })
+            console.error(`[BASE Sync] Store ${result.store_id}: Sales recalc failed for ${date} -`, recalcResult.error)
           }
         } catch (recalcError) {
           const errorMsg = recalcError instanceof Error ? recalcError.message : 'Unknown error'
