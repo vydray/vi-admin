@@ -848,11 +848,12 @@ export default function Home() {
           color="#3498db"
           isMobile={isMobile}
           stats={[
-            { label: '店舗売上', value: '¥' + data.monthlySales.toLocaleString() },
-            { label: 'BASE売上', value: '¥' + data.monthlyBaseSales.toLocaleString() },
-            { label: '現金売上', value: '¥' + data.monthlyCashSales.toLocaleString() },
-            { label: 'カード売上', value: '¥' + data.monthlyCardSales.toLocaleString() },
-            { label: '売掛', value: '¥' + data.monthlyCredit.toLocaleString() },
+            { label: '総売上', value: '¥' + (data.monthlySales + data.monthlyBaseSales).toLocaleString() },
+            { label: '　├ 店舗売上', value: '¥' + data.monthlySales.toLocaleString() },
+            { label: '　│　├ 現金', value: '¥' + data.monthlyCashSales.toLocaleString() },
+            { label: '　│　├ カード', value: '¥' + data.monthlyCardSales.toLocaleString() },
+            { label: '　│　└ 売掛', value: '¥' + data.monthlyCredit.toLocaleString() },
+            { label: '　└ BASE売上', value: '¥' + data.monthlyBaseSales.toLocaleString() },
             { label: '会計数', value: data.monthlyCustomers + '件' },
             { label: '来店人数', value: data.monthlyGroups + '人' },
             { label: '　├ 初回', value: data.monthlyFirstTime + '人' },
@@ -869,11 +870,12 @@ export default function Home() {
           color="#1abc9c"
           isMobile={isMobile}
           stats={[
-            { label: '店舗売上', value: '¥' + data.todaySales.toLocaleString() },
-            { label: 'BASE売上', value: '¥' + data.todayBaseSales.toLocaleString() },
-            { label: '現金売上', value: '¥' + data.todayCashSales.toLocaleString() },
-            { label: 'カード売上', value: '¥' + data.todayCardSales.toLocaleString() },
-            { label: '売掛', value: '¥' + data.todayCredit.toLocaleString() },
+            { label: '総売上', value: '¥' + (data.todaySales + data.todayBaseSales).toLocaleString() },
+            { label: '　├ 店舗売上', value: '¥' + data.todaySales.toLocaleString() },
+            { label: '　│　├ 現金', value: '¥' + data.todayCashSales.toLocaleString() },
+            { label: '　│　├ カード', value: '¥' + data.todayCardSales.toLocaleString() },
+            { label: '　│　└ 売掛', value: '¥' + data.todayCredit.toLocaleString() },
+            { label: '　└ BASE売上', value: '¥' + data.todayBaseSales.toLocaleString() },
             { label: '会計数', value: data.todayCustomers + '件' },
             { label: '来店人数', value: data.todayGroups + '人' },
             { label: '　├ 初回', value: data.todayFirstTime + '人' },
