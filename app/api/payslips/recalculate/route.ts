@@ -372,7 +372,7 @@ async function calculatePayslipForCast(
       })
     }
 
-    // cast_daily_itemsから商品バックを取得（バック計算はPOSで行われている）
+    // cast_daily_itemsから商品明細を取得（POS売上）
     for (const item of dailyItems || []) {
       if (!dailySalesMap.has(item.date)) {
         dailySalesMap.set(item.date, {
@@ -383,7 +383,20 @@ async function calculatePayslipForCast(
         })
       }
       const dayData = dailySalesMap.get(item.date)!
+      dayData.totalSales += item.subtotal  // POS売上を追加
       dayData.productBack += item.back_amount
+
+      // POS商品明細をitemsに追加（BASE商品と同じ構造）
+      dayData.items.push({
+        product_name: item.product_name,
+        category: item.category || '',
+        sales_type: item.is_self ? 'self' : 'help',
+        quantity: item.quantity,
+        subtotal: item.subtotal,
+        back_ratio: null,  // POSではバック率は保存されていない
+        back_amount: item.back_amount,
+        is_base: false
+      })
     }
 
     // BASE注文のバックを計算して追加
@@ -710,9 +723,10 @@ export async function POST(request: NextRequest) {
   const isCron = validateCronAuth(request)
 
   try {
-    // リクエストボディから store_id と year_month を取得（手動実行時）
+    // リクエストボディから store_id, year_month, cast_id を取得（手動実行時）
     let targetStoreId: number | null = null
     let targetYearMonth: string | null = null
+    let targetCastId: number | null = null
     try {
       const body = await request.json()
 
@@ -735,6 +749,14 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ error: 'Invalid year: must be between 2000 and 2100' }, { status: 400 })
         }
         targetYearMonth = body.year_month
+      }
+
+      // cast_idのバリデーション（単一キャスト計算用）
+      if (body.cast_id !== undefined) {
+        if (typeof body.cast_id !== 'number' || body.cast_id <= 0) {
+          return NextResponse.json({ error: 'Invalid cast_id: must be a positive number' }, { status: 400 })
+        }
+        targetCastId = body.cast_id
       }
     } catch {
       // bodyがない場合（Cronからの呼び出し）
@@ -777,8 +799,28 @@ export async function POST(request: NextRequest) {
     let totalProcessed = 0
     let totalErrors = 0
 
-    if (targetStoreId) {
-      // 特定店舗のみ計算（手動実行）
+    if (targetCastId && targetStoreId) {
+      // 単一キャスト計算（進捗表示用）
+      const { data: cast } = await supabaseAdmin
+        .from('casts')
+        .select('id, name')
+        .eq('id', targetCastId)
+        .eq('store_id', targetStoreId)
+        .single()
+
+      if (cast) {
+        const result = await calculatePayslipForCast(targetStoreId, cast, month)
+        if (result.success) {
+          totalProcessed++
+        } else {
+          totalErrors++
+          console.error(`Payslip error for cast ${cast.id}:`, result.error)
+        }
+      } else {
+        return NextResponse.json({ error: 'Cast not found' }, { status: 404 })
+      }
+    } else if (targetStoreId) {
+      // 特定店舗の全キャスト計算（手動実行）
       const { data: casts } = await supabaseAdmin
         .from('casts')
         .select('id, name')

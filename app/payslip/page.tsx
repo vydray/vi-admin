@@ -201,6 +201,8 @@ function PayslipPageContent() {
   const [savedPayslip, setSavedPayslip] = useState<SavedPayslip | null>(null)
   const [saving, setSaving] = useState(false)
   const [recalculating, setRecalculating] = useState(false)
+  const [recalcProgress, setRecalcProgress] = useState({ current: 0, total: 0, castName: '' })
+  const [showRecalcModal, setShowRecalcModal] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [csvExporting, setCsvExporting] = useState(false)
   const [showExportModal, setShowExportModal] = useState(false)
@@ -494,18 +496,20 @@ function PayslipPageContent() {
   }, [backRates])
 
   // 注文データから売上を計算
-  // cast_daily_stats と payslip_items から売上データを構築
+  // payslip_items から売上データを構築（shift-management-appと同じアプローチ）
   const calculateSummaryFromStats = useCallback(() => {
     // dailySalesDataを作成（日別データ）
     const dailyMap = new Map<string, any>()
 
-    // cast_daily_statsから基本情報を取得
+    // cast_daily_statsから勤務時間と時給収入のみ取得
     dailyStats.forEach(stat => {
       dailyMap.set(stat.date, {
         date: stat.date,
-        totalSales: stat.total_sales_item_based || 0,
-        selfSales: stat.self_sales_item_based || 0,
-        helpSales: stat.help_sales_item_based || 0,
+        totalSales: 0,
+        selfSales: 0,
+        helpSales: 0,
+        baseSales: 0,      // BASE売上（shift-management-appと同じ）
+        storeSales: 0,     // POS売上（shift-management-appと同じ）
         productBack: stat.product_back_item_based || 0,
         workHours: stat.work_hours || 0,
         wageAmount: stat.wage_amount || 0,
@@ -513,31 +517,54 @@ function PayslipPageContent() {
       })
     })
 
-    // payslip_itemsから商品明細を追加
+    // payslip_itemsから売上を計算（shift-management-appと同じ）
     payslipItems.forEach(item => {
-      const dayData = dailyMap.get(item.date)
-      if (dayData) {
-        // BASE商品の売上をtotalSalesに加算（cast_daily_statsにはBASE売上が含まれていないため）
-        if (item.is_base) {
-          dayData.totalSales += item.subtotal
-          if (item.sales_type === 'self') {
-            dayData.selfSales += item.subtotal
-          } else {
-            dayData.helpSales += item.subtotal
-          }
-        }
+      let dayData = dailyMap.get(item.date)
 
-        dayData.items.push({
-          product_name: item.product_name,
-          category: item.category || '',
-          quantity: item.quantity,
-          subtotal: item.subtotal,
-          back_ratio: item.back_ratio || 0,
-          back_amount: item.back_amount,
-          sales_type: item.sales_type,
-          is_base: item.is_base || false
-        })
+      // 日付がcast_daily_statsに存在しない場合は新規作成
+      if (!dayData) {
+        dayData = {
+          date: item.date,
+          totalSales: 0,
+          selfSales: 0,
+          helpSales: 0,
+          baseSales: 0,
+          storeSales: 0,
+          productBack: 0,
+          workHours: 0,
+          wageAmount: 0,
+          items: []
+        }
+        dailyMap.set(item.date, dayData)
       }
+
+      // BASE売上と店舗売上を分けて集計（shift-management-appと同じ）
+      if (item.is_base) {
+        dayData.baseSales += item.subtotal
+      } else {
+        dayData.storeSales += item.subtotal
+      }
+
+      // 推し/ヘルプ別の集計
+      if (item.sales_type === 'self') {
+        dayData.selfSales += item.subtotal
+      } else {
+        dayData.helpSales += item.subtotal
+      }
+
+      // 合計売上 = BASE売上 + 店舗売上
+      dayData.totalSales = dayData.baseSales + dayData.storeSales
+
+      dayData.items.push({
+        product_name: item.product_name,
+        category: item.category || '',
+        quantity: item.quantity,
+        subtotal: item.subtotal,
+        back_ratio: item.back_ratio || 0,
+        back_amount: item.back_amount,
+        sales_type: item.sales_type,
+        is_base: item.is_base || false
+      })
     })
 
     setDailySalesData(dailyMap)
@@ -1055,30 +1082,62 @@ function PayslipPageContent() {
     const yearMonth = format(selectedMonth, 'yyyy-MM')
 
     setRecalculating(true)
-    try {
-      const res = await fetch('/api/payslips/recalculate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ store_id: storeId, year_month: yearMonth })
-      })
+    setShowRecalcModal(true)
 
-      const result = await res.json()
-      if (result.success) {
-        alert(`${result.processed}件の報酬明細を保存しました`)
-        // 現在のキャストのデータを再読み込み
-        if (selectedCastId) {
-          await loadPayslip(selectedCastId, selectedMonth)
+    try {
+      // アクティブなキャストリストを取得
+      const activeCasts = casts.filter(c => c.status === 'active')
+      const total = activeCasts.length
+
+      setRecalcProgress({ current: 0, total, castName: '' })
+
+      let successCount = 0
+      let errorCount = 0
+
+      // 各キャストについて順次計算
+      for (let i = 0; i < activeCasts.length; i++) {
+        const cast = activeCasts[i]
+        setRecalcProgress({ current: i + 1, total, castName: cast.name })
+
+        try {
+          const res = await fetch('/api/payslips/recalculate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              store_id: storeId,
+              year_month: yearMonth,
+              cast_id: cast.id
+            })
+          })
+
+          const result = await res.json()
+          if (result.success) {
+            successCount++
+          } else {
+            errorCount++
+            console.error(`${cast.name}の計算失敗:`, result.error)
+          }
+        } catch (err) {
+          errorCount++
+          console.error(`${cast.name}の計算エラー:`, err)
         }
-      } else {
-        alert('再計算に失敗しました: ' + (result.error || ''))
+      }
+
+      // 完了メッセージ
+      alert(`再計算完了: 成功 ${successCount}件, 失敗 ${errorCount}件`)
+
+      // 現在のキャストのデータを再読み込み
+      if (selectedCastId) {
+        await loadPayslip(selectedCastId, selectedMonth)
       }
     } catch (err) {
       console.error('再計算エラー:', err)
       alert('再計算に失敗しました')
     } finally {
       setRecalculating(false)
+      setShowRecalcModal(false)
     }
-  }, [storeId, selectedCastId, selectedMonth, loadPayslip])
+  }, [storeId, selectedCastId, selectedMonth, casts, loadPayslip])
 
   // PDF出力
   const handleExportPDF = useCallback(async () => {
@@ -2021,6 +2080,62 @@ function PayslipPageContent() {
                   </button>
                 </div>
               </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* 再計算進捗モーダル */}
+      {showRecalcModal && (
+        <>
+          <div style={styles.modalOverlay} />
+          <div style={{
+            ...styles.modal,
+            maxWidth: '400px',
+            width: '90%'
+          }}>
+            <div style={styles.modalHeader}>
+              <h3 style={styles.modalTitle}>報酬明細を再計算中</h3>
+            </div>
+            <div style={{
+              padding: '24px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '20px',
+              alignItems: 'center'
+            }}>
+              {/* 進捗率 */}
+              <div style={{ width: '100%', textAlign: 'center' }}>
+                <div style={{ fontSize: '48px', fontWeight: '700', color: '#007AFF' }}>
+                  {recalcProgress.total > 0 ? Math.round((recalcProgress.current / recalcProgress.total) * 100) : 0}%
+                </div>
+                <div style={{ fontSize: '14px', color: '#86868b', marginTop: '8px' }}>
+                  {recalcProgress.current} / {recalcProgress.total} 件
+                </div>
+              </div>
+
+              {/* プログレスバー */}
+              <div style={{
+                width: '100%',
+                height: '8px',
+                backgroundColor: '#e5e5e5',
+                borderRadius: '4px',
+                overflow: 'hidden'
+              }}>
+                <div style={{
+                  width: `${recalcProgress.total > 0 ? (recalcProgress.current / recalcProgress.total) * 100 : 0}%`,
+                  height: '100%',
+                  backgroundColor: '#007AFF',
+                  transition: 'width 0.3s ease'
+                }} />
+              </div>
+
+              {/* 現在処理中のキャスト名 */}
+              {recalcProgress.castName && (
+                <div style={{ fontSize: '14px', color: '#1d1d1f' }}>
+                  処理中: <span style={{ fontWeight: '600' }}>{recalcProgress.castName}</span>
+                </div>
+              )}
             </div>
           </div>
         </>
