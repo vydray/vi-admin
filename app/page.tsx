@@ -32,6 +32,13 @@ interface DashboardData {
   monthlyNetPayment: number      // 差引支給額合計
   monthlyDailyPayment: number    // 日払い合計
   monthlyWithholdingTax: number  // 源泉徴収合計
+  // 来店種別内訳
+  monthlyFirstTime: number       // 初回
+  monthlyReturn: number          // 再訪
+  monthlyRegular: number         // 常連
+  todayFirstTime: number
+  todayReturn: number
+  todayRegular: number
 }
 
 interface DailySalesData {
@@ -81,6 +88,7 @@ interface OrderWithPayment {
   checkout_datetime: string
   deleted_at: string | null
   guest_count: number | null
+  visit_type: string | null
   payments: Payment[]
 }
 
@@ -106,6 +114,12 @@ export default function Home() {
     monthlyNetPayment: 0,
     monthlyDailyPayment: 0,
     monthlyWithholdingTax: 0,
+    monthlyFirstTime: 0,
+    monthlyReturn: 0,
+    monthlyRegular: 0,
+    todayFirstTime: 0,
+    todayReturn: 0,
+    todayRegular: 0,
   })
   const [dailySales, setDailySales] = useState<DailySalesData[]>([])
   const [loading, setLoading] = useState(true)
@@ -436,7 +450,7 @@ export default function Home() {
       // 今日の営業日のデータを取得（order_dateで絞り込み）
       const { data: todayOrders, error: todayError } = await supabase
         .from('orders')
-        .select('id, total_incl_tax, table_number, order_date, checkout_datetime, guest_count, payments(cash_amount, credit_card_amount, other_payment_amount, change_amount)')
+        .select('id, total_incl_tax, table_number, order_date, checkout_datetime, guest_count, visit_type, payments(cash_amount, credit_card_amount, other_payment_amount, change_amount)')
         .eq('store_id', storeId)
         .gte('order_date', todayBusinessDay)
         .lt('order_date', todayBusinessDay + 'T23:59:59')
@@ -445,7 +459,7 @@ export default function Home() {
       // 選択された月のデータを取得（order_dateで絞り込み）
       const { data: monthlyOrders, error: monthlyError } = await supabase
         .from('orders')
-        .select('id, total_incl_tax, table_number, order_date, checkout_datetime, guest_count, payments(cash_amount, credit_card_amount, other_payment_amount, change_amount)')
+        .select('id, total_incl_tax, table_number, order_date, checkout_datetime, guest_count, visit_type, payments(cash_amount, credit_card_amount, other_payment_amount, change_amount)')
         .eq('store_id', storeId)
         .gte('order_date', monthStart)
         .lte('order_date', monthEnd + 'T23:59:59')
@@ -538,6 +552,14 @@ export default function Home() {
       // 月間来店人数（guest_countの合計）
       const monthlyGuests = typedMonthlyOrders.reduce((sum, order) => sum + (Number(order.guest_count) || 0), 0)
 
+      // 来店種別の集計
+      const monthlyFirstTime = typedMonthlyOrders.filter(o => o.visit_type === '初回').length
+      const monthlyReturn = typedMonthlyOrders.filter(o => o.visit_type === '再訪').length
+      const monthlyRegular = typedMonthlyOrders.filter(o => o.visit_type === '常連').length
+      const todayFirstTime = typedTodayOrders.filter(o => o.visit_type === '初回').length
+      const todayReturn = typedTodayOrders.filter(o => o.visit_type === '再訪').length
+      const todayRegular = typedTodayOrders.filter(o => o.visit_type === '常連').length
+
       // BASE売上の集計（お客様がBASEで実際に支払った金額）
       const monthlyBaseSales = (baseOrdersData || []).reduce(
         (sum, order) => sum + ((order.base_price || 0) * (order.quantity || 1)),
@@ -603,6 +625,12 @@ export default function Home() {
         monthlyNetPayment,
         monthlyDailyPayment,
         monthlyWithholdingTax,
+        monthlyFirstTime,
+        monthlyReturn,
+        monthlyRegular,
+        todayFirstTime,
+        todayReturn,
+        todayRegular,
       })
 
       // 日別売上データの作成（営業日ベース）
@@ -815,6 +843,9 @@ export default function Home() {
             { label: '売掛', value: '¥' + data.monthlyCredit.toLocaleString() },
             { label: '会計数', value: data.monthlyCustomers + '件' },
             { label: '来店人数', value: data.monthlyGroups + '人' },
+            { label: '　├ 初回', value: data.monthlyFirstTime + '件' },
+            { label: '　├ 再訪', value: data.monthlyReturn + '件' },
+            { label: '　└ 常連', value: data.monthlyRegular + '件' },
             { label: '客単価', value: '¥' + avgMonthly.toLocaleString() },
             { label: '人件費', value: '¥' + (data.monthlyNetPayment + data.monthlyDailyPayment).toLocaleString() },
             { label: '源泉徴収', value: '¥' + data.monthlyWithholdingTax.toLocaleString() },
@@ -833,6 +864,9 @@ export default function Home() {
             { label: '売掛', value: '¥' + data.todayCredit.toLocaleString() },
             { label: '会計数', value: data.todayCustomers + '件' },
             { label: '来店人数', value: data.todayGroups + '人' },
+            { label: '　├ 初回', value: data.todayFirstTime + '件' },
+            { label: '　├ 再訪', value: data.todayReturn + '件' },
+            { label: '　└ 常連', value: data.todayRegular + '件' },
             { label: '客単価', value: '¥' + avgToday.toLocaleString() },
           ]}
         />

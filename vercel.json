@@ -27,7 +27,7 @@
     },
     {
       "path": "/api/cron/sync-base-orders",
-      "schedule": "*/15 * * * *"
+      "schedule": "*/5 * * * *"
     },
     {
       "path": "/api/wage-status/auto-update",
