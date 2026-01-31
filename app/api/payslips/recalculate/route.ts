@@ -389,11 +389,8 @@ async function calculatePayslipForCast(
       const backInfo = getBaseBackInfo(baseOrder.product_name)
       if (!backInfo) continue // バック設定がなければスキップ
 
-      // 売上設定を適用
-      let calcPrice = baseOrder.actual_price || 0
-      if (excludeTax) {
-        calcPrice = Math.floor(calcPrice * 100 / (100 + taxPercent))
-      }
+      // BASE注文のactual_priceは既に税抜価格なので、税計算は不要
+      const calcPrice = baseOrder.actual_price || 0
       const subtotal = calcPrice * baseOrder.quantity
       const backAmount = backInfo.type === 'fixed'
         ? backInfo.fixedAmount * baseOrder.quantity

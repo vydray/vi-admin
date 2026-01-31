@@ -840,23 +840,8 @@ function PayslipPageContent() {
           const backInfo = getProductBackInfo(castId, 'BASE', baseOrder.product_name, 'self')
           if (backInfo === null) return // 設定がない商品はスキップ
 
-          // 金額計算（POS注文と同じ売上設定を適用）
-          let calcPrice = baseOrder.actual_price || 0
-
-          if (roundingTiming === 'per_item') {
-            // 単価に対して税抜き・端数処理を適用
-            if (excludeTax) {
-              calcPrice = Math.floor(calcPrice * 100 / (100 + taxPercent))
-            }
-            calcPrice = applyRoundingNew(calcPrice, roundingPosition, roundingType)
-            // サービス料を除外する場合
-            if (excludeService && serviceRate > 0) {
-              const servicePercent = Math.round(serviceRate * 100)
-              const afterServicePrice = Math.floor(calcPrice * (100 + servicePercent) / 100)
-              calcPrice = applyRoundingNew(afterServicePrice, roundingPosition, roundingType)
-            }
-          }
-
+          // BASE注文のactual_priceは既に税抜価格なので、税計算や端数処理は不要
+          const calcPrice = baseOrder.actual_price || 0
           const subtotal = calcPrice * baseOrder.quantity
           const backAmount = backInfo.type === 'fixed'
             ? backInfo.fixedAmount * baseOrder.quantity
