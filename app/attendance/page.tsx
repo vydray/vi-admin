@@ -749,6 +749,27 @@ function AttendancePageContent() {
                     </th>
                   )
                 })}
+                <th style={{
+                  position: 'sticky',
+                  top: 0,
+                  padding: isMobile ? '8px 4px' : '8px',
+                  borderBottom: '2px solid #e2e8f0',
+                  borderLeft: '2px solid #475569',
+                  textAlign: 'center',
+                  backgroundColor: '#f1f5f9',
+                  color: '#475569',
+                  fontWeight: '700',
+                  minWidth: isMobile ? '50px' : '70px',
+                  zIndex: 10,
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+                }}>
+                  <div style={{ fontSize: isMobile ? '13px' : '14px' }}>
+                    合計
+                  </div>
+                  <div style={{ fontSize: isMobile ? '12px' : '12px', fontWeight: '400', marginTop: isMobile ? '2px' : '4px' }}>
+                    出勤日数
+                  </div>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -841,6 +862,19 @@ function AttendancePageContent() {
                       </td>
                     )
                   })}
+                  {/* 合計列 */}
+                  <td style={{
+                    padding: isMobile ? '8px 4px' : '12px',
+                    borderBottom: '1px solid #e2e8f0',
+                    borderLeft: '2px solid #475569',
+                    textAlign: 'center',
+                    backgroundColor: '#f8fafc',
+                    fontWeight: '700',
+                    fontSize: isMobile ? '14px' : '16px',
+                    color: '#1e293b'
+                  }}>
+                    {attendances.filter(a => a.cast_id === cast.id && a.check_in_datetime).length}日
+                  </td>
                 </tr>
               ))}
             </tbody>
