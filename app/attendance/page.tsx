@@ -884,9 +884,9 @@ function AttendancePageContent() {
                   }}>
                     {attendances.filter(a => {
                       if (a.cast_name !== cast.name) return false
-                      // 勤怠ステータスの is_work_day フラグで判定
+                      // 勤怠ステータスの is_work_day フラグで判定（なければis_activeで判定）
                       const status = attendanceStatuses.find(s => s.id === a.status_id)
-                      return status?.is_work_day === true
+                      return status?.is_work_day ?? status?.is_active ?? false
                     }).length}日
                   </td>
                 </tr>
