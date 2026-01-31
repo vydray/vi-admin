@@ -335,7 +335,8 @@ async function executeSyncBaseOrders() {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${process.env.CRON_SECRET || ''}`,
+              'x-cron-secret': process.env.CRON_SECRET || '',
+              'x-vercel-protection-bypass': process.env.VERCEL_PROTECTION_BYPASS || '',
             },
             body: JSON.stringify({
               store_id: result.store_id,
