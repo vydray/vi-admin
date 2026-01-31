@@ -873,7 +873,7 @@ function AttendancePageContent() {
                     fontSize: isMobile ? '14px' : '16px',
                     color: '#1e293b'
                   }}>
-                    {attendances.filter(a => a.cast_id === cast.id && a.check_in_datetime).length}日
+                    {attendances.filter(a => a.cast_name === cast.name && a.check_in_datetime).length}日
                   </td>
                 </tr>
               ))}
