@@ -1085,9 +1085,16 @@ function PayslipPageContent() {
     setShowRecalcModal(true)
 
     try {
-      // アクティブなキャストリストを取得
-      const activeCasts = casts.filter(c => c.status === 'active')
+      // アクティブなキャストリストを取得（在籍中のキャスト）
+      const activeCasts = casts.filter(c => c.status === '在籍')
       const total = activeCasts.length
+
+      if (total === 0) {
+        alert('再計算対象のキャストがいません')
+        setRecalculating(false)
+        setShowRecalcModal(false)
+        return
+      }
 
       setRecalcProgress({ current: 0, total, castName: '' })
 
