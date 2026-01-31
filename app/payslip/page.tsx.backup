@@ -494,44 +494,405 @@ function PayslipPageContent() {
   }, [backRates])
 
   // 注文データから売上を計算
-  // cast_daily_stats と payslip_items から売上データを構築
-  const calculateSummaryFromStats = useCallback(() => {
-    // dailySalesDataを作成（日別データ）
-    const dailyMap = new Map<string, any>()
+  const calculateSalesFromOrders = useCallback(async (castId: number, month: Date, compSettings: CompensationSettings | null) => {
+    if (!salesSettings) return
 
-    // cast_daily_statsから基本情報を取得
-    dailyStats.forEach(stat => {
-      dailyMap.set(stat.date, {
-        date: stat.date,
-        totalSales: stat.total_sales_item_based || 0,
-        selfSales: stat.self_sales_item_based || 0,
-        helpSales: stat.help_sales_item_based || 0,
-        productBack: stat.product_back_item_based || 0,
-        workHours: stat.work_hours || 0,
-        wageAmount: stat.wage_amount || 0,
-        items: []
-      })
+    // 引数から報酬設定を使用（確実に最新の設定を使う）
+    const currentCompSettings = compSettings
+
+    // 有効な報酬形態を取得
+    const types = (currentCompSettings?.compensation_types || []).filter(t => t.is_enabled)
+    let currentCompensationType = types[0] || null
+    if (currentCompSettings?.payment_selection_method === 'specific' && currentCompSettings?.selected_compensation_type_id) {
+      currentCompensationType = types.find(t => t.id === currentCompSettings.selected_compensation_type_id) || currentCompensationType
+    }
+
+    // 商品バック設定（報酬形態から取得）
+    const salesAggregation = currentCompensationType?.sales_aggregation ?? 'item_based'
+    const useProductBack = currentCompensationType?.use_product_back ?? false
+    const useHelpProductBack = currentCompensationType?.use_help_product_back ?? false
+    const helpBackMethod = currentCompensationType?.help_back_calculation_method ?? 'sales_based'
+
+    const startDate = format(startOfMonth(month), 'yyyy-MM-dd')
+    const endDate = format(endOfMonth(month), 'yyyy-MM-dd')
+
+    const cast = casts.find(c => c.id === castId)
+    if (!cast) return
+
+    // 注文データを取得
+    const { data: orders } = await supabase
+      .from('orders')
+      .select(`
+        id,
+        staff_name,
+        order_date,
+        order_items (
+          id,
+          product_name,
+          category,
+          cast_name,
+          quantity,
+          unit_price,
+          subtotal
+        )
+      `)
+      .eq('store_id', storeId)
+      .gte('order_date', startDate)
+      .lte('order_date', endDate + 'T23:59:59')
+      .is('deleted_at', null)
+
+    // BASE注文を取得
+    const { data: baseOrders } = await supabase
+      .from('base_orders')
+      .select('id, base_order_id, product_name, actual_price, quantity, business_date')
+      .eq('store_id', storeId)
+      .eq('cast_id', castId)
+      .gte('business_date', startDate)
+      .lte('business_date', endDate)
+
+    // BASE注文を日別にグループ化
+    const baseOrdersByDate = new Map<string, Array<{
+      id: number
+      base_order_id: string
+      product_name: string
+      actual_price: number | null
+      quantity: number
+      business_date: string | null
+    }>>()
+
+    baseOrders?.forEach(order => {
+      if (order.business_date) {
+        const existing = baseOrdersByDate.get(order.business_date) || []
+        existing.push(order)
+        baseOrdersByDate.set(order.business_date, existing)
+      }
     })
 
-    // payslip_itemsから商品明細を追加
-    payslipItems.forEach(item => {
-      const dayData = dailyMap.get(item.date)
-      if (dayData) {
-        dayData.items.push({
-          product_name: item.product_name,
-          category: item.category || '',
-          quantity: item.quantity,
-          subtotal: item.subtotal,
-          back_ratio: item.back_ratio || 0,
-          back_amount: item.back_amount,
-          sales_type: item.sales_type,
-          is_base: item.is_base || false
+    if ((!orders || orders.length === 0) && (!baseOrders || baseOrders.length === 0)) {
+      setDailySalesData(new Map())
+      return
+    }
+
+    // 日別に分解（order_dateベースで集計）
+    const ordersByDate = new Map<string, Order[]>()
+    orders?.forEach(order => {
+      const dateStr = order.order_date?.split('T')[0]
+      if (dateStr) {
+        const existing = ordersByDate.get(dateStr) || []
+        existing.push(order as Order)
+        ordersByDate.set(dateStr, existing)
+      }
+    })
+
+    // 全日付を取得（POS注文とBASE注文の両方の日付を含める）
+    const allDates = new Set<string>()
+    ordersByDate.forEach((_, dateStr) => allDates.add(dateStr))
+    baseOrdersByDate.forEach((_, dateStr) => allDates.add(dateStr))
+
+    // 日別に集計
+    const dailyMap = new Map<string, DailySalesData>()
+    const castList = casts.map(c => ({ id: c.id, name: c.name }))
+
+    // 各日の売上を計算
+    allDates.forEach(dateStr => {
+      const dayOrders = ordersByDate.get(dateStr) || []
+      const dayBaseOrders = baseOrdersByDate.get(dateStr) || []
+      // 売上は公開設定に基づいて計算
+      const publishedSales = calculateCastSalesByPublishedMethod(
+        dayOrders,
+        castList,
+        salesSettings,
+        0.1, // taxRate
+        0    // serviceRate
+      )
+
+      const publishedResult = publishedSales.find(r => r.cast_id === castId)
+
+      // 商品バックを独自計算（cast_back_ratesに設定がある商品のみ）
+      let productBackTotal = 0
+      const productBackItems: ProductBackItem[] = []
+
+      // 商品バックが無効な場合、またはreceipt_basedモードの場合はスキップ
+      // (商品バックはitem_basedモードでのみ計算)
+      if (!useProductBack || salesAggregation !== 'item_based') {
+        if (publishedResult) {
+          dailyMap.set(dateStr, {
+            date: dateStr,
+            selfSales: publishedResult.self_sales || 0,
+            helpSales: publishedResult.help_sales || 0,
+            totalSales: publishedResult.total_sales || 0,
+            productBack: 0,
+            items: []
+          })
+        }
+        return
+      }
+
+      // 端数処理設定を取得（商品単位の設定を使用）
+      const excludeTax = salesSettings.item_exclude_consumption_tax ?? salesSettings.use_tax_excluded ?? false
+      const excludeService = salesSettings.item_exclude_service_charge ?? false
+      const serviceRate = 0.1 // サービス料率（10%）TODO: systemSettingsから取得
+      const taxPercent = 10 // 消費税率（10%）TODO: systemSettingsから取得
+      const roundingPosition = salesSettings.item_rounding_position ?? 100
+      const roundingMethod = salesSettings.item_rounding_method ?? 'floor_100'
+      const { type: roundingType } = parseRoundingMethod(roundingMethod)
+      const roundingTiming = salesSettings.item_rounding_timing ?? 'per_item'
+      const nominationDistributeAll = salesSettings.item_nomination_distribute_all ?? false
+
+      // ヘルプ除外名リスト（フリー等）
+      const nonHelpNames = salesSettings.non_help_staff_names || []
+
+      dayOrders.forEach(order => {
+        const orderStaffName = order.staff_name
+        // staff_nameはカンマ区切りの場合がある（例: "あんり, にな"）
+        const allNominations = orderStaffName ? orderStaffName.split(', ').map(n => n.trim()) : []
+
+        // ヘルプ除外名を推しから除外（実在キャストの推しのみ残す）
+        const realNominations = allNominations.filter(n => !nonHelpNames.includes(n))
+        // 推しがヘルプ除外名のみの場合（フリーなど）
+        const nominationIsNonHelpOnly = allNominations.length > 0 && realNominations.length === 0
+
+        order.order_items.forEach(item => {
+          // このキャストの商品のみ対象（cast_nameは配列）
+          if (!item.cast_name || !item.cast_name.includes(cast.name)) return
+
+          // 商品上の実キャスト（nonHelpNamesを除外）
+          const castsOnItem = item.cast_name || []
+          const realCastsOnItem = castsOnItem.filter(c => !nonHelpNames.includes(c))
+
+          // 商品上の推しキャスト
+          const nominationCastsOnItem = nominationIsNonHelpOnly
+            ? realCastsOnItem
+            : realCastsOnItem.filter(c => realNominations.includes(c))
+          // 商品上のヘルプキャスト
+          const helpCastsOnItem = nominationIsNonHelpOnly
+            ? []
+            : realCastsOnItem.filter(c => !realNominations.includes(c))
+
+          // SELF/HELP判定
+          // nominationIsNonHelpOnlyの場合（フリー推し等）は商品についてるキャスト全員がSELF
+          // それ以外は、実推しに含まれていればSELF、含まれていなければHELP
+          const salesType: 'self' | 'help' = nominationIsNonHelpOnly
+            ? 'self'
+            : (realNominations.includes(cast.name) ? 'self' : 'help')
+
+          // ヘルプの場合、ヘルプバックが無効ならスキップ
+          if (salesType === 'help' && !useHelpProductBack) {
+            return
+          }
+
+          // バック情報を取得（SELF/HELP別）
+          const backInfo = getProductBackInfo(castId, item.category, item.product_name, salesType)
+          if (backInfo === null) return // 設定がない商品はスキップ
+
+          // 金額計算（compensation-settingsと同じロジック）
+          // 商品ごとの処理（per_itemの場合）は単価に対して適用
+          let calcPrice = item.unit_price
+
+          if (roundingTiming === 'per_item') {
+            // 単価に対して税抜き・端数処理を適用
+            if (excludeTax) {
+              calcPrice = Math.floor(calcPrice * 100 / (100 + taxPercent))
+            }
+            calcPrice = applyRoundingNew(calcPrice, roundingPosition, roundingType)
+            // サービス料を除外する場合
+            if (excludeService && serviceRate > 0) {
+              const servicePercent = Math.round(serviceRate * 100)
+              const afterServicePrice = Math.floor(calcPrice * (100 + servicePercent) / 100)
+              calcPrice = applyRoundingNew(afterServicePrice, roundingPosition, roundingType)
+            }
+          }
+
+          const subtotal = calcPrice * item.quantity
+
+          // バック金額計算（compensation-settingsと同じロジック）
+          // item_multi_cast_distribution: 'all_equal'=ヘルプ商品も売上に含める, 'nomination_only'=推しのみ
+          const salesAttribution = salesSettings.item_multi_cast_distribution ?? 'nomination_only'
+          const helpDistMethod = salesSettings.item_help_distribution_method ?? 'all_to_nomination'
+          const helpRatioSetting = salesSettings.item_help_ratio ?? 50
+
+          const numHelpCasts = helpCastsOnItem.length
+          const hasOrderNomination = realNominations.length > 0
+
+          let baseForBack = subtotal
+
+          if (salesAttribution === 'all_equal') {
+            // ヘルプ商品も売上に含める → 分配計算が必要
+            if (helpDistMethod === 'equal_per_person' || helpDistMethod === 'equal_all') {
+              // 均等割: 全キャストで等分
+              // nominationDistributeAllがtrueの場合、商品についていない推しも含める
+              const shouldIncludeAllNominations = nominationDistributeAll || nominationCastsOnItem.length === 0
+              const nominationsNotOnItem = realNominations.filter(n => !castsOnItem.includes(n))
+
+              if (shouldIncludeAllNominations && !nominationIsNonHelpOnly && nominationsNotOnItem.length > 0) {
+                // 全員（商品上 + 商品外の実推し）で計算
+                const totalPeople = realCastsOnItem.length + nominationsNotOnItem.length
+                baseForBack = totalPeople > 0 ? Math.floor(subtotal / totalPeople) : 0
+              } else if (realCastsOnItem.length > 0) {
+                // 商品上のキャストのみで計算
+                baseForBack = Math.floor(subtotal / realCastsOnItem.length)
+              } else {
+                baseForBack = 0
+              }
+            } else if (helpDistMethod === 'equal') {
+              // 推し・ヘルプで半分ずつ
+              if (hasOrderNomination && numHelpCasts > 0) {
+                if (salesType === 'self') {
+                  const selfShare = Math.floor(subtotal / 2)
+                  // nominationDistributeAllの場合は全推しで分配
+                  const shouldIncludeAllNominations = nominationDistributeAll || nominationCastsOnItem.length === 0
+                  if (shouldIncludeAllNominations && !nominationIsNonHelpOnly) {
+                    baseForBack = realNominations.length > 0 ? Math.floor(selfShare / realNominations.length) : 0
+                  } else {
+                    baseForBack = nominationCastsOnItem.length > 0 ? Math.floor(selfShare / nominationCastsOnItem.length) : 0
+                  }
+                } else {
+                  const helpShare = subtotal - Math.floor(subtotal / 2)
+                  baseForBack = Math.floor(helpShare / numHelpCasts)
+                }
+              } else if (hasOrderNomination && numHelpCasts === 0) {
+                // ヘルプがいない場合、推しが全額
+                const shouldIncludeAllNominations = nominationDistributeAll || nominationCastsOnItem.length === 0
+                if (shouldIncludeAllNominations && !nominationIsNonHelpOnly) {
+                  baseForBack = realNominations.length > 0 ? Math.floor(subtotal / realNominations.length) : subtotal
+                } else {
+                  baseForBack = nominationCastsOnItem.length > 0 ? Math.floor(subtotal / nominationCastsOnItem.length) : subtotal
+                }
+              } else if (!hasOrderNomination && numHelpCasts > 0) {
+                // 推しがいない場合、ヘルプが全額
+                baseForBack = Math.floor(subtotal / numHelpCasts)
+              } else {
+                baseForBack = 0
+              }
+            } else if (helpDistMethod === 'ratio') {
+              // 比率で分配（helpRatioSettingは推しの割合）
+              if (hasOrderNomination && numHelpCasts > 0) {
+                if (salesType === 'self') {
+                  const selfShare = Math.floor(subtotal * helpRatioSetting / 100)
+                  const shouldIncludeAllNominations = nominationDistributeAll || nominationCastsOnItem.length === 0
+                  if (shouldIncludeAllNominations && !nominationIsNonHelpOnly) {
+                    baseForBack = realNominations.length > 0 ? Math.floor(selfShare / realNominations.length) : 0
+                  } else {
+                    baseForBack = nominationCastsOnItem.length > 0 ? Math.floor(selfShare / nominationCastsOnItem.length) : 0
+                  }
+                } else {
+                  const selfShare = Math.floor(subtotal * helpRatioSetting / 100)
+                  const helpShare = subtotal - selfShare
+                  baseForBack = Math.floor(helpShare / numHelpCasts)
+                }
+              } else if (hasOrderNomination && numHelpCasts === 0) {
+                // ヘルプがいない場合、推しが全額
+                const shouldIncludeAllNominations = nominationDistributeAll || nominationCastsOnItem.length === 0
+                if (shouldIncludeAllNominations && !nominationIsNonHelpOnly) {
+                  baseForBack = realNominations.length > 0 ? Math.floor(subtotal / realNominations.length) : subtotal
+                } else {
+                  baseForBack = nominationCastsOnItem.length > 0 ? Math.floor(subtotal / nominationCastsOnItem.length) : subtotal
+                }
+              } else if (!hasOrderNomination && numHelpCasts > 0) {
+                // 推しがいない場合、ヘルプが全額
+                baseForBack = Math.floor(subtotal / numHelpCasts)
+              } else {
+                baseForBack = 0
+              }
+            } else {
+              // all_to_nomination: 全額推しに
+              if (salesType === 'self') {
+                const shouldIncludeAllNominations = nominationDistributeAll || nominationCastsOnItem.length === 0
+                if (shouldIncludeAllNominations && !nominationIsNonHelpOnly) {
+                  baseForBack = realNominations.length > 0 ? Math.floor(subtotal / realNominations.length) : subtotal
+                } else {
+                  baseForBack = nominationCastsOnItem.length > 0 ? Math.floor(subtotal / nominationCastsOnItem.length) : subtotal
+                }
+              } else {
+                baseForBack = 0
+              }
+            }
+          } else {
+            // nomination_only: 推しのみ
+            if (salesType === 'self') {
+              // SELFの場合、推し人数で分配
+              const shouldIncludeAllNominations = nominationDistributeAll || nominationCastsOnItem.length === 0
+              if (shouldIncludeAllNominations && !nominationIsNonHelpOnly) {
+                baseForBack = realNominations.length > 0 ? Math.floor(subtotal / realNominations.length) : subtotal
+              } else {
+                baseForBack = nominationCastsOnItem.length > 0 ? Math.floor(subtotal / nominationCastsOnItem.length) : subtotal
+              }
+            } else {
+              // HELPの場合、full_amountなら商品価格、それ以外は0
+              if (helpBackMethod === 'full_amount') {
+                baseForBack = subtotal
+              } else {
+                baseForBack = 0
+              }
+            }
+          }
+
+          // バック金額計算（端数処理は売上金額にのみ適用、バック金額には適用しない）
+          // 固定額バックの場合はfixedAmountを使用、それ以外は率で計算
+          const backAmount = backInfo.type === 'fixed'
+            ? backInfo.fixedAmount
+            : Math.floor(baseForBack * backInfo.rate / 100)
+
+          productBackTotal += backAmount
+          productBackItems.push({
+            orderId: order.id,
+            productName: item.product_name,
+            category: item.category,
+            quantity: item.quantity,
+            subtotal,
+            backRatio: backInfo.rate,
+            backAmount,
+            salesType,
+            isBase: false
+          })
+        })
+      })
+
+      // BASE注文のバックを計算（POS注文と同じ売上設定を適用）
+      let baseSalesTotal = 0
+      if (useProductBack) {
+        dayBaseOrders.forEach(baseOrder => {
+          // BASE商品のバック情報を取得（カテゴリは'BASE'として検索）
+          const backInfo = getProductBackInfo(castId, 'BASE', baseOrder.product_name, 'self')
+          if (backInfo === null) return // 設定がない商品はスキップ
+
+          // BASE注文のactual_priceは既に税抜価格なので、税計算や端数処理は不要
+          const calcPrice = baseOrder.actual_price || 0
+          const subtotal = calcPrice * baseOrder.quantity
+          const backAmount = backInfo.type === 'fixed'
+            ? backInfo.fixedAmount * baseOrder.quantity
+            : Math.floor(subtotal * backInfo.rate / 100)
+
+          baseSalesTotal += subtotal  // BASE売上を追加
+          productBackTotal += backAmount
+          productBackItems.push({
+            orderId: baseOrder.base_order_id,
+            productName: baseOrder.product_name,
+            category: 'BASE',
+            quantity: baseOrder.quantity,
+            subtotal,
+            backRatio: backInfo.rate,
+            backAmount,
+            salesType: 'self',
+            isBase: true
+          })
+        })
+      }
+
+      if (publishedResult || productBackTotal > 0) {
+        dailyMap.set(dateStr, {
+          date: dateStr,
+          selfSales: publishedResult?.self_sales || 0,
+          helpSales: publishedResult?.help_sales || 0,
+          totalSales: (publishedResult?.total_sales || 0) + baseSalesTotal,  // BASE売上を加算
+          productBack: productBackTotal,
+          items: productBackItems
         })
       }
     })
 
     setDailySalesData(dailyMap)
-  }, [dailyStats, payslipItems])
+  }, [storeId, casts, salesSettings, backRates, getProductBackInfo, parseRoundingMethod])
 
   // 初期ロード完了フラグ
   const [initialized, setInitialized] = useState(false)
@@ -555,18 +916,19 @@ function PayslipPageContent() {
   // ※ キャスト切り替え時のチカチカを防ぐため、loading状態は変更しない
   useEffect(() => {
     if (!initialized) return
-    if (selectedCastId && casts.length > 0) {
+    if (selectedCastId && casts.length > 0 && salesSettings) {
       const loadData = async () => {
         await loadDailyStats(selectedCastId, selectedMonth)
         await loadAttendanceData(selectedCastId, selectedMonth)
-        await loadCompensationSettings(selectedCastId)
+        // 報酬設定をロードし、その結果を直接売上計算に渡す
+        const compSettings = await loadCompensationSettings(selectedCastId)
+        await calculateSalesFromOrders(selectedCastId, selectedMonth, compSettings)
+        // 保存済み報酬明細を取得
         await loadPayslip(selectedCastId, selectedMonth)
-        // cast_daily_stats と payslip_items から売上データを構築
-        calculateSummaryFromStats()
       }
       loadData()
     }
-  }, [initialized, selectedCastId, selectedMonth, casts, loadDailyStats, loadAttendanceData, loadCompensationSettings, loadPayslip, calculateSummaryFromStats])
+  }, [initialized, selectedCastId, selectedMonth, casts, salesSettings, loadDailyStats, loadAttendanceData, loadCompensationSettings, calculateSalesFromOrders, loadPayslip])
 
   // 伝票詳細を取得
   useEffect(() => {
