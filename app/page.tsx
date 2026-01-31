@@ -552,13 +552,25 @@ export default function Home() {
       // 月間来店人数（guest_countの合計）
       const monthlyGuests = typedMonthlyOrders.reduce((sum, order) => sum + (Number(order.guest_count) || 0), 0)
 
-      // 来店種別の集計
-      const monthlyFirstTime = typedMonthlyOrders.filter(o => o.visit_type === '初回').length
-      const monthlyReturn = typedMonthlyOrders.filter(o => o.visit_type === '再訪').length
-      const monthlyRegular = typedMonthlyOrders.filter(o => o.visit_type === '常連').length
-      const todayFirstTime = typedTodayOrders.filter(o => o.visit_type === '初回').length
-      const todayReturn = typedTodayOrders.filter(o => o.visit_type === '再訪').length
-      const todayRegular = typedTodayOrders.filter(o => o.visit_type === '常連').length
+      // 来店種別の集計（guest_countの合計）
+      const monthlyFirstTime = typedMonthlyOrders
+        .filter(o => o.visit_type === '初回')
+        .reduce((sum, o) => sum + (Number(o.guest_count) || 0), 0)
+      const monthlyReturn = typedMonthlyOrders
+        .filter(o => o.visit_type === '再訪')
+        .reduce((sum, o) => sum + (Number(o.guest_count) || 0), 0)
+      const monthlyRegular = typedMonthlyOrders
+        .filter(o => o.visit_type === '常連')
+        .reduce((sum, o) => sum + (Number(o.guest_count) || 0), 0)
+      const todayFirstTime = typedTodayOrders
+        .filter(o => o.visit_type === '初回')
+        .reduce((sum, o) => sum + (Number(o.guest_count) || 0), 0)
+      const todayReturn = typedTodayOrders
+        .filter(o => o.visit_type === '再訪')
+        .reduce((sum, o) => sum + (Number(o.guest_count) || 0), 0)
+      const todayRegular = typedTodayOrders
+        .filter(o => o.visit_type === '常連')
+        .reduce((sum, o) => sum + (Number(o.guest_count) || 0), 0)
 
       // BASE売上の集計（お客様がBASEで実際に支払った金額）
       const monthlyBaseSales = (baseOrdersData || []).reduce(
@@ -843,9 +855,9 @@ export default function Home() {
             { label: '売掛', value: '¥' + data.monthlyCredit.toLocaleString() },
             { label: '会計数', value: data.monthlyCustomers + '件' },
             { label: '来店人数', value: data.monthlyGroups + '人' },
-            { label: '　├ 初回', value: data.monthlyFirstTime + '件' },
-            { label: '　├ 再訪', value: data.monthlyReturn + '件' },
-            { label: '　└ 常連', value: data.monthlyRegular + '件' },
+            { label: '　├ 初回', value: data.monthlyFirstTime + '人' },
+            { label: '　├ 再訪', value: data.monthlyReturn + '人' },
+            { label: '　└ 常連', value: data.monthlyRegular + '人' },
             { label: '客単価', value: '¥' + avgMonthly.toLocaleString() },
             { label: '人件費', value: '¥' + (data.monthlyNetPayment + data.monthlyDailyPayment).toLocaleString() },
             { label: '源泉徴収', value: '¥' + data.monthlyWithholdingTax.toLocaleString() },
@@ -864,9 +876,9 @@ export default function Home() {
             { label: '売掛', value: '¥' + data.todayCredit.toLocaleString() },
             { label: '会計数', value: data.todayCustomers + '件' },
             { label: '来店人数', value: data.todayGroups + '人' },
-            { label: '　├ 初回', value: data.todayFirstTime + '件' },
-            { label: '　├ 再訪', value: data.todayReturn + '件' },
-            { label: '　└ 常連', value: data.todayRegular + '件' },
+            { label: '　├ 初回', value: data.todayFirstTime + '人' },
+            { label: '　├ 再訪', value: data.todayReturn + '人' },
+            { label: '　└ 常連', value: data.todayRegular + '人' },
             { label: '客単価', value: '¥' + avgToday.toLocaleString() },
           ]}
         />
