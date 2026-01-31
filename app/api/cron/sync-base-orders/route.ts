@@ -335,7 +335,7 @@ async function executeSyncBaseOrders() {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'x-cron-secret': process.env.CRON_SECRET || '',
+              'Authorization': `Bearer ${process.env.CRON_SECRET || ''}`,
             },
             body: JSON.stringify({
               store_id: result.store_id,
