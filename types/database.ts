@@ -1048,3 +1048,25 @@ export interface PromotionAchievement {
   next_threshold: PromotionThreshold | null      // 次の閾値（あれば）
   remaining_amount: number | null                // 次の閾値までの金額
 }
+
+// ============================================================================
+// Payslip Items (報酬明細商品明細)
+// ============================================================================
+export interface PayslipItem {
+  id: number
+  cast_id: number
+  store_id: number
+  date: string
+  year_month: string
+  product_name: string
+  category: string | null
+  quantity: number
+  subtotal: number
+  back_ratio: number | null
+  back_amount: number
+  sales_type: 'self' | 'help'
+  is_base: boolean
+  order_id: string | null
+  created_at: string
+  updated_at: string
+}

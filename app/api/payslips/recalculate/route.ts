@@ -145,6 +145,13 @@ async function calculatePayslipForCast(
       return { success: true } // 確定済みはスキップ
     }
 
+    // 既存のpayslip_itemsデータを削除（再計算のため）
+    await supabaseAdmin
+      .from('payslip_items')
+      .delete()
+      .eq('cast_id', cast.id)
+      .eq('year_month', yearMonth)
+
     // 日別統計データを取得
     const { data: dailyStats } = await supabaseAdmin
       .from('cast_daily_stats')
@@ -616,10 +623,44 @@ async function calculatePayslipForCast(
     })
     grouped.forEach(item => productBackDetails.push(item))
 
+    // payslip_itemsに保存するデータを作成
+    const payslipItems: any[] = []
+    dailySalesMap.forEach((dayData, dateStr) => {
+      dayData.items.forEach(item => {
+        payslipItems.push({
+          cast_id: cast.id,
+          store_id: storeId,
+          date: dateStr,
+          year_month: yearMonth,
+          product_name: item.product_name,
+          category: item.category,
+          quantity: item.quantity,
+          subtotal: item.subtotal,
+          back_ratio: item.back_ratio,
+          back_amount: item.back_amount,
+          sales_type: item.sales_type,
+          is_base: item.is_base,
+          order_id: null  // TODO: order_idを保存する場合は追加
+        })
+      })
+    })
+
+    // payslip_itemsに保存
+    if (payslipItems.length > 0) {
+      const { error: itemsError } = await supabaseAdmin
+        .from('payslip_items')
+        .insert(payslipItems)
+
+      if (itemsError) {
+        console.error('payslip_items保存エラー:', itemsError)
+        // エラーでも処理は続行（payslipsテーブルの保存は行う）
+      }
+    }
+
     const workDays = dailyDetails.filter(d => d.hours > 0).length
     const averageHourlyWage = totalWorkHours > 0 ? Math.round(totalWageAmount / totalWorkHours) : 0
 
-    // 保存
+    // payslipsテーブルに保存
     const payslipData = {
       cast_id: cast.id,
       store_id: storeId,
