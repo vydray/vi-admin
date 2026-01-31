@@ -807,7 +807,9 @@ function AttendancePageContent() {
                           borderRight: '1px solid #e2e8f0',
                           textAlign: 'center',
                           backgroundColor: attendance
-                            ? attendance.is_modified
+                            ? attendance.check_in_datetime && !attendance.check_out_datetime
+                              ? '#fecaca' // 終わり時間なし: 赤系
+                              : attendance.is_modified
                               ? '#fef3c7' // 修正済み: オレンジ系
                               : '#dcfce7' // 通常: 緑系
                             : '#fff',
@@ -852,11 +854,18 @@ function AttendancePageContent() {
                                 {attendance.status}
                               </div>
                             )}
-                            {attendance.check_in_datetime && (
-                              <div style={{ fontSize: isMobile ? '11px' : '13px' }}>
-                                {formatAttendanceTime(attendance)}
-                              </div>
-                            )}
+                            {(() => {
+                              // 欠勤系ステータスでは時間を表示しない
+                              const status = attendanceStatuses.find(s => s.id === attendance.status_id)
+                              const absenceCodes = ['same_day_absence', 'advance_absence', 'no_call_no_show', 'excused']
+                              const isAbsence = status?.code && absenceCodes.includes(status.code)
+
+                              return attendance.check_in_datetime && !isAbsence && (
+                                <div style={{ fontSize: isMobile ? '11px' : '13px' }}>
+                                  {formatAttendanceTime(attendance)}
+                                </div>
+                              )
+                            })()}
                           </div>
                         )}
                       </td>

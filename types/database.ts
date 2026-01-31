@@ -204,6 +204,8 @@ export interface AttendanceStatus {
   is_active: boolean
   order_index: number
   store_id: number
+  code?: string
+  is_work_day?: boolean
 }
 
 // ============================================================================
