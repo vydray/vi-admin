@@ -151,7 +151,10 @@ async function executeSyncBaseOrders() {
         }
 
         // 過去3日分の注文を取得（ページネーション対応、月またぎにも対応）
-        const endDate = new Date().toISOString().split('T')[0]
+        // end_orderedは翌日を指定して、今日の全ての注文を含める
+        const tomorrow = new Date()
+        tomorrow.setDate(tomorrow.getDate() + 1)
+        const endDate = tomorrow.toISOString().split('T')[0]
         const startDate = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
 
         let allOrders: any[] = []
