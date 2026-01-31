@@ -2242,7 +2242,8 @@ function CompensationSettingsPageContent() {
   const saveSlidingRates = () => {
     if (activeCompensationType) {
       updateCompensationType(activeCompensationType.id, {
-        sliding_rates: editingSlidingRates
+        sliding_rates: editingSlidingRates,
+        use_sliding_rate: editingSlidingRates.length > 0  // スライド率があればtrueに設定
       })
     }
     setShowSlidingModal(false)
