@@ -80,7 +80,7 @@ interface DailySalesData {
     sales_type: 'self' | 'help'
     quantity: number
     subtotal: number
-    back_ratio: number
+    back_ratio: number | null
     back_amount: number
     is_base?: boolean
   }>
