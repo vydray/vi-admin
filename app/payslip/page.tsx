@@ -833,6 +833,7 @@ function PayslipPageContent() {
       })
 
       // BASE注文のバックを計算（POS注文と同じ売上設定を適用）
+      let baseSalesTotal = 0
       if (useProductBack) {
         dayBaseOrders.forEach(baseOrder => {
           // BASE商品のバック情報を取得（カテゴリは'BASE'として検索）
@@ -861,6 +862,7 @@ function PayslipPageContent() {
             ? backInfo.fixedAmount * baseOrder.quantity
             : Math.floor(subtotal * backInfo.rate / 100)
 
+          baseSalesTotal += subtotal  // BASE売上を追加
           productBackTotal += backAmount
           productBackItems.push({
             orderId: baseOrder.base_order_id,
@@ -881,7 +883,7 @@ function PayslipPageContent() {
           date: dateStr,
           selfSales: publishedResult?.self_sales || 0,
           helpSales: publishedResult?.help_sales || 0,
-          totalSales: publishedResult?.total_sales || 0,
+          totalSales: (publishedResult?.total_sales || 0) + baseSalesTotal,  // BASE売上を加算
           productBack: productBackTotal,
           items: productBackItems
         })
