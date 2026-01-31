@@ -196,6 +196,7 @@ function PayslipPageContent() {
   const compensationSettingsRef = useRef<CompensationSettings | null>(null)
   const [salesSettings, setSalesSettings] = useState<SalesSettings | null>(null)
   const [backRates, setBackRates] = useState<CastBackRate[]>([])
+  const [payslipItems, setPayslipItems] = useState<any[]>([])  // payslip_items データ
   const [dailySalesData, setDailySalesData] = useState<Map<string, DailySalesData>>(new Map())
   const [savedPayslip, setSavedPayslip] = useState<SavedPayslip | null>(null)
   const [saving, setSaving] = useState(false)
@@ -395,7 +396,7 @@ function PayslipPageContent() {
   const loadPayslip = useCallback(async (castId: number, month: Date) => {
     const yearMonth = format(month, 'yyyy-MM')
 
-    const { data, error } = await supabase
+    const { data, error} = await supabase
       .from('payslips')
       .select('*')
       .eq('cast_id', castId)
@@ -409,6 +410,21 @@ function PayslipPageContent() {
     }
 
     setSavedPayslip(error ? null : data as SavedPayslip)
+
+    // payslip_items を取得（商品バック明細）
+    const { data: items, error: itemsError } = await supabase
+      .from('payslip_items')
+      .select('*')
+      .eq('cast_id', castId)
+      .eq('year_month', yearMonth)
+      .order('date')
+
+    if (itemsError) {
+      console.error('payslip_items取得エラー:', itemsError)
+      setPayslipItems([])
+    } else {
+      setPayslipItems(items || [])
+    }
   }, [storeId])
 
   // RoundingMethodをposition+typeに変換

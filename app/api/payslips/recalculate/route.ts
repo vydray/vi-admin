@@ -438,6 +438,8 @@ async function calculatePayslipForCast(
       totalProductBack += day.productBack
     })
 
+    console.log(`[${cast.name}] totalSales: ${totalSales}, totalProductBack: ${totalProductBack}`)
+
     // 売上バック計算
     let salesBack = 0
     const enabledDeductionIds = compensationSettings?.enabled_deduction_ids || []
@@ -477,13 +479,18 @@ async function calculatePayslipForCast(
 
       // 売上バック計算
       if (activeCompType.use_sliding_rate && activeCompType.sliding_rates) {
+        console.log(`[${cast.name}] スライド率を使用: sliding_rates =`, activeCompType.sliding_rates)
         const rate = activeCompType.sliding_rates.find(
           r => totalSales >= r.min && (r.max === 0 || totalSales <= r.max)
         )
         if (rate) {
+          console.log(`[${cast.name}] 適用されたスライド率: min=${rate.min}, max=${rate.max}, rate=${rate.rate}%`)
           salesBack = Math.round(totalSales * rate.rate / 100)
+        } else {
+          console.log(`[${cast.name}] 該当するスライド率が見つかりませんでした`)
         }
       } else {
+        console.log(`[${cast.name}] 固定率を使用: ${activeCompType.commission_rate}%`)
         salesBack = Math.round(totalSales * activeCompType.commission_rate / 100)
       }
     }
