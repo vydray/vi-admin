@@ -409,6 +409,7 @@ async function calculatePayslipForCast(
         })
       }
       const dayData = dailySalesMap.get(baseOrder.business_date)!
+      dayData.totalSales += subtotal  // BASE売上を追加
       dayData.productBack += backAmount
       dayData.items.push({
         product_name: baseOrder.product_name,
