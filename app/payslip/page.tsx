@@ -517,6 +517,16 @@ function PayslipPageContent() {
     payslipItems.forEach(item => {
       const dayData = dailyMap.get(item.date)
       if (dayData) {
+        // BASE商品の売上をtotalSalesに加算（cast_daily_statsにはBASE売上が含まれていないため）
+        if (item.is_base) {
+          dayData.totalSales += item.subtotal
+          if (item.sales_type === 'self') {
+            dayData.selfSales += item.subtotal
+          } else {
+            dayData.helpSales += item.subtotal
+          }
+        }
+
         dayData.items.push({
           product_name: item.product_name,
           category: item.category || '',
