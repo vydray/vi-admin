@@ -561,12 +561,17 @@ function PayslipPageContent() {
         await loadAttendanceData(selectedCastId, selectedMonth)
         await loadCompensationSettings(selectedCastId)
         await loadPayslip(selectedCastId, selectedMonth)
-        // cast_daily_stats と payslip_items から売上データを構築
-        calculateSummaryFromStats()
       }
       loadData()
     }
-  }, [initialized, selectedCastId, selectedMonth, casts, loadDailyStats, loadAttendanceData, loadCompensationSettings, loadPayslip, calculateSummaryFromStats])
+  }, [initialized, selectedCastId, selectedMonth, casts, loadDailyStats, loadAttendanceData, loadCompensationSettings, loadPayslip])
+
+  // dailyStatsとpayslipItemsが更新されたら売上データを構築
+  useEffect(() => {
+    if (dailyStats.length > 0 || payslipItems.length > 0) {
+      calculateSummaryFromStats()
+    }
+  }, [dailyStats, payslipItems, calculateSummaryFromStats])
 
   // 伝票詳細を取得
   useEffect(() => {
