@@ -873,7 +873,12 @@ function AttendancePageContent() {
                     fontSize: isMobile ? '14px' : '16px',
                     color: '#1e293b'
                   }}>
-                    {attendances.filter(a => a.cast_name === cast.name && a.check_in_datetime).length}日
+                    {attendances.filter(a => {
+                      if (a.cast_name !== cast.name) return false
+                      // 勤怠ステータスの is_work_day フラグで判定
+                      const status = attendanceStatuses.find(s => s.id === a.status_id)
+                      return status?.is_work_day === true
+                    }).length}日
                   </td>
                 </tr>
               ))}
