@@ -711,30 +711,29 @@ function CompensationSettingsPageContent() {
   }, [storeId])
 
   // バック率設定を読み込み
-  const loadBackRates = useCallback(async () => {
+  const loadBackRates = useCallback(async (castId?: number) => {
     try {
-      // Supabaseのデフォルト制限は1000行なので、十分な件数を指定
+      // 選択されたキャストのバック率のみを取得（Supabaseの1000行制限を回避）
+      const targetCastId = castId || selectedCastId
+      if (!targetCastId) {
+        setBackRates([])
+        return
+      }
+
       const { data, error } = await supabase
         .from('cast_back_rates')
         .select('*')
         .eq('store_id', storeId)
+        .eq('cast_id', targetCastId)
         .eq('is_active', true)
-        .order('created_at', { ascending: false })
-        .limit(10000)
 
       if (error) throw error
-      const sumireRates = data?.filter(r => r.cast_id === 15648) || []
-      console.log('[バック率ロード]', {
-        storeId,
-        total: data?.length,
-        sumire_count: sumireRates.length,
-        sumire_sample: sumireRates.slice(0, 3).map(r => ({ id: r.id, cat: r.category, prod: r.product_name }))
-      })
+      console.log('[バック率ロード]', { castId: targetCastId, count: data?.length })
       setBackRates((data || []) as CastBackRate[])
     } catch (error) {
       console.error('バック率設定読み込みエラー:', error)
     }
-  }, [storeId])
+  }, [storeId, selectedCastId])
 
   // 時給ステータスを読み込み
   const loadWageStatuses = useCallback(async () => {
@@ -1063,19 +1062,19 @@ function CompensationSettingsPageContent() {
       loadSalesSettings()
       loadSystemSettings()
       loadProducts()
-      loadBackRates()
       loadWageStatuses()
       loadSampleReceipt()
       loadDeductionTypes()
     }
-  }, [loadCasts, loadPayDay, loadSalesSettings, loadSystemSettings, loadProducts, loadBackRates, loadWageStatuses, loadSampleReceipt, loadDeductionTypes, storeLoading, storeId])
+  }, [loadCasts, loadPayDay, loadSalesSettings, loadSystemSettings, loadProducts, loadWageStatuses, loadSampleReceipt, loadDeductionTypes, storeLoading, storeId])
 
   useEffect(() => {
     if (selectedCastId) {
       loadSettings(selectedCastId, selectedYear, selectedMonth)
       loadWageStats(selectedCastId, selectedYear, selectedMonth)
+      loadBackRates(selectedCastId)
     }
-  }, [selectedCastId, selectedYear, selectedMonth, loadSettings, loadWageStats])
+  }, [selectedCastId, selectedYear, selectedMonth, loadSettings, loadWageStats, loadBackRates])
 
   // settingsStateが変わったら最初の報酬形態をアクティブに
   useEffect(() => {
