@@ -1771,9 +1771,10 @@ function CompensationSettingsPageContent() {
       }
 
       // 商品バックの計算（商品バックが有効な場合）
-      const showProductBack = settingsState?.useProductBack || settingsState?.compareUseProductBack
-      const showHelpProductBack = settingsState?.useHelpProductBack
-      const helpBackMethod = settingsState?.helpBackCalculationMethod || 'sales_based'
+      // 報酬形態の設定を優先、なければ旧設定を使用
+      const showProductBack = compensationTypeSettings?.use_product_back ?? (settingsState?.useProductBack || settingsState?.compareUseProductBack)
+      const showHelpProductBack = compensationTypeSettings?.use_help_product_back ?? settingsState?.useHelpProductBack
+      const helpBackMethod = compensationTypeSettings?.help_back_calculation_method ?? settingsState?.helpBackCalculationMethod ?? 'sales_based'
       const castBreakdownWithBack = castBreakdown.map(cb => {
         // ヘルプの場合、ヘルプバックが無効ならバックなし
         if (!cb.isSelf && !showHelpProductBack) {
