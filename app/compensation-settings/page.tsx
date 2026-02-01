@@ -624,7 +624,7 @@ function CompensationSettingsPageContent() {
           tax_rate: Number(settings.tax_rate) || 10,
           service_fee_rate: Number(settings.service_fee_rate) || 0,
           rounding_unit: Number(settings.rounding_unit) || 1,
-          rounding_method: Number(settings.rounding_method) || 1,
+          rounding_method: settings.rounding_method !== undefined ? Number(settings.rounding_method) : 1,
         })
       }
     } catch (error) {
