@@ -5,6 +5,8 @@ import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
 import { useConfirm } from '@/contexts/ConfirmContext'
 import toast from 'react-hot-toast'
+import { format, startOfMonth, endOfMonth, addMonths, subMonths } from 'date-fns'
+import { ja } from 'date-fns/locale'
 import { OrderItem, Receipt, ReceiptWithDetails, Product, Category, CastPOS } from '@/types'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
@@ -91,8 +93,7 @@ function ReceiptsPageContent() {
   const [itemSearchTerm, setItemSearchTerm] = useState('')
   const [matchingOrderIds, setMatchingOrderIds] = useState<number[] | null>(null)
   const [isSearchingItems, setIsSearchingItems] = useState(false)
-  const [startDate, setStartDate] = useState('')
-  const [endDate, setEndDate] = useState('')
+  const [selectedMonth, setSelectedMonth] = useState(new Date())
   const [filterStaffName, setFilterStaffName] = useState('')
   const [filterCastName, setFilterCastName] = useState('')  // 商品キャスト名フィルター
   const [filterPaymentMethod, setFilterPaymentMethod] = useState('')
@@ -206,7 +207,11 @@ function ReceiptsPageContent() {
   const loadReceipts = useCallback(async () => {
     setLoading(true)
     try {
-      // N+1問題を解決: ordersとpaymentsを1回のクエリで取得
+      // 月の範囲を計算
+      const monthStart = format(startOfMonth(selectedMonth), 'yyyy-MM-dd')
+      const monthEnd = format(endOfMonth(selectedMonth), 'yyyy-MM-dd')
+
+      // N+1問題を解決: ordersとpaymentsを1回のクエリで取得（月単位でフィルタ）
       const { data: ordersData, error } = await supabase
         .from('orders')
         .select(`
@@ -218,6 +223,8 @@ function ReceiptsPageContent() {
           )
         `)
         .eq('store_id', storeId)
+        .gte('order_date', monthStart)
+        .lte('order_date', monthEnd)
         .is('deleted_at', null)
         .order('checkout_datetime', { ascending: false })
 
@@ -254,7 +261,7 @@ function ReceiptsPageContent() {
     } finally {
       setLoading(false)
     }
-  }, [storeId])
+  }, [storeId, selectedMonth])
 
   const loadMasterData = useCallback(async () => {
     try {
@@ -350,9 +357,9 @@ function ReceiptsPageContent() {
     }
   }, [loadReceipts, loadMasterData, loadSystemSettings, storeLoading, storeId])
 
-  // 商品名で伝票を検索（デバウンス付き）
+  // 商品名で伝票を検索（デバウンス付き）- 現在表示中の月の伝票内で検索
   useEffect(() => {
-    if (!storeId) return
+    if (!storeId || receipts.length === 0) return
 
     // 検索語が空の場合はリセット
     if (itemSearchTerm.trim() === '') {
@@ -365,10 +372,18 @@ function ReceiptsPageContent() {
 
     const searchTimeout = setTimeout(async () => {
       try {
-        // order_itemsテーブルで商品名を検索
+        // 現在表示中の伝票のorder_idリストを取得
+        const currentOrderIds = receipts.map(r => r.id)
+        if (currentOrderIds.length === 0) {
+          setMatchingOrderIds([])
+          return
+        }
+
+        // order_itemsテーブルで商品名を検索（現在の月の伝票内のみ）
         const { data, error } = await supabase
           .from('order_items')
           .select('order_id')
+          .in('order_id', currentOrderIds)
           .ilike('product_name', `%${itemSearchTerm}%`)
 
         if (error) throw error
@@ -385,7 +400,7 @@ function ReceiptsPageContent() {
     }, 300) // 300msのデバウンス
 
     return () => clearTimeout(searchTimeout)
-  }, [itemSearchTerm, storeId])
+  }, [itemSearchTerm, storeId, receipts])
 
   const loadReceiptDetails = async (receipt: Receipt) => {
     try {
@@ -1327,11 +1342,6 @@ function ReceiptsPageContent() {
       (receipt.guest_name && receipt.guest_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
       receipt.id.toString().includes(searchTerm)
 
-    // order_dateの日付部分だけを取り出して営業日ベースで比較（時間は無視）
-    const orderDateStr = receipt.order_date ? receipt.order_date.split('T')[0] : ''
-    const matchesStartDate = !startDate || orderDateStr >= startDate
-    const matchesEndDate = !endDate || orderDateStr <= endDate
-
     // 推しフィルター（配列・カンマ区切り対応）
     const staffNames = parseNamesToArray(receipt.staff_name)
     const matchesStaffName = filterStaffName === '' || staffNames.includes(filterStaffName)
@@ -1356,9 +1366,8 @@ function ReceiptsPageContent() {
     // 商品名フィルター（order_items検索結果でフィルタ）
     const matchesItemSearch = matchingOrderIds === null || matchingOrderIds.includes(receipt.id)
 
-    return matchesSearch && matchesStartDate && matchesEndDate &&
-           matchesStaffName && matchesCastName && matchesPaymentMethod &&
-           matchesMinAmount && matchesMaxAmount && matchesItemSearch
+    return matchesSearch && matchesStaffName && matchesCastName &&
+           matchesPaymentMethod && matchesMinAmount && matchesMaxAmount && matchesItemSearch
   })
 
   const formatDateTime = (dateString: string) => {
@@ -1495,24 +1504,23 @@ function ReceiptsPageContent() {
           )}
         </div>
         <div style={styles.dateFilters}>
-          <label style={styles.dateLabel}>
-            開始日:
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              style={styles.dateInput}
-            />
-          </label>
-          <label style={styles.dateLabel}>
-            終了日:
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              style={styles.dateInput}
-            />
-          </label>
+          <Button
+            onClick={() => setSelectedMonth(subMonths(selectedMonth, 1))}
+            variant="secondary"
+            size="small"
+          >
+            ◀
+          </Button>
+          <span style={{ margin: '0 10px', fontWeight: 'bold', fontSize: '16px' }}>
+            {format(selectedMonth, 'yyyy年M月', { locale: ja })}
+          </span>
+          <Button
+            onClick={() => setSelectedMonth(addMonths(selectedMonth, 1))}
+            variant="secondary"
+            size="small"
+          >
+            ▶
+          </Button>
         </div>
 
         {/* 追加フィルター */}
@@ -1590,12 +1598,10 @@ function ReceiptsPageContent() {
             </div>
           </label>
 
-          {(searchTerm || startDate || endDate || filterStaffName || filterCastName || filterPaymentMethod || filterMinAmount || filterMaxAmount) && (
+          {(searchTerm || filterStaffName || filterCastName || filterPaymentMethod || filterMinAmount || filterMaxAmount) && (
             <Button
               onClick={() => {
                 setSearchTerm('')
-                setStartDate('')
-                setEndDate('')
                 setFilterStaffName('')
                 setFilterCastName('')
                 setFilterPaymentMethod('')
@@ -1604,7 +1610,7 @@ function ReceiptsPageContent() {
               }}
               variant="secondary"
             >
-              全フィルタクリア
+              フィルタクリア
             </Button>
           )}
         </div>
