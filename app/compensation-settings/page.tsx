@@ -3208,7 +3208,7 @@ function CompensationSettingsPageContent() {
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <span>サンプル伝票</span>
                 <Button
-                  onClick={saveSampleReceipt}
+                  onClick={() => saveSampleReceipt(true)}
                   variant="secondary"
                   size="small"
                   disabled={savingSampleReceipt}
