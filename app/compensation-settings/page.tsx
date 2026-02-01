@@ -439,6 +439,7 @@ function CompensationSettingsPageContent() {
   // スライド率テーブル編集
   const [showSlidingModal, setShowSlidingModal] = useState(false)
   const [editingSlidingRates, setEditingSlidingRates] = useState<SlidingRate[]>([])
+  const [focusedSlidingInput, setFocusedSlidingInput] = useState<string | null>(null)
 
   // 控除項目（deduction_typesテーブルから取得）
   const [storeDeductionTypes, setStoreDeductionTypes] = useState<{
@@ -3842,23 +3843,27 @@ function CompensationSettingsPageContent() {
                 <div key={idx} style={styles.slidingRow}>
                   <input
                     type="text"
-                    value={rate.min.toLocaleString()}
+                    value={focusedSlidingInput === `min-${idx}` ? rate.min || '' : rate.min.toLocaleString()}
                     onChange={(e) => {
                       const newRates = [...editingSlidingRates]
                       newRates[idx].min = Number(e.target.value.replace(/,/g, '')) || 0
                       setEditingSlidingRates(newRates)
                     }}
+                    onFocus={() => setFocusedSlidingInput(`min-${idx}`)}
+                    onBlur={() => setFocusedSlidingInput(null)}
                     style={styles.slidingInput}
                     placeholder="0"
                   />
                   <input
                     type="text"
-                    value={rate.max ? rate.max.toLocaleString() : ''}
+                    value={focusedSlidingInput === `max-${idx}` ? (rate.max || '') : (rate.max ? rate.max.toLocaleString() : '')}
                     onChange={(e) => {
                       const newRates = [...editingSlidingRates]
                       newRates[idx].max = Number(e.target.value.replace(/,/g, '')) || 0
                       setEditingSlidingRates(newRates)
                     }}
+                    onFocus={() => setFocusedSlidingInput(`max-${idx}`)}
+                    onBlur={() => setFocusedSlidingInput(null)}
                     style={styles.slidingInput}
                     placeholder="上限なし"
                   />
