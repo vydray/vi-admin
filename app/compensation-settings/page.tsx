@@ -1277,6 +1277,7 @@ function CompensationSettingsPageContent() {
 
   // プレビューデータを計算する関数（両モードで再利用）
   const computePreviewData = useCallback((mode: 'item_based' | 'receipt_based') => {
+    console.log('[プレビュー計算開始]', { mode, sampleItems: sampleItems.length, sampleNominations })
     const isItemBased = mode === 'item_based'
     const taxRate = systemSettings.tax_rate / 100
     const serviceRate = systemSettings.service_fee_rate / 100
@@ -1300,6 +1301,7 @@ function CompensationSettingsPageContent() {
       const nominationDistributeAll = salesSettings.item_nomination_distribute_all ?? false
 
       const items = sampleItems.map(item => {
+        console.log('[商品処理]', { name: item.name, category: item.category, castNames: item.castNames })
         // キャスト商品のみの場合、キャスト名が入っていない商品は除外
         if (item.castNames.length === 0) {
           return { ...item, castBreakdown: [] as { cast: string; sales: number; calculatedShare: number; isSelf: boolean }[], notIncluded: true }
@@ -1468,6 +1470,7 @@ function CompensationSettingsPageContent() {
         const showProductBack = settingsState?.useProductBack || settingsState?.compareUseProductBack
         const showHelpProductBack = settingsState?.useHelpProductBack
         const helpBackMethod = settingsState?.helpBackCalculationMethod || 'sales_based'
+        console.log('[商品バック設定]', { showProductBack, showHelpProductBack, helpBackMethod, castBreakdown })
         const castBreakdownWithBack = castBreakdown.map(cb => {
           // ヘルプの場合、ヘルプバックが無効ならバックなし
           if (!cb.isSelf && !showHelpProductBack) {
