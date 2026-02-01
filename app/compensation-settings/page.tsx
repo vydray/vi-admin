@@ -1276,8 +1276,15 @@ function CompensationSettingsPageContent() {
 
 
   // プレビューデータを計算する関数（両モードで再利用）
-  const computePreviewData = useCallback((mode: 'item_based' | 'receipt_based') => {
-    console.log('[プレビュー計算開始]', { mode, sampleItems: sampleItems.length, sampleNominations })
+  const computePreviewData = useCallback((
+    mode: 'item_based' | 'receipt_based',
+    compensationTypeSettings?: {
+      use_product_back?: boolean
+      use_help_product_back?: boolean
+      help_back_calculation_method?: string
+    }
+  ) => {
+    console.log('[プレビュー計算開始]', { mode, sampleItems: sampleItems.length, sampleNominations, compensationTypeSettings })
     const isItemBased = mode === 'item_based'
     const taxRate = systemSettings.tax_rate / 100
     const serviceRate = systemSettings.service_fee_rate / 100
@@ -1467,10 +1474,11 @@ function CompensationSettingsPageContent() {
         }
 
         // 商品バックの計算（商品バックが有効な場合）
-        const showProductBack = settingsState?.useProductBack || settingsState?.compareUseProductBack
-        const showHelpProductBack = settingsState?.useHelpProductBack
-        const helpBackMethod = settingsState?.helpBackCalculationMethod || 'sales_based'
-        console.log('[商品バック設定]', { showProductBack, showHelpProductBack, helpBackMethod, castBreakdown })
+        // 報酬形態の設定を優先、なければ旧設定を使用
+        const showProductBack = compensationTypeSettings?.use_product_back ?? (settingsState?.useProductBack || settingsState?.compareUseProductBack)
+        const showHelpProductBack = compensationTypeSettings?.use_help_product_back ?? settingsState?.useHelpProductBack
+        const helpBackMethod = compensationTypeSettings?.help_back_calculation_method ?? settingsState?.helpBackCalculationMethod ?? 'sales_based'
+        console.log('[商品バック設定]', { showProductBack, showHelpProductBack, helpBackMethod, castBreakdown, compensationTypeSettings })
         const castBreakdownWithBack = castBreakdown.map(cb => {
           // ヘルプの場合、ヘルプバックが無効ならバックなし
           if (!cb.isSelf && !showHelpProductBack) {
@@ -1864,7 +1872,12 @@ function CompensationSettingsPageContent() {
       return computePreviewData('item_based')
     }
     const mode = selectedType.sales_aggregation === 'receipt_based' ? 'receipt_based' : 'item_based'
-    return computePreviewData(mode)
+    const typeSettings = {
+      use_product_back: selectedType.use_product_back,
+      use_help_product_back: selectedType.use_help_product_back,
+      help_back_calculation_method: selectedType.help_back_calculation_method,
+    }
+    return computePreviewData(mode, typeSettings)
   }, [computePreviewData, selectedCompensationTypeIndex, settingsState])
 
   // 給料明細用のデータ（salesTargetに基づいて計算）
