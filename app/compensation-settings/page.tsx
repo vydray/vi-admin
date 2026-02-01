@@ -825,7 +825,7 @@ function CompensationSettingsPageContent() {
   }, [storeId])
 
   // サンプル伝票を保存
-  const saveSampleReceipt = async () => {
+  const saveSampleReceipt = async (showToast = true) => {
     setSavingSampleReceipt(true)
     try {
       // 既存のサンプル伝票を削除
@@ -864,14 +864,29 @@ function CompensationSettingsPageContent() {
 
       if (itemsError) throw itemsError
 
-      toast.success('サンプル伝票を保存しました')
+      if (showToast) {
+        toast.success('サンプル伝票を保存しました')
+      }
     } catch (error) {
       console.error('サンプル伝票保存エラー:', error)
-      toast.error('サンプル伝票の保存に失敗しました')
+      if (showToast) {
+        toast.error('サンプル伝票の保存に失敗しました')
+      }
     } finally {
       setSavingSampleReceipt(false)
     }
   }
+
+  // サンプル伝票の自動保存（変更から2秒後）
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (sampleItems.length > 0) {
+        saveSampleReceipt(false) // トーストを表示しない
+      }
+    }, 2000)
+
+    return () => clearTimeout(timer)
+  }, [sampleItems, sampleNominations, storeId])
 
   const loadCasts = useCallback(async () => {
     setLoading(true)
