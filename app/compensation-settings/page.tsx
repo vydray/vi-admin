@@ -439,7 +439,73 @@ function CompensationSettingsPageContent() {
   // スライド率テーブル編集
   const [showSlidingModal, setShowSlidingModal] = useState(false)
   const [editingSlidingRates, setEditingSlidingRates] = useState<SlidingRate[]>([])
-  const [focusedSlidingInput, setFocusedSlidingInput] = useState<string | null>(null)
+
+  // 金額入力用の一時的な文字列state（編集中の値を保持）
+  const [slidingInputValues, setSlidingInputValues] = useState<{ [key: string]: string }>({})
+
+  // 金額入力のフォーマット処理
+  const handleAmountChange = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    idx: number,
+    field: 'min' | 'max'
+  ) => {
+    const input = e.target
+    const rawValue = input.value.replace(/[^0-9]/g, '')  // 数字以外を除去
+
+    // 空の場合はそのまま保持
+    if (rawValue === '') {
+      setSlidingInputValues(prev => ({ ...prev, [`${field}-${idx}`]: '' }))
+      const newRates = [...editingSlidingRates]
+      newRates[idx][field] = 0
+      setEditingSlidingRates(newRates)
+      return
+    }
+
+    const numValue = Number(rawValue)
+    const formatted = numValue.toLocaleString()
+
+    // カーソル位置を調整
+    const cursorPos = input.selectionStart || 0
+    const beforeCommas = (input.value.slice(0, cursorPos).match(/,/g) || []).length
+    const digitsBeforeCursor = cursorPos - beforeCommas
+
+    // 新しいフォーマット後のカーソル位置を計算
+    let newCursorPos = 0
+    let digitCount = 0
+    for (let i = 0; i < formatted.length; i++) {
+      if (formatted[i] !== ',') digitCount++
+      if (digitCount > digitsBeforeCursor) break
+      newCursorPos = i + 1
+    }
+
+    setSlidingInputValues(prev => ({ ...prev, [`${field}-${idx}`]: formatted }))
+    const newRates = [...editingSlidingRates]
+    newRates[idx][field] = numValue
+    setEditingSlidingRates(newRates)
+
+    requestAnimationFrame(() => {
+      input.setSelectionRange(newCursorPos, newCursorPos)
+    })
+  }
+
+  // 入力欄の表示値を取得
+  const getSlidingInputValue = (idx: number, field: 'min' | 'max', value: number) => {
+    const key = `${field}-${idx}`
+    if (slidingInputValues[key] !== undefined) {
+      return slidingInputValues[key]
+    }
+    return value ? value.toLocaleString() : ''
+  }
+
+  // フォーカスアウト時に値を正規化
+  const handleAmountBlur = (idx: number, field: 'min' | 'max') => {
+    const key = `${field}-${idx}`
+    setSlidingInputValues(prev => {
+      const newValues = { ...prev }
+      delete newValues[key]
+      return newValues
+    })
+  }
 
   // 控除項目（deduction_typesテーブルから取得）
   const [storeDeductionTypes, setStoreDeductionTypes] = useState<{
@@ -3843,27 +3909,17 @@ function CompensationSettingsPageContent() {
                 <div key={idx} style={styles.slidingRow}>
                   <input
                     type="text"
-                    value={focusedSlidingInput === `min-${idx}` ? rate.min || '' : rate.min.toLocaleString()}
-                    onChange={(e) => {
-                      const newRates = [...editingSlidingRates]
-                      newRates[idx].min = Number(e.target.value.replace(/,/g, '')) || 0
-                      setEditingSlidingRates(newRates)
-                    }}
-                    onFocus={() => setFocusedSlidingInput(`min-${idx}`)}
-                    onBlur={() => setFocusedSlidingInput(null)}
+                    value={getSlidingInputValue(idx, 'min', rate.min)}
+                    onChange={(e) => handleAmountChange(e, idx, 'min')}
+                    onBlur={() => handleAmountBlur(idx, 'min')}
                     style={styles.slidingInput}
                     placeholder="0"
                   />
                   <input
                     type="text"
-                    value={focusedSlidingInput === `max-${idx}` ? (rate.max || '') : (rate.max ? rate.max.toLocaleString() : '')}
-                    onChange={(e) => {
-                      const newRates = [...editingSlidingRates]
-                      newRates[idx].max = Number(e.target.value.replace(/,/g, '')) || 0
-                      setEditingSlidingRates(newRates)
-                    }}
-                    onFocus={() => setFocusedSlidingInput(`max-${idx}`)}
-                    onBlur={() => setFocusedSlidingInput(null)}
+                    value={getSlidingInputValue(idx, 'max', rate.max)}
+                    onChange={(e) => handleAmountChange(e, idx, 'max')}
+                    onBlur={() => handleAmountBlur(idx, 'max')}
                     style={styles.slidingInput}
                     placeholder="上限なし"
                   />
