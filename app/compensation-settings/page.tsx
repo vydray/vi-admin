@@ -488,11 +488,11 @@ function CompensationSettingsPageContent() {
     basePrice: number
     castNames: string[]
   }[]>([
-    { id: 1, productId: null, name: 'セット料金 60分', category: '', basePrice: 3300, castNames: [] },
-    { id: 2, productId: null, name: 'キャストドリンク', category: '', basePrice: 1100, castNames: ['A'] },
-    { id: 3, productId: null, name: 'シャンパン', category: '', basePrice: 11000, castNames: ['A'] },
-    { id: 4, productId: null, name: 'チェキ', category: '', basePrice: 1500, castNames: ['B'] },
-    { id: 5, productId: null, name: 'ヘルプドリンク', category: '', basePrice: 1100, castNames: ['C'] },
+    { id: 1, productId: null, name: 'セット料金 60分', category: 'セット', basePrice: 3300, castNames: [] },
+    { id: 2, productId: null, name: 'キャストドリンク', category: 'キャスト用', basePrice: 1100, castNames: ['A'] },
+    { id: 3, productId: null, name: 'シャンパン', category: 'シャンパン', basePrice: 11000, castNames: ['A'] },
+    { id: 4, productId: null, name: 'チェキ', category: 'キャスト用', basePrice: 1500, castNames: ['B'] },
+    { id: 5, productId: null, name: 'ヘルプドリンク', category: 'キャスト用', basePrice: 1100, castNames: ['C'] },
   ])
   const [savingSampleReceipt, setSavingSampleReceipt] = useState(false)
   const [nonHelpStaffNames, setNonHelpStaffNames] = useState<string[]>([])
