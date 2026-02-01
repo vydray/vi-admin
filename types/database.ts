@@ -356,9 +356,10 @@ export type HelpSalesInclusion = 'both' | 'self_only' | 'help_only'
 // help_only: HELPのみ計上
 
 // ヘルプバック計算方法
-export type HelpBackCalculationMethod = 'sales_based' | 'full_amount'
-// sales_based: 売上設定に従う（分配後の金額 × ヘルプバック率）
+export type HelpBackCalculationMethod = 'sales_based' | 'full_amount' | 'distributed_amount'
+// sales_based: 売上設定に従う（売上に含まれない場合はバック計算されない）
 // full_amount: 商品全額（商品の全額 × ヘルプバック率）
+// distributed_amount: 分配額に基づく（売上表示に関わらず分配額でバック計算）
 
 // 支給方法選択
 export type PaymentSelectionMethod = 'highest' | 'specific'

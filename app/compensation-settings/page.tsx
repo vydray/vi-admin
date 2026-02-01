@@ -2772,13 +2772,14 @@ function CompensationSettingsPageContent() {
                                 width={280}
                               />
                             </div>
-                            <div style={{ display: 'flex', gap: '8px' }}>
+                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                               <button
                                 onClick={() => updateCompensationType(activeCompensationType.id, {
                                   help_back_calculation_method: 'sales_based'
                                 })}
                                 style={{
-                                  flex: 1,
+                                  flex: '1 1 calc(33.33% - 6px)',
+                                  minWidth: '120px',
                                   padding: '8px 12px',
                                   fontSize: '12px',
                                   fontWeight: '500',
@@ -2798,7 +2799,8 @@ function CompensationSettingsPageContent() {
                                   help_back_calculation_method: 'full_amount'
                                 })}
                                 style={{
-                                  flex: 1,
+                                  flex: '1 1 calc(33.33% - 6px)',
+                                  minWidth: '120px',
                                   padding: '8px 12px',
                                   fontSize: '12px',
                                   fontWeight: '500',
@@ -2813,11 +2815,34 @@ function CompensationSettingsPageContent() {
                               >
                                 商品全額
                               </button>
+                              <button
+                                onClick={() => updateCompensationType(activeCompensationType.id, {
+                                  help_back_calculation_method: 'distributed_amount'
+                                })}
+                                style={{
+                                  flex: '1 1 calc(33.33% - 6px)',
+                                  minWidth: '120px',
+                                  padding: '8px 12px',
+                                  fontSize: '12px',
+                                  fontWeight: '500',
+                                  borderWidth: '1px',
+                                  borderStyle: 'solid',
+                                  borderColor: activeCompensationType.help_back_calculation_method === 'distributed_amount' ? '#10b981' : '#cbd5e1',
+                                  borderRadius: '6px',
+                                  backgroundColor: activeCompensationType.help_back_calculation_method === 'distributed_amount' ? '#ecfdf5' : 'white',
+                                  color: activeCompensationType.help_back_calculation_method === 'distributed_amount' ? '#059669' : '#64748b',
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                分配額基準
+                              </button>
                             </div>
                             <p style={{ fontSize: '11px', color: '#94a3b8', margin: '6px 0 0 0' }}>
                               {activeCompensationType.help_back_calculation_method === 'sales_based'
-                                ? '分配後の金額 × ヘルプバック率'
-                                : '商品の全額 × ヘルプバック率'}
+                                ? '売上に含まれる場合のみ分配後の金額 × ヘルプバック率'
+                                : activeCompensationType.help_back_calculation_method === 'full_amount'
+                                ? '商品の全額 × ヘルプバック率'
+                                : '売上表示に関わらず分配額 × ヘルプバック率'}
                             </p>
                           </>
                         )}
