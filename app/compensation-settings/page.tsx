@@ -3841,22 +3841,22 @@ function CompensationSettingsPageContent() {
               {editingSlidingRates.map((rate, idx) => (
                 <div key={idx} style={styles.slidingRow}>
                   <input
-                    type="number"
-                    value={rate.min}
+                    type="text"
+                    value={rate.min.toLocaleString()}
                     onChange={(e) => {
                       const newRates = [...editingSlidingRates]
-                      newRates[idx].min = Number(e.target.value)
+                      newRates[idx].min = Number(e.target.value.replace(/,/g, '')) || 0
                       setEditingSlidingRates(newRates)
                     }}
                     style={styles.slidingInput}
                     placeholder="0"
                   />
                   <input
-                    type="number"
-                    value={rate.max || ''}
+                    type="text"
+                    value={rate.max ? rate.max.toLocaleString() : ''}
                     onChange={(e) => {
                       const newRates = [...editingSlidingRates]
-                      newRates[idx].max = Number(e.target.value) || 0
+                      newRates[idx].max = Number(e.target.value.replace(/,/g, '')) || 0
                       setEditingSlidingRates(newRates)
                     }}
                     style={styles.slidingInput}

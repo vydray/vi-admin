@@ -1,11 +1,14 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import toast from 'react-hot-toast'
+import { format, addMonths, subMonths } from 'date-fns'
+import { ja } from 'date-fns/locale'
 import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
 import { exportToPDF } from '@/lib/pdfExport'
 import LoadingSpinner from '@/components/LoadingSpinner'
+import Button from '@/components/Button'
 import ProtectedPage from '@/components/ProtectedPage'
 import type { CompensationType, CompensationSettings, SlidingRate } from '@/types'
 
@@ -34,17 +37,15 @@ function CompensationListContent() {
   const [exporting, setExporting] = useState(false)
   const [showExportModal, setShowExportModal] = useState(false)
   const [castsWithCompensation, setCastsWithCompensation] = useState<CastWithCompensation[]>([])
+  const [selectedMonth, setSelectedMonth] = useState(new Date())
   const printRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    if (storeId) {
-      loadData()
-    }
-  }, [storeId])
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true)
     try {
+      const year = selectedMonth.getFullYear()
+      const month = selectedMonth.getMonth() + 1
+
       // キャスト一覧を取得
       const { data: casts, error: castsError } = await supabase
         .from('casts')
@@ -55,19 +56,30 @@ function CompensationListContent() {
 
       if (castsError) throw castsError
 
-      // 報酬設定を取得
+      // 報酬設定を取得（対象月でフィルタ、または全期間共通）
       const { data: settings, error: settingsError } = await supabase
         .from('compensation_settings')
         .select('*')
         .eq('store_id', storeId)
+        .or(`and(target_year.eq.${year},target_month.eq.${month}),and(target_year.is.null,target_month.is.null)`)
 
       if (settingsError) throw settingsError
 
-      // キャストと報酬設定を結合
-      const combined = (casts || []).map(cast => ({
-        cast,
-        settings: settings?.find(s => s.cast_id === cast.id) || null
-      }))
+      // キャストと報酬設定を結合（月別設定があればそれを優先）
+      const combined = (casts || []).map(cast => {
+        // まず月別設定を探す
+        const monthlySettings = settings?.find(s =>
+          s.cast_id === cast.id && s.target_year === year && s.target_month === month
+        )
+        // なければ全期間共通設定
+        const defaultSettings = settings?.find(s =>
+          s.cast_id === cast.id && s.target_year === null && s.target_month === null
+        )
+        return {
+          cast,
+          settings: monthlySettings || defaultSettings || null
+        }
+      })
 
       setCastsWithCompensation(combined)
     } catch (error) {
@@ -76,7 +88,13 @@ function CompensationListContent() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [storeId, selectedMonth])
+
+  useEffect(() => {
+    if (storeId) {
+      loadData()
+    }
+  }, [storeId, loadData])
 
   const handleExportPDF = async () => {
     if (!printRef.current) return
@@ -84,8 +102,9 @@ function CompensationListContent() {
     setExporting(true)
     setShowExportModal(false)
     try {
+      const monthStr = format(selectedMonth, 'yyyy-MM')
       await exportToPDF(printRef.current, {
-        filename: `報酬形態一覧_${storeName}_${new Date().toISOString().split('T')[0]}.pdf`,
+        filename: `報酬形態一覧_${storeName}_${monthStr}.pdf`,
         orientation: 'portrait',
         margin: 10,
         preview: true
@@ -126,7 +145,8 @@ function CompensationListContent() {
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.download = `報酬形態一覧_${storeName}_${new Date().toISOString().split('T')[0]}.csv`
+      const monthStr = format(selectedMonth, 'yyyy-MM')
+      link.download = `報酬形態一覧_${storeName}_${monthStr}.csv`
       link.click()
       URL.revokeObjectURL(url)
       toast.success('CSVをダウンロードしました')
@@ -193,9 +213,31 @@ function CompensationListContent() {
         alignItems: 'center',
         marginBottom: '24px'
       }}>
-        <h1 style={{ fontSize: '24px', fontWeight: '600', color: '#1e293b' }}>
-          報酬形態一覧
-        </h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
+          <h1 style={{ fontSize: '24px', fontWeight: '600', color: '#1e293b' }}>
+            報酬形態一覧
+          </h1>
+          {/* 月選択 */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Button
+              onClick={() => setSelectedMonth(subMonths(selectedMonth, 1))}
+              variant="secondary"
+              size="small"
+            >
+              ◀
+            </Button>
+            <span style={{ fontWeight: 'bold', fontSize: '16px', minWidth: '120px', textAlign: 'center' }}>
+              {format(selectedMonth, 'yyyy年M月', { locale: ja })}
+            </span>
+            <Button
+              onClick={() => setSelectedMonth(addMonths(selectedMonth, 1))}
+              variant="secondary"
+              size="small"
+            >
+              ▶
+            </Button>
+          </div>
+        </div>
         <button
           onClick={() => setShowExportModal(true)}
           disabled={exporting}
@@ -222,7 +264,7 @@ function CompensationListContent() {
         {/* タイトル */}
         <div style={{ marginBottom: '20px', borderBottom: '2px solid #e2e8f0', paddingBottom: '16px' }}>
           <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#1e293b', marginBottom: '4px' }}>
-            {storeName} - 報酬形態一覧
+            {storeName} - 報酬形態一覧（{format(selectedMonth, 'yyyy年M月', { locale: ja })}）
           </h2>
           <p style={{ fontSize: '12px', color: '#64748b' }}>
             出力日: {new Date().toLocaleDateString('ja-JP')}
