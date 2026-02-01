@@ -63,14 +63,6 @@ function getBackRate(
   fixedAmount: number
   useSlidingBack?: boolean
 } | null {
-  // デバッグ: 検索条件と該当キャストのバック率を出力
-  const castRates = backRates.filter(r => r.cast_id === castId)
-  console.log('[getBackRate検索]', {
-    castId, category, productName, isSelf,
-    totalBackRates: backRates.length,
-    castRatesCount: castRates.length,
-    castRatesCategories: [...new Set(castRates.map(r => r.category))],
-  })
   // マッチするバック率設定を検索する関数
   const getMatchedRate = (match: CastBackRate) => {
     // スライドバック率が有効で計算済みレートがある場合はそれを使用
@@ -721,12 +713,14 @@ function CompensationSettingsPageContent() {
   // バック率設定を読み込み
   const loadBackRates = useCallback(async () => {
     try {
+      // Supabaseのデフォルト制限は1000行なので、十分な件数を指定
       const { data, error } = await supabase
         .from('cast_back_rates')
         .select('*')
         .eq('store_id', storeId)
         .eq('is_active', true)
         .order('created_at', { ascending: false })
+        .limit(10000)
 
       if (error) throw error
       setBackRates((data || []) as CastBackRate[])
@@ -1292,7 +1286,6 @@ function CompensationSettingsPageContent() {
       help_back_calculation_method?: string
     }
   ) => {
-    console.log('[プレビュー計算開始]', { mode, sampleItems: sampleItems.length, sampleNominations, compensationTypeSettings })
     const isItemBased = mode === 'item_based'
     const taxRate = systemSettings.tax_rate / 100
     const serviceRate = systemSettings.service_fee_rate / 100
@@ -1316,7 +1309,6 @@ function CompensationSettingsPageContent() {
       const nominationDistributeAll = salesSettings.item_nomination_distribute_all ?? false
 
       const items = sampleItems.map(item => {
-        console.log('[商品処理]', { name: item.name, category: item.category, castNames: item.castNames })
         // キャスト商品のみの場合、キャスト名が入っていない商品は除外
         if (item.castNames.length === 0) {
           return { ...item, castBreakdown: [] as { cast: string; sales: number; calculatedShare: number; isSelf: boolean }[], notIncluded: true }
@@ -1486,7 +1478,6 @@ function CompensationSettingsPageContent() {
         const showProductBack = compensationTypeSettings?.use_product_back ?? (settingsState?.useProductBack || settingsState?.compareUseProductBack)
         const showHelpProductBack = compensationTypeSettings?.use_help_product_back ?? settingsState?.useHelpProductBack
         const helpBackMethod = compensationTypeSettings?.help_back_calculation_method ?? settingsState?.helpBackCalculationMethod ?? 'sales_based'
-        console.log('[商品バック設定]', { showProductBack, showHelpProductBack, helpBackMethod, castBreakdown, compensationTypeSettings })
         const castBreakdownWithBack = castBreakdown.map(cb => {
           // ヘルプの場合、ヘルプバックが無効ならバックなし
           if (!cb.isSelf && !showHelpProductBack) {
@@ -1513,13 +1504,11 @@ function CompensationSettingsPageContent() {
           // キャスト名からキャストIDを取得
           const castInfo = casts.find(c => c.name === cb.cast)
           if (!castInfo) {
-            console.log(`[バック計算] キャスト "${cb.cast}" が見つかりません`, { casts: casts.map(c => c.name) })
             return cb  // backAmountを追加しない
           }
           // バック率を取得（スライドバック率有効の場合はcalculated_sliding_rateが返される）
           const backRateInfo = getBackRate(backRates, castInfo.id, item.category, item.name, cb.isSelf)
           if (!backRateInfo) {
-            console.log(`[バック計算] バック率が見つかりません`, { cast: cb.cast, castId: castInfo.id, category: item.category, productName: item.name, isSelf: cb.isSelf })
             return cb  // backAmountを追加しない
           }
           // バック金額を計算
@@ -1528,7 +1517,6 @@ function CompensationSettingsPageContent() {
           const backAmount = backRateInfo.type === 'fixed'
             ? backRateInfo.fixedAmount
             : Math.floor(baseForBack * backRateInfo.rate / 100)
-          console.log(`[バック計算] ${cb.cast}:`, { isSelf: cb.isSelf, calculatedShare: cb.calculatedShare, baseForBack, rate: backRateInfo.rate, backAmount })
           return { ...cb, backAmount }
         })
 
