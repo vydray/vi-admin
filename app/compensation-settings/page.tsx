@@ -1884,9 +1884,17 @@ function CompensationSettingsPageContent() {
   const salaryData = useMemo(() => {
     if (!settingsState) return null
 
+    // 選択中の報酬形態の設定を取得
+    const selectedType = settingsState.compensationTypes[selectedCompensationTypeIndex]
+    const typeSettings = selectedType ? {
+      use_product_back: selectedType.use_product_back,
+      use_help_product_back: selectedType.use_help_product_back,
+      help_back_calculation_method: selectedType.help_back_calculation_method,
+    } : undefined
+
     // salesTargetに基づいてモードを決定
     const mode = settingsState.salesTarget === 'cast_sales' ? 'item_based' : 'receipt_based'
-    const data = computePreviewData(mode)
+    const data = computePreviewData(mode, typeSettings)
 
     // カテゴリ別売上を計算
     const salesByCategory: { [key: string]: { self: number; help: number; back: number } } = {}
@@ -1958,27 +1966,33 @@ function CompensationSettingsPageContent() {
       mode: mode === 'item_based' ? '推し小計' : '伝票小計',
       isItemBased: mode === 'item_based',
     }
-  }, [computePreviewData, settingsState])
+  }, [computePreviewData, settingsState, selectedCompensationTypeIndex])
 
   // 全報酬形態の計算結果
   const compensationResults = useMemo(() => {
     if (!settingsState?.compensationTypes) return []
-
-    // 両モードのプレビューデータを事前計算
-    const previewDataByMode = {
-      item_based: computePreviewData('item_based'),
-      receipt_based: computePreviewData('receipt_based'),
-    }
 
     // 選択キャスト名を取得
     const targetCastName = selectedCast?.name || null
 
     return settingsState.compensationTypes
       .filter(type => type.is_enabled)
-      .map(type => ({
-        type,
-        ...calculateCompensationForType(type, simWorkHours, previewDataByMode, targetCastName)
-      }))
+      .map(type => {
+        // 各報酬形態ごとにその設定を使ってプレビューデータを計算
+        const typeSettings = {
+          use_product_back: type.use_product_back,
+          use_help_product_back: type.use_help_product_back,
+          help_back_calculation_method: type.help_back_calculation_method,
+        }
+        const previewDataByMode = {
+          item_based: computePreviewData('item_based', typeSettings),
+          receipt_based: computePreviewData('receipt_based', typeSettings),
+        }
+        return {
+          type,
+          ...calculateCompensationForType(type, simWorkHours, previewDataByMode, targetCastName)
+        }
+      })
   }, [settingsState?.compensationTypes, computePreviewData, simWorkHours, calculateCompensationForType, selectedCast])
 
   // カテゴリ別の商品リスト
