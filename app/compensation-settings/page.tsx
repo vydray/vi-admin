@@ -1494,11 +1494,13 @@ function CompensationSettingsPageContent() {
           // キャスト名からキャストIDを取得
           const castInfo = casts.find(c => c.name === cb.cast)
           if (!castInfo) {
+            console.log(`[バック計算] キャスト "${cb.cast}" が見つかりません`, { casts: casts.map(c => c.name) })
             return cb  // backAmountを追加しない
           }
           // バック率を取得（スライドバック率有効の場合はcalculated_sliding_rateが返される）
           const backRateInfo = getBackRate(backRates, castInfo.id, item.category, item.name, cb.isSelf)
           if (!backRateInfo) {
+            console.log(`[バック計算] バック率が見つかりません`, { cast: cb.cast, castId: castInfo.id, category: item.category, productName: item.name, isSelf: cb.isSelf })
             return cb  // backAmountを追加しない
           }
           // バック金額を計算
@@ -1507,6 +1509,7 @@ function CompensationSettingsPageContent() {
           const backAmount = backRateInfo.type === 'fixed'
             ? backRateInfo.fixedAmount
             : Math.floor(baseForBack * backRateInfo.rate / 100)
+          console.log(`[バック計算] ${cb.cast}:`, { isSelf: cb.isSelf, calculatedShare: cb.calculatedShare, baseForBack, rate: backRateInfo.rate, backAmount })
           return { ...cb, backAmount }
         })
 
