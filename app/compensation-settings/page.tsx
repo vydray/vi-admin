@@ -1461,9 +1461,20 @@ function CompensationSettingsPageContent() {
           // ヘルプバック計算方法に応じて基準額を決定
           const isHelpFullAmount = !cb.isSelf && helpBackMethod === 'full_amount'
           const isHelpDistributed = !cb.isSelf && helpBackMethod === 'distributed_amount'
-          // distributed_amountの場合は分配額0でもバック計算する
-          if (!showProductBack || (cb.calculatedShare === 0 && !isHelpFullAmount && !isHelpDistributed)) {
-            return cb  // backAmountを追加しない
+          const isSalesBased = !cb.isSelf && helpBackMethod === 'sales_based'
+
+          // バック計算をスキップする条件
+          // - 商品バックが無効
+          // - sales_basedで売上表示が0（ヘルプ売上が表示されていない）
+          // - full_amount/distributed_amount以外で分配額が0
+          if (!showProductBack) {
+            return cb
+          }
+          if (isSalesBased && cb.sales === 0) {
+            return cb  // 売上設定に従う場合、表示売上0ならバック計算しない
+          }
+          if (!isSalesBased && !isHelpFullAmount && !isHelpDistributed && cb.calculatedShare === 0) {
+            return cb  // 分配額0ならバック計算しない
           }
           // キャスト名からキャストIDを取得
           const castInfo = casts.find(c => c.name === cb.cast)
@@ -1743,12 +1754,20 @@ function CompensationSettingsPageContent() {
         if (!cb.isSelf && !showHelpProductBack) {
           return { ...cb, backAmount: 0 }
         }
-        // ヘルプでfull_amountの場合は、分配計算額0でも商品価格でバック計算
+        // ヘルプバック計算方法に応じて基準額を決定
         const isHelpFullAmount = !cb.isSelf && helpBackMethod === 'full_amount'
         const isHelpDistributed = !cb.isSelf && helpBackMethod === 'distributed_amount'
-        // distributed_amountの場合は分配額0でもバック計算する
-        if (!showProductBack || (cb.calculatedShare === 0 && !isHelpFullAmount && !isHelpDistributed)) {
+        const isSalesBased = !cb.isSelf && helpBackMethod === 'sales_based'
+
+        // バック計算をスキップする条件
+        if (!showProductBack) {
           return { ...cb, backAmount: 0 }
+        }
+        if (isSalesBased && cb.sales === 0) {
+          return { ...cb, backAmount: 0 }  // 売上設定に従う場合、表示売上0ならバック計算しない
+        }
+        if (!isSalesBased && !isHelpFullAmount && !isHelpDistributed && cb.calculatedShare === 0) {
+          return { ...cb, backAmount: 0 }  // 分配額0ならバック計算しない
         }
         // キャスト名からキャストIDを取得
         const castInfo = casts.find(c => c.name === cb.cast)
@@ -3300,9 +3319,12 @@ function CompensationSettingsPageContent() {
                               color: cb.sales > 0 ? '#10b981' : '#94a3b8',
                             }}>
                               売上: ¥{cb.sales.toLocaleString()}
-                              {cb.backAmount != null && cb.backAmount > 0 && (
-                                <span style={{ color: '#f59e0b', marginLeft: '8px' }}>
-                                  → バック: ¥{cb.backAmount.toLocaleString()}
+                              {cb.backAmount != null && (
+                                <span style={{
+                                  color: cb.backAmount > 0 ? '#f59e0b' : '#94a3b8',
+                                  marginLeft: '8px'
+                                }}>
+                                  / バック: ¥{cb.backAmount.toLocaleString()}
                                 </span>
                               )}
                             </span>
