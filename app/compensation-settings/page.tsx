@@ -728,7 +728,6 @@ function CompensationSettingsPageContent() {
         .eq('is_active', true)
 
       if (error) throw error
-      console.log('[バック率ロード]', { castId: targetCastId, count: data?.length })
       setBackRates((data || []) as CastBackRate[])
     } catch (error) {
       console.error('バック率設定読み込みエラー:', error)
@@ -1510,23 +1509,11 @@ function CompensationSettingsPageContent() {
           // キャスト名からキャストIDを取得
           const castInfo = casts.find(c => c.name === cb.cast)
           if (!castInfo) {
-            console.log('[バック計算] キャスト未発見:', cb.cast)
             return cb  // backAmountを追加しない
           }
           // バック率を取得（スライドバック率有効の場合はcalculated_sliding_rateが返される）
           const backRateInfo = getBackRate(backRates, castInfo.id, item.category, item.name, cb.isSelf)
           if (!backRateInfo) {
-            const matchingCastRates = backRates.filter(r => r.cast_id === castInfo.id)
-            console.log('[バック計算] バック率未発見:', {
-              cast: cb.cast,
-              castId: castInfo.id,
-              category: item.category,
-              product: item.name,
-              isSelf: cb.isSelf,
-              backRatesTotal: backRates.length,
-              matchingCastRatesCount: matchingCastRates.length,
-              sampleMatchingRates: matchingCastRates.slice(0, 5).map(r => ({ cat: r.category, prod: r.product_name, active: r.is_active }))
-            })
             return cb  // backAmountを追加しない
           }
           // バック金額を計算
