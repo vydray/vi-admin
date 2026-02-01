@@ -1190,13 +1190,13 @@ function CompensationSettingsPageContent() {
       }
     }
 
-    // 商品バック（推し小計モードの場合のみ商品別バックを計算）
+    // 商品バック
     let selfProductBack = 0
     let helpProductBack = 0
     const itemsWithSelfBack: { name: string; back: number }[] = []
     const itemsWithHelpBack: { name: string; back: number }[] = []
 
-    if (type.use_product_back && type.sales_aggregation === 'item_based') {
+    if (type.use_product_back) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       data.items.forEach((item: any) => {
         if (item.notIncluded) return
