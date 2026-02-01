@@ -496,8 +496,8 @@ function CompensationSettingsPageContent() {
   ])
   const [savingSampleReceipt, setSavingSampleReceipt] = useState(false)
   const [nonHelpStaffNames, setNonHelpStaffNames] = useState<string[]>([])
-  // 推し小計 / 伝票小計 切り替えタブ
-  const [salesViewMode, setSalesViewMode] = useState<'item_based' | 'receipt_based'>('item_based')
+  // 報酬形態選択（中央カラム用）
+  const [selectedCompensationTypeIndex, setSelectedCompensationTypeIndex] = useState(0)
 
   // システム設定（税率・サービス料率）
   const [systemSettings, setSystemSettings] = useState<{
@@ -1832,10 +1832,19 @@ function CompensationSettingsPageContent() {
     }
   }, [sampleItems, sampleNominations, nonHelpStaffNames, salesSettings, systemSettings, settingsState, casts, backRates])
 
-  // 表示用のプレビューデータ（salesViewModeに基づく）
+  // 表示用のプレビューデータ（選択された報酬形態に基づく）
   const previewData = useMemo(() => {
-    return computePreviewData(salesViewMode)
-  }, [computePreviewData, salesViewMode])
+    if (!settingsState) {
+      // デフォルト値を返す
+      return computePreviewData('item_based')
+    }
+    const selectedType = settingsState.compensationTypes[selectedCompensationTypeIndex]
+    if (!selectedType) {
+      return computePreviewData('item_based')
+    }
+    const mode = selectedType.sales_aggregation === 'receipt_based' ? 'receipt_based' : 'item_based'
+    return computePreviewData(mode)
+  }, [computePreviewData, selectedCompensationTypeIndex, settingsState])
 
   // 給料明細用のデータ（salesTargetに基づいて計算）
   const salaryData = useMemo(() => {
@@ -3131,26 +3140,23 @@ function CompensationSettingsPageContent() {
 
         {/* サンプル伝票パネル */}
         <div style={styles.receiptPanelWrapper}>
-          {/* タブ切り替え（パネル外） */}
+          {/* タブ切り替え（報酬形態ごと） */}
           <div style={styles.salesTabs}>
-            <button
-              onClick={() => setSalesViewMode('item_based')}
-              style={{
-                ...styles.salesTab,
-                ...(salesViewMode === 'item_based' ? styles.salesTabActive : {}),
-              }}
-            >
-              推し小計
-            </button>
-            <button
-              onClick={() => setSalesViewMode('receipt_based')}
-              style={{
-                ...styles.salesTab,
-                ...(salesViewMode === 'receipt_based' ? styles.salesTabActive : {}),
-              }}
-            >
-              伝票小計
-            </button>
+            {settingsState?.compensationTypes.map((type, index) => (
+              <button
+                key={type.id}
+                onClick={() => setSelectedCompensationTypeIndex(index)}
+                style={{
+                  ...styles.salesTab,
+                  ...(selectedCompensationTypeIndex === index ? styles.salesTabActive : {}),
+                }}
+              >
+                {type.name}
+                {!type.is_enabled && (
+                  <span style={{ fontSize: '9px', color: '#94a3b8', marginLeft: '4px' }}>(無効)</span>
+                )}
+              </button>
+            ))}
           </div>
 
           <div style={styles.receiptPanel}>
@@ -3379,7 +3385,7 @@ function CompensationSettingsPageContent() {
           {/* 売上サマリー */}
           <div style={styles.salesSummary}>
             <div style={styles.salesSummaryHeader}>
-              {salesViewMode === 'item_based' ? '推し小計' : '伝票小計'}の売上
+              {settingsState?.compensationTypes[selectedCompensationTypeIndex]?.name || '報酬形態'}の売上
               {sampleNominations.length > 0 && (
                 <span style={{ fontSize: '11px', color: '#64748b', marginLeft: '6px' }}>
                   （{sampleNominations.join(', ')}）
@@ -3390,7 +3396,7 @@ function CompensationSettingsPageContent() {
               <span>{sampleNominations.length > 0 ? `${sampleNominations.join(', ')}の売上` : '推し売上'}（税抜）</span>
               <span style={styles.salesAmount}>{previewData.selfSales.toLocaleString()}円</span>
             </div>
-            {salesViewMode === 'item_based' && (
+            {settingsState?.compensationTypes[selectedCompensationTypeIndex]?.sales_aggregation === 'item_based' && (
               <div style={styles.salesSummaryRow}>
                 <span>ヘルプ売上（税抜）</span>
                 <span style={styles.salesAmount}>{previewData.helpSales.toLocaleString()}円</span>
