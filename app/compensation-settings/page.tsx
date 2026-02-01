@@ -1458,9 +1458,11 @@ function CompensationSettingsPageContent() {
           if (!cb.isSelf && !showHelpProductBack) {
             return cb  // backAmountを追加しない
           }
-          // ヘルプでfull_amountの場合は、分配計算額0でも商品価格でバック計算
+          // ヘルプバック計算方法に応じて基準額を決定
           const isHelpFullAmount = !cb.isSelf && helpBackMethod === 'full_amount'
-          if (!showProductBack || (cb.calculatedShare === 0 && !isHelpFullAmount)) {
+          const isHelpDistributed = !cb.isSelf && helpBackMethod === 'distributed_amount'
+          // distributed_amountの場合は分配額0でもバック計算する
+          if (!showProductBack || (cb.calculatedShare === 0 && !isHelpFullAmount && !isHelpDistributed)) {
             return cb  // backAmountを追加しない
           }
           // キャスト名からキャストIDを取得
@@ -1473,7 +1475,8 @@ function CompensationSettingsPageContent() {
           if (!backRateInfo) {
             return cb  // backAmountを追加しない
           }
-          // バック金額を計算（full_amountは商品価格、sales_basedは分配計算額を使用）
+          // バック金額を計算
+          // full_amount: 商品価格、distributed_amount/sales_based: 分配計算額を使用
           const baseForBack = isHelpFullAmount ? roundedBase : cb.calculatedShare
           const backAmount = backRateInfo.type === 'fixed'
             ? backRateInfo.fixedAmount
@@ -1742,7 +1745,9 @@ function CompensationSettingsPageContent() {
         }
         // ヘルプでfull_amountの場合は、分配計算額0でも商品価格でバック計算
         const isHelpFullAmount = !cb.isSelf && helpBackMethod === 'full_amount'
-        if (!showProductBack || (cb.calculatedShare === 0 && !isHelpFullAmount)) {
+        const isHelpDistributed = !cb.isSelf && helpBackMethod === 'distributed_amount'
+        // distributed_amountの場合は分配額0でもバック計算する
+        if (!showProductBack || (cb.calculatedShare === 0 && !isHelpFullAmount && !isHelpDistributed)) {
           return { ...cb, backAmount: 0 }
         }
         // キャスト名からキャストIDを取得
@@ -1755,7 +1760,7 @@ function CompensationSettingsPageContent() {
         if (!backRateInfo) {
           return { ...cb, backAmount: 0 }
         }
-        // バック金額を計算（full_amountは商品価格、sales_basedは分配計算額を使用）
+        // バック金額を計算（full_amountは商品価格、distributed_amountとsales_basedは分配計算額を使用）
         const baseForBack = isHelpFullAmount ? itemAmount : cb.calculatedShare
         const backAmount = backRateInfo.type === 'fixed'
           ? backRateInfo.fixedAmount

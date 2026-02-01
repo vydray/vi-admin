@@ -656,6 +656,8 @@ async function calculatePayslipForCast(
           category: item.category,
           quantity: item.quantity,
           subtotal: item.subtotal,
+          self_sales: item.sales_type === 'self' ? item.subtotal : 0,
+          help_sales: item.sales_type === 'help' ? item.subtotal : 0,
           back_ratio: item.back_ratio,
           back_amount: item.back_amount,
           sales_type: item.sales_type,
