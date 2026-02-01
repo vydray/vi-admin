@@ -63,6 +63,14 @@ function getBackRate(
   fixedAmount: number
   useSlidingBack?: boolean
 } | null {
+  // デバッグ: 検索条件と該当キャストのバック率を出力
+  const castRates = backRates.filter(r => r.cast_id === castId)
+  console.log('[getBackRate検索]', {
+    castId, category, productName, isSelf,
+    totalBackRates: backRates.length,
+    castRatesCount: castRates.length,
+    castRatesCategories: [...new Set(castRates.map(r => r.category))],
+  })
   // マッチするバック率設定を検索する関数
   const getMatchedRate = (match: CastBackRate) => {
     // スライドバック率が有効で計算済みレートがある場合はそれを使用
