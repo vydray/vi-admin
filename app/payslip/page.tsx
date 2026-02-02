@@ -791,12 +791,8 @@ function PayslipPageContent() {
   }, [compensationSettings, compensationComparison])
 
   // 実際の時給を取得（status_idまたはhourly_wage_overrideから）
-  // ※ activeCompensationType.hourly_rateはフラグ（時給を使うか）であり、実際の時給額ではない
+  // ※ 時給は報酬形態に関係なく、status_idから取得して表示する
   const actualHourlyWage = useMemo((): number | null => {
-    // 報酬形態で時給がオフの場合はnull
-    if (!activeCompensationType || activeCompensationType.hourly_rate === 0) {
-      return null
-    }
     // 1. hourly_wage_override が設定されていればそれを使用
     if (compensationSettings?.hourly_wage_override && compensationSettings.hourly_wage_override > 0) {
       return compensationSettings.hourly_wage_override
@@ -809,7 +805,7 @@ function PayslipPageContent() {
       }
     }
     return null
-  }, [activeCompensationType, compensationSettings, wageStatuses])
+  }, [compensationSettings, wageStatuses])
 
   // 集計値を計算
   const summary = useMemo(() => {
