@@ -23,6 +23,7 @@ interface DailyStats {
   work_hours: number
   wage_amount: number
   total_sales_item_based: number
+  total_sales_receipt_based: number
   product_back_item_based: number
   self_sales_item_based: number
   help_sales_item_based: number
@@ -143,6 +144,8 @@ interface DailySalesData {
   selfSales: number
   helpSales: number
   totalSales: number
+  totalSalesItemBased: number
+  totalSalesReceiptBased: number
   productBack: number
   items: ProductBackItem[]
 }
@@ -362,6 +365,7 @@ function PayslipPageContent() {
         work_hours,
         wage_amount,
         total_sales_item_based,
+        total_sales_receipt_based,
         product_back_item_based,
         self_sales_item_based,
         help_sales_item_based
@@ -496,20 +500,25 @@ function PayslipPageContent() {
   }, [backRates])
 
   // 注文データから売上を計算
-  // payslip_items から売上データを構築（shift-management-appと同じアプローチ）
+  // cast_daily_stats + payslip_items から売上データを構築
   const calculateSummaryFromStats = useCallback(() => {
     // dailySalesDataを作成（日別データ）
     const dailyMap = new Map<string, any>()
 
-    // cast_daily_statsから勤務時間と時給収入のみ取得
+    // cast_daily_statsから売上データを取得（推し小計・伝票小計の両方）
     dailyStats.forEach(stat => {
       dailyMap.set(stat.date, {
         date: stat.date,
-        totalSales: 0,
-        selfSales: 0,
-        helpSales: 0,
-        baseSales: 0,      // BASE売上（shift-management-appと同じ）
-        storeSales: 0,     // POS売上（shift-management-appと同じ）
+        // 推し小計（item_based）
+        totalSalesItemBased: stat.total_sales_item_based || 0,
+        // 伝票小計（receipt_based）
+        totalSalesReceiptBased: stat.total_sales_receipt_based || 0,
+        // 従来の totalSales は推し小計をデフォルトとして使用
+        totalSales: stat.total_sales_item_based || 0,
+        selfSales: stat.self_sales_item_based || 0,
+        helpSales: stat.help_sales_item_based || 0,
+        baseSales: 0,
+        storeSales: 0,
         productBack: stat.product_back_item_based || 0,
         workHours: stat.work_hours || 0,
         wageAmount: stat.wage_amount || 0,
@@ -517,7 +526,7 @@ function PayslipPageContent() {
       })
     })
 
-    // payslip_itemsから売上を計算（shift-management-appと同じ）
+    // payslip_itemsから商品明細を追加（表示用）
     payslipItems.forEach(item => {
       let dayData = dailyMap.get(item.date)
 
@@ -525,6 +534,8 @@ function PayslipPageContent() {
       if (!dayData) {
         dayData = {
           date: item.date,
+          totalSalesItemBased: 0,
+          totalSalesReceiptBased: 0,
           totalSales: 0,
           selfSales: 0,
           helpSales: 0,
@@ -538,22 +549,12 @@ function PayslipPageContent() {
         dailyMap.set(item.date, dayData)
       }
 
-      // BASE売上と店舗売上を分けて集計（shift-management-appと同じ）
+      // BASE売上と店舗売上を分けて集計（表示用）
       if (item.is_base) {
         dayData.baseSales += item.subtotal
       } else {
         dayData.storeSales += item.subtotal
       }
-
-      // 推し/ヘルプ別の集計
-      if (item.sales_type === 'self') {
-        dayData.selfSales += item.subtotal
-      } else {
-        dayData.helpSales += item.subtotal
-      }
-
-      // 合計売上 = BASE売上 + 店舗売上
-      dayData.totalSales = dayData.baseSales + dayData.storeSales
 
       dayData.items.push({
         product_name: item.product_name,
@@ -659,10 +660,16 @@ function PayslipPageContent() {
     compensationType: CompensationType,
     totalWorkHours: number,
     totalWageAmount: number,
-    totalSales: number,
+    totalSalesItemBased: number,
+    totalSalesReceiptBased: number,
     totalProductBack: number
   ): number => {
     let total = 0
+
+    // 報酬形態ごとのsales_aggregationに基づいて売上を選択
+    const totalSales = compensationType.sales_aggregation === 'receipt_based'
+      ? totalSalesReceiptBased
+      : totalSalesItemBased
 
     // 時給収入（時給がオンの場合のみ）
     if (compensationType.hourly_rate && compensationType.hourly_rate > 0) {
@@ -706,17 +713,20 @@ function PayslipPageContent() {
     const totalWorkHours = dailyStats.reduce((sum, d) => sum + (d.work_hours || 0), 0)
     const totalWageAmount = dailyStats.reduce((sum, d) => sum + (d.wage_amount || 0), 0)
 
-    let totalSales = 0
+    // 推し小計と伝票小計の両方を集計
+    let totalSalesItemBased = 0
+    let totalSalesReceiptBased = 0
     let totalProductBack = 0
     dailySalesData.forEach(day => {
-      totalSales += day.totalSales
+      totalSalesItemBased += day.totalSalesItemBased || day.totalSales || 0
+      totalSalesReceiptBased += day.totalSalesReceiptBased || day.totalSales || 0
       totalProductBack += day.productBack
     })
 
-    // 各報酬形態で総報酬額を計算
+    // 各報酬形態で総報酬額を計算（それぞれのsales_aggregationを使用）
     return types.map(type => ({
       type,
-      total: calculateTotalCompensation(type, totalWorkHours, totalWageAmount, totalSales, totalProductBack)
+      total: calculateTotalCompensation(type, totalWorkHours, totalWageAmount, totalSalesItemBased, totalSalesReceiptBased, totalProductBack)
     }))
   }, [compensationSettings, dailyStats, dailySalesData, calculateTotalCompensation])
 
@@ -751,11 +761,19 @@ function PayslipPageContent() {
     const totalWorkHours = dailyStats.reduce((sum, d) => sum + (d.work_hours || 0), 0)
     const totalWageAmount = dailyStats.reduce((sum, d) => sum + (d.wage_amount || 0), 0)
 
-    // 売上は注文データから計算したものを使用
+    // 報酬形態のsales_aggregationに基づいて売上を選択
+    const salesAggregation = activeCompensationType?.sales_aggregation || 'item_based'
+
+    // 売上はcast_daily_statsから計算（推し小計 or 伝票小計）
     let totalSales = 0
     let totalProductBack = 0
     dailySalesData.forEach(day => {
-      totalSales += day.totalSales
+      // sales_aggregationに基づいて正しい売上を使用
+      if (salesAggregation === 'receipt_based') {
+        totalSales += day.totalSalesReceiptBased || day.totalSales || 0
+      } else {
+        totalSales += day.totalSalesItemBased || day.totalSales || 0
+      }
       totalProductBack += day.productBack
     })
 
@@ -796,7 +814,8 @@ function PayslipPageContent() {
       totalProductBack: useProductBack ? totalProductBack : 0,
       fixedAmount,
       grossEarnings,
-      useWageData: !!useWageData
+      useWageData: !!useWageData,
+      salesAggregation
     }
   }, [dailyStats, dailySalesData, activeCompensationType])
 
