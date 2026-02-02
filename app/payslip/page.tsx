@@ -76,6 +76,34 @@ interface CompensationSettings {
   hourly_wage_override: number | null
 }
 
+// 伝票ごとの商品データ（日別詳細モーダル用）
+interface CastDailyItem {
+  id: number
+  date: string
+  order_id: string | null
+  table_number: string | null
+  guest_name: string | null
+  product_name: string
+  category: string | null
+  quantity: number
+  subtotal: number
+  back_amount: number
+  is_self: boolean
+  self_sales: number
+  help_sales: number
+  needs_cast: boolean
+}
+
+// 伝票ごとにグループ化したデータ
+interface OrderGroup {
+  orderId: string
+  tableNumber: string | null
+  guestName: string | null
+  items: CastDailyItem[]
+  totalSales: number
+  totalBack: number
+}
+
 interface OrderItemWithTax {
   id: number
   order_id: string
@@ -209,6 +237,7 @@ function PayslipPageContent() {
   const [backRates, setBackRates] = useState<CastBackRate[]>([])
   const [wageStatuses, setWageStatuses] = useState<WageStatus[]>([])
   const [payslipItems, setPayslipItems] = useState<any[]>([])  // payslip_items データ
+  const [castDailyItems, setCastDailyItems] = useState<CastDailyItem[]>([])  // cast_daily_items データ（伝票詳細用）
   const [dailySalesData, setDailySalesData] = useState<Map<string, DailySalesData>>(new Map())
   const [savedPayslip, setSavedPayslip] = useState<SavedPayslip | null>(null)
   const [saving, setSaving] = useState(false)
@@ -220,6 +249,7 @@ function PayslipPageContent() {
   const [showExportModal, setShowExportModal] = useState(false)
   const printRef = useRef<HTMLDivElement>(null)
   const [selectedDayDetail, setSelectedDayDetail] = useState<string | null>(null) // 日別詳細モーダル用
+  const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set()) // 展開中の伝票ID
   const [showDailyWageModal, setShowDailyWageModal] = useState(false) // 日別時給モーダル用
   const [selectedProductDetail, setSelectedProductDetail] = useState<{
     productName: string
@@ -453,6 +483,25 @@ function PayslipPageContent() {
       setPayslipItems([])
     } else {
       setPayslipItems(items || [])
+    }
+
+    // cast_daily_items を取得（伝票詳細表示用）
+    const startDate = format(startOfMonth(month), 'yyyy-MM-dd')
+    const endDate = format(endOfMonth(month), 'yyyy-MM-dd')
+    const { data: dailyItems, error: dailyItemsError } = await supabase
+      .from('cast_daily_items')
+      .select('id, order_id, table_number, guest_name, product_name, category, quantity, subtotal, back_amount, is_self, self_sales, help_sales, needs_cast, date')
+      .eq('cast_id', castId)
+      .eq('store_id', storeId)
+      .gte('date', startDate)
+      .lte('date', endDate)
+      .order('date')
+
+    if (dailyItemsError) {
+      console.error('cast_daily_items取得エラー:', dailyItemsError)
+      setCastDailyItems([])
+    } else {
+      setCastDailyItems((dailyItems || []) as CastDailyItem[])
     }
   }, [storeId])
 
@@ -2251,97 +2300,349 @@ function PayslipPageContent() {
       {selectedDayDetail && (() => {
         const dayData = dailySalesData.get(selectedDayDetail)
         const dayDetail = dailyDetails.find(d => d.date === selectedDayDetail)
-        if (!dayData && !dayDetail) return null
+
+        // cast_daily_itemsから当日のデータを取得して伝票ごとにグループ化
+        const dayItems = castDailyItems.filter(item => item.date === selectedDayDetail)
+
+        // 伝票ごとにグループ化（推し売上のみ）
+        const selfOrderGroups = new Map<string, OrderGroup>()
+        // 推しバック用（バック対象商品のみ）
+        const selfBackGroups = new Map<string, OrderGroup>()
+        // ヘルプバック用（自分の商品のバックのみ）
+        const helpBackGroups = new Map<string, OrderGroup>()
+
+        dayItems.forEach(item => {
+          const orderId = item.order_id || 'no-order'
+
+          if (item.is_self) {
+            // 推し売上
+            if (!selfOrderGroups.has(orderId)) {
+              selfOrderGroups.set(orderId, {
+                orderId,
+                tableNumber: item.table_number,
+                guestName: item.guest_name,
+                items: [],
+                totalSales: 0,
+                totalBack: 0
+              })
+            }
+            const group = selfOrderGroups.get(orderId)!
+            group.items.push(item)
+            group.totalSales += item.subtotal
+            group.totalBack += item.back_amount
+
+            // 推しバック（バック対象のみ）
+            if (item.back_amount > 0) {
+              if (!selfBackGroups.has(orderId)) {
+                selfBackGroups.set(orderId, {
+                  orderId,
+                  tableNumber: item.table_number,
+                  guestName: item.guest_name,
+                  items: [],
+                  totalSales: 0,
+                  totalBack: 0
+                })
+              }
+              const backGroup = selfBackGroups.get(orderId)!
+              backGroup.items.push(item)
+              backGroup.totalSales += item.subtotal
+              backGroup.totalBack += item.back_amount
+            }
+          } else {
+            // ヘルプバック（バック対象のみ）
+            if (item.back_amount > 0) {
+              if (!helpBackGroups.has(orderId)) {
+                helpBackGroups.set(orderId, {
+                  orderId,
+                  tableNumber: item.table_number,
+                  guestName: item.guest_name,
+                  items: [],
+                  totalSales: 0,
+                  totalBack: 0
+                })
+              }
+              const group = helpBackGroups.get(orderId)!
+              group.items.push(item)
+              group.totalSales += item.subtotal
+              group.totalBack += item.back_amount
+            }
+          }
+        })
+
+        const selfOrders = Array.from(selfOrderGroups.values())
+        const selfBackOrders = Array.from(selfBackGroups.values())
+        const helpBackOrders = Array.from(helpBackGroups.values())
+
+        const totalSelfSales = selfOrders.reduce((sum, g) => sum + g.totalSales, 0)
+        const totalSelfBack = selfBackOrders.reduce((sum, g) => sum + g.totalBack, 0)
+        const totalHelpBack = helpBackOrders.reduce((sum, g) => sum + g.totalBack, 0)
+
+        const toggleOrder = (orderId: string) => {
+          setExpandedOrders(prev => {
+            const next = new Set(prev)
+            if (next.has(orderId)) {
+              next.delete(orderId)
+            } else {
+              next.add(orderId)
+            }
+            return next
+          })
+        }
+
+        if (!dayData && !dayDetail && dayItems.length === 0) return null
 
         return (
           <>
             <div
               style={styles.modalOverlay}
-              onClick={() => setSelectedDayDetail(null)}
+              onClick={() => { setSelectedDayDetail(null); setExpandedOrders(new Set()) }}
             />
-            <div style={styles.modal}>
+            <div style={{ ...styles.modal, maxWidth: '600px', maxHeight: '80vh' }}>
               <div style={styles.modalHeader}>
                 <h3 style={styles.modalTitle}>
                   {format(new Date(selectedDayDetail), 'M月d日(E)', { locale: ja })} - {selectedCast?.name}
                 </h3>
                 <button
-                  onClick={() => setSelectedDayDetail(null)}
+                  onClick={() => { setSelectedDayDetail(null); setExpandedOrders(new Set()) }}
                   style={styles.modalCloseBtn}
                 >
                   ✕
                 </button>
               </div>
 
-              <div style={styles.modalContent}>
+              <div style={{ ...styles.modalContent, overflowY: 'auto', maxHeight: 'calc(80vh - 140px)' }}>
                 {/* サマリー */}
-                <div style={styles.modalSummary}>
-                  <div style={styles.modalSummaryItem}>
-                    <div style={styles.modalSummaryLabel}>売上</div>
-                    <div style={styles.modalSummaryValue}>
-                      {currencyFormatter.format(dayData?.totalSales || 0)}
-                    </div>
-                  </div>
-                  <div style={styles.modalSummaryItem}>
-                    <div style={styles.modalSummaryLabel}>商品バック</div>
-                    <div style={{ ...styles.modalSummaryValue, color: '#FF9500' }}>
-                      {currencyFormatter.format(dayData?.productBack || 0)}
-                    </div>
-                  </div>
+                <div style={{ ...styles.modalSummary, backgroundColor: '#f8f9fa', borderRadius: '8px', padding: '16px', marginBottom: '16px' }}>
+                  <div style={{ fontSize: '12px', color: '#6c757d', marginBottom: '4px' }}>推し売上合計</div>
+                  <div style={{ fontSize: '24px', fontWeight: '700' }}>{currencyFormatter.format(totalSelfSales)}</div>
                 </div>
 
-                {/* 売上内訳 */}
-                {dayData && (dayData.selfSales > 0 || dayData.helpSales > 0) && (
+                {/* 売上一覧（伝票ごと） */}
+                {selfOrders.length > 0 && (
                   <div style={styles.modalSection}>
-                    <div style={styles.modalSectionTitle}>売上内訳</div>
-                    <div style={styles.modalGrid}>
-                      <div style={styles.modalGridItem}>
-                        <span style={{ color: '#34C759' }}>推し売上</span>
-                        <span style={{ fontWeight: '600' }}>{currencyFormatter.format(dayData.selfSales)}</span>
-                      </div>
-                      <div style={styles.modalGridItem}>
-                        <span style={{ color: '#FF9500' }}>ヘルプ売上</span>
-                        <span style={{ fontWeight: '600' }}>{currencyFormatter.format(dayData.helpSales)}</span>
-                      </div>
+                    <div style={styles.modalSectionTitle}>伝票一覧 ({selfOrders.length}件)</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                      {selfOrders.map(order => {
+                        const isExpanded = expandedOrders.has(order.orderId)
+                        return (
+                          <div key={order.orderId}>
+                            {/* 伝票ヘッダー */}
+                            <div
+                              onClick={() => toggleOrder(order.orderId)}
+                              style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                padding: '12px',
+                                backgroundColor: isExpanded ? '#f0f7ff' : 'transparent',
+                                cursor: 'pointer',
+                                borderBottom: '1px solid #e9ecef'
+                              }}
+                            >
+                              <div>
+                                <div style={{ fontWeight: '500' }}>
+                                  {order.tableNumber || '-'}番 / {order.guestName || '無記名'}
+                                </div>
+                                <div style={{ fontSize: '11px', color: '#6c757d' }}>
+                                  #{order.orderId.slice(0, 6)}
+                                </div>
+                              </div>
+                              <div style={{ fontWeight: '600' }}>
+                                {currencyFormatter.format(order.totalSales)}
+                                <span style={{ marginLeft: '8px', color: '#6c757d' }}>{isExpanded ? '▲' : '▼'}</span>
+                              </div>
+                            </div>
+                            {/* 展開時の商品明細 */}
+                            {isExpanded && (
+                              <div style={{ backgroundColor: '#f8f9fa', padding: '8px 12px' }}>
+                                {order.items.map((item, idx) => (
+                                  <div key={idx} style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    padding: '8px 0',
+                                    borderBottom: idx < order.items.length - 1 ? '1px solid #e9ecef' : 'none'
+                                  }}>
+                                    <div>
+                                      <span style={{
+                                        fontSize: '11px',
+                                        padding: '2px 6px',
+                                        borderRadius: '4px',
+                                        backgroundColor: '#e9ecef',
+                                        color: '#495057',
+                                        marginRight: '8px'
+                                      }}>
+                                        {item.category || '-'}
+                                      </span>
+                                      {item.product_name}
+                                    </div>
+                                    <div style={{ textAlign: 'right' }}>
+                                      <div style={{ fontWeight: '500' }}>{currencyFormatter.format(item.subtotal)}</div>
+                                      <div style={{ fontSize: '11px', color: '#6c757d' }}>
+                                        {currencyFormatter.format(Math.floor(item.subtotal / item.quantity))} × {item.quantity}
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
                     </div>
                   </div>
                 )}
 
-                {/* 商品バック詳細 */}
-                {dayData && dayData.items.length > 0 && (
+                {/* 推しバック */}
+                {selfBackOrders.length > 0 && (
                   <div style={styles.modalSection}>
-                    <div style={styles.modalSectionTitle}>商品バック詳細</div>
-                    <div style={styles.modalItemList}>
-                      {dayData.items.map((item, idx) => (
-                        <div key={idx} style={styles.modalItem}>
-                          <div style={styles.modalItemMain}>
-                            <div style={styles.modalItemName}>
-                              {item.productName}
-                              <span style={{
-                                marginLeft: '6px',
-                                fontSize: '11px',
-                                padding: '2px 6px',
-                                borderRadius: '4px',
-                                backgroundColor: item.salesType === 'self' ? '#d4edda' : '#fff3cd',
-                                color: item.salesType === 'self' ? '#155724' : '#856404'
-                              }}>
-                                {item.salesType === 'self' ? '推し' : 'ヘルプ'}
-                              </span>
+                    <div style={{ ...styles.modalSectionTitle, color: '#34C759' }}>
+                      推しバック ({currencyFormatter.format(totalSelfBack)})
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                      {selfBackOrders.map(order => {
+                        const backOrderId = `back-self-${order.orderId}`
+                        const isExpanded = expandedOrders.has(backOrderId)
+                        return (
+                          <div key={backOrderId}>
+                            <div
+                              onClick={() => toggleOrder(backOrderId)}
+                              style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                padding: '12px',
+                                backgroundColor: isExpanded ? '#d4edda' : 'transparent',
+                                cursor: 'pointer',
+                                borderBottom: '1px solid #e9ecef'
+                              }}
+                            >
+                              <div>
+                                <div style={{ fontWeight: '500' }}>
+                                  {order.tableNumber || '-'}番 / {order.guestName || '無記名'}
+                                </div>
+                                <div style={{ fontSize: '11px', color: '#6c757d' }}>
+                                  #{order.orderId.slice(0, 6)}
+                                </div>
+                              </div>
+                              <div style={{ fontWeight: '600', color: '#34C759' }}>
+                                {currencyFormatter.format(order.totalBack)}
+                                <span style={{ marginLeft: '8px', color: '#6c757d' }}>{isExpanded ? '▲' : '▼'}</span>
+                              </div>
                             </div>
-                            <div style={styles.modalItemCategory}>{item.category || '-'}</div>
+                            {isExpanded && (
+                              <div style={{ backgroundColor: '#f8f9fa', padding: '8px 12px' }}>
+                                {order.items.map((item, idx) => (
+                                  <div key={idx} style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    padding: '8px 0',
+                                    borderBottom: idx < order.items.length - 1 ? '1px solid #e9ecef' : 'none'
+                                  }}>
+                                    <div>
+                                      <span style={{
+                                        fontSize: '11px',
+                                        padding: '2px 6px',
+                                        borderRadius: '4px',
+                                        backgroundColor: '#d4edda',
+                                        color: '#155724',
+                                        marginRight: '8px'
+                                      }}>
+                                        {item.category || '-'}
+                                      </span>
+                                      {item.product_name}
+                                    </div>
+                                    <div style={{ textAlign: 'right' }}>
+                                      <div style={{ fontWeight: '500', color: '#34C759' }}>{currencyFormatter.format(item.back_amount)}</div>
+                                      <div style={{ fontSize: '11px', color: '#6c757d' }}>
+                                        {currencyFormatter.format(item.subtotal)} × {item.quantity}
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                           </div>
-                          <div style={styles.modalItemDetail}>
-                            <div style={{ fontSize: '12px', color: '#86868b' }}>
-                              {item.quantity}個 × {currencyFormatter.format(Math.floor(item.subtotal / item.quantity))} = {currencyFormatter.format(item.subtotal)}
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* ヘルプバック */}
+                {helpBackOrders.length > 0 && (
+                  <div style={styles.modalSection}>
+                    <div style={{ ...styles.modalSectionTitle, color: '#FF9500' }}>
+                      ヘルプバック ({currencyFormatter.format(totalHelpBack)})
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                      {helpBackOrders.map(order => {
+                        const backOrderId = `back-help-${order.orderId}`
+                        const isExpanded = expandedOrders.has(backOrderId)
+                        return (
+                          <div key={backOrderId}>
+                            <div
+                              onClick={() => toggleOrder(backOrderId)}
+                              style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                padding: '12px',
+                                backgroundColor: isExpanded ? '#fff3cd' : 'transparent',
+                                cursor: 'pointer',
+                                borderBottom: '1px solid #e9ecef'
+                              }}
+                            >
+                              <div>
+                                <div style={{ fontWeight: '500' }}>
+                                  {order.tableNumber || '-'}番 / {order.guestName || '無記名'}
+                                </div>
+                                <div style={{ fontSize: '11px', color: '#6c757d' }}>
+                                  #{order.orderId.slice(0, 6)}
+                                </div>
+                              </div>
+                              <div style={{ fontWeight: '600', color: '#FF9500' }}>
+                                {currencyFormatter.format(order.totalBack)}
+                                <span style={{ marginLeft: '8px', color: '#6c757d' }}>{isExpanded ? '▲' : '▼'}</span>
+                              </div>
                             </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <span style={{ fontSize: '12px', color: '#86868b' }}>{item.backRatio}%</span>
-                              <span style={{ fontWeight: '600', color: '#FF9500' }}>
-                                {currencyFormatter.format(item.backAmount)}
-                              </span>
-                            </div>
+                            {isExpanded && (
+                              <div style={{ backgroundColor: '#f8f9fa', padding: '8px 12px' }}>
+                                {order.items.map((item, idx) => (
+                                  <div key={idx} style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    padding: '8px 0',
+                                    borderBottom: idx < order.items.length - 1 ? '1px solid #e9ecef' : 'none'
+                                  }}>
+                                    <div>
+                                      <span style={{
+                                        fontSize: '11px',
+                                        padding: '2px 6px',
+                                        borderRadius: '4px',
+                                        backgroundColor: '#fff3cd',
+                                        color: '#856404',
+                                        marginRight: '8px'
+                                      }}>
+                                        {item.category || '-'}
+                                      </span>
+                                      {item.product_name}
+                                    </div>
+                                    <div style={{ textAlign: 'right' }}>
+                                      <div style={{ fontWeight: '500', color: '#FF9500' }}>{currencyFormatter.format(item.back_amount)}</div>
+                                      <div style={{ fontSize: '11px', color: '#6c757d' }}>
+                                        {currencyFormatter.format(item.subtotal)} × {item.quantity}
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                           </div>
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   </div>
                 )}
@@ -2376,7 +2677,7 @@ function PayslipPageContent() {
 
               <div style={styles.modalFooter}>
                 <button
-                  onClick={() => setSelectedDayDetail(null)}
+                  onClick={() => { setSelectedDayDetail(null); setExpandedOrders(new Set()) }}
                   style={styles.modalButton}
                 >
                   閉じる
