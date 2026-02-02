@@ -31,6 +31,12 @@ export default function CompensationListPage() {
   )
 }
 
+interface WageStatus {
+  id: number
+  name: string
+  hourly_wage: number
+}
+
 function CompensationListContent() {
   const { storeId, storeName } = useStore()
   const [loading, setLoading] = useState(true)
@@ -38,6 +44,7 @@ function CompensationListContent() {
   const [showExportModal, setShowExportModal] = useState(false)
   const [castsWithCompensation, setCastsWithCompensation] = useState<CastWithCompensation[]>([])
   const [selectedMonth, setSelectedMonth] = useState(new Date())
+  const [wageStatuses, setWageStatuses] = useState<WageStatus[]>([])
   const printRef = useRef<HTMLDivElement>(null)
 
   const loadData = useCallback(async () => {
@@ -64,6 +71,16 @@ function CompensationListContent() {
         .or(`and(target_year.eq.${year},target_month.eq.${month}),and(target_year.is.null,target_month.is.null)`)
 
       if (settingsError) throw settingsError
+
+      // 時給ステータスを取得
+      const { data: wageStatusesData, error: wageStatusesError } = await supabase
+        .from('wage_statuses')
+        .select('id, name, hourly_wage')
+        .eq('store_id', storeId)
+        .eq('is_active', true)
+
+      if (wageStatusesError) throw wageStatusesError
+      setWageStatuses(wageStatusesData || [])
 
       // キャストと報酬設定を結合（月別設定があればそれを優先）
       const combined = (casts || []).map(cast => {
@@ -128,7 +145,7 @@ function CompensationListContent() {
         const types = settings?.compensation_types?.filter(t => t.is_enabled) || []
         const compensationText = types.length > 0
           ? types.map(type => {
-              const { main } = getCompensationDetails(type)
+              const { main } = getCompensationDetails(type, settings)
               return main
             }).join(' / ')
           : '未設定'
@@ -167,16 +184,46 @@ function CompensationListContent() {
     }).join(', ')
   }
 
+  // 実際の時給を取得（優先順位: override > status wage > type hourly_rate）
+  const getActualHourlyWage = (settings: CompensationSettings | null, type: CompensationType): number | null => {
+    // デバッグ
+    console.log('[getActualHourlyWage]', {
+      status_id: settings?.status_id,
+      hourly_wage_override: settings?.hourly_wage_override,
+      type_hourly_rate: type.hourly_rate,
+      wageStatuses_length: wageStatuses.length,
+      wageStatuses
+    })
+    // 1. hourly_wage_override が設定されていればそれを使用
+    if (settings?.hourly_wage_override && settings.hourly_wage_override > 0) {
+      return settings.hourly_wage_override
+    }
+    // 2. status_id があればwage_statusesから時給を取得
+    if (settings?.status_id) {
+      const wageStatus = wageStatuses.find(s => s.id === settings.status_id)
+      console.log('[getActualHourlyWage] found wageStatus:', wageStatus)
+      if (wageStatus) {
+        return wageStatus.hourly_wage
+      }
+    }
+    // 3. フォールバック: type.hourly_rate
+    if (type.hourly_rate > 0) {
+      return type.hourly_rate
+    }
+    return null
+  }
+
   // 報酬形態の詳細を生成
-  const getCompensationDetails = (type: CompensationType): { main: string, details: string[] } => {
+  const getCompensationDetails = (type: CompensationType, settings: CompensationSettings | null): { main: string, details: string[] } => {
     const mainParts: string[] = []
     const details: string[] = []
 
     if (type.fixed_amount > 0) {
       mainParts.push(`固定 ¥${type.fixed_amount.toLocaleString()}`)
     }
-    if (type.hourly_rate > 0) {
-      mainParts.push(`時給 ¥${type.hourly_rate.toLocaleString()}`)
+    const actualHourlyWage = getActualHourlyWage(settings, type)
+    if (actualHourlyWage && actualHourlyWage > 0) {
+      mainParts.push(`時給 ¥${actualHourlyWage.toLocaleString()}`)
     }
     if (type.use_sliding_rate) {
       mainParts.push('スライド歩合')
@@ -294,7 +341,7 @@ function CompensationListContent() {
                     {types.length > 0 ? (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                         {types.map((type, index) => {
-                          const { main, details } = getCompensationDetails(type)
+                          const { main, details } = getCompensationDetails(type, settings)
                           return (
                             <div key={type.id}>
                               <div style={{ fontSize: '13px', color: '#1e293b', fontWeight: '500' }}>
