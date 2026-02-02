@@ -250,6 +250,79 @@ function CastWageSettingsPageContent() {
     }
   }
 
+  // 前月から時給設定をコピー
+  const handleCopyFromPreviousMonth = async () => {
+    const prevMonth = subMonths(selectedMonth, 1)
+    const prevYear = prevMonth.getFullYear()
+    const prevMonthNum = prevMonth.getMonth() + 1
+    const currentYear = selectedMonth.getFullYear()
+    const currentMonthNum = selectedMonth.getMonth() + 1
+    const monthStr = format(selectedMonth, 'yyyy年M月', { locale: ja })
+    const prevMonthStr = format(prevMonth, 'yyyy年M月', { locale: ja })
+
+    if (!confirm(`${prevMonthStr}の時給設定を${monthStr}にコピーしますか？\n（既存の設定は上書きされます）`)) return
+
+    setSaving(true)
+    try {
+      // 前月の設定を取得
+      const { data: prevSettings, error: prevError } = await supabase
+        .from('compensation_settings')
+        .select('cast_id, status_id, status_locked, hourly_wage_override, min_days_rule_enabled, first_month_exempt_override')
+        .eq('store_id', storeId)
+        .eq('target_year', prevYear)
+        .eq('target_month', prevMonthNum)
+
+      if (prevError) throw prevError
+
+      if (!prevSettings || prevSettings.length === 0) {
+        toast.error(`${prevMonthStr}の設定がありません`)
+        setSaving(false)
+        return
+      }
+
+      let updated = 0
+      let skipped = 0
+
+      for (const prevSetting of prevSettings) {
+        // 当月のレコードを更新
+        const { data, error } = await supabase
+          .from('compensation_settings')
+          .update({
+            status_id: prevSetting.status_id,
+            status_locked: prevSetting.status_locked,
+            hourly_wage_override: prevSetting.hourly_wage_override,
+            min_days_rule_enabled: prevSetting.min_days_rule_enabled,
+            first_month_exempt_override: prevSetting.first_month_exempt_override,
+          })
+          .eq('store_id', storeId)
+          .eq('cast_id', prevSetting.cast_id)
+          .eq('target_year', currentYear)
+          .eq('target_month', currentMonthNum)
+          .select()
+
+        if (error) {
+          console.error(`Cast ${prevSetting.cast_id} update error:`, error)
+        } else if (data && data.length > 0) {
+          updated++
+        } else {
+          skipped++
+        }
+      }
+
+      if (skipped > 0) {
+        toast.success(`${updated}人にコピー完了（${skipped}人は当月の設定なし）`)
+      } else {
+        toast.success(`${updated}人の時給設定をコピーしました`)
+      }
+      loadData()
+    } catch (err) {
+      console.error('コピーエラー:', err)
+      toast.error('コピーに失敗しました')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const selectedCast = casts.find(c => c.id === selectedCastId)
   const selectedStatus = editingSettings?.status_id
     ? wageStatuses.find(s => s.id === editingSettings.status_id)
@@ -284,6 +357,14 @@ function CastWageSettingsPageContent() {
               ▶
             </Button>
           </div>
+          <Button
+            onClick={handleCopyFromPreviousMonth}
+            variant="outline"
+            size="small"
+            disabled={saving}
+          >
+            前月からコピー
+          </Button>
         </div>
         <p style={styles.subtitle}>店舗: {storeName}</p>
       </div>
