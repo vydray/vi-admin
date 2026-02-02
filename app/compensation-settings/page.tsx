@@ -2655,7 +2655,11 @@ function CompensationSettingsPageContent() {
                 {settingsState.compensationTypes.map(type => (
                   <button
                     key={type.id}
-                    onClick={() => setActiveCompensationTypeId(type.id)}
+                    onClick={() => {
+                      setActiveCompensationTypeId(type.id)
+                      // シミュレーションタブも同期（混乱防止）
+                      setSimSelectedTypeId(type.id)
+                    }}
                     style={{
                       ...styles.compensationTypeTab,
                       ...(activeCompensationTypeId === type.id ? styles.compensationTypeTabActive : {}),
@@ -3614,7 +3618,11 @@ function CompensationSettingsPageContent() {
                       return (
                         <button
                           key={result.type.id}
-                          onClick={() => setSimSelectedTypeId(result.type.id)}
+                          onClick={() => {
+                            setSimSelectedTypeId(result.type.id)
+                            // 左カラムの報酬形態タブも同期（混乱防止）
+                            setActiveCompensationTypeId(result.type.id)
+                          }}
                           style={{
                             padding: '6px 12px',
                             fontSize: '11px',
