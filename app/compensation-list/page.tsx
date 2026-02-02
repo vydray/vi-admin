@@ -184,8 +184,13 @@ function CompensationListContent() {
     }).join(', ')
   }
 
-  // 実際の時給を取得（優先順位: override > status wage > type hourly_rate）
+  // 実際の時給を取得（報酬形態で時給が設定されている場合のみ）
   const getActualHourlyWage = (settings: CompensationSettings | null, type: CompensationType): number | null => {
+    // 報酬形態で時給が0の場合は、その報酬形態では時給を使わない
+    // (スライド歩合のみの報酬形態など)
+    if (type.hourly_rate === 0) {
+      return null
+    }
     // 1. hourly_wage_override が設定されていればそれを使用
     if (settings?.hourly_wage_override && settings.hourly_wage_override > 0) {
       return settings.hourly_wage_override

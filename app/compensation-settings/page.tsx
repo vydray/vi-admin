@@ -1082,35 +1082,13 @@ function CompensationSettingsPageContent() {
         setIsLocked(data.is_locked ?? false)
         setEnabledDeductionIds(data.enabled_deduction_ids || [])
 
-        // 別の月の設定を引き継いだ場合、自動で保存する
-        if (!isExactMatch) {
-          // 既存のアクティブレコードを無効化
-          await supabase
-            .from('compensation_settings')
-            .update({ is_active: false })
-            .eq('cast_id', castId)
-            .eq('store_id', storeId)
-            .eq('target_year', year)
-            .eq('target_month', month)
-            .eq('is_active', true)
-
-          const saveData = {
-            ...stateToDb(state, castId, storeId),
-            target_year: year,
-            target_month: month,
-            enabled_deduction_ids: data.enabled_deduction_ids || [],
-          }
-          const { data: newRecord, error: saveError } = await supabase
-            .from('compensation_settings')
-            .insert(saveData)
-            .select('id')
-            .single()
-
-          if (!saveError && newRecord) {
-            setExistingId(newRecord.id)
-          }
-        } else {
+        // 指定年月のレコードが存在する場合のみexistingIdを設定
+        // 別の月から設定を継承した場合は、保存時に新規作成される
+        if (isExactMatch) {
           setExistingId(data.id)
+        } else {
+          // 継承した設定は表示するが、まだ保存されていない状態
+          setExistingId(undefined)
         }
       } else {
         // 新規設定
@@ -2175,22 +2153,31 @@ function CompensationSettingsPageContent() {
 
         if (error) throw error
       } else {
-        // 新規作成の前に、同じキャスト・店舗・年月の既存アクティブレコードを無効化
-        await supabase
+        // 新規作成前に、同じキャスト・店舗・年月のレコードを確認
+        const { data: existingRecord } = await supabase
           .from('compensation_settings')
-          .update({ is_active: false })
+          .select('id')
           .eq('cast_id', selectedCastId)
           .eq('store_id', storeId)
           .eq('target_year', selectedYear)
           .eq('target_month', selectedMonth)
           .eq('is_active', true)
+          .maybeSingle()
 
-        // 新規作成
-        const { error } = await supabase
-          .from('compensation_settings')
-          .insert(saveData)
-
-        if (error) throw error
+        if (existingRecord) {
+          // 既存レコードがあれば更新（重複防止）
+          const { error } = await supabase
+            .from('compensation_settings')
+            .update(saveData)
+            .eq('id', existingRecord.id)
+          if (error) throw error
+        } else {
+          // 新規作成
+          const { error } = await supabase
+            .from('compensation_settings')
+            .insert(saveData)
+          if (error) throw error
+        }
       }
 
       toast.success('設定を保存しました')
@@ -2248,21 +2235,31 @@ function CompensationSettingsPageContent() {
           .eq('id', existingId)
         if (updateError) throw updateError
       } else {
-        // 新規作成の前に、同じキャスト・店舗・年月の既存アクティブレコードを無効化
-        await supabase
+        // 新規作成前に、同じキャスト・店舗・年月のレコードを確認
+        const { data: existingRecord } = await supabase
           .from('compensation_settings')
-          .update({ is_active: false })
+          .select('id')
           .eq('cast_id', selectedCastId)
           .eq('store_id', storeId)
           .eq('target_year', selectedYear)
           .eq('target_month', selectedMonth)
           .eq('is_active', true)
+          .maybeSingle()
 
-        // 新規作成
-        const { error: insertError } = await supabase
-          .from('compensation_settings')
-          .insert(saveData)
-        if (insertError) throw insertError
+        if (existingRecord) {
+          // 既存レコードがあれば更新（重複防止）
+          const { error: updateError } = await supabase
+            .from('compensation_settings')
+            .update(saveData)
+            .eq('id', existingRecord.id)
+          if (updateError) throw updateError
+        } else {
+          // 新規作成
+          const { error: insertError } = await supabase
+            .from('compensation_settings')
+            .insert(saveData)
+          if (insertError) throw insertError
+        }
       }
 
       toast.success(`${prevYear}年${prevMonth}月の設定をコピーしました`)
@@ -2325,16 +2322,7 @@ function CompensationSettingsPageContent() {
               .update(saveData)
               .eq('id', existing.id)
           } else {
-            // 新規作成の前に、同じキャスト・店舗・年月の既存アクティブレコードを無効化
-            await supabase
-              .from('compensation_settings')
-              .update({ is_active: false })
-              .eq('cast_id', cast.id)
-              .eq('store_id', storeId)
-              .eq('target_year', selectedYear)
-              .eq('target_month', selectedMonth)
-              .eq('is_active', true)
-
+            // 新規作成
             await supabase
               .from('compensation_settings')
               .insert(saveData)
@@ -2347,16 +2335,7 @@ function CompensationSettingsPageContent() {
               .update({ enabled_deduction_ids: enabledDeductionIds })
               .eq('id', existing.id)
           } else {
-            // 新規作成の前に、同じキャスト・店舗・年月の既存アクティブレコードを無効化
-            await supabase
-              .from('compensation_settings')
-              .update({ is_active: false })
-              .eq('cast_id', cast.id)
-              .eq('store_id', storeId)
-              .eq('target_year', selectedYear)
-              .eq('target_month', selectedMonth)
-              .eq('is_active', true)
-
+            // 新規作成
             await supabase
               .from('compensation_settings')
               .insert({

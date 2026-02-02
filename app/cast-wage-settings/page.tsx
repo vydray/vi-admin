@@ -86,6 +86,7 @@ function CastWageSettingsPageContent() {
         .eq('store_id', storeId)
         .eq('target_year', year)
         .eq('target_month', month)
+        .eq('is_active', true)
 
       if (compError) throw compError
       setCompensationSettings((compData || []) as CompensationSettings[])
@@ -164,7 +165,7 @@ function CastWageSettingsPageContent() {
       const existingSettings = compensationSettings.find(c => c.cast_id === selectedCastId)
 
       if (existingSettings) {
-        // 既存レコードを更新
+        // 既存レコードを更新（IDで特定して更新）
         const { error } = await supabase
           .from('compensation_settings')
           .update({
@@ -174,17 +175,43 @@ function CastWageSettingsPageContent() {
             min_days_rule_enabled: editingSettings.min_days_rule_enabled,
             first_month_exempt_override: editingSettings.first_month_exempt_override,
           })
-          .eq('store_id', storeId)
-          .eq('cast_id', selectedCastId)
-          .eq('target_year', year)
-          .eq('target_month', month)
+          .eq('id', existingSettings.id)
 
         if (error) throw error
       } else {
-        // 該当月のレコードがない場合は作成しない（報酬計算設定で作成する必要がある）
-        toast.error('この月の報酬設定がありません。報酬計算設定で先に設定を作成してください。')
-        setSaving(false)
-        return
+        // 該当月のレコードがない場合、直近の設定から報酬設定をコピーして新規作成
+        const { data: recentSettings } = await supabase
+          .from('compensation_settings')
+          .select('compensation_types, payment_selection_method, selected_compensation_type_id, enabled_deduction_ids')
+          .eq('cast_id', selectedCastId)
+          .eq('store_id', storeId)
+          .eq('is_active', true)
+          .not('compensation_types', 'is', null)
+          .order('target_year', { ascending: false })
+          .order('target_month', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+
+        const { error } = await supabase
+          .from('compensation_settings')
+          .insert({
+            cast_id: selectedCastId,
+            store_id: storeId,
+            target_year: year,
+            target_month: month,
+            status_id: editingSettings.status_id,
+            status_locked: editingSettings.status_locked,
+            hourly_wage_override: editingSettings.hourly_wage_override,
+            min_days_rule_enabled: editingSettings.min_days_rule_enabled,
+            first_month_exempt_override: editingSettings.first_month_exempt_override,
+            compensation_types: recentSettings?.compensation_types || null,
+            payment_selection_method: recentSettings?.payment_selection_method || 'highest',
+            selected_compensation_type_id: recentSettings?.selected_compensation_type_id || null,
+            enabled_deduction_ids: recentSettings?.enabled_deduction_ids || [],
+            is_active: true,
+          })
+
+        if (error) throw error
       }
 
       toast.success('保存しました')
@@ -211,7 +238,7 @@ function CastWageSettingsPageContent() {
       let skipped = 0
 
       for (const cast of filteredCasts) {
-        // 選択月のレコードのみ更新
+        // 選択月のレコードのみ更新（is_active=trueのレコードのみ対象）
         const { data, error } = await supabase
           .from('compensation_settings')
           .update({
@@ -225,6 +252,7 @@ function CastWageSettingsPageContent() {
           .eq('cast_id', cast.id)
           .eq('target_year', year)
           .eq('target_month', month)
+          .eq('is_active', true)
           .select()
 
         if (error) {
@@ -232,7 +260,43 @@ function CastWageSettingsPageContent() {
         } else if (data && data.length > 0) {
           updated++
         } else {
-          skipped++
+          // レコードがなければ直近の設定から報酬設定をコピーして新規作成
+          const { data: recentSettings } = await supabase
+            .from('compensation_settings')
+            .select('compensation_types, payment_selection_method, selected_compensation_type_id, enabled_deduction_ids')
+            .eq('cast_id', cast.id)
+            .eq('store_id', storeId)
+            .eq('is_active', true)
+            .not('compensation_types', 'is', null)
+            .order('target_year', { ascending: false })
+            .order('target_month', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+
+          const { error: insertError } = await supabase
+            .from('compensation_settings')
+            .insert({
+              cast_id: cast.id,
+              store_id: storeId,
+              target_year: year,
+              target_month: month,
+              status_id: editingSettings.status_id,
+              status_locked: editingSettings.status_locked,
+              hourly_wage_override: editingSettings.hourly_wage_override,
+              min_days_rule_enabled: editingSettings.min_days_rule_enabled,
+              first_month_exempt_override: editingSettings.first_month_exempt_override,
+              compensation_types: recentSettings?.compensation_types || null,
+              payment_selection_method: recentSettings?.payment_selection_method || 'highest',
+              selected_compensation_type_id: recentSettings?.selected_compensation_type_id || null,
+              enabled_deduction_ids: recentSettings?.enabled_deduction_ids || [],
+              is_active: true,
+            })
+          if (insertError) {
+            console.error(`Cast ${cast.id} insert error:`, insertError)
+            skipped++
+          } else {
+            updated++
+          }
         }
       }
 
@@ -264,13 +328,14 @@ function CastWageSettingsPageContent() {
 
     setSaving(true)
     try {
-      // 前月の設定を取得
+      // 前月の設定を取得（is_active=trueのレコードのみ、報酬設定も含む）
       const { data: prevSettings, error: prevError } = await supabase
         .from('compensation_settings')
-        .select('cast_id, status_id, status_locked, hourly_wage_override, min_days_rule_enabled, first_month_exempt_override')
+        .select('cast_id, status_id, status_locked, hourly_wage_override, min_days_rule_enabled, first_month_exempt_override, compensation_types, payment_selection_method, selected_compensation_type_id, enabled_deduction_ids')
         .eq('store_id', storeId)
         .eq('target_year', prevYear)
         .eq('target_month', prevMonthNum)
+        .eq('is_active', true)
 
       if (prevError) throw prevError
 
@@ -284,7 +349,7 @@ function CastWageSettingsPageContent() {
       let skipped = 0
 
       for (const prevSetting of prevSettings) {
-        // 当月のレコードを更新
+        // 当月のレコードを更新（is_active=trueのレコードのみ対象）
         const { data, error } = await supabase
           .from('compensation_settings')
           .update({
@@ -298,6 +363,7 @@ function CastWageSettingsPageContent() {
           .eq('cast_id', prevSetting.cast_id)
           .eq('target_year', currentYear)
           .eq('target_month', currentMonthNum)
+          .eq('is_active', true)
           .select()
 
         if (error) {
@@ -305,12 +371,36 @@ function CastWageSettingsPageContent() {
         } else if (data && data.length > 0) {
           updated++
         } else {
-          skipped++
+          // レコードがなければ前月の設定を全てコピーして新規作成
+          const { error: insertError } = await supabase
+            .from('compensation_settings')
+            .insert({
+              cast_id: prevSetting.cast_id,
+              store_id: storeId,
+              target_year: currentYear,
+              target_month: currentMonthNum,
+              status_id: prevSetting.status_id,
+              status_locked: prevSetting.status_locked,
+              hourly_wage_override: prevSetting.hourly_wage_override,
+              min_days_rule_enabled: prevSetting.min_days_rule_enabled,
+              first_month_exempt_override: prevSetting.first_month_exempt_override,
+              compensation_types: prevSetting.compensation_types,
+              payment_selection_method: prevSetting.payment_selection_method || 'highest',
+              selected_compensation_type_id: prevSetting.selected_compensation_type_id,
+              enabled_deduction_ids: prevSetting.enabled_deduction_ids || [],
+              is_active: true,
+            })
+          if (insertError) {
+            console.error(`Cast ${prevSetting.cast_id} insert error:`, insertError)
+            skipped++
+          } else {
+            updated++
+          }
         }
       }
 
       if (skipped > 0) {
-        toast.success(`${updated}人にコピー完了（${skipped}人は当月の設定なし）`)
+        toast.success(`${updated}人にコピー完了（${skipped}人はエラー）`)
       } else {
         toast.success(`${updated}人の時給設定をコピーしました`)
       }

@@ -259,7 +259,7 @@ async function calculatePayslipForCast(
     // BASEバック率を取得
     const { data: backRates } = await supabaseAdmin
       .from('cast_back_rates')
-      .select('category, product_name, back_type, back_ratio, back_fixed_amount, self_back_ratio')
+      .select('category, product_name, back_type, back_ratio, back_fixed_amount, self_back_ratio, help_back_ratio, source')
       .eq('cast_id', cast.id)
       .eq('store_id', storeId)
       .eq('is_active', true)
@@ -317,6 +317,38 @@ async function calculatePayslipForCast(
       if (!matchedRate) return null
 
       const rate = matchedRate.self_back_ratio ?? matchedRate.back_ratio
+      return {
+        type: matchedRate.back_type || 'ratio',
+        rate,
+        fixedAmount: matchedRate.back_fixed_amount || 0
+      }
+    }
+
+    // POS商品のバック情報を取得するヘルパー関数
+    const getPosBackInfo = (productName: string, category: string | null, isSelf: boolean): { type: 'ratio' | 'fixed'; rate: number; fixedAmount: number } | null => {
+      if (!backRates || backRates.length === 0) return null
+
+      // 優先順位: 1. 商品名+カテゴリ完全一致 → 2. 商品名のみ一致 → 3. カテゴリのみ一致
+      let matchedRate = backRates.find(
+        r => r.product_name === productName && r.category === category
+      )
+      if (!matchedRate) {
+        matchedRate = backRates.find(
+          r => r.product_name === productName && (r.category === null || r.source === 'all')
+        )
+      }
+      if (!matchedRate && category) {
+        matchedRate = backRates.find(
+          r => r.category === category && (r.product_name === null || r.product_name === '')
+        )
+      }
+      if (!matchedRate) return null
+
+      // 自己売上かヘルプかでバック率を切り替え
+      const rate = isSelf
+        ? (matchedRate.self_back_ratio ?? matchedRate.back_ratio)
+        : (matchedRate.help_back_ratio ?? matchedRate.back_ratio)
+
       return {
         type: matchedRate.back_type || 'ratio',
         rate,
@@ -384,7 +416,21 @@ async function calculatePayslipForCast(
       }
       const dayData = dailySalesMap.get(item.date)!
       dayData.totalSales += item.subtotal  // POS売上を追加
-      dayData.productBack += item.back_amount
+
+      // cast_back_ratesからバック情報を取得して計算
+      const backInfo = getPosBackInfo(item.product_name, item.category, item.is_self)
+      let calculatedBackAmount = item.back_amount || 0  // DBに値があればそれを使用
+      let backRatio: number | null = null
+
+      if (backInfo && calculatedBackAmount === 0) {
+        // バック設定があり、DBにバック額がない場合は計算
+        backRatio = backInfo.rate
+        calculatedBackAmount = backInfo.type === 'fixed'
+          ? backInfo.fixedAmount * item.quantity
+          : Math.floor(item.subtotal * backInfo.rate / 100)
+      }
+
+      dayData.productBack += calculatedBackAmount
 
       // POS商品明細をitemsに追加（BASE商品と同じ構造）
       dayData.items.push({
@@ -393,8 +439,8 @@ async function calculatePayslipForCast(
         sales_type: item.is_self ? 'self' : 'help',
         quantity: item.quantity,
         subtotal: item.subtotal,
-        back_ratio: null,  // POSではバック率は保存されていない
-        back_amount: item.back_amount,
+        back_ratio: backRatio,
+        back_amount: calculatedBackAmount,
         is_base: false
       })
     }
@@ -808,7 +854,8 @@ export async function POST(request: NextRequest) {
       }
 
       // super_adminは全店舗にアクセス可能、それ以外は自店舗のみ
-      if (session.role !== 'super_admin' && session.storeId !== targetStoreId) {
+      // セッションのstore_idはアンダースコア形式
+      if (session.role !== 'super_admin' && Number(session.store_id) !== Number(targetStoreId)) {
         return NextResponse.json(
           { error: 'Forbidden: You can only recalculate payslips for your own store' },
           { status: 403 }

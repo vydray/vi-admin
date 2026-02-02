@@ -505,8 +505,19 @@ function PayslipPageContent() {
     // dailySalesDataを作成（日別データ）
     const dailyMap = new Map<string, any>()
 
+    // savedPayslipのdaily_detailsから商品バックを取得するためのマップを作成
+    const payslipBackMap = new Map<string, number>()
+    if (savedPayslip?.daily_details) {
+      savedPayslip.daily_details.forEach((detail: { date: string; back?: number }) => {
+        payslipBackMap.set(detail.date, detail.back || 0)
+      })
+    }
+
     // cast_daily_statsから売上データを取得（推し小計・伝票小計の両方）
     dailyStats.forEach(stat => {
+      // savedPayslipに商品バックがあればそれを優先、なければcast_daily_statsから
+      const productBack = payslipBackMap.get(stat.date) ?? stat.product_back_item_based ?? 0
+
       dailyMap.set(stat.date, {
         date: stat.date,
         // 推し小計（item_based）
@@ -519,7 +530,7 @@ function PayslipPageContent() {
         helpSales: stat.help_sales_item_based || 0,
         baseSales: 0,
         storeSales: 0,
-        productBack: stat.product_back_item_based || 0,
+        productBack: productBack,
         workHours: stat.work_hours || 0,
         wageAmount: stat.wage_amount || 0,
         items: []
@@ -569,7 +580,7 @@ function PayslipPageContent() {
     })
 
     setDailySalesData(dailyMap)
-  }, [dailyStats, payslipItems])
+  }, [dailyStats, payslipItems, savedPayslip])
 
   // 初期ロード完了フラグ
   const [initialized, setInitialized] = useState(false)
@@ -923,6 +934,25 @@ function PayslipPageContent() {
   const totalDeduction = deductions.reduce((sum, d) => sum + d.amount, 0)
   const netEarnings = summary.grossEarnings - totalDeduction
 
+  // 報酬形態ごとの売上集計方法を取得（異なる場合のみ複数表示）
+  const salesAggregationByType = useMemo(() => {
+    if (!compensationSettings?.compensation_types) return []
+    const types = compensationSettings.compensation_types.filter(t => t.is_enabled)
+    const typeInfo = types.map(t => ({
+      id: t.id,
+      name: t.name,
+      aggregation: t.sales_aggregation
+    }))
+
+    // 全て同じ集計方法なら1つだけ返す
+    const uniqueAggregations = new Set(typeInfo.map(t => t.aggregation))
+    if (uniqueAggregations.size <= 1) {
+      return typeInfo.slice(0, 1)
+    }
+
+    return typeInfo
+  }, [compensationSettings])
+
   // 日別明細データ
   const dailyDetails = useMemo(() => {
     const days = eachDayOfInterval({
@@ -936,18 +966,31 @@ function PayslipPageContent() {
       const attendance = attendanceData.find(a => a.date === dateStr)
       const sales = dailySalesData.get(dateStr)
 
+      // 勤務時間を整形（19:00〜02:00 形式）
+      let workTimeRange = ''
+      if (attendance?.check_in_datetime && attendance?.check_out_datetime) {
+        const checkIn = new Date(attendance.check_in_datetime)
+        const checkOut = new Date(attendance.check_out_datetime)
+        const checkInTime = format(checkIn, 'HH:mm')
+        const checkOutTime = format(checkOut, 'HH:mm')
+        workTimeRange = `${checkInTime}〜${checkOutTime}`
+      }
+
       return {
         date: dateStr,
         dayOfMonth: format(day, 'd'),
         dayOfWeek: format(day, 'E', { locale: ja }),
         workHours: stats?.work_hours || 0,
+        workTimeRange,
         wageAmount: stats?.wage_amount || 0,
         sales: sales?.totalSales || 0,
+        salesItemBased: sales?.totalSalesItemBased || 0,
+        salesReceiptBased: sales?.totalSalesReceiptBased || 0,
         productBack: sales?.productBack || 0,
         dailyPayment: attendance?.daily_payment || 0,
         lateMinutes: attendance?.late_minutes || 0
       }
-    }).filter(d => d.workHours > 0 || d.dailyPayment > 0 || d.lateMinutes > 0 || d.sales > 0)
+    }).filter(d => d.workHours > 0 || d.dailyPayment > 0 || d.lateMinutes > 0 || d.sales > 0 || d.salesItemBased > 0 || d.salesReceiptBased > 0)
   }, [selectedMonth, dailyStats, attendanceData, dailySalesData])
 
   const selectedCast = casts.find(c => c.id === selectedCastId)
@@ -1632,115 +1675,34 @@ function PayslipPageContent() {
         <LoadingSpinner />
       ) : (
         <div ref={printRef} style={{ backgroundColor: 'white' }}>
-          {/* 報酬形態表示 */}
-          {activeCompensationType && (
-            <div style={styles.compensationTypeLabel}>
-              適用報酬形態: {activeCompensationType.name}
-              {(() => {
-                const parts: string[] = []
-                if (activeCompensationType.hourly_rate > 0) parts.push('時給')
-                if (activeCompensationType.commission_rate > 0 || activeCompensationType.use_sliding_rate) {
-                  parts.push(activeCompensationType.use_sliding_rate
-                    ? 'スライド式売上バック'
-                    : `売上バック${activeCompensationType.commission_rate}%`)
-                }
-                if (activeCompensationType.use_product_back) parts.push('商品バック')
-                if (activeCompensationType.fixed_amount > 0) {
-                  parts.push(`固定額${currencyFormatter.format(activeCompensationType.fixed_amount)}`)
-                }
-                return parts.length > 0 ? `（${parts.join(' + ')}）` : ''
-              })()}
-            </div>
-          )}
-
-          {/* 報酬形態比較表示（高い方選択時のみ） */}
-          {compensationComparison && compensationComparison.length > 1 && (
-            <div style={{
-              margin: '8px 24px 16px',
-              padding: '12px',
-              backgroundColor: '#f8fafc',
-              borderRadius: '8px',
-              border: '1px solid #e2e8f0'
-            }}>
-              <div style={{ fontSize: '13px', color: '#64748b', marginBottom: '8px', fontWeight: '500' }}>
-                報酬形態比較:
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                {compensationComparison
-                  .sort((a, b) => b.total - a.total)
-                  .map((comp, index) => {
-                    const isSelected = comp.type.id === activeCompensationType?.id
-                    return (
-                      <div
-                        key={comp.type.id}
-                        style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          padding: '6px 8px',
-                          backgroundColor: isSelected ? '#dbeafe' : 'white',
-                          borderRadius: '4px',
-                          fontSize: '13px',
-                          border: isSelected ? '1px solid #3b82f6' : '1px solid #e2e8f0'
-                        }}
-                      >
-                        <span style={{
-                          fontWeight: isSelected ? '600' : '400',
-                          color: isSelected ? '#1e40af' : '#475569'
-                        }}>
-                          {comp.type.name}
-                          {index === 0 && !isSelected && ' (最高額)'}
-                          {isSelected && ' ★'}
-                        </span>
-                        <span style={{
-                          fontWeight: isSelected ? '600' : '400',
-                          color: isSelected ? '#1e40af' : '#475569'
-                        }}>
-                          {currencyFormatter.format(comp.total)}
-                        </span>
-                      </div>
-                    )
-                  })}
-              </div>
-            </div>
-          )}
-
           {/* サマリーカード */}
           <div style={styles.summarySection}>
             <div style={styles.summaryGrid}>
               <div
-                style={{ ...styles.summaryCard, cursor: summary.useWageData ? 'pointer' : 'default' }}
-                onClick={() => summary.useWageData && setShowDailyWageModal(true)}
+                style={{ ...styles.summaryCard, cursor: 'pointer' }}
+                onClick={() => setShowDailyWageModal(true)}
               >
-                <div style={styles.summaryLabel}>出勤日数{summary.useWageData ? ' ▶' : ''}</div>
+                <div style={styles.summaryLabel}>出勤日数 ▶</div>
                 <div style={styles.summaryValue}>{dailyDetails.filter(d => d.workHours > 0).length}日</div>
               </div>
               <div
-                style={{ ...styles.summaryCard, cursor: summary.useWageData ? 'pointer' : 'default' }}
-                onClick={() => summary.useWageData && setShowDailyWageModal(true)}
+                style={{ ...styles.summaryCard, cursor: 'pointer' }}
+                onClick={() => setShowDailyWageModal(true)}
               >
-                <div style={styles.summaryLabel}>勤務時間{summary.useWageData ? ' ▶' : ''}</div>
+                <div style={styles.summaryLabel}>勤務時間 ▶</div>
                 <div style={styles.summaryValue}>{summary.totalWorkHours}h</div>
               </div>
-              {summary.useWageData && (
-                <div
-                  style={{ ...styles.summaryCard, cursor: 'pointer' }}
-                  onClick={() => setShowDailyWageModal(true)}
-                >
-                  <div style={styles.summaryLabel}>平均時給 ▶</div>
-                  <div style={styles.summaryValue}>
-                    {summary.totalWorkHours > 0
-                      ? currencyFormatter.format(Math.round(summary.totalWageAmount / summary.totalWorkHours))
-                      : '—'}
-                  </div>
+              <div
+                style={{ ...styles.summaryCard, cursor: 'pointer' }}
+                onClick={() => setShowDailyWageModal(true)}
+              >
+                <div style={styles.summaryLabel}>平均時給 ▶</div>
+                <div style={styles.summaryValue}>
+                  {summary.totalWorkHours > 0
+                    ? currencyFormatter.format(Math.round(summary.totalWageAmount / summary.totalWorkHours))
+                    : '—'}
                 </div>
-              )}
-              {summary.useWageData && (
-                <div style={styles.summaryCard}>
-                  <div style={styles.summaryLabel}>時給収入</div>
-                  <div style={styles.summaryValue}>{currencyFormatter.format(summary.totalWageAmount)}</div>
-                </div>
-              )}
+              </div>
             </div>
             <div style={styles.summaryGrid}>
               <div style={styles.summaryCard}>
@@ -1779,9 +1741,28 @@ function PayslipPageContent() {
                   <thead>
                     <tr style={styles.tableHeader}>
                       <th style={styles.th}>日付</th>
+                      <th style={{ ...styles.th, textAlign: 'center' }}>勤務時間</th>
                       <th style={{ ...styles.th, textAlign: 'right' }}>時間</th>
-                      {summary.useWageData && <th style={{ ...styles.th, textAlign: 'right' }}>時給額</th>}
-                      <th style={{ ...styles.th, textAlign: 'right' }}>売上</th>
+                      <th style={{ ...styles.th, textAlign: 'right' }}>時給</th>
+                      <th style={{ ...styles.th, textAlign: 'right' }}>時間報酬</th>
+                      {/* 報酬形態ごとに売上列を表示 */}
+                      {salesAggregationByType.length > 1 ? (
+                        salesAggregationByType.map((type, idx) => (
+                          <th
+                            key={type.id}
+                            style={{
+                              ...styles.th,
+                              textAlign: 'right',
+                              backgroundColor: idx === 0 ? '#e3f2fd' : '#e8f5e9',
+                              color: idx === 0 ? '#1565c0' : '#2e7d32'
+                            }}
+                          >
+                            売上({type.name})
+                          </th>
+                        ))
+                      ) : (
+                        <th style={{ ...styles.th, textAlign: 'right' }}>売上</th>
+                      )}
                       <th style={{ ...styles.th, textAlign: 'right' }}>商品バック</th>
                       <th style={{ ...styles.th, textAlign: 'right' }}>日払い</th>
                     </tr>
@@ -1809,9 +1790,36 @@ function PayslipPageContent() {
                         }}
                       >
                         <td style={styles.td}>{day.dayOfMonth}日({day.dayOfWeek})</td>
+                        <td style={{ ...styles.td, textAlign: 'center', fontSize: '12px' }}>{day.workTimeRange || '-'}</td>
                         <td style={{ ...styles.td, textAlign: 'right' }}>{day.workHours > 0 ? `${day.workHours}h` : '-'}</td>
-                        {summary.useWageData && <td style={{ ...styles.td, textAlign: 'right' }}>{day.wageAmount > 0 ? currencyFormatter.format(day.wageAmount) : '-'}</td>}
-                        <td style={{ ...styles.td, textAlign: 'right' }}>{day.sales > 0 ? currencyFormatter.format(day.sales) : '-'}</td>
+                        <td style={{ ...styles.td, textAlign: 'right' }}>{activeCompensationType?.hourly_rate ? currencyFormatter.format(activeCompensationType.hourly_rate) : '-'}</td>
+                        <td style={{ ...styles.td, textAlign: 'right' }}>{day.wageAmount > 0 ? currencyFormatter.format(day.wageAmount) : '-'}</td>
+                        {/* 報酬形態ごとに売上を表示 */}
+                        {salesAggregationByType.length > 1 ? (
+                          salesAggregationByType.map((type, idx) => {
+                            const salesValue = type.aggregation === 'item_based' ? day.salesItemBased : day.salesReceiptBased
+                            return (
+                              <td
+                                key={type.id}
+                                style={{
+                                  ...styles.td,
+                                  textAlign: 'right',
+                                  color: idx === 0 ? '#1565c0' : '#2e7d32',
+                                  fontWeight: activeCompensationType?.id === type.id ? '600' : '400'
+                                }}
+                              >
+                                {salesValue > 0 ? currencyFormatter.format(salesValue) : '-'}
+                              </td>
+                            )
+                          })
+                        ) : (
+                          (() => {
+                            // 単一列の場合も報酬形態の設定に応じた売上を表示
+                            const aggregation = salesAggregationByType[0]?.aggregation || 'item_based'
+                            const salesValue = aggregation === 'receipt_based' ? day.salesReceiptBased : day.salesItemBased
+                            return <td style={{ ...styles.td, textAlign: 'right' }}>{salesValue > 0 ? currencyFormatter.format(salesValue) : '-'}</td>
+                          })()
+                        )}
                         <td style={{ ...styles.td, textAlign: 'right', color: '#FF9500' }}>{day.productBack > 0 ? currencyFormatter.format(day.productBack) : '-'}</td>
                         <td style={{ ...styles.td, textAlign: 'right', color: day.dailyPayment > 0 ? '#e74c3c' : undefined }}>
                           {day.dailyPayment > 0 ? currencyFormatter.format(day.dailyPayment) : '-'}
@@ -1821,9 +1829,40 @@ function PayslipPageContent() {
                     {/* 合計行 */}
                     <tr style={styles.tableTotal}>
                       <td style={{ ...styles.td, fontWeight: 'bold' }}>合計</td>
+                      <td style={styles.td}></td>
                       <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold' }}>{summary.totalWorkHours}h</td>
-                      {summary.useWageData && <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold' }}>{currencyFormatter.format(summary.totalWageAmount)}</td>}
-                      <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold' }}>{currencyFormatter.format(summary.totalSales)}</td>
+                      <td style={styles.td}></td>
+                      <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold' }}>{currencyFormatter.format(summary.totalWageAmount)}</td>
+                      {/* 報酬形態ごとに売上合計を表示 */}
+                      {salesAggregationByType.length > 1 ? (
+                        salesAggregationByType.map((type, idx) => {
+                          const totalSalesValue = type.aggregation === 'item_based'
+                            ? dailyDetails.reduce((sum, d) => sum + d.salesItemBased, 0)
+                            : dailyDetails.reduce((sum, d) => sum + d.salesReceiptBased, 0)
+                          return (
+                            <td
+                              key={type.id}
+                              style={{
+                                ...styles.td,
+                                textAlign: 'right',
+                                fontWeight: 'bold',
+                                color: idx === 0 ? '#1565c0' : '#2e7d32'
+                              }}
+                            >
+                              {currencyFormatter.format(totalSalesValue)}
+                            </td>
+                          )
+                        })
+                      ) : (
+                        (() => {
+                          // 単一列の場合も報酬形態の設定に応じた売上合計を表示
+                          const aggregation = salesAggregationByType[0]?.aggregation || 'item_based'
+                          const totalSalesValue = aggregation === 'receipt_based'
+                            ? dailyDetails.reduce((sum, d) => sum + d.salesReceiptBased, 0)
+                            : dailyDetails.reduce((sum, d) => sum + d.salesItemBased, 0)
+                          return <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold' }}>{currencyFormatter.format(totalSalesValue)}</td>
+                        })()
+                      )}
                       <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold', color: '#FF9500' }}>{currencyFormatter.format(summary.totalProductBack)}</td>
                       <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold', color: '#e74c3c' }}>
                         {currencyFormatter.format(attendanceData.reduce((sum, a) => sum + (a.daily_payment || 0), 0))}
