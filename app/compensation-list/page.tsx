@@ -186,14 +186,6 @@ function CompensationListContent() {
 
   // 実際の時給を取得（優先順位: override > status wage > type hourly_rate）
   const getActualHourlyWage = (settings: CompensationSettings | null, type: CompensationType): number | null => {
-    // デバッグ
-    console.log('[getActualHourlyWage]', {
-      status_id: settings?.status_id,
-      hourly_wage_override: settings?.hourly_wage_override,
-      type_hourly_rate: type.hourly_rate,
-      wageStatuses_length: wageStatuses.length,
-      wageStatuses
-    })
     // 1. hourly_wage_override が設定されていればそれを使用
     if (settings?.hourly_wage_override && settings.hourly_wage_override > 0) {
       return settings.hourly_wage_override
@@ -201,7 +193,6 @@ function CompensationListContent() {
     // 2. status_id があればwage_statusesから時給を取得
     if (settings?.status_id) {
       const wageStatus = wageStatuses.find(s => s.id === settings.status_id)
-      console.log('[getActualHourlyWage] found wageStatus:', wageStatus)
       if (wageStatus) {
         return wageStatus.hourly_wage
       }

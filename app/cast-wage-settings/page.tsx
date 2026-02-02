@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { format, addMonths, subMonths } from 'date-fns'
+import { ja } from 'date-fns/locale'
 import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
 import { WageStatus, CompensationSettings } from '@/types'
@@ -38,6 +40,7 @@ function CastWageSettingsPageContent() {
   const [wageStatuses, setWageStatuses] = useState<WageStatus[]>([])
   const [compensationSettings, setCompensationSettings] = useState<CompensationSettings[]>([])
   const [selectedCastId, setSelectedCastId] = useState<number | null>(null)
+  const [selectedMonth, setSelectedMonth] = useState(new Date())
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
@@ -74,11 +77,15 @@ function CastWageSettingsPageContent() {
       if (statusError) throw statusError
       setWageStatuses(statusData || [])
 
-      // compensation_settings一覧（時給関連フィールド）
+      // compensation_settings一覧（選択月でフィルタ）
+      const year = selectedMonth.getFullYear()
+      const month = selectedMonth.getMonth() + 1
       const { data: compData, error: compError } = await supabase
         .from('compensation_settings')
-        .select('id, cast_id, status_id, status_locked, hourly_wage_override, min_days_rule_enabled, first_month_exempt_override')
+        .select('id, cast_id, status_id, status_locked, hourly_wage_override, min_days_rule_enabled, first_month_exempt_override, target_year, target_month')
         .eq('store_id', storeId)
+        .eq('target_year', year)
+        .eq('target_month', month)
 
       if (compError) throw compError
       setCompensationSettings((compData || []) as CompensationSettings[])
@@ -93,7 +100,7 @@ function CastWageSettingsPageContent() {
     } finally {
       setLoading(false)
     }
-  }, [storeId, selectedCastId])
+  }, [storeId, selectedCastId, selectedMonth])
 
   useEffect(() => {
     if (!storeLoading && storeId) {
@@ -146,16 +153,18 @@ function CastWageSettingsPageContent() {
     return status?.name || '-'
   }
 
-  // 保存
+  // 保存（選択月のレコードのみ更新）
   const handleSave = async () => {
     if (!editingSettings || !selectedCastId) return
 
     setSaving(true)
     try {
+      const year = selectedMonth.getFullYear()
+      const month = selectedMonth.getMonth() + 1
       const existingSettings = compensationSettings.find(c => c.cast_id === selectedCastId)
 
       if (existingSettings) {
-        // 更新
+        // 既存レコードを更新
         const { error } = await supabase
           .from('compensation_settings')
           .update({
@@ -165,24 +174,17 @@ function CastWageSettingsPageContent() {
             min_days_rule_enabled: editingSettings.min_days_rule_enabled,
             first_month_exempt_override: editingSettings.first_month_exempt_override,
           })
-          .eq('id', existingSettings.id)
+          .eq('store_id', storeId)
+          .eq('cast_id', selectedCastId)
+          .eq('target_year', year)
+          .eq('target_month', month)
 
         if (error) throw error
       } else {
-        // 新規作成
-        const { error } = await supabase
-          .from('compensation_settings')
-          .insert({
-            cast_id: selectedCastId,
-            store_id: storeId,
-            status_id: editingSettings.status_id,
-            status_locked: editingSettings.status_locked,
-            hourly_wage_override: editingSettings.hourly_wage_override,
-            min_days_rule_enabled: editingSettings.min_days_rule_enabled,
-            first_month_exempt_override: editingSettings.first_month_exempt_override,
-          })
-
-        if (error) throw error
+        // 該当月のレコードがない場合は作成しない（報酬計算設定で作成する必要がある）
+        toast.error('この月の報酬設定がありません。報酬計算設定で先に設定を作成してください。')
+        setSaving(false)
+        return
       }
 
       toast.success('保存しました')
@@ -195,45 +197,50 @@ function CastWageSettingsPageContent() {
     }
   }
 
-  // 全キャストに一括適用
+  // 全キャストに一括適用（選択月のみ）
   const handleApplyToAll = async () => {
     if (!editingSettings) return
-    if (!confirm(`フィルター条件に該当する${filteredCasts.length}人のキャストに設定を適用しますか？`)) return
+    const monthStr = format(selectedMonth, 'yyyy年M月', { locale: ja })
+    if (!confirm(`${monthStr}のフィルター条件に該当する${filteredCasts.length}人のキャストに設定を適用しますか？`)) return
 
     setSaving(true)
     try {
+      const year = selectedMonth.getFullYear()
+      const month = selectedMonth.getMonth() + 1
       let updated = 0
-      for (const cast of filteredCasts) {
-        const existingSettings = compensationSettings.find(c => c.cast_id === cast.id)
+      let skipped = 0
 
-        if (existingSettings) {
-          await supabase
-            .from('compensation_settings')
-            .update({
-              status_id: editingSettings.status_id,
-              status_locked: editingSettings.status_locked,
-              hourly_wage_override: editingSettings.hourly_wage_override,
-              min_days_rule_enabled: editingSettings.min_days_rule_enabled,
-              first_month_exempt_override: editingSettings.first_month_exempt_override,
-            })
-            .eq('id', existingSettings.id)
+      for (const cast of filteredCasts) {
+        // 選択月のレコードのみ更新
+        const { data, error } = await supabase
+          .from('compensation_settings')
+          .update({
+            status_id: editingSettings.status_id,
+            status_locked: editingSettings.status_locked,
+            hourly_wage_override: editingSettings.hourly_wage_override,
+            min_days_rule_enabled: editingSettings.min_days_rule_enabled,
+            first_month_exempt_override: editingSettings.first_month_exempt_override,
+          })
+          .eq('store_id', storeId)
+          .eq('cast_id', cast.id)
+          .eq('target_year', year)
+          .eq('target_month', month)
+          .select()
+
+        if (error) {
+          console.error(`Cast ${cast.id} update error:`, error)
+        } else if (data && data.length > 0) {
+          updated++
         } else {
-          await supabase
-            .from('compensation_settings')
-            .insert({
-              cast_id: cast.id,
-              store_id: storeId,
-              status_id: editingSettings.status_id,
-              status_locked: editingSettings.status_locked,
-              hourly_wage_override: editingSettings.hourly_wage_override,
-              min_days_rule_enabled: editingSettings.min_days_rule_enabled,
-              first_month_exempt_override: editingSettings.first_month_exempt_override,
-            })
+          skipped++
         }
-        updated++
       }
 
-      toast.success(`${updated}人のキャストに設定を適用しました`)
+      if (skipped > 0) {
+        toast.success(`${updated}人に適用（${skipped}人は該当月の設定なし）`)
+      } else {
+        toast.success(`${updated}人のキャストに設定を適用しました`)
+      }
       loadData()
     } catch (err) {
       console.error('一括適用エラー:', err)
@@ -255,7 +262,29 @@ function CastWageSettingsPageContent() {
   return (
     <div style={styles.container}>
       <div style={styles.header}>
-        <h1 style={styles.title}>キャスト別時給設定</h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
+          <h1 style={styles.title}>キャスト別時給設定</h1>
+          {/* 月選択 */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Button
+              onClick={() => setSelectedMonth(subMonths(selectedMonth, 1))}
+              variant="secondary"
+              size="small"
+            >
+              ◀
+            </Button>
+            <span style={{ fontWeight: 'bold', fontSize: '16px', minWidth: '120px', textAlign: 'center' }}>
+              {format(selectedMonth, 'yyyy年M月', { locale: ja })}
+            </span>
+            <Button
+              onClick={() => setSelectedMonth(addMonths(selectedMonth, 1))}
+              variant="secondary"
+              size="small"
+            >
+              ▶
+            </Button>
+          </div>
+        </div>
         <p style={styles.subtitle}>店舗: {storeName}</p>
       </div>
 
