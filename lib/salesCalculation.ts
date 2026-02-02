@@ -1137,6 +1137,8 @@ export function getMergedSalesCalculationSettings(
       (isReceiptBased ? salesSettings.receipt_non_nomination_sales_handling : salesSettings.item_non_nomination_sales_handling),
     help_distribution_method: settings.help_distribution_method ??
       (isReceiptBased ? salesSettings.receipt_help_distribution_method : salesSettings.item_help_distribution_method),
+    nomination_distribute_all: settings.nomination_distribute_all ??
+      (isReceiptBased ? false : salesSettings.item_nomination_distribute_all ?? false),
 
     // ヘルプ売上設定
     help_sales_inclusion: settings.help_sales_inclusion ??

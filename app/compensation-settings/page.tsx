@@ -2772,16 +2772,24 @@ function CompensationSettingsPageContent() {
                                 } else {
                                   // カスタム設定を有効化（現在の店舗設定をコピー）
                                   const isReceiptBased = activeCompensationType.sales_aggregation === 'receipt_based'
+                                  const prefix = isReceiptBased ? 'receipt' : 'item'
                                   updateCompensationType(activeCompensationType.id, {
                                     sales_calculation_settings: {
+                                      // 計算基準
                                       use_tax_excluded: isReceiptBased ? salesSettings.receipt_exclude_consumption_tax : salesSettings.item_exclude_consumption_tax,
                                       exclude_consumption_tax: isReceiptBased ? salesSettings.receipt_exclude_consumption_tax : salesSettings.item_exclude_consumption_tax,
                                       exclude_service_charge: isReceiptBased ? salesSettings.receipt_exclude_service_charge : salesSettings.item_exclude_service_charge,
+                                      // 複数キャストの分配方法
+                                      multi_cast_distribution: (isReceiptBased ? salesSettings.receipt_multi_cast_distribution : salesSettings.item_multi_cast_distribution) as SalesCalculationSettings['multi_cast_distribution'],
+                                      help_distribution_method: (isReceiptBased ? salesSettings.receipt_help_distribution_method : salesSettings.item_help_distribution_method) as SalesCalculationSettings['help_distribution_method'],
+                                      nomination_distribute_all: !isReceiptBased ? salesSettings.item_nomination_distribute_all : undefined,
+                                      // ヘルプ売上設定
                                       help_sales_inclusion: (isReceiptBased ? salesSettings.receipt_help_sales_inclusion : salesSettings.item_help_sales_inclusion) as SalesCalculationSettings['help_sales_inclusion'],
-                                      help_calculation_method: (isReceiptBased ? salesSettings.receipt_help_distribution_method : salesSettings.item_help_distribution_method) === 'ratio' ? 'ratio' : 'fixed',
                                       help_ratio: isReceiptBased ? salesSettings.receipt_help_ratio : salesSettings.item_help_ratio,
+                                      // 端数処理
                                       rounding_method: ((isReceiptBased ? salesSettings.receipt_rounding_method : salesSettings.item_rounding_method) || 'floor_100').split('_')[0] as 'floor' | 'ceil' | 'round',
                                       rounding_position: isReceiptBased ? salesSettings.receipt_rounding_position : salesSettings.item_rounding_position,
+                                      rounding_timing: (isReceiptBased ? salesSettings.receipt_rounding_timing : salesSettings.item_rounding_timing) as SalesCalculationSettings['rounding_timing'],
                                     }
                                   })
                                 }
@@ -2793,93 +2801,72 @@ function CompensationSettingsPageContent() {
 
                         {/* カスタム設定の場合、各項目を表示 */}
                         {activeCompensationType.sales_calculation_settings && (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '12px', backgroundColor: '#f8f9fa', borderRadius: '8px' }}>
-                            {/* 税計算設定 */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '12px', backgroundColor: '#f8f9fa', borderRadius: '8px' }}>
+                            {/* 計算基準 */}
                             <div>
-                              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                                <input
-                                  type="checkbox"
-                                  checked={activeCompensationType.sales_calculation_settings.exclude_consumption_tax ?? true}
-                                  onChange={(e) => {
-                                    updateCompensationType(activeCompensationType.id, {
-                                      sales_calculation_settings: {
-                                        ...activeCompensationType.sales_calculation_settings,
-                                        exclude_consumption_tax: e.target.checked,
-                                        use_tax_excluded: e.target.checked,
-                                      }
-                                    })
-                                  }}
-                                />
-                                <span>税抜き金額で計算</span>
-                              </label>
-                            </div>
-
-                            {/* ヘルプ売上設定 */}
-                            <div>
-                              <label style={{ fontSize: '12px', color: '#666', marginBottom: '4px', display: 'block' }}>ヘルプ売上</label>
-                              <select
-                                value={activeCompensationType.sales_calculation_settings.help_sales_inclusion ?? 'both'}
-                                onChange={(e) => {
-                                  updateCompensationType(activeCompensationType.id, {
-                                    sales_calculation_settings: {
-                                      ...activeCompensationType.sales_calculation_settings,
-                                      help_sales_inclusion: e.target.value as SalesCalculationSettings['help_sales_inclusion'],
-                                    }
-                                  })
-                                }}
-                                style={{ padding: '6px 8px', borderRadius: '4px', border: '1px solid #ddd', width: '100%' }}
-                              >
-                                <option value="both">自分 + ヘルプを含める</option>
-                                <option value="self_only">自分の売上のみ</option>
-                                <option value="none">売上バック計算に含めない</option>
-                              </select>
-                            </div>
-
-                            {/* ヘルプ割合 */}
-                            {activeCompensationType.sales_calculation_settings.help_sales_inclusion === 'both' && (
-                              <div>
-                                <label style={{ fontSize: '12px', color: '#666', marginBottom: '4px', display: 'block' }}>ヘルプ売上の計上割合</label>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <label style={{ fontSize: '12px', color: '#666', marginBottom: '8px', display: 'block', fontWeight: 500 }}>計算基準</label>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
                                   <input
-                                    type="number"
-                                    value={activeCompensationType.sales_calculation_settings.help_ratio ?? 50}
-                                    onChange={(e) => {
+                                    type="radio"
+                                    name={`tax_basis_${activeCompensationType.id}`}
+                                    checked={activeCompensationType.sales_calculation_settings.exclude_consumption_tax && !activeCompensationType.sales_calculation_settings.exclude_service_charge}
+                                    onChange={() => {
                                       updateCompensationType(activeCompensationType.id, {
                                         sales_calculation_settings: {
                                           ...activeCompensationType.sales_calculation_settings,
-                                          help_ratio: Number(e.target.value),
+                                          exclude_consumption_tax: true,
+                                          exclude_service_charge: false,
+                                          use_tax_excluded: true,
                                         }
                                       })
                                     }}
-                                    style={{ padding: '6px 8px', borderRadius: '4px', border: '1px solid #ddd', width: '80px' }}
-                                    min={0}
-                                    max={100}
                                   />
-                                  <span>%</span>
-                                </div>
+                                  <span style={{ fontSize: '13px' }}>税抜き</span>
+                                </label>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                                  <input
+                                    type="radio"
+                                    name={`tax_basis_${activeCompensationType.id}`}
+                                    checked={!activeCompensationType.sales_calculation_settings.exclude_consumption_tax && !activeCompensationType.sales_calculation_settings.exclude_service_charge}
+                                    onChange={() => {
+                                      updateCompensationType(activeCompensationType.id, {
+                                        sales_calculation_settings: {
+                                          ...activeCompensationType.sales_calculation_settings,
+                                          exclude_consumption_tax: false,
+                                          exclude_service_charge: false,
+                                          use_tax_excluded: false,
+                                        }
+                                      })
+                                    }}
+                                  />
+                                  <span style={{ fontSize: '13px' }}>税込み（消費税{systemSettings.tax_rate}%）</span>
+                                </label>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                                  <input
+                                    type="radio"
+                                    name={`tax_basis_${activeCompensationType.id}`}
+                                    checked={activeCompensationType.sales_calculation_settings.exclude_service_charge === true}
+                                    onChange={() => {
+                                      updateCompensationType(activeCompensationType.id, {
+                                        sales_calculation_settings: {
+                                          ...activeCompensationType.sales_calculation_settings,
+                                          exclude_consumption_tax: false,
+                                          exclude_service_charge: true,
+                                          use_tax_excluded: false,
+                                        }
+                                      })
+                                    }}
+                                  />
+                                  <span style={{ fontSize: '13px' }}>税込み＋サービス料（消費税{systemSettings.tax_rate}% + サービス{systemSettings.service_fee_rate}%）</span>
+                                </label>
                               </div>
-                            )}
+                            </div>
 
                             {/* 端数処理 */}
                             <div>
-                              <label style={{ fontSize: '12px', color: '#666', marginBottom: '4px', display: 'block' }}>端数処理</label>
-                              <div style={{ display: 'flex', gap: '8px' }}>
-                                <select
-                                  value={activeCompensationType.sales_calculation_settings.rounding_method ?? 'floor'}
-                                  onChange={(e) => {
-                                    updateCompensationType(activeCompensationType.id, {
-                                      sales_calculation_settings: {
-                                        ...activeCompensationType.sales_calculation_settings,
-                                        rounding_method: e.target.value as 'floor' | 'ceil' | 'round',
-                                      }
-                                    })
-                                  }}
-                                  style={{ padding: '6px 8px', borderRadius: '4px', border: '1px solid #ddd', flex: 1 }}
-                                >
-                                  <option value="floor">切り捨て</option>
-                                  <option value="ceil">切り上げ</option>
-                                  <option value="round">四捨五入</option>
-                                </select>
+                              <label style={{ fontSize: '12px', color: '#666', marginBottom: '8px', display: 'block', fontWeight: 500 }}>端数処理</label>
+                              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                                 <select
                                   value={activeCompensationType.sales_calculation_settings.rounding_position ?? 100}
                                   onChange={(e) => {
@@ -2890,14 +2877,247 @@ function CompensationSettingsPageContent() {
                                       }
                                     })
                                   }}
-                                  style={{ padding: '6px 8px', borderRadius: '4px', border: '1px solid #ddd', flex: 1 }}
+                                  style={{ padding: '6px 8px', borderRadius: '4px', border: '1px solid #ddd', flex: 1, minWidth: '100px' }}
                                 >
-                                  <option value={1}>1円単位</option>
-                                  <option value={10}>10円単位</option>
-                                  <option value={100}>100円単位</option>
+                                  <option value={1}>1の位</option>
+                                  <option value={10}>10の位</option>
+                                  <option value={100}>100の位</option>
+                                </select>
+                                <select
+                                  value={activeCompensationType.sales_calculation_settings.rounding_method ?? 'floor'}
+                                  onChange={(e) => {
+                                    updateCompensationType(activeCompensationType.id, {
+                                      sales_calculation_settings: {
+                                        ...activeCompensationType.sales_calculation_settings,
+                                        rounding_method: e.target.value as 'floor' | 'ceil' | 'round',
+                                      }
+                                    })
+                                  }}
+                                  style={{ padding: '6px 8px', borderRadius: '4px', border: '1px solid #ddd', flex: 1, minWidth: '100px' }}
+                                >
+                                  <option value="floor">切り捨て</option>
+                                  <option value="ceil">切り上げ</option>
+                                  <option value="round">四捨五入</option>
+                                </select>
+                                <select
+                                  value={activeCompensationType.sales_calculation_settings.rounding_timing ?? 'per_item'}
+                                  onChange={(e) => {
+                                    updateCompensationType(activeCompensationType.id, {
+                                      sales_calculation_settings: {
+                                        ...activeCompensationType.sales_calculation_settings,
+                                        rounding_timing: e.target.value as 'per_item' | 'total',
+                                      }
+                                    })
+                                  }}
+                                  style={{ padding: '6px 8px', borderRadius: '4px', border: '1px solid #ddd', flex: 1, minWidth: '100px' }}
+                                >
+                                  <option value="per_item">商品ごと</option>
+                                  <option value="total">合計時</option>
                                 </select>
                               </div>
                             </div>
+
+                            {/* ヘルプ商品も売上に含めるか */}
+                            <div>
+                              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                                <input
+                                  type="checkbox"
+                                  checked={activeCompensationType.sales_calculation_settings.multi_cast_distribution === 'all_equal'}
+                                  onChange={(e) => {
+                                    updateCompensationType(activeCompensationType.id, {
+                                      sales_calculation_settings: {
+                                        ...activeCompensationType.sales_calculation_settings,
+                                        multi_cast_distribution: e.target.checked ? 'all_equal' : 'nomination_only',
+                                        // ONにしたとき、分配方法が未設定なら「全額推しに」をセット
+                                        help_distribution_method: e.target.checked ? (activeCompensationType.sales_calculation_settings?.help_distribution_method || 'all_to_nomination') : activeCompensationType.sales_calculation_settings?.help_distribution_method,
+                                      }
+                                    })
+                                  }}
+                                />
+                                <span style={{ fontSize: '13px' }}>ヘルプ商品も売上に含める</span>
+                              </label>
+                              <p style={{ fontSize: '11px', color: '#888', marginTop: '4px', marginLeft: '24px' }}>
+                                ONにすると、他キャストの商品も推しの売上として計上されます
+                              </p>
+                            </div>
+
+                            {/* 分配方法（ヘルプ含める時のみ表示） */}
+                            {activeCompensationType.sales_calculation_settings.multi_cast_distribution === 'all_equal' && (
+                              <div style={{ marginLeft: '16px', padding: '12px', backgroundColor: '#fff', borderRadius: '6px', border: '1px solid #e5e7eb' }}>
+                                <label style={{ fontSize: '12px', color: '#666', marginBottom: '8px', display: 'block', fontWeight: 500 }}>分配方法</label>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', cursor: 'pointer' }}>
+                                    <input
+                                      type="radio"
+                                      name={`help_dist_${activeCompensationType.id}`}
+                                      checked={activeCompensationType.sales_calculation_settings.help_distribution_method === 'all_to_nomination' || !['equal', 'ratio', 'equal_per_person'].includes(activeCompensationType.sales_calculation_settings.help_distribution_method || '')}
+                                      onChange={() => {
+                                        updateCompensationType(activeCompensationType.id, {
+                                          sales_calculation_settings: {
+                                            ...activeCompensationType.sales_calculation_settings,
+                                            help_distribution_method: 'all_to_nomination',
+                                          }
+                                        })
+                                      }}
+                                      style={{ marginTop: '2px' }}
+                                    />
+                                    <div>
+                                      <span style={{ fontSize: '13px' }}>全額推しに</span>
+                                      <p style={{ fontSize: '11px', color: '#888', margin: '2px 0 0 0' }}>例: 推しA、商品(A,B,C) 1000円 → A:1000円</p>
+                                    </div>
+                                  </label>
+                                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', cursor: 'pointer' }}>
+                                    <input
+                                      type="radio"
+                                      name={`help_dist_${activeCompensationType.id}`}
+                                      checked={activeCompensationType.sales_calculation_settings.help_distribution_method === 'equal'}
+                                      onChange={() => {
+                                        updateCompensationType(activeCompensationType.id, {
+                                          sales_calculation_settings: {
+                                            ...activeCompensationType.sales_calculation_settings,
+                                            help_distribution_method: 'equal',
+                                          }
+                                        })
+                                      }}
+                                      style={{ marginTop: '2px' }}
+                                    />
+                                    <div>
+                                      <span style={{ fontSize: '13px' }}>等分（推しとヘルプで1:1で分ける）</span>
+                                      <p style={{ fontSize: '11px', color: '#888', margin: '2px 0 0 0' }}>例: 推しA、商品(A,B,C) 1000円 → A:500円、B:250円、C:250円</p>
+                                    </div>
+                                  </label>
+                                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', cursor: 'pointer' }}>
+                                    <input
+                                      type="radio"
+                                      name={`help_dist_${activeCompensationType.id}`}
+                                      checked={activeCompensationType.sales_calculation_settings.help_distribution_method === 'equal_per_person'}
+                                      onChange={() => {
+                                        updateCompensationType(activeCompensationType.id, {
+                                          sales_calculation_settings: {
+                                            ...activeCompensationType.sales_calculation_settings,
+                                            help_distribution_method: 'equal_per_person',
+                                          }
+                                        })
+                                      }}
+                                      style={{ marginTop: '2px' }}
+                                    />
+                                    <div>
+                                      <span style={{ fontSize: '13px' }}>均等割（全員で頭数割り）</span>
+                                      <p style={{ fontSize: '11px', color: '#888', margin: '2px 0 0 0' }}>例: 推しA、商品(A,B,C) 1000円 → A:333円、B:333円、C:333円</p>
+                                    </div>
+                                  </label>
+                                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', cursor: 'pointer' }}>
+                                    <input
+                                      type="radio"
+                                      name={`help_dist_${activeCompensationType.id}`}
+                                      checked={activeCompensationType.sales_calculation_settings.help_distribution_method === 'ratio'}
+                                      onChange={() => {
+                                        updateCompensationType(activeCompensationType.id, {
+                                          sales_calculation_settings: {
+                                            ...activeCompensationType.sales_calculation_settings,
+                                            help_distribution_method: 'ratio',
+                                          }
+                                        })
+                                      }}
+                                      style={{ marginTop: '2px' }}
+                                    />
+                                    <div>
+                                      <span style={{ fontSize: '13px' }}>比率で分ける</span>
+                                      <p style={{ fontSize: '11px', color: '#888', margin: '2px 0 0 0' }}>推しとヘルプの比率をカスタマイズ</p>
+                                    </div>
+                                  </label>
+                                </div>
+
+                                {/* 比率入力（比率選択時のみ） */}
+                                {activeCompensationType.sales_calculation_settings.help_distribution_method === 'ratio' && (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '12px', marginLeft: '24px' }}>
+                                    <span style={{ fontSize: '13px' }}>推し</span>
+                                    <input
+                                      type="number"
+                                      value={activeCompensationType.sales_calculation_settings.help_ratio ?? 50}
+                                      onChange={(e) => {
+                                        updateCompensationType(activeCompensationType.id, {
+                                          sales_calculation_settings: {
+                                            ...activeCompensationType.sales_calculation_settings,
+                                            help_ratio: Math.min(100, Math.max(0, Number(e.target.value) || 0)),
+                                          }
+                                        })
+                                      }}
+                                      style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid #ddd', width: '60px', textAlign: 'center' }}
+                                      min={0}
+                                      max={100}
+                                    />
+                                    <span style={{ fontSize: '13px' }}>% / ヘルプ</span>
+                                    <input
+                                      type="number"
+                                      value={100 - (activeCompensationType.sales_calculation_settings.help_ratio ?? 50)}
+                                      onChange={(e) => {
+                                        updateCompensationType(activeCompensationType.id, {
+                                          sales_calculation_settings: {
+                                            ...activeCompensationType.sales_calculation_settings,
+                                            help_ratio: 100 - Math.min(100, Math.max(0, Number(e.target.value) || 0)),
+                                          }
+                                        })
+                                      }}
+                                      style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid #ddd', width: '60px', textAlign: 'center' }}
+                                      min={0}
+                                      max={100}
+                                    />
+                                    <span style={{ fontSize: '13px' }}>%</span>
+                                  </div>
+                                )}
+
+                                {/* ヘルプにも売上を計上するか（等分・均等割・比率の時のみ表示） */}
+                                {['equal', 'equal_per_person', 'ratio'].includes(activeCompensationType.sales_calculation_settings.help_distribution_method || '') && (
+                                  <div style={{ marginTop: '12px' }}>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                                      <input
+                                        type="checkbox"
+                                        checked={activeCompensationType.sales_calculation_settings.help_sales_inclusion === 'both'}
+                                        onChange={(e) => {
+                                          updateCompensationType(activeCompensationType.id, {
+                                            sales_calculation_settings: {
+                                              ...activeCompensationType.sales_calculation_settings,
+                                              help_sales_inclusion: e.target.checked ? 'both' : 'self_only',
+                                            }
+                                          })
+                                        }}
+                                      />
+                                      <span style={{ fontSize: '13px' }}>ヘルプにも売上を計上する</span>
+                                    </label>
+                                    <p style={{ fontSize: '11px', color: '#888', marginTop: '4px', marginLeft: '24px' }}>
+                                      OFFの場合、ヘルプ分は計算されますが売上として記録されません
+                                    </p>
+                                  </div>
+                                )}
+
+                                {/* 商品についていない推しにも分配するか（推し小計のみ表示） */}
+                                {activeCompensationType.sales_aggregation === 'item_based' && (
+                                  <div style={{ marginTop: '12px' }}>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                                      <input
+                                        type="checkbox"
+                                        checked={activeCompensationType.sales_calculation_settings.nomination_distribute_all ?? false}
+                                        onChange={(e) => {
+                                          updateCompensationType(activeCompensationType.id, {
+                                            sales_calculation_settings: {
+                                              ...activeCompensationType.sales_calculation_settings,
+                                              nomination_distribute_all: e.target.checked,
+                                            }
+                                          })
+                                        }}
+                                      />
+                                      <span style={{ fontSize: '13px' }}>商品についていない推しにも売上を分配する</span>
+                                    </label>
+                                    <p style={{ fontSize: '11px', color: '#888', marginTop: '4px', marginLeft: '24px' }}>
+                                      推しが複数選択されていて、商品に一部の推し名のみが入っている場合に有効
+                                      <br />
+                                      例: 推しがA,Bの2人で商品にAのみ → OFF: Aだけに売上 / ON: A,Bに分配
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>

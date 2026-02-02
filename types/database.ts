@@ -385,6 +385,7 @@ export interface SalesCalculationSettings {
   multi_cast_distribution?: MultiCastDistribution
   non_nomination_sales_handling?: NonNominationSalesHandling
   help_distribution_method?: HelpDistributionMethod
+  nomination_distribute_all?: boolean     // 商品についていない推しにも分配（item_based用）
 
   // ヘルプ売上設定
   help_sales_inclusion?: HelpSalesInclusion
