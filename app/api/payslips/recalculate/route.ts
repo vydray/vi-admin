@@ -458,10 +458,6 @@ async function calculatePayslipForCast(
     const enabledDeductionIds = compensationSettings?.enabled_deduction_ids || []
     const compensationTypes = compensationSettings?.compensation_types || []
 
-    if (!compensationSettings) {
-      // No compensation settings found
-    }
-
     // アクティブな報酬タイプを取得
     type CompType = {
       id: string
@@ -476,42 +472,63 @@ async function calculatePayslipForCast(
     // is_enabled でフィルター（undefinedは有効として扱う - 後方互換性）
     const enabledTypes = compensationTypes.filter((t: CompType) => t.is_enabled !== false)
 
-    let activeCompType: CompType | undefined = undefined
-    if (compensationSettings?.payment_selection_method === 'specific' && compensationSettings?.selected_compensation_type_id) {
-      activeCompType = enabledTypes.find((t: CompType) => t.id === compensationSettings.selected_compensation_type_id)
-    } else if (enabledTypes.length > 0) {
-      // highest: 最高額を計算して選択（簡易版：最初のタイプを使用）
-      activeCompType = enabledTypes[0]
-    }
-
-    let fixedAmount = 0
-
-    if (activeCompType) {
-      // 固定額（文字列の場合も考慮）
-      fixedAmount = Number(activeCompType.fixed_amount) || 0
+    // 各報酬形態の報酬額を計算するヘルパー関数
+    const calculateCompensationForType = (compType: CompType) => {
+      const typeHourlyRate = Number(compType.hourly_rate) || 0
+      const typeUseWage = typeHourlyRate > 0
+      const typeFixedAmount = Number(compType.fixed_amount) || 0
 
       // 売上バック計算
-      if (activeCompType.use_sliding_rate && activeCompType.sliding_rates) {
-        console.log(`[${cast.name}] スライド率を使用: sliding_rates =`, activeCompType.sliding_rates)
-        const rate = activeCompType.sliding_rates.find(
+      let typeSalesBack = 0
+      if (compType.use_sliding_rate && compType.sliding_rates) {
+        const rate = compType.sliding_rates.find(
           r => totalSales >= r.min && (r.max === 0 || totalSales <= r.max)
         )
         if (rate) {
-          console.log(`[${cast.name}] 適用されたスライド率: min=${rate.min}, max=${rate.max}, rate=${rate.rate}%`)
-          salesBack = Math.round(totalSales * rate.rate / 100)
-        } else {
-          console.log(`[${cast.name}] 該当するスライド率が見つかりませんでした`)
+          typeSalesBack = Math.round(totalSales * rate.rate / 100)
         }
-      } else {
-        console.log(`[${cast.name}] 固定率を使用: ${activeCompType.commission_rate}%`)
-        salesBack = Math.round(totalSales * activeCompType.commission_rate / 100)
+      } else if (compType.commission_rate > 0) {
+        typeSalesBack = Math.round(totalSales * compType.commission_rate / 100)
+      }
+
+      // 総報酬額（時給は hourly_rate > 0 の場合のみ含める）
+      const typeGrossEarnings = (typeUseWage ? totalWageAmount : 0) + typeSalesBack + totalProductBack + typeFixedAmount
+
+      return {
+        compType,
+        useWage: typeUseWage,
+        fixedAmount: typeFixedAmount,
+        salesBack: typeSalesBack,
+        grossEarnings: typeGrossEarnings
       }
     }
 
-    // 時給を使用するかどうか（hourly_rateが設定されている場合のみ）
-    const hourlyRate = Number(activeCompType?.hourly_rate) || 0
-    const useWageData = hourlyRate > 0
-    const grossEarnings = (useWageData ? totalWageAmount : 0) + salesBack + totalProductBack + fixedAmount
+    // 全報酬形態の計算結果
+    const allResults = enabledTypes.map(calculateCompensationForType)
+
+    // 採用する報酬形態を決定
+    let selectedResult: ReturnType<typeof calculateCompensationForType> | undefined = undefined
+
+    if (compensationSettings?.payment_selection_method === 'specific' && compensationSettings?.selected_compensation_type_id) {
+      // 特定の報酬形態を選択
+      selectedResult = allResults.find(r => r.compType.id === compensationSettings.selected_compensation_type_id)
+    } else if (allResults.length > 0) {
+      // 最高額を選択
+      selectedResult = allResults.reduce((best, current) =>
+        current.grossEarnings > best.grossEarnings ? current : best
+      )
+    }
+
+    // 選択された報酬形態の値を使用
+    const activeCompType = selectedResult?.compType
+    const useWageData = selectedResult?.useWage ?? false
+    let fixedAmount = selectedResult?.fixedAmount ?? 0
+    salesBack = selectedResult?.salesBack ?? 0
+    const grossEarnings = selectedResult?.grossEarnings ?? (totalProductBack + fixedAmount)
+
+    if (activeCompType) {
+      console.log(`[${cast.name}] 採用報酬形態: ${activeCompType.name}, 時給使用: ${useWageData}, 売上バック: ${salesBack}, 固定額: ${fixedAmount}, 総報酬: ${grossEarnings}`)
+    }
 
     // ===== 控除計算 =====
     const deductions: Array<{ name: string; type: string; count?: number; percentage?: number; amount: number }> = []
