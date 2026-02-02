@@ -152,10 +152,10 @@ async function calculatePayslipForCast(
       .eq('cast_id', cast.id)
       .eq('year_month', yearMonth)
 
-    // 日別統計データを取得
+    // 日別統計データを取得（推し小計・伝票小計の両方）
     const { data: dailyStats } = await supabaseAdmin
       .from('cast_daily_stats')
-      .select('date, work_hours, wage_amount')
+      .select('date, work_hours, wage_amount, total_sales_item_based, total_sales_receipt_based')
       .eq('cast_id', cast.id)
       .eq('store_id', storeId)
       .gte('date', startDate)
@@ -444,14 +444,17 @@ async function calculatePayslipForCast(
     const totalWorkHours = (dailyStats || []).reduce((sum, d) => sum + (d.work_hours || 0), 0)
     const totalWageAmount = (dailyStats || []).reduce((sum, d) => sum + (d.wage_amount || 0), 0)
 
-    let totalSales = 0
+    // 推し小計と伝票小計の両方を集計（cast_daily_statsから）
+    const totalSalesItemBased = (dailyStats || []).reduce((sum, d) => sum + (d.total_sales_item_based || 0), 0)
+    const totalSalesReceiptBased = (dailyStats || []).reduce((sum, d) => sum + (d.total_sales_receipt_based || 0), 0)
+
+    // 商品バックはdailySalesMapから（後方互換性のため）
     let totalProductBack = 0
     dailySalesMap.forEach(day => {
-      totalSales += day.totalSales
       totalProductBack += day.productBack
     })
 
-    console.log(`[${cast.name}] totalSales: ${totalSales}, totalProductBack: ${totalProductBack}`)
+    console.log(`[${cast.name}] totalSalesItemBased: ${totalSalesItemBased}, totalSalesReceiptBased: ${totalSalesReceiptBased}, totalProductBack: ${totalProductBack}`)
 
     // 売上バック計算
     let salesBack = 0
@@ -468,6 +471,7 @@ async function calculatePayslipForCast(
       use_sliding_rate: boolean
       sliding_rates: { min: number; max: number; rate: number }[] | null
       is_enabled: boolean
+      sales_aggregation?: 'item_based' | 'receipt_based'
     }
     // is_enabled でフィルター（undefinedは有効として扱う - 後方互換性）
     const enabledTypes = compensationTypes.filter((t: CompType) => t.is_enabled !== false)
@@ -478,17 +482,22 @@ async function calculatePayslipForCast(
       const typeUseWage = typeHourlyRate > 0
       const typeFixedAmount = Number(compType.fixed_amount) || 0
 
+      // 報酬形態のsales_aggregationに基づいて売上を選択
+      const typeTotalSales = compType.sales_aggregation === 'receipt_based'
+        ? totalSalesReceiptBased
+        : totalSalesItemBased
+
       // 売上バック計算
       let typeSalesBack = 0
       if (compType.use_sliding_rate && compType.sliding_rates) {
         const rate = compType.sliding_rates.find(
-          r => totalSales >= r.min && (r.max === 0 || totalSales <= r.max)
+          r => typeTotalSales >= r.min && (r.max === 0 || typeTotalSales <= r.max)
         )
         if (rate) {
-          typeSalesBack = Math.round(totalSales * rate.rate / 100)
+          typeSalesBack = Math.round(typeTotalSales * rate.rate / 100)
         }
       } else if (compType.commission_rate > 0) {
-        typeSalesBack = Math.round(totalSales * compType.commission_rate / 100)
+        typeSalesBack = Math.round(typeTotalSales * compType.commission_rate / 100)
       }
 
       // 総報酬額（時給は hourly_rate > 0 の場合のみ含める）
@@ -499,7 +508,8 @@ async function calculatePayslipForCast(
         useWage: typeUseWage,
         fixedAmount: typeFixedAmount,
         salesBack: typeSalesBack,
-        grossEarnings: typeGrossEarnings
+        grossEarnings: typeGrossEarnings,
+        totalSales: typeTotalSales
       }
     }
 

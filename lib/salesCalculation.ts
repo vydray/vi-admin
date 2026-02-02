@@ -12,6 +12,8 @@ import {
   SalesType,
   CalculatedSalesItem,
   CastSalesSummary,
+  SalesCalculationSettings,
+  CompensationType,
 } from '@/types'
 
 // Order Item with extended fields from DB
@@ -1088,5 +1090,90 @@ export function getDefaultSalesSettings(storeId: number): Omit<SalesSettings, 'i
     include_base_in_receipt_sales: true,
     base_cutoff_hour: 6,
     base_cutoff_enabled: true,
+  }
+}
+
+/**
+ * RoundingMethodをSimpleRoundingTypeに変換
+ */
+function parseRoundingMethodToSimple(method: string): 'floor' | 'ceil' | 'round' {
+  if (method.startsWith('floor')) return 'floor'
+  if (method.startsWith('ceil')) return 'ceil'
+  if (method.startsWith('round') || method === 'round') return 'round'
+  return 'floor' // デフォルト
+}
+
+/**
+ * 報酬形態の売上計算設定を取得（未設定の場合はsales_settingsから取得）
+ * @param compType 報酬形態
+ * @param salesSettings 店舗の売上設定
+ * @returns マージされた売上計算設定
+ */
+export function getMergedSalesCalculationSettings(
+  compType: CompensationType,
+  salesSettings: SalesSettings
+): Required<SalesCalculationSettings> {
+  const isReceiptBased = compType.sales_aggregation === 'receipt_based'
+  const settings = compType.sales_calculation_settings || {}
+
+  // sales_settingsのrounding_methodをSimpleRoundingTypeに変換
+  const defaultRoundingMethod = parseRoundingMethodToSimple(
+    isReceiptBased ? salesSettings.receipt_rounding_method : salesSettings.item_rounding_method
+  )
+
+  return {
+    // 計算基準
+    use_tax_excluded: settings.use_tax_excluded ??
+      (isReceiptBased ? salesSettings.receipt_use_tax_excluded : salesSettings.item_use_tax_excluded),
+    exclude_consumption_tax: settings.exclude_consumption_tax ??
+      (isReceiptBased ? salesSettings.receipt_exclude_consumption_tax : salesSettings.item_exclude_consumption_tax),
+    exclude_service_charge: settings.exclude_service_charge ??
+      (isReceiptBased ? salesSettings.receipt_exclude_service_charge : salesSettings.item_exclude_service_charge),
+
+    // 複数キャストの分配方法
+    multi_cast_distribution: settings.multi_cast_distribution ??
+      (isReceiptBased ? salesSettings.receipt_multi_cast_distribution : salesSettings.item_multi_cast_distribution),
+    non_nomination_sales_handling: settings.non_nomination_sales_handling ??
+      (isReceiptBased ? salesSettings.receipt_non_nomination_sales_handling : salesSettings.item_non_nomination_sales_handling),
+    help_distribution_method: settings.help_distribution_method ??
+      (isReceiptBased ? salesSettings.receipt_help_distribution_method : salesSettings.item_help_distribution_method),
+
+    // ヘルプ売上設定
+    help_sales_inclusion: settings.help_sales_inclusion ??
+      (isReceiptBased ? salesSettings.receipt_help_sales_inclusion : salesSettings.item_help_sales_inclusion),
+    help_calculation_method: settings.help_calculation_method ??
+      (isReceiptBased ? salesSettings.receipt_help_calculation_method : salesSettings.item_help_calculation_method),
+    help_ratio: settings.help_ratio ??
+      (isReceiptBased ? salesSettings.receipt_help_ratio : salesSettings.item_help_ratio),
+    help_fixed_amount: settings.help_fixed_amount ??
+      (isReceiptBased ? salesSettings.receipt_help_fixed_amount : salesSettings.item_help_fixed_amount),
+
+    // 端数処理
+    rounding_method: settings.rounding_method ?? defaultRoundingMethod,
+    rounding_position: settings.rounding_position ??
+      (isReceiptBased ? salesSettings.receipt_rounding_position : salesSettings.item_rounding_position),
+    rounding_timing: settings.rounding_timing ??
+      (isReceiptBased ? salesSettings.receipt_rounding_timing : salesSettings.item_rounding_timing),
+  }
+}
+
+/**
+ * デフォルトの売上計算設定を取得（店舗設定をベースに）
+ */
+export function getDefaultSalesCalculationSettings(): SalesCalculationSettings {
+  return {
+    use_tax_excluded: true,
+    exclude_consumption_tax: true,
+    exclude_service_charge: false,
+    multi_cast_distribution: 'nomination_only',
+    non_nomination_sales_handling: 'share_only',
+    help_distribution_method: 'equal_all',
+    help_sales_inclusion: 'both',
+    help_calculation_method: 'ratio',
+    help_ratio: 50,
+    help_fixed_amount: 0,
+    rounding_method: 'floor',
+    rounding_position: 100,
+    rounding_timing: 'per_item',
   }
 }

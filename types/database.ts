@@ -371,6 +371,33 @@ export type SalesAggregationMethod = 'item_based' | 'receipt_based'
 // item_based: 推し小計（キャスト名が入ってる商品のみ）
 // receipt_based: 伝票小計（伝票のすべての商品を集計）
 
+// シンプルな端数処理タイプ（報酬形態設定用）
+export type SimpleRoundingType = 'floor' | 'ceil' | 'round'
+
+// 報酬形態ごとの売上計算設定（sales_settingsをオーバーライド可能）
+export interface SalesCalculationSettings {
+  // 計算基準
+  use_tax_excluded?: boolean              // 税抜き金額で計算
+  exclude_consumption_tax?: boolean       // 消費税抜きで計算
+  exclude_service_charge?: boolean        // サービスTAX抜きで計算
+
+  // 複数キャストの分配方法
+  multi_cast_distribution?: MultiCastDistribution
+  non_nomination_sales_handling?: NonNominationSalesHandling
+  help_distribution_method?: HelpDistributionMethod
+
+  // ヘルプ売上設定
+  help_sales_inclusion?: HelpSalesInclusion
+  help_calculation_method?: HelpCalculationMethod
+  help_ratio?: number                     // ヘルプ割合（%）
+  help_fixed_amount?: number              // ヘルプ固定額
+
+  // 端数処理（シンプルな形式: type + position）
+  rounding_method?: SimpleRoundingType    // floor, ceil, round
+  rounding_position?: number              // 1, 10, 100
+  rounding_timing?: RoundingTiming
+}
+
 // 報酬形態（個別の設定）
 export interface CompensationType {
   id: string                          // UUID
@@ -394,6 +421,10 @@ export interface CompensationType {
   use_product_back: boolean           // 商品別バック率を使用するか
   use_help_product_back: boolean      // ヘルプの商品バックを有効にするか
   help_back_calculation_method: HelpBackCalculationMethod
+
+  // 売上計算設定（オプション）
+  // 未設定の場合は店舗のsales_settingsの値を使用
+  sales_calculation_settings?: SalesCalculationSettings
 }
 
 // 公開する集計方法

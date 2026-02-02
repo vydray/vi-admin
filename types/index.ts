@@ -48,7 +48,10 @@ export type {
   // 報酬形態タブ関連
   PaymentSelectionMethod,
   SalesAggregationMethod,
+  SimpleRoundingType,
+  SalesCalculationSettings,
   CompensationType,
+  HelpDistributionMethod,
   // キャスト日別統計
   CastDailyItem,
   CastDailyStats,
