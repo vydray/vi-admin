@@ -18,6 +18,12 @@ interface Cast {
   status: string | null
 }
 
+interface WageStatus {
+  id: number
+  name: string
+  hourly_wage: number
+}
+
 interface DailyStats {
   date: string
   work_hours: number
@@ -66,6 +72,8 @@ interface CompensationSettings {
   compensation_types: CompensationType[] | null
   payment_selection_method: 'highest' | 'specific'
   selected_compensation_type_id: string | null
+  status_id: number | null
+  hourly_wage_override: number | null
 }
 
 interface OrderItemWithTax {
@@ -199,6 +207,7 @@ function PayslipPageContent() {
   const compensationSettingsRef = useRef<CompensationSettings | null>(null)
   const [salesSettings, setSalesSettings] = useState<SalesSettings | null>(null)
   const [backRates, setBackRates] = useState<CastBackRate[]>([])
+  const [wageStatuses, setWageStatuses] = useState<WageStatus[]>([])
   const [payslipItems, setPayslipItems] = useState<any[]>([])  // payslip_items データ
   const [dailySalesData, setDailySalesData] = useState<Map<string, DailySalesData>>(new Map())
   const [savedPayslip, setSavedPayslip] = useState<SavedPayslip | null>(null)
@@ -333,11 +342,25 @@ function PayslipPageContent() {
     setBackRates((data || []) as CastBackRate[])
   }, [storeId])
 
+  // 時給ステータスを取得
+  const loadWageStatuses = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('wage_statuses')
+      .select('id, name, hourly_wage')
+      .eq('store_id', storeId)
+      .eq('is_active', true)
+
+    if (error) {
+      console.error('時給ステータス取得エラー:', error)
+    }
+    setWageStatuses(data || [])
+  }, [storeId])
+
   // キャストの報酬設定を取得
   const loadCompensationSettings = useCallback(async (castId: number): Promise<CompensationSettings | null> => {
     const { data, error } = await supabase
       .from('compensation_settings')
-      .select('enabled_deduction_ids, compensation_types, payment_selection_method, selected_compensation_type_id')
+      .select('enabled_deduction_ids, compensation_types, payment_selection_method, selected_compensation_type_id, status_id, hourly_wage_override')
       .eq('cast_id', castId)
       .eq('store_id', storeId)
       .limit(1)
@@ -594,11 +617,12 @@ function PayslipPageContent() {
       await loadDeductionSettings()
       await loadSalesSettings()
       await loadBackRates()
+      await loadWageStatuses()
       setInitialized(true)
       setLoading(false)
     }
     init()
-  }, [loadCasts, loadDeductionSettings, loadSalesSettings, loadBackRates, storeLoading, storeId])
+  }, [loadCasts, loadDeductionSettings, loadSalesSettings, loadBackRates, loadWageStatuses, storeLoading, storeId])
 
   // キャストまたは月が変わったらデータを再取得（初期ロード完了後のみ）
   // ※ キャスト切り替え時のチカチカを防ぐため、loading状態は変更しない
@@ -765,6 +789,27 @@ function PayslipPageContent() {
     // デフォルト（念のため）
     return types[0]
   }, [compensationSettings, compensationComparison])
+
+  // 実際の時給を取得（status_idまたはhourly_wage_overrideから）
+  // ※ activeCompensationType.hourly_rateはフラグ（時給を使うか）であり、実際の時給額ではない
+  const actualHourlyWage = useMemo((): number | null => {
+    // 報酬形態で時給がオフの場合はnull
+    if (!activeCompensationType || activeCompensationType.hourly_rate === 0) {
+      return null
+    }
+    // 1. hourly_wage_override が設定されていればそれを使用
+    if (compensationSettings?.hourly_wage_override && compensationSettings.hourly_wage_override > 0) {
+      return compensationSettings.hourly_wage_override
+    }
+    // 2. status_id があればwage_statusesから時給を取得
+    if (compensationSettings?.status_id) {
+      const wageStatus = wageStatuses.find(s => s.id === compensationSettings.status_id)
+      if (wageStatus) {
+        return wageStatus.hourly_wage
+      }
+    }
+    return null
+  }, [activeCompensationType, compensationSettings, wageStatuses])
 
   // 集計値を計算
   const summary = useMemo(() => {
@@ -1792,7 +1837,7 @@ function PayslipPageContent() {
                         <td style={styles.td}>{day.dayOfMonth}日({day.dayOfWeek})</td>
                         <td style={{ ...styles.td, textAlign: 'center', fontSize: '12px' }}>{day.workTimeRange || '-'}</td>
                         <td style={{ ...styles.td, textAlign: 'right' }}>{day.workHours > 0 ? `${day.workHours}h` : '-'}</td>
-                        <td style={{ ...styles.td, textAlign: 'right' }}>{activeCompensationType?.hourly_rate ? currencyFormatter.format(activeCompensationType.hourly_rate) : '-'}</td>
+                        <td style={{ ...styles.td, textAlign: 'right' }}>{actualHourlyWage ? currencyFormatter.format(actualHourlyWage) : '-'}</td>
                         <td style={{ ...styles.td, textAlign: 'right' }}>{day.wageAmount > 0 ? currencyFormatter.format(day.wageAmount) : '-'}</td>
                         {/* 報酬形態ごとに売上を表示 */}
                         {salesAggregationByType.length > 1 ? (

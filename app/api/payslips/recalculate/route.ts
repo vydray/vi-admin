@@ -198,7 +198,7 @@ async function calculatePayslipForCast(
     // 1. 指定年月の設定を探す
     let { data: compensationSettings } = await supabaseAdmin
       .from('compensation_settings')
-      .select('enabled_deduction_ids, compensation_types, payment_selection_method, selected_compensation_type_id, store_id, target_year, target_month')
+      .select('enabled_deduction_ids, compensation_types, payment_selection_method, selected_compensation_type_id, store_id, target_year, target_month, status_id, hourly_wage_override')
       .eq('cast_id', cast.id)
       .eq('store_id', storeId)
       .eq('target_year', targetYear)
@@ -210,7 +210,7 @@ async function calculatePayslipForCast(
     if (!compensationSettings) {
       const { data: recentSettings } = await supabaseAdmin
         .from('compensation_settings')
-        .select('enabled_deduction_ids, compensation_types, payment_selection_method, selected_compensation_type_id, store_id, target_year, target_month')
+        .select('enabled_deduction_ids, compensation_types, payment_selection_method, selected_compensation_type_id, store_id, target_year, target_month, status_id, hourly_wage_override')
         .eq('cast_id', cast.id)
         .eq('store_id', storeId)
         .eq('is_active', true)
@@ -227,7 +227,7 @@ async function calculatePayslipForCast(
     if (!compensationSettings) {
       const { data: defaultSettings } = await supabaseAdmin
         .from('compensation_settings')
-        .select('enabled_deduction_ids, compensation_types, payment_selection_method, selected_compensation_type_id, store_id, target_year, target_month')
+        .select('enabled_deduction_ids, compensation_types, payment_selection_method, selected_compensation_type_id, store_id, target_year, target_month, status_id, hourly_wage_override')
         .eq('cast_id', cast.id)
         .eq('store_id', storeId)
         .is('target_year', null)
@@ -236,6 +236,17 @@ async function calculatePayslipForCast(
         .maybeSingle()
 
       compensationSettings = defaultSettings
+    }
+
+    // 時給ステータスを取得
+    let statusHourlyWage = 0
+    if (compensationSettings?.status_id) {
+      const { data: wageStatus } = await supabaseAdmin
+        .from('wage_statuses')
+        .select('hourly_wage')
+        .eq('id', compensationSettings.status_id)
+        .single()
+      statusHourlyWage = wageStatus?.hourly_wage || 0
     }
 
     // 日別売上データを取得（cast_daily_itemsから）
@@ -488,7 +499,19 @@ async function calculatePayslipForCast(
 
     // ===== 集計計算 =====
     const totalWorkHours = (dailyStats || []).reduce((sum, d) => sum + (d.work_hours || 0), 0)
-    const totalWageAmount = (dailyStats || []).reduce((sum, d) => sum + (d.wage_amount || 0), 0)
+
+    // 時給を取得（優先順位: hourly_wage_override > status_idの時給）
+    // ※報酬形態のhourly_rateは「時給を使うか」のフラグで、実際の時給額ではない
+    const compensationTypes = compensationSettings?.compensation_types || []
+    const effectiveHourlyRate = (compensationSettings as Record<string, unknown> | null)?.hourly_wage_override as number
+      || statusHourlyWage
+
+    // 時給収入を計算（cast_daily_statsのwage_amountが0の場合は計算する）
+    const statsWageAmount = (dailyStats || []).reduce((sum, d) => sum + (d.wage_amount || 0), 0)
+    const calculatedWageAmount = Math.round(totalWorkHours * effectiveHourlyRate)
+    const totalWageAmount = statsWageAmount > 0 ? statsWageAmount : calculatedWageAmount
+
+    console.log(`[${cast.name}] 時給計算: effectiveRate=${effectiveHourlyRate}, hours=${totalWorkHours}, statsWage=${statsWageAmount}, calcWage=${calculatedWageAmount}, totalWage=${totalWageAmount}`)
 
     // 推し小計と伝票小計の両方を集計（cast_daily_statsから）
     const totalSalesItemBased = (dailyStats || []).reduce((sum, d) => sum + (d.total_sales_item_based || 0), 0)
@@ -505,7 +528,6 @@ async function calculatePayslipForCast(
     // 売上バック計算
     let salesBack = 0
     const enabledDeductionIds = compensationSettings?.enabled_deduction_ids || []
-    const compensationTypes = compensationSettings?.compensation_types || []
 
     // アクティブな報酬タイプを取得
     type CompType = {

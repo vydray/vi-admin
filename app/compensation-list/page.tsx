@@ -184,10 +184,11 @@ function CompensationListContent() {
     }).join(', ')
   }
 
-  // 実際の時給を取得（報酬形態で時給が設定されている場合のみ）
+  // 実際の時給を取得（報酬形態で時給がオンの場合のみ）
   const getActualHourlyWage = (settings: CompensationSettings | null, type: CompensationType): number | null => {
     // 報酬形態で時給が0の場合は、その報酬形態では時給を使わない
     // (スライド歩合のみの報酬形態など)
+    // ※type.hourly_rateは「時給を使うか」のフラグで、実際の時給額ではない
     if (type.hourly_rate === 0) {
       return null
     }
@@ -201,10 +202,6 @@ function CompensationListContent() {
       if (wageStatus) {
         return wageStatus.hourly_wage
       }
-    }
-    // 3. フォールバック: type.hourly_rate
-    if (type.hourly_rate > 0) {
-      return type.hourly_rate
     }
     return null
   }
