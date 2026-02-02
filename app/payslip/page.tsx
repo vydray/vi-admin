@@ -2312,15 +2312,19 @@ function PayslipPageContent() {
         const helpBackGroups = new Map<string, OrderGroup>()
 
         dayItems.forEach(item => {
-          const orderId = item.order_id || 'no-order'
+          // BASE売上の場合はorderIdを"BASE"にする
+          const isBase = item.category === 'BASE' || (!item.order_id && !item.table_number)
+          const orderId = isBase ? 'BASE' : (item.order_id || 'no-order')
+          const tableNumber = isBase ? 'BASE' : item.table_number
+          const guestName = isBase ? null : item.guest_name
 
           if (item.is_self) {
             // 推し売上
             if (!selfOrderGroups.has(orderId)) {
               selfOrderGroups.set(orderId, {
                 orderId,
-                tableNumber: item.table_number,
-                guestName: item.guest_name,
+                tableNumber,
+                guestName,
                 items: [],
                 totalSales: 0,
                 totalBack: 0
@@ -2336,8 +2340,8 @@ function PayslipPageContent() {
               if (!selfBackGroups.has(orderId)) {
                 selfBackGroups.set(orderId, {
                   orderId,
-                  tableNumber: item.table_number,
-                  guestName: item.guest_name,
+                  tableNumber,
+                  guestName,
                   items: [],
                   totalSales: 0,
                   totalBack: 0
@@ -2354,8 +2358,8 @@ function PayslipPageContent() {
               if (!helpBackGroups.has(orderId)) {
                 helpBackGroups.set(orderId, {
                   orderId,
-                  tableNumber: item.table_number,
-                  guestName: item.guest_name,
+                  tableNumber,
+                  guestName,
                   items: [],
                   totalSales: 0,
                   totalBack: 0
@@ -2441,7 +2445,7 @@ function PayslipPageContent() {
                             >
                               <div>
                                 <div style={{ fontWeight: '500' }}>
-                                  {order.tableNumber || '-'}番 / {order.guestName || '無記名'}
+                                  {order.tableNumber === 'BASE' ? 'BASE' : `${order.tableNumber || '-'}番 / ${order.guestName || '無記名'}`}
                                 </div>
                                 <div style={{ fontSize: '11px', color: '#6c757d' }}>
                                   #{order.orderId.slice(0, 6)}
@@ -2519,7 +2523,7 @@ function PayslipPageContent() {
                             >
                               <div>
                                 <div style={{ fontWeight: '500' }}>
-                                  {order.tableNumber || '-'}番 / {order.guestName || '無記名'}
+                                  {order.tableNumber === 'BASE' ? 'BASE' : `${order.tableNumber || '-'}番 / ${order.guestName || '無記名'}`}
                                 </div>
                                 <div style={{ fontSize: '11px', color: '#6c757d' }}>
                                   #{order.orderId.slice(0, 6)}
@@ -2596,7 +2600,7 @@ function PayslipPageContent() {
                             >
                               <div>
                                 <div style={{ fontWeight: '500' }}>
-                                  {order.tableNumber || '-'}番 / {order.guestName || '無記名'}
+                                  {order.tableNumber === 'BASE' ? 'BASE' : `${order.tableNumber || '-'}番 / ${order.guestName || '無記名'}`}
                                 </div>
                                 <div style={{ fontSize: '11px', color: '#6c757d' }}>
                                   #{order.orderId.slice(0, 6)}
