@@ -3772,15 +3772,17 @@ function CompensationSettingsPageContent() {
                 <div style={styles.slipCompareSection}>
                   <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '8px', fontWeight: 'bold' }}>報酬形態比較</div>
                   {compensationResults.map((result) => {
-                    // 実績データがある場合は実際の時給収入で合計を再計算
-                    const resultTotal = wageStats
-                      ? wageStats.totalWageAmount + result.salesBack + result.selfProductBack + result.helpProductBack
-                      : result.total
-                    const maxTotal = Math.max(...compensationResults.map(r =>
-                      wageStats
-                        ? wageStats.totalWageAmount + r.salesBack + r.selfProductBack + r.helpProductBack
-                        : r.total
-                    ))
+                    // 実績データがある場合は実際の時給収入で合計を再計算（時給オンの場合のみ）
+                    const useWageForResult = wageStats && result.type.hourly_rate > 0
+                    const resultTotal = useWageForResult
+                      ? wageStats.totalWageAmount + result.fixed + result.salesBack + result.selfProductBack + result.helpProductBack
+                      : result.fixed + result.salesBack + result.selfProductBack + result.helpProductBack
+                    const maxTotal = Math.max(...compensationResults.map(r => {
+                      const useWage = wageStats && r.type.hourly_rate > 0
+                      return useWage
+                        ? wageStats.totalWageAmount + r.fixed + r.salesBack + r.selfProductBack + r.helpProductBack
+                        : r.fixed + r.salesBack + r.selfProductBack + r.helpProductBack
+                    }))
                     const isHighest = resultTotal === maxTotal
                     const isSelected = settingsState.paymentSelectionMethod === 'specific' && settingsState.selectedCompensationTypeId === result.type.id
                     return (
