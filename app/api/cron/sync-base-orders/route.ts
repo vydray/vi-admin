@@ -259,6 +259,10 @@ async function executeSyncBaseOrders() {
               // 店舗価格（税抜）を決定: store_priceがあればそれを使用、なければbase_priceを税抜換算
               const actualPrice = baseProduct?.store_price ?? Math.floor(item.price / 1.1)
 
+              // NULLではなく空文字を使用（一意インデックスがCOALESCEを使用しているため）
+              const productName = item.title || ''
+              const variationName = item.variation || ''
+
               // local_product_idはproductsテーブルを参照するので、base_products.idは使わない
               // 将来的にはbase_productsにlocal_product_id（products.id）を持たせるべき
               const { error: upsertError } = await supabase
@@ -267,8 +271,8 @@ async function executeSyncBaseOrders() {
                   store_id: setting.store_id,
                   base_order_id: orderSummary.unique_key,
                   order_datetime: orderDatetime,
-                  product_name: item.title,
-                  variation_name: item.variation || null,
+                  product_name: productName,
+                  variation_name: variationName,
                   cast_id: cast?.id || null,
                   local_product_id: null, // base_products.idは外部キー制約違反になるためnull
                   base_price: item.price,
