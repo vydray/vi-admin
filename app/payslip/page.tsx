@@ -2495,6 +2495,8 @@ function PayslipPageContent() {
                             {isExpanded && (
                               <div style={{ backgroundColor: '#f8f9fa', padding: '8px 12px' }}>
                                 {order.items.map((item, idx) => {
+                                  // 表示する売上額（推し売上 or ヘルプ売上）
+                                  const displaySales = order.type === 'self' ? item.self_sales : item.help_sales
                                   const unitPrice = Math.floor(item.subtotal / item.quantity)
                                   const backRate = order.type === 'self' ? (item.self_back_rate || 0) : (item.help_back_rate || 0)
                                   const backAmount = order.type === 'self' ? (item.self_back_amount || 0) : (item.help_back_amount || 0)
@@ -2508,36 +2510,37 @@ function PayslipPageContent() {
                                       borderBottom: idx < order.items.length - 1 ? '1px solid #e9ecef' : 'none'
                                     }}>
                                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                          <span style={{
-                                            fontSize: '10px',
-                                            padding: '2px 6px',
-                                            borderRadius: '4px',
-                                            backgroundColor: '#e9ecef',
-                                            color: '#495057'
-                                          }}>
-                                            {item.category || '-'}
-                                          </span>
-                                          <span style={{ fontWeight: '500' }}>{item.product_name}</span>
+                                        <div>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                            <span style={{
+                                              fontSize: '10px',
+                                              padding: '2px 6px',
+                                              borderRadius: '4px',
+                                              backgroundColor: '#e9ecef',
+                                              color: '#495057'
+                                            }}>
+                                              {item.category || '-'}
+                                            </span>
+                                            <span style={{ fontWeight: '500' }}>{item.product_name}</span>
+                                          </div>
                                           {itemCastName && (
-                                            <span style={{ fontSize: '12px', color: '#6c757d' }}>({itemCastName})</span>
+                                            <div style={{ fontSize: '11px', color: '#6c757d', marginTop: '2px' }}>{itemCastName}</div>
                                           )}
                                         </div>
-                                        <div style={{ fontWeight: '600', fontSize: '14px' }}>
-                                          {currencyFormatter.format(item.subtotal)}
-                                        </div>
-                                      </div>
-                                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                        <div style={{ display: 'flex', gap: '16px', fontSize: '11px', color: '#6c757d' }}>
-                                          <span>単価: {currencyFormatter.format(unitPrice)}</span>
-                                          <span>×{item.quantity}個</span>
-                                        </div>
-                                        {backAmount > 0 && (
-                                          <div style={{ fontSize: '11px', color: backColor, fontWeight: '500' }}>
-                                            バック: {currencyFormatter.format(backAmount)} ({backRate}%)
+                                        <div style={{ textAlign: 'right' }}>
+                                          <div style={{ fontWeight: '600', fontSize: '14px' }}>
+                                            {currencyFormatter.format(displaySales)}
                                           </div>
-                                        )}
+                                          <div style={{ fontSize: '11px', color: '#6c757d' }}>
+                                            {currencyFormatter.format(unitPrice)} × {item.quantity}
+                                          </div>
+                                        </div>
                                       </div>
+                                      {backAmount > 0 && (
+                                        <div style={{ textAlign: 'right', fontSize: '11px', color: backColor, fontWeight: '500' }}>
+                                          バック: {currencyFormatter.format(backAmount)} ({backRate}%)
+                                        </div>
+                                      )}
                                     </div>
                                   )
                                 })}
