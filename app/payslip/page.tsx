@@ -49,7 +49,7 @@ interface AttendanceData {
 interface DeductionType {
   id: number
   name: string
-  type: 'percentage' | 'fixed' | 'penalty_status' | 'penalty_late' | 'daily_payment' | 'manual'
+  type: 'percentage' | 'fixed' | 'penalty_status' | 'penalty_late' | 'daily_payment' | 'manual' | 'per_attendance'
   percentage: number | null
   default_amount: number
   attendance_status_id: string | null
@@ -245,6 +245,7 @@ function PayslipPageContent() {
   const [attendanceData, setAttendanceData] = useState<AttendanceData[]>([])
   const [deductionTypes, setDeductionTypes] = useState<DeductionType[]>([])
   const [latePenaltyRules, setLatePenaltyRules] = useState<Map<number, LatePenaltyRule>>(new Map())
+  const [workDayStatusIds, setWorkDayStatusIds] = useState<Set<string>>(new Set())
   const [compensationSettings, setCompensationSettings] = useState<CompensationSettings | null>(null)
   const compensationSettingsRef = useRef<CompensationSettings | null>(null)
   const [salesSettings, setSalesSettings] = useState<SalesSettings | null>(null)
@@ -350,6 +351,21 @@ function PayslipPageContent() {
           setLatePenaltyRules(rulesMap)
         }
       }
+    }
+
+    // 出勤扱いのステータスIDを取得（per_attendance控除用）
+    const { data: statuses } = await supabase
+      .from('attendance_statuses')
+      .select('id, is_active')
+      .eq('store_id', storeId)
+
+    if (statuses) {
+      const workDayIds = new Set(
+        statuses
+          .filter(s => s.is_active)
+          .map(s => s.id)
+      )
+      setWorkDayStatusIds(workDayIds)
     }
   }, [storeId])
 
@@ -996,6 +1012,24 @@ function PayslipPageContent() {
         }
       })
 
+    // 出勤控除（1出勤あたり×出勤日数）
+    deductionTypes
+      .filter(d => d.type === 'per_attendance' && (enabledIds.length === 0 || enabledIds.includes(d.id)))
+      .forEach(d => {
+        // 出勤扱いのステータスを持つ日数をカウント
+        const workDayCount = attendanceData.filter(a =>
+          a.status_id && workDayStatusIds.has(a.status_id)
+        ).length
+        if (workDayCount > 0 && d.default_amount > 0) {
+          results.push({
+            name: d.name,
+            amount: d.default_amount * workDayCount,
+            count: workDayCount,
+            detail: `${workDayCount}日 × ¥${d.default_amount.toLocaleString()}`
+          })
+        }
+      })
+
     // 源泉徴収（%計算）- 総支給額に対して計算
     const percentageDeductions = deductionTypes.filter(d => d.type === 'percentage' && d.percentage && (enabledIds.length === 0 || enabledIds.includes(d.id)))
     percentageDeductions.forEach(d => {
@@ -1011,7 +1045,7 @@ function PayslipPageContent() {
     })
 
     return results
-  }, [deductionTypes, attendanceData, latePenaltyRules, compensationSettings, summary.grossEarnings, calculateLatePenalty])
+  }, [deductionTypes, attendanceData, latePenaltyRules, workDayStatusIds, compensationSettings, summary.grossEarnings, calculateLatePenalty])
 
   // 控除合計・差引支給額
   const totalDeduction = deductions.reduce((sum, d) => sum + d.amount, 0)

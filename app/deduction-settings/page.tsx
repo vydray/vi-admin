@@ -13,7 +13,7 @@ interface DeductionType {
   id: number
   store_id: number
   name: string
-  type: 'percentage' | 'fixed' | 'penalty_status' | 'penalty_late' | 'daily_payment' | 'manual'
+  type: 'percentage' | 'fixed' | 'penalty_status' | 'penalty_late' | 'daily_payment' | 'manual' | 'per_attendance'
   percentage: number | null
   default_amount: number
   attendance_status_id: string | null
@@ -54,7 +54,8 @@ const typeLabels: Record<string, string> = {
   penalty_status: 'ステータス連動罰金',
   penalty_late: '遅刻罰金（時間ベース）',
   daily_payment: '日払い（自動取得）',
-  manual: '都度入力'
+  manual: '都度入力',
+  per_attendance: '出勤控除'
 }
 
 const typeDescriptions: Record<string, string> = {
@@ -63,7 +64,8 @@ const typeDescriptions: Record<string, string> = {
   penalty_status: '出勤ステータスに連動して自動で罰金（当欠・無欠など）',
   penalty_late: '遅刻時間に応じて罰金を計算',
   daily_payment: '勤怠データの日払い額を自動で合計',
-  manual: '月ごとに金額を入力（前借りなど）'
+  manual: '月ごとに金額を入力（前借りなど）',
+  per_attendance: '出勤1回あたりの金額×出勤日数を自動控除（雑費など）'
 }
 
 const calcTypeLabels: Record<string, string> = {
@@ -541,6 +543,8 @@ function DeductionSettingsPageContent() {
         return '勤怠の日払い額を自動集計'
       case 'manual':
         return '金額は都度入力'
+      case 'per_attendance':
+        return `出勤1回あたり -${item.default_amount?.toLocaleString()}円`
       default:
         return ''
     }
@@ -768,6 +772,7 @@ function DeductionSettingsPageContent() {
             <li><strong>日払い</strong>: 日払い（勤怠データから自動集計）</li>
             <li><strong>前借り</strong>: 都度入力</li>
             <li><strong>寮費</strong>: 固定額</li>
+            <li><strong>雑費</strong>: 出勤控除（1出勤あたり300円など）</li>
           </ul>
         </div>
       </div>
@@ -843,6 +848,7 @@ function DeductionSettingsPageContent() {
                   <option value="penalty_late">遅刻罰金（時間ベース）</option>
                   <option value="daily_payment">日払い（勤怠から自動取得）</option>
                   <option value="manual">都度入力（前借りなど）</option>
+                  <option value="per_attendance">出勤控除（1出勤あたり）</option>
                 </select>
                 <p style={{ marginTop: '6px', fontSize: '12px', color: '#666' }}>
                   {typeDescriptions[formData.type]}
@@ -891,6 +897,31 @@ function DeductionSettingsPageContent() {
                       fontSize: '14px'
                     }}
                   />
+                </div>
+              )}
+
+              {/* 出勤控除の場合 */}
+              {formData.type === 'per_attendance' && (
+                <div>
+                  <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500' }}>
+                    1出勤あたりの金額（円）
+                  </label>
+                  <input
+                    type="number"
+                    value={formData.default_amount}
+                    onChange={(e) => setFormData({ ...formData, default_amount: e.target.value })}
+                    placeholder="例: 300"
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      border: '1px solid #ddd',
+                      borderRadius: '6px',
+                      fontSize: '14px'
+                    }}
+                  />
+                  <p style={{ marginTop: '6px', fontSize: '12px', color: '#666' }}>
+                    出勤扱いの勤怠ステータス（出勤・遅刻・早退・リクエスト出勤など）の日数×この金額が控除されます
+                  </p>
                 </div>
               )}
 

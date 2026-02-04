@@ -184,6 +184,19 @@ async function calculatePayslipForCast(
       latePenaltyRules = rules || []
     }
 
+    // 勤怠ステータスを取得（出勤控除の計算用）
+    const { data: attendanceStatuses } = await supabaseAdmin
+      .from('attendance_statuses')
+      .select('id, is_active')
+      .eq('store_id', storeId)
+
+    // 出勤扱いのステータスIDセット（is_active=trueが出勤扱い）
+    const workDayStatusIds = new Set(
+      (attendanceStatuses || [])
+        .filter(s => s.is_active)
+        .map(s => s.id)
+    )
+
     // 報酬設定を取得（年月指定 → 直近の設定 → デフォルト設定の順で探す）
     const targetYear = month.getFullYear()
     const targetMonth = month.getMonth() + 1
@@ -791,6 +804,23 @@ async function calculatePayslipForCast(
           name: d.name,
           type: 'fixed',
           amount: d.default_amount
+        })
+      }
+    }
+
+    // 出勤控除（1出勤あたり×出勤日数）
+    for (const d of (deductionTypes || []).filter(d => d.type === 'per_attendance')) {
+      if (enabledDeductionIds.length > 0 && !enabledDeductionIds.includes(d.id)) continue
+      // 出勤扱いのステータスを持つ日数をカウント
+      const workDayCount = (attendanceData || []).filter(a =>
+        a.status_id && workDayStatusIds.has(a.status_id)
+      ).length
+      if (workDayCount > 0 && d.default_amount > 0) {
+        deductions.push({
+          name: d.name,
+          type: 'per_attendance',
+          count: workDayCount,
+          amount: d.default_amount * workDayCount
         })
       }
     }
