@@ -345,7 +345,7 @@ function DeductionSettingsPageContent() {
         name: formData.name.trim(),
         type: formData.type,
         percentage: formData.type === 'percentage' ? parseFloat(formData.percentage) || null : null,
-        default_amount: formData.type === 'fixed' ? parseInt(formData.default_amount) || 0 : 0,
+        default_amount: (formData.type === 'fixed' || formData.type === 'per_attendance') ? parseInt(formData.default_amount) || 0 : 0,
         attendance_status_id: formData.type === 'penalty_status' ? formData.attendance_status_id || null : null,
         penalty_amount: formData.type === 'penalty_status' ? parseInt(formData.penalty_amount) || 0 : 0,
         display_order: editingItem?.display_order || deductionTypes.length
