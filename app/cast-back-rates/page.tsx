@@ -172,14 +172,6 @@ function CastBackRatesPageContent() {
         }
       }
 
-      // デバッグ：id=15695を直接検索
-      const target15695 = allRates.find(r => r.id === 15695)
-      console.log('[loadData] id=15695のレコード:', target15695 ? `found! category=${target15695.category}` : 'NOT FOUND')
-
-      // キャスト/キャストショットを検索
-      const castShot = allRates.filter(r => r.product_name === 'キャストショット' && r.cast_id === 15679)
-      console.log('[loadData] cast_id=15679のキャストショット:', castShot.map(r => `id=${r.id}, category=${r.category}`))
-
       setBackRates(allRates)
 
       // 最初のキャストを選択
@@ -214,36 +206,11 @@ function CastBackRatesPageContent() {
   // 選択中のキャストのバック率一覧
   const castRates = useMemo(() => {
     if (!selectedCastId) return []
-    const filtered = backRates.filter((r) => r.cast_id === selectedCastId)
-    console.log(`[castRates] selectedCastId=${selectedCastId}, backRates全体=${backRates.length}, フィルター後=${filtered.length}`)
-    if (filtered.length > 0) {
-      console.log('[castRates] サンプル:', filtered.slice(0, 3).map(r => `${r.category}/${r.product_name}`))
-    }
-    return filtered
+    return backRates.filter((r) => r.cast_id === selectedCastId)
   }, [backRates, selectedCastId])
 
   // 全商品とそのバック率設定をマージ
   const allProductsWithRates = useMemo((): ProductWithRate[] => {
-    // デバッグ: キャストショットを探す
-    const castShotProduct = products.find(p => p.name === 'キャストショット')
-    if (castShotProduct) {
-      const castShotCategory = categories.find(c => c.id === castShotProduct.category_id)
-      console.log(`[allProductsWithRates] キャストショット: product_id=${castShotProduct.id}, category_id=${castShotProduct.category_id}, categoryName=${castShotCategory?.name}`)
-
-      const matchingRate = castRates.find(r =>
-        r.category === castShotCategory?.name &&
-        r.product_name === 'キャストショット'
-      )
-      console.log(`[allProductsWithRates] キャストショット マッチするrate:`, matchingRate ? `id=${matchingRate.id}, self=${matchingRate.self_back_ratio}%` : 'なし')
-
-      // castRates内のキャストショットを探す（カテゴリ関係なく）
-      const allCastShotRates = castRates.filter(r => r.product_name === 'キャストショット')
-      console.log(`[allProductsWithRates] castRates内のキャストショット数=${allCastShotRates.length}`)
-      if (allCastShotRates.length > 0) {
-        console.log('[allProductsWithRates] キャストショットのcategory一覧:', allCastShotRates.map(r => r.category))
-      }
-    }
-
     return products.map(product => {
       const category = categories.find(c => c.id === product.category_id)
       const categoryName = category?.name || ''
