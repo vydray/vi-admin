@@ -1024,22 +1024,20 @@ async function recalculateForStoreAndDate(
 
     // バック率・バック額を計算
     for (const item of allDailyItems) {
-      // 1. 推しバック率を取得
+      // 推しキャストのバック設定を取得
       const selfKey = `${item.cast_id}:${item.product_name}`
       const selfBackRate = backRateMap.get(selfKey)
+
+      // 1. 推しバック率を計算
       if (selfBackRate) {
         item.self_back_rate = selfBackRate.self_back_ratio ?? 0
         item.self_back_amount = Math.floor(item.self_sales * item.self_back_rate / 100)
       }
 
-      // 2. ヘルプバック率を取得（help_cast_idがある場合のみ）
-      if (item.help_cast_id) {
-        const helpKey = `${item.help_cast_id}:${item.product_name}`
-        const helpBackRate = backRateMap.get(helpKey)
-        if (helpBackRate) {
-          item.help_back_rate = helpBackRate.help_back_ratio ?? 0
-          item.help_back_amount = Math.floor(item.help_sales * item.help_back_rate / 100)
-        }
+      // 2. ヘルプバック率を計算（推しキャストの設定からhelp_back_ratioを使用）
+      if (item.help_cast_id && selfBackRate) {
+        item.help_back_rate = selfBackRate.help_back_ratio ?? 0
+        item.help_back_amount = Math.floor(item.help_sales * item.help_back_rate / 100)
       }
     }
 

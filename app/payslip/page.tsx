@@ -92,6 +92,7 @@ interface CastDailyItem {
   self_sales: number
   help_sales: number
   needs_cast: boolean
+  help_cast_id: number | null
   // 商品バック情報（計算時点の値）
   self_back_rate: number
   self_back_amount: number
@@ -241,7 +242,8 @@ function PayslipPageContent() {
   const [salesSettings, setSalesSettings] = useState<SalesSettings | null>(null)
   const [backRates, setBackRates] = useState<CastBackRate[]>([])
   const [wageStatuses, setWageStatuses] = useState<WageStatus[]>([])
-  const [castDailyItems, setCastDailyItems] = useState<CastDailyItem[]>([])  // cast_daily_items データ（伝票詳細用）
+  const [castDailyItems, setCastDailyItems] = useState<CastDailyItem[]>([])  // cast_daily_items データ（伝票詳細用）- 推しとして
+  const [helpDailyItems, setHelpDailyItems] = useState<CastDailyItem[]>([])  // cast_daily_items データ（ヘルプとして）
   const [dailySalesData, setDailySalesData] = useState<Map<string, DailySalesData>>(new Map())
   const [savedPayslip, setSavedPayslip] = useState<SavedPayslip | null>(null)
   const [saving, setSaving] = useState(false)
@@ -477,9 +479,11 @@ function PayslipPageContent() {
     // cast_daily_items を取得（伝票詳細表示用）
     const startDate = format(startOfMonth(month), 'yyyy-MM-dd')
     const endDate = format(endOfMonth(month), 'yyyy-MM-dd')
+
+    // 1. 推しとして参加した分（cast_id = castId）
     const { data: dailyItems, error: dailyItemsError } = await supabase
       .from('cast_daily_items')
-      .select('id, order_id, table_number, guest_name, product_name, category, quantity, subtotal, back_amount, is_self, self_sales, help_sales, needs_cast, date, self_back_rate, self_back_amount, help_back_rate, help_back_amount')
+      .select('id, order_id, table_number, guest_name, product_name, category, quantity, subtotal, back_amount, is_self, self_sales, help_sales, needs_cast, date, help_cast_id, self_back_rate, self_back_amount, help_back_rate, help_back_amount')
       .eq('cast_id', castId)
       .eq('store_id', storeId)
       .gte('date', startDate)
@@ -491,6 +495,23 @@ function PayslipPageContent() {
       setCastDailyItems([])
     } else {
       setCastDailyItems((dailyItems || []) as CastDailyItem[])
+    }
+
+    // 2. ヘルプとして参加した分（help_cast_id = castId）
+    const { data: helpItems, error: helpItemsError } = await supabase
+      .from('cast_daily_items')
+      .select('id, order_id, table_number, guest_name, product_name, category, quantity, subtotal, back_amount, is_self, self_sales, help_sales, needs_cast, date, help_cast_id, self_back_rate, self_back_amount, help_back_rate, help_back_amount')
+      .eq('help_cast_id', castId)
+      .eq('store_id', storeId)
+      .gte('date', startDate)
+      .lte('date', endDate)
+      .order('date')
+
+    if (helpItemsError) {
+      console.error('cast_daily_items(help)取得エラー:', helpItemsError)
+      setHelpDailyItems([])
+    } else {
+      setHelpDailyItems((helpItems || []) as CastDailyItem[])
     }
   }, [storeId])
 
@@ -814,7 +835,6 @@ function PayslipPageContent() {
 
     // 売上はcast_daily_statsから計算（推し小計 or 伝票小計）
     let totalSales = 0
-    let totalProductBack = 0
     dailySalesData.forEach(day => {
       // sales_aggregationに基づいて正しい売上を使用
       if (salesAggregation === 'receipt_based') {
@@ -822,8 +842,12 @@ function PayslipPageContent() {
       } else {
         totalSales += day.totalSalesItemBased || day.totalSales || 0
       }
-      totalProductBack += day.productBack
     })
+
+    // 商品バックはcast_daily_itemsから直接計算（推しバック + ヘルプバック）
+    const totalSelfBack = castDailyItems.reduce((sum, item) => sum + (item.self_back_amount || 0), 0)
+    const totalHelpBack = helpDailyItems.reduce((sum, item) => sum + (item.help_back_amount || 0), 0)
+    const totalProductBack = totalSelfBack + totalHelpBack
 
     // 売上バック計算（compensation_typesのcommission_rateを使用）
     let salesBack = 0
@@ -848,24 +872,24 @@ function PayslipPageContent() {
     // 時給がオンの場合のみ時給収入を含める
     const useWageData = activeCompensationType?.hourly_rate && activeCompensationType.hourly_rate > 0
 
-    // 商品バックを含めるかどうか
-    const useProductBack = activeCompensationType?.use_product_back ?? false
+    // 商品バックを総支給額に含めるかどうか（報酬形態設定）
+    const useProductBackForGross = activeCompensationType?.use_product_back ?? false
 
-    // 総支給額
-    const grossEarnings = (useWageData ? totalWageAmount : 0) + salesBack + (useProductBack ? totalProductBack : 0) + fixedAmount
+    // 総支給額（商品バックは報酬形態設定に依存）
+    const grossEarnings = (useWageData ? totalWageAmount : 0) + salesBack + (useProductBackForGross ? totalProductBack : 0) + fixedAmount
 
     return {
       totalWorkHours: Math.round(totalWorkHours * 100) / 100,
       totalWageAmount,
       totalSales,
       salesBack,
-      totalProductBack: useProductBack ? totalProductBack : 0,
+      totalProductBack,  // 表示用は常に計算値を返す
       fixedAmount,
       grossEarnings,
       useWageData: !!useWageData,
       salesAggregation
     }
-  }, [dailyStats, dailySalesData, activeCompensationType])
+  }, [dailyStats, dailySalesData, activeCompensationType, castDailyItems, helpDailyItems])
 
   // 遅刻罰金を計算
   const calculateLatePenalty = useCallback((lateMinutes: number, rule: LatePenaltyRule): number => {
@@ -1013,6 +1037,15 @@ function PayslipPageContent() {
         workTimeRange = `${checkInTime}〜${checkOutTime}`
       }
 
+      // 商品バックはcast_daily_itemsから直接計算（推しバック + ヘルプバック）
+      const daySelfBack = castDailyItems
+        .filter(item => item.date === dateStr)
+        .reduce((sum, item) => sum + (item.self_back_amount || 0), 0)
+      const dayHelpBack = helpDailyItems
+        .filter(item => item.date === dateStr)
+        .reduce((sum, item) => sum + (item.help_back_amount || 0), 0)
+      const dayProductBack = daySelfBack + dayHelpBack
+
       return {
         date: dateStr,
         dayOfMonth: format(day, 'd'),
@@ -1023,12 +1056,12 @@ function PayslipPageContent() {
         sales: sales?.totalSales || 0,
         salesItemBased: sales?.totalSalesItemBased || 0,
         salesReceiptBased: sales?.totalSalesReceiptBased || 0,
-        productBack: sales?.productBack || 0,
+        productBack: dayProductBack,
         dailyPayment: attendance?.daily_payment || 0,
         lateMinutes: attendance?.late_minutes || 0
       }
     }).filter(d => d.workHours > 0 || d.dailyPayment > 0 || d.lateMinutes > 0 || d.sales > 0 || d.salesItemBased > 0 || d.salesReceiptBased > 0)
-  }, [selectedMonth, dailyStats, attendanceData, dailySalesData])
+  }, [selectedMonth, dailyStats, attendanceData, dailySalesData, castDailyItems, helpDailyItems])
 
   const selectedCast = casts.find(c => c.id === selectedCastId)
 
@@ -2250,6 +2283,7 @@ function PayslipPageContent() {
 
         // cast_daily_itemsから当日のデータを取得して伝票ごとにグループ化
         const dayItems = castDailyItems.filter(item => item.date === selectedDayDetail)
+        const dayHelpItems = helpDailyItems.filter(item => item.date === selectedDayDetail)
 
         // 伝票ごとにグループ化（推し売上のみ）
         const selfOrderGroups = new Map<string, OrderGroup>()
@@ -2282,7 +2316,11 @@ function PayslipPageContent() {
 
         const selfOrders = Array.from(selfOrderGroups.values())
         const totalSelfSales = selfOrders.reduce((sum, g) => sum + g.totalSales, 0)
-        const totalProductBack = selfOrders.reduce((sum, g) => sum + g.totalBack, 0)
+
+        // 商品バック合計（推しバック + ヘルプバック）
+        const totalSelfBack = dayItems.reduce((sum, item) => sum + (item.self_back_amount || 0), 0)
+        const totalHelpBack = dayHelpItems.reduce((sum, item) => sum + (item.help_back_amount || 0), 0)
+        const totalProductBack = totalSelfBack + totalHelpBack
 
         const toggleOrder = (orderId: string) => {
           setExpandedOrders(prev => {
