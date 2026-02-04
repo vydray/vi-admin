@@ -2494,6 +2494,8 @@ function PayslipPageContent() {
                                   const unitPrice = Math.floor(item.subtotal / item.quantity)
                                   const backRate = order.type === 'self' ? (item.self_back_rate || 0) : (item.help_back_rate || 0)
                                   const backAmount = order.type === 'self' ? (item.self_back_amount || 0) : (item.help_back_amount || 0)
+                                  // ヘルプキャスト名を取得
+                                  const helpCastName = item.help_cast_id ? casts.find(c => c.id === item.help_cast_id)?.name : null
                                   return (
                                     <div key={idx} style={{
                                       padding: '10px 0',
@@ -2511,7 +2513,17 @@ function PayslipPageContent() {
                                             {item.category || '-'}
                                           </span>
                                           <span style={{ fontWeight: '500' }}>{item.product_name}</span>
-                                          <span style={{ fontSize: '11px', color: '#6c757d' }}>({order.oshiCastName})</span>
+                                          {order.type === 'self' && helpCastName && (
+                                            <span style={{
+                                              fontSize: '10px',
+                                              padding: '2px 6px',
+                                              borderRadius: '4px',
+                                              backgroundColor: '#e8f5e9',
+                                              color: '#2e7d32'
+                                            }}>
+                                              ヘルプ: {helpCastName}
+                                            </span>
+                                          )}
                                         </div>
                                         <div style={{ fontWeight: '600', fontSize: '14px' }}>
                                           {currencyFormatter.format(item.subtotal)}
