@@ -2707,10 +2707,10 @@ function PayslipPageContent() {
 
         // 売上集計方法（報酬形態の設定に基づく）
         const salesAggregation = activeCompensationType?.sales_aggregation || 'item_based'
+        const isItemBased = salesAggregation === 'item_based'
 
         // cast_daily_itemsから当日のデータを取得して伝票ごとにグループ化
         // 推し小計モードの場合はneeds_cast=trueの商品のみ表示
-        const isItemBased = salesAggregation === 'item_based'
         const dayItems = castDailyItems.filter(item =>
           item.date === selectedDayDetail && (!isItemBased || item.needs_cast)
         )
@@ -2718,9 +2718,9 @@ function PayslipPageContent() {
           item.date === selectedDayDetail && (!isItemBased || item.needs_cast)
         )
 
-        // 売上額を取得するヘルパー関数（売上集計方法に応じたフィールドを使用）
+        // 売上額を取得するヘルパー関数（後方互換のためself_salesを使用）
         const getSelfSales = (item: CastDailyItem) => {
-          return isItemBased ? (item.self_sales_item_based || 0) : (item.self_sales_receipt_based || 0)
+          return item.self_sales || 0
         }
 
         // 伝票ごとにグループ化（推し売上 - 伝票内の全アイテムを表示）
