@@ -189,6 +189,8 @@ interface DailySalesData {
   totalSalesItemBased: number
   totalSalesReceiptBased: number
   productBack: number
+  selfBack: number     // 推し商品バック
+  helpBack: number     // ヘルプ商品バック
   items: ProductBackItem[]
 }
 
@@ -613,6 +615,8 @@ function PayslipPageContent() {
         baseSales: 0,
         storeSales: 0,
         productBack: productBack,
+        selfBack: 0,   // cast_daily_itemsから計算（dailyDetailsで設定）
+        helpBack: 0,   // cast_daily_itemsから計算（dailyDetailsで設定）
         workHours: stat.work_hours || 0,
         wageAmount: stat.wage_amount || 0,
         items: []
@@ -1057,6 +1061,8 @@ function PayslipPageContent() {
         salesItemBased: sales?.totalSalesItemBased || 0,
         salesReceiptBased: sales?.totalSalesReceiptBased || 0,
         productBack: dayProductBack,
+        selfBack: daySelfBack,
+        helpBack: dayHelpBack,
         dailyPayment: attendance?.daily_payment || 0,
         lateMinutes: attendance?.late_minutes || 0
       }
@@ -1833,7 +1839,8 @@ function PayslipPageContent() {
                       ) : (
                         <th style={{ ...styles.th, textAlign: 'right' }}>売上</th>
                       )}
-                      <th style={{ ...styles.th, textAlign: 'right' }}>商品バック</th>
+                      <th style={{ ...styles.th, textAlign: 'right' }}>推し商品バック</th>
+                      <th style={{ ...styles.th, textAlign: 'right' }}>ヘルプ商品バック</th>
                       <th style={{ ...styles.th, textAlign: 'right' }}>日払い</th>
                     </tr>
                   </thead>
@@ -1890,7 +1897,8 @@ function PayslipPageContent() {
                             return <td style={{ ...styles.td, textAlign: 'right' }}>{salesValue > 0 ? currencyFormatter.format(salesValue) : '-'}</td>
                           })()
                         )}
-                        <td style={{ ...styles.td, textAlign: 'right', color: '#FF9500' }}>{day.productBack > 0 ? currencyFormatter.format(day.productBack) : '-'}</td>
+                        <td style={{ ...styles.td, textAlign: 'right', color: '#FF9500' }}>{day.selfBack > 0 ? currencyFormatter.format(day.selfBack) : '-'}</td>
+                        <td style={{ ...styles.td, textAlign: 'right', color: '#27ae60' }}>{day.helpBack > 0 ? currencyFormatter.format(day.helpBack) : '-'}</td>
                         <td style={{ ...styles.td, textAlign: 'right', color: day.dailyPayment > 0 ? '#e74c3c' : undefined }}>
                           {day.dailyPayment > 0 ? currencyFormatter.format(day.dailyPayment) : '-'}
                         </td>
@@ -1933,7 +1941,8 @@ function PayslipPageContent() {
                           return <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold' }}>{currencyFormatter.format(totalSalesValue)}</td>
                         })()
                       )}
-                      <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold', color: '#FF9500' }}>{currencyFormatter.format(summary.totalProductBack)}</td>
+                      <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold', color: '#FF9500' }}>{currencyFormatter.format(dailyDetails.reduce((sum, d) => sum + d.selfBack, 0))}</td>
+                      <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold', color: '#27ae60' }}>{currencyFormatter.format(dailyDetails.reduce((sum, d) => sum + d.helpBack, 0))}</td>
                       <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold', color: '#e74c3c' }}>
                         {currencyFormatter.format(attendanceData.reduce((sum, a) => sum + (a.daily_payment || 0), 0))}
                       </td>
