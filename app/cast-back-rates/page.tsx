@@ -205,11 +205,36 @@ function CastBackRatesPageContent() {
   // 選択中のキャストのバック率一覧
   const castRates = useMemo(() => {
     if (!selectedCastId) return []
-    return backRates.filter((r) => r.cast_id === selectedCastId)
+    const filtered = backRates.filter((r) => r.cast_id === selectedCastId)
+    console.log(`[castRates] selectedCastId=${selectedCastId}, backRates全体=${backRates.length}, フィルター後=${filtered.length}`)
+    if (filtered.length > 0) {
+      console.log('[castRates] サンプル:', filtered.slice(0, 3).map(r => `${r.category}/${r.product_name}`))
+    }
+    return filtered
   }, [backRates, selectedCastId])
 
   // 全商品とそのバック率設定をマージ
   const allProductsWithRates = useMemo((): ProductWithRate[] => {
+    // デバッグ: キャストショットを探す
+    const castShotProduct = products.find(p => p.name === 'キャストショット')
+    if (castShotProduct) {
+      const castShotCategory = categories.find(c => c.id === castShotProduct.category_id)
+      console.log(`[allProductsWithRates] キャストショット: product_id=${castShotProduct.id}, category_id=${castShotProduct.category_id}, categoryName=${castShotCategory?.name}`)
+
+      const matchingRate = castRates.find(r =>
+        r.category === castShotCategory?.name &&
+        r.product_name === 'キャストショット'
+      )
+      console.log(`[allProductsWithRates] キャストショット マッチするrate:`, matchingRate ? `id=${matchingRate.id}, self=${matchingRate.self_back_ratio}%` : 'なし')
+
+      // castRates内のキャストショットを探す（カテゴリ関係なく）
+      const allCastShotRates = castRates.filter(r => r.product_name === 'キャストショット')
+      console.log(`[allProductsWithRates] castRates内のキャストショット数=${allCastShotRates.length}`)
+      if (allCastShotRates.length > 0) {
+        console.log('[allProductsWithRates] キャストショットのcategory一覧:', allCastShotRates.map(r => r.category))
+      }
+    }
+
     return products.map(product => {
       const category = categories.find(c => c.id === product.category_id)
       const categoryName = category?.name || ''
@@ -326,18 +351,9 @@ function CastBackRatesPageContent() {
           .eq('product_name', editingRate.product_name)
           .eq('is_active', true)
 
-        const existingCastIds = new Set((existingRates || []).map(r => r.cast_id))
         const existingIds = (existingRates || []).map(r => r.id)
 
-        // 既存レコードをまとめて論理削除
-        if (existingIds.length > 0) {
-          await supabase
-            .from('cast_back_rates')
-            .update({ is_active: false })
-            .in('id', existingIds)
-        }
-
-        // 全キャスト分の新しいレコードをまとめて挿入
+        // 全キャスト分の新しいレコードをまとめて挿入（先に挿入してデータ損失を防ぐ）
         const newRecords = filteredCasts.map(cast => ({
           cast_id: cast.id,
           store_id: storeId,
@@ -358,15 +374,56 @@ function CastBackRatesPageContent() {
 
         // バッチサイズを500に分割して挿入（Supabaseの制限対策）
         const BATCH_SIZE = 500
+        const insertedIds: number[] = []
         for (let i = 0; i < newRecords.length; i += BATCH_SIZE) {
           const batch = newRecords.slice(i, i + BATCH_SIZE)
-          const { error: insertError } = await supabase
+          const { data: insertedData, error: insertError } = await supabase
             .from('cast_back_rates')
             .insert(batch)
+            .select('id')
 
           if (insertError) {
             console.error(`Batch insert error (batch ${i / BATCH_SIZE + 1}):`, insertError)
             throw insertError
+          }
+
+          if (insertedData) {
+            insertedIds.push(...insertedData.map(r => r.id))
+          }
+        }
+
+        // 挿入されたレコード数を確認
+        console.log(`Inserted ${insertedIds.length} records, expected ${newRecords.length}`)
+
+        if (insertedIds.length !== newRecords.length) {
+          console.error('Insert count mismatch! Not deleting old records.')
+          throw new Error(`挿入されたレコード数が期待値と異なります（${insertedIds.length}/${newRecords.length}）`)
+        }
+
+        // 挿入成功後に重複チェック＆クリーンアップ
+        // 新しく挿入したID以外で同じ組み合わせのis_active=trueのレコードを全て論理削除
+        const { data: allActiveRates } = await supabase
+          .from('cast_back_rates')
+          .select('id')
+          .in('cast_id', castIds)
+          .eq('store_id', storeId)
+          .eq('category', editingRate.category)
+          .eq('product_name', editingRate.product_name)
+          .eq('is_active', true)
+
+        const idsToDelete = (allActiveRates || [])
+          .map(r => r.id)
+          .filter(id => !insertedIds.includes(id))
+
+        if (idsToDelete.length > 0) {
+          console.log(`Cleaning up ${idsToDelete.length} duplicate/old records`)
+          const { error: deleteError } = await supabase
+            .from('cast_back_rates')
+            .update({ is_active: false })
+            .in('id', idsToDelete)
+
+          if (deleteError) {
+            console.error('Delete error:', deleteError)
           }
         }
 
@@ -473,15 +530,7 @@ function CastBackRatesPageContent() {
 
       const existingIds = (existingRates || []).map(r => r.id)
 
-      // 既存レコードをまとめて論理削除
-      if (existingIds.length > 0) {
-        await supabase
-          .from('cast_back_rates')
-          .update({ is_active: false })
-          .in('id', existingIds)
-      }
-
-      // 全レコードをまとめて挿入
+      // 全レコードをまとめて挿入（先に挿入してデータ損失を防ぐ）
       const newRecords: any[] = []
       for (const cast of targetCasts) {
         for (const productName of categoryProductNames) {
@@ -507,15 +556,56 @@ function CastBackRatesPageContent() {
 
       // バッチサイズを500に分割して挿入（Supabaseの制限対策）
       const BATCH_SIZE = 500
+      const insertedIds: number[] = []
       for (let i = 0; i < newRecords.length; i += BATCH_SIZE) {
         const batch = newRecords.slice(i, i + BATCH_SIZE)
-        const { error: insertError } = await supabase
+        const { data: insertedData, error: insertError } = await supabase
           .from('cast_back_rates')
           .insert(batch)
+          .select('id')
 
         if (insertError) {
           console.error(`Bulk insert error (batch ${i / BATCH_SIZE + 1}):`, insertError)
           throw insertError
+        }
+
+        if (insertedData) {
+          insertedIds.push(...insertedData.map(r => r.id))
+        }
+      }
+
+      // 挿入されたレコード数を確認
+      console.log(`Bulk inserted ${insertedIds.length} records, expected ${newRecords.length}`)
+
+      if (insertedIds.length !== newRecords.length) {
+        console.error('Bulk insert count mismatch! Not deleting old records.')
+        throw new Error(`挿入されたレコード数が期待値と異なります（${insertedIds.length}/${newRecords.length}）`)
+      }
+
+      // 挿入成功後に重複チェック＆クリーンアップ
+      // 新しく挿入したID以外で同じ組み合わせのis_active=trueのレコードを全て論理削除
+      const { data: allActiveRates } = await supabase
+        .from('cast_back_rates')
+        .select('id')
+        .in('cast_id', castIds)
+        .eq('store_id', storeId)
+        .eq('category', bulkCategory)
+        .in('product_name', categoryProductNames)
+        .eq('is_active', true)
+
+      const idsToDelete = (allActiveRates || [])
+        .map(r => r.id)
+        .filter(id => !insertedIds.includes(id))
+
+      if (idsToDelete.length > 0) {
+        console.log(`Bulk: Cleaning up ${idsToDelete.length} duplicate/old records`)
+        const { error: deleteError } = await supabase
+          .from('cast_back_rates')
+          .update({ is_active: false })
+          .in('id', idsToDelete)
+
+        if (deleteError) {
+          console.error('Bulk delete error:', deleteError)
         }
       }
 
@@ -582,6 +672,80 @@ function CastBackRatesPageContent() {
 
           if (error) throw error
           toast.success(`${rateCount}件の設定を削除しました`)
+          await loadData()
+        } catch (err) {
+          console.error('一括削除エラー:', err)
+          toast.error('削除に失敗しました')
+        } finally {
+          setSaving(false)
+        }
+      }
+    })
+    setShowConfirmModal(true)
+  }
+
+  // カテゴリ一括削除
+  const handleBulkDelete = async () => {
+    if (!bulkCategory) return
+    if (!bulkApplyToAll && !selectedCastId) return
+
+    // このカテゴリの全商品を取得（BASE対応）
+    let categoryProductNames: string[] = []
+
+    if (bulkCategory === 'BASE') {
+      categoryProductNames = baseProducts.map(bp => bp.base_product_name)
+    } else {
+      const categoryProducts = products.filter(p => {
+        const cat = categories.find(c => c.id === p.category_id)
+        return cat?.name === bulkCategory
+      })
+      categoryProductNames = categoryProducts.map(p => p.name)
+    }
+
+    if (categoryProductNames.length === 0) {
+      toast.error('商品がありません')
+      return
+    }
+
+    // 適用対象のキャストを決定
+    const targetCasts = bulkApplyToAll ? filteredCasts : [{ id: selectedCastId! }]
+    const castIds = targetCasts.map(c => c.id)
+    const targetLabel = bulkApplyToAll ? `${targetCasts.length}人のキャスト` : (casts.find(c => c.id === selectedCastId)?.name || '')
+
+    setConfirmModalConfig({
+      title: 'カテゴリ一括削除確認',
+      message: `${targetLabel} の「${bulkCategory}」カテゴリのバック設定を全て削除しますか？`,
+      onConfirm: async () => {
+        setShowConfirmModal(false)
+        setShowBulkModal(false)
+        setSaving(true)
+        try {
+          // 既存レコードを一括取得
+          const { data: existingRates } = await supabase
+            .from('cast_back_rates')
+            .select('id')
+            .in('cast_id', castIds)
+            .eq('store_id', storeId)
+            .eq('category', bulkCategory)
+            .in('product_name', categoryProductNames)
+            .eq('is_active', true)
+
+          const existingIds = (existingRates || []).map(r => r.id)
+
+          if (existingIds.length === 0) {
+            toast.error('削除する設定がありません')
+            setSaving(false)
+            return
+          }
+
+          // 一括論理削除
+          const { error } = await supabase
+            .from('cast_back_rates')
+            .update({ is_active: false })
+            .in('id', existingIds)
+
+          if (error) throw error
+          toast.success(`${existingIds.length}件の設定を削除しました`)
           await loadData()
         } catch (err) {
           console.error('一括削除エラー:', err)
@@ -1259,23 +1423,34 @@ function CastBackRatesPageContent() {
               )}
             </div>
 
-            <div style={styles.modalActions}>
+            <div style={styles.modalActionsWithDelete}>
               <Button
-                onClick={() => setShowBulkModal(false)}
+                onClick={handleBulkDelete}
                 variant="outline"
                 size="medium"
                 disabled={saving}
+                style={{ borderColor: '#e74c3c', color: '#e74c3c' }}
               >
-                キャンセル
+                一括削除
               </Button>
-              <Button
-                onClick={handleBulkSave}
-                variant="primary"
-                size="medium"
-                disabled={saving}
-              >
-                {saving ? '保存中...' : '一括設定'}
-              </Button>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <Button
+                  onClick={() => setShowBulkModal(false)}
+                  variant="outline"
+                  size="medium"
+                  disabled={saving}
+                >
+                  キャンセル
+                </Button>
+                <Button
+                  onClick={handleBulkSave}
+                  variant="primary"
+                  size="medium"
+                  disabled={saving}
+                >
+                  {saving ? '保存中...' : '一括設定'}
+                </Button>
+              </div>
             </div>
           </div>
         </div>
@@ -1621,6 +1796,13 @@ const styles: { [key: string]: React.CSSProperties } = {
   modalActions: {
     display: 'flex',
     justifyContent: 'flex-end',
+    gap: '10px',
+    marginTop: '25px',
+  },
+  modalActionsWithDelete: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     gap: '10px',
     marginTop: '25px',
   },
