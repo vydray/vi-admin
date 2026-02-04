@@ -1036,6 +1036,116 @@ function PayslipPageContent() {
     return typeInfo
   }, [compensationSettings])
 
+  // 有効な全報酬形態（比較表示用）
+  const allEnabledCompensationTypes = useMemo(() => {
+    if (!compensationSettings?.compensation_types) return []
+    return compensationSettings.compensation_types.filter(t => t.is_enabled)
+  }, [compensationSettings])
+
+  // 報酬形態ごとのカラムハイライト色
+  const compensationTypeColors = useMemo(() => {
+    const colors = [
+      { border: '#1976d2', bg: '#e3f2fd' },  // 青
+      { border: '#2e7d32', bg: '#e8f5e9' },  // 緑
+      { border: '#f57c00', bg: '#fff3e0' },  // オレンジ
+      { border: '#7b1fa2', bg: '#f3e5f5' },  // 紫
+    ]
+    const typeColorMap = new Map<string, { border: string; bg: string }>()
+    allEnabledCompensationTypes.forEach((type, idx) => {
+      typeColorMap.set(type.id, colors[idx % colors.length])
+    })
+    return typeColorMap
+  }, [allEnabledCompensationTypes])
+
+  // 各カラム/カードがどの報酬形態に使われるかをチェック
+  const columnHighlights = useMemo(() => {
+    const highlights = {
+      wageAmount: [] as { typeId: string; name: string; color: { border: string; bg: string } }[],
+      sales: [] as { typeId: string; name: string; color: { border: string; bg: string } }[],
+      selfBack: [] as { typeId: string; name: string; color: { border: string; bg: string } }[],
+      helpBack: [] as { typeId: string; name: string; color: { border: string; bg: string } }[],
+      fixedAmount: [] as { typeId: string; name: string; color: { border: string; bg: string } }[],
+      productBack: [] as { typeId: string; name: string; color: { border: string; bg: string } }[],
+    }
+
+    allEnabledCompensationTypes.forEach(type => {
+      const color = compensationTypeColors.get(type.id)
+      if (!color) return
+
+      // 時間報酬: hourly_rate > 0
+      if (type.hourly_rate && type.hourly_rate > 0) {
+        highlights.wageAmount.push({ typeId: type.id, name: type.name, color })
+      }
+      // 売上: commission_rate > 0 or use_sliding_rate
+      if ((type.commission_rate && type.commission_rate > 0) || type.use_sliding_rate) {
+        highlights.sales.push({ typeId: type.id, name: type.name, color })
+      }
+      // 推し商品バック: use_product_back
+      if (type.use_product_back) {
+        highlights.selfBack.push({ typeId: type.id, name: type.name, color })
+      }
+      // ヘルプ商品バック: use_help_product_back
+      if (type.use_help_product_back) {
+        highlights.helpBack.push({ typeId: type.id, name: type.name, color })
+      }
+      // 固定額: fixed_amount > 0
+      if (type.fixed_amount && type.fixed_amount > 0) {
+        highlights.fixedAmount.push({ typeId: type.id, name: type.name, color })
+      }
+      // 商品バック（カード用）: use_product_back or use_help_product_back
+      if (type.use_product_back || type.use_help_product_back) {
+        highlights.productBack.push({ typeId: type.id, name: type.name, color })
+      }
+    })
+
+    return highlights
+  }, [allEnabledCompensationTypes, compensationTypeColors])
+
+  // 報酬形態ごとの内訳計算（比較表示用）
+  const compensationTypeBreakdowns = useMemo(() => {
+    return allEnabledCompensationTypes.map(type => {
+      const color = compensationTypeColors.get(type.id)
+      const items: { label: string; amount: number }[] = []
+      let total = 0
+
+      // 時間報酬
+      if (type.hourly_rate && type.hourly_rate > 0) {
+        const amount = summary.totalWageAmount
+        items.push({ label: '時間報酬', amount })
+        total += amount
+      }
+
+      // 売上バック
+      if ((type.commission_rate && type.commission_rate > 0) || type.use_sliding_rate) {
+        const amount = summary.salesBack
+        items.push({ label: '売上バック', amount })
+        total += amount
+      }
+
+      // 商品バック
+      if (type.use_product_back || type.use_help_product_back) {
+        const amount = summary.totalProductBack
+        items.push({ label: '商品バック', amount })
+        total += amount
+      }
+
+      // 固定額
+      if (type.fixed_amount && type.fixed_amount > 0) {
+        const amount = type.fixed_amount
+        items.push({ label: '固定額', amount })
+        total += amount
+      }
+
+      return {
+        id: type.id,
+        name: type.name,
+        color,
+        items,
+        total
+      }
+    })
+  }, [allEnabledCompensationTypes, compensationTypeColors, summary])
+
   // 日別明細データ
   const dailyDetails = useMemo(() => {
     const days = eachDayOfInterval({
@@ -1771,6 +1881,7 @@ function PayslipPageContent() {
         <div ref={printRef} style={{ backgroundColor: 'white' }}>
           {/* サマリーカード */}
           <div style={styles.summarySection}>
+            {/* 基本情報 */}
             <div style={styles.summaryGrid}>
               <div
                 style={{ ...styles.summaryCard, cursor: 'pointer' }}
@@ -1798,29 +1909,84 @@ function PayslipPageContent() {
                 </div>
               </div>
             </div>
-            <div style={styles.summaryGrid}>
-              <div style={styles.summaryCard}>
-                <div style={styles.summaryLabel}>売上</div>
-                <div style={styles.summaryValue}>{currencyFormatter.format(summary.totalSales)}</div>
-              </div>
-              <div style={styles.summaryCard}>
-                <div style={styles.summaryLabel}>売上バック</div>
-                <div style={{ ...styles.summaryValue, color: '#007AFF' }}>{currencyFormatter.format(summary.salesBack)}</div>
-              </div>
-              <div style={styles.summaryCard}>
-                <div style={styles.summaryLabel}>商品バック</div>
-                <div style={{ ...styles.summaryValue, color: '#FF9500' }}>{currencyFormatter.format(summary.totalProductBack)}</div>
-              </div>
-            </div>
-            {summary.fixedAmount > 0 && (
-              <div style={styles.summaryGrid}>
-                <div style={styles.summaryCard}>
-                  <div style={styles.summaryLabel}>固定額</div>
-                  <div style={{ ...styles.summaryValue, color: '#34C759' }}>{currencyFormatter.format(summary.fixedAmount)}</div>
-                </div>
+
+            {/* 報酬形態比較 */}
+            {compensationTypeBreakdowns.length > 0 && (
+              <div style={{
+                display: 'flex',
+                gap: '24px',
+                marginTop: '16px',
+                flexWrap: 'wrap'
+              }}>
+                {compensationTypeBreakdowns.map(breakdown => (
+                  <div
+                    key={breakdown.id}
+                    style={{
+                      flex: '1 1 300px',
+                      minWidth: '280px',
+                      padding: '20px',
+                      borderRadius: '12px',
+                      backgroundColor: breakdown.color?.bg || '#f8f9fa',
+                      border: `3px solid ${breakdown.color?.border || '#e0e0e0'}`
+                    }}
+                  >
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      marginBottom: '16px'
+                    }}>
+                      <div style={{
+                        fontSize: '15px',
+                        fontWeight: '600',
+                        color: breakdown.color?.border || '#333'
+                      }}>
+                        {breakdown.name}
+                      </div>
+                      <div style={{
+                        fontSize: '26px',
+                        fontWeight: '700',
+                        color: breakdown.color?.border || '#333'
+                      }}>
+                        {currencyFormatter.format(breakdown.total)}
+                      </div>
+                    </div>
+                    <div style={{
+                      display: 'flex',
+                      gap: '10px',
+                      flexWrap: 'wrap'
+                    }}>
+                      {breakdown.items.map((item, idx) => (
+                        <div
+                          key={idx}
+                          style={{
+                            flex: '1',
+                            minWidth: '80px',
+                            padding: '10px 14px',
+                            borderRadius: '8px',
+                            backgroundColor: 'rgba(255,255,255,0.8)',
+                            border: `1px solid ${breakdown.color?.border || '#e0e0e0'}50`
+                          }}
+                        >
+                          <div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>{item.label}</div>
+                          <div style={{ fontSize: '15px', fontWeight: '600', color: '#333' }}>
+                            {currencyFormatter.format(item.amount)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
-            <div style={styles.grossEarningsCard}>
+
+            <div style={{
+              ...styles.grossEarningsCard,
+              marginTop: '20px',
+              backgroundColor: activeCompensationType
+                ? compensationTypeColors.get(activeCompensationType.id)?.border || '#1a365d'
+                : '#1a365d'
+            }}>
               <div style={styles.grossLabel}>総支給額</div>
               <div style={styles.grossValue}>{currencyFormatter.format(summary.grossEarnings)}</div>
             </div>
@@ -1847,7 +2013,6 @@ function PayslipPageContent() {
                             style={{
                               ...styles.th,
                               textAlign: 'right',
-                              backgroundColor: idx === 0 ? '#e3f2fd' : '#e8f5e9',
                               color: idx === 0 ? '#1565c0' : '#2e7d32'
                             }}
                           >
@@ -1912,7 +2077,9 @@ function PayslipPageContent() {
                             // 単一列の場合も報酬形態の設定に応じた売上を表示
                             const aggregation = salesAggregationByType[0]?.aggregation || 'item_based'
                             const salesValue = aggregation === 'receipt_based' ? day.salesReceiptBased : day.salesItemBased
-                            return <td style={{ ...styles.td, textAlign: 'right' }}>{salesValue > 0 ? currencyFormatter.format(salesValue) : '-'}</td>
+                            return (
+                              <td style={{ ...styles.td, textAlign: 'right' }}>{salesValue > 0 ? currencyFormatter.format(salesValue) : '-'}</td>
+                            )
                           })()
                         )}
                         <td style={{ ...styles.td, textAlign: 'right', color: '#FF9500' }}>{day.selfBack > 0 ? currencyFormatter.format(day.selfBack) : '-'}</td>
@@ -1956,7 +2123,9 @@ function PayslipPageContent() {
                           const totalSalesValue = aggregation === 'receipt_based'
                             ? dailyDetails.reduce((sum, d) => sum + d.salesReceiptBased, 0)
                             : dailyDetails.reduce((sum, d) => sum + d.salesItemBased, 0)
-                          return <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold' }}>{currencyFormatter.format(totalSalesValue)}</td>
+                          return (
+                            <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold' }}>{currencyFormatter.format(totalSalesValue)}</td>
+                          )
                         })()
                       )}
                       <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold', color: '#FF9500' }}>{currencyFormatter.format(dailyDetails.reduce((sum, d) => sum + d.selfBack, 0))}</td>
@@ -2047,6 +2216,7 @@ function PayslipPageContent() {
                   }
                 })
                 const tableHelpList = Array.from(tableHelpGrouped.values()).sort((a, b) => b.backAmount - a.backAmount)
+                const tableHelpTotal = tableHelpList.reduce((sum, item) => sum + item.backAmount, 0)
 
                 // 3. ヘルプ商品バック: 他の推しの卓で自分がヘルプ (helpDailyItems)
                 const helpGrouped = new Map<string, {
@@ -2201,6 +2371,12 @@ function PayslipPageContent() {
                                   </td>
                                 </tr>
                               ))}
+                              <tr style={styles.tableTotal}>
+                                <td colSpan={7} style={{ ...styles.td, fontWeight: 'bold' }}>小計</td>
+                                <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold', color: '#856404' }}>
+                                  {currencyFormatter.format(tableHelpTotal)}
+                                </td>
+                              </tr>
                             </tbody>
                           </table>
                         </div>
