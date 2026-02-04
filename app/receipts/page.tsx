@@ -1661,7 +1661,7 @@ function ReceiptsPageContent() {
 
       {/* Edit Item Modal */}
       {isEditItemModalOpen && editingItem && (
-        <div style={styles.modalOverlay} onClick={cancelEditItem}>
+        <div style={{...styles.modalOverlay, zIndex: 2000}} onClick={cancelEditItem}>
           <div style={styles.itemModal} onClick={(e) => e.stopPropagation()}>
             <div style={styles.modalHeader}>
               <h2 style={styles.modalTitle}>注文明細を編集</h2>
@@ -1867,7 +1867,7 @@ function ReceiptsPageContent() {
       {/* Add Item Modal */}
       {isAddItemModalOpen && selectedReceipt && (
         <div
-          style={styles.modalOverlay}
+          style={{...styles.modalOverlay, zIndex: 2000}}
           onClick={() => {
             if (showCastDropdown) {
               setShowCastDropdown(false)
