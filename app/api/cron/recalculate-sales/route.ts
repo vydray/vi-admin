@@ -1037,7 +1037,26 @@ async function recalculateForStoreAndDate(
       // 2. ヘルプバック率を計算（推しキャストの設定からhelp_back_ratioを使用）
       if (item.help_cast_id && selfBackRate) {
         item.help_back_rate = selfBackRate.help_back_ratio ?? 0
-        item.help_back_amount = Math.floor(item.help_sales * item.help_back_rate / 100)
+
+        // help_back_calculation_methodに基づいて計算ベースを決定
+        const helpBackCalcMethod = salesSettings.help_back_calculation_method || 'sales_settings'
+        let baseAmount: number
+        switch (helpBackCalcMethod) {
+          case 'full_amount':
+            // 商品全額: subtotal × rate
+            baseAmount = item.subtotal || 0
+            break
+          case 'distributed_amount':
+            // 分配額基準: self_sales × rate
+            baseAmount = item.self_sales || 0
+            break
+          case 'sales_settings':
+          default:
+            // 売上設定に従う: help_sales × rate
+            baseAmount = item.help_sales || 0
+            break
+        }
+        item.help_back_amount = Math.floor(baseAmount * item.help_back_rate / 100)
       }
     }
 

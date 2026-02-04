@@ -281,11 +281,20 @@ async function calculatePayslipForCast(
     // 2. help_cast_id = cast.id のレコード（ヘルプとして）→ help_back_rate, help_back_amount を更新
     const { data: helpItems } = await supabaseAdmin
       .from('cast_daily_items')
-      .select('id, product_name, category, help_sales, cast_id')
+      .select('id, product_name, category, help_sales, self_sales, subtotal, cast_id')
       .eq('help_cast_id', cast.id)
       .eq('store_id', storeId)
       .gte('date', startDate)
       .lte('date', endDate)
+
+    // help_back_calculation_method を取得するために先に sales_settings を取得
+    const { data: salesSettingsForBack } = await supabaseAdmin
+      .from('sales_settings')
+      .select('help_back_calculation_method')
+      .eq('store_id', storeId)
+      .single()
+
+    const helpBackCalcMethod = salesSettingsForBack?.help_back_calculation_method || 'sales_settings'
 
     // バック率を取得するヘルパー関数（商品名 → カテゴリ → 全体の優先順位）
     const getBackRate = (productName: string, category: string | null): number => {
@@ -350,7 +359,26 @@ async function calculatePayslipForCast(
     // ヘルプとしてのバック更新
     for (const item of helpItems || []) {
       const helpBackRate = await getHelpBackRateFromSelfCast(item.cast_id, item.product_name, item.category)
-      const helpBackAmount = Math.floor((item.help_sales || 0) * helpBackRate / 100)
+
+      // help_back_calculation_methodに基づいて計算ベースを決定
+      let baseAmount: number
+      switch (helpBackCalcMethod) {
+        case 'full_amount':
+          // 商品全額: subtotal × rate
+          baseAmount = item.subtotal || 0
+          break
+        case 'distributed_amount':
+          // 分配額基準: self_sales × rate
+          baseAmount = item.self_sales || 0
+          break
+        case 'sales_settings':
+        default:
+          // 売上設定に従う: help_sales × rate
+          baseAmount = item.help_sales || 0
+          break
+      }
+
+      const helpBackAmount = Math.floor(baseAmount * helpBackRate / 100)
 
       await supabaseAdmin
         .from('cast_daily_items')
