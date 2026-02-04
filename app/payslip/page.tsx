@@ -2090,17 +2090,19 @@ function PayslipPageContent() {
                           <table style={styles.table}>
                             <thead>
                               <tr style={styles.tableHeader}>
-                                <th style={styles.th}>商品名</th>
                                 <th style={styles.th}>カテゴリ</th>
+                                <th style={styles.th}>商品名</th>
+                                <th style={{ ...styles.th, textAlign: 'right' }}>単価</th>
                                 <th style={{ ...styles.th, textAlign: 'right' }}>数量</th>
                                 <th style={{ ...styles.th, textAlign: 'right' }}>金額</th>
-                                <th style={{ ...styles.th, textAlign: 'center' }}>率</th>
-                                <th style={{ ...styles.th, textAlign: 'right' }}>バック</th>
+                                <th style={{ ...styles.th, textAlign: 'center' }}>バック率</th>
+                                <th style={{ ...styles.th, textAlign: 'right' }}>バック金額</th>
                               </tr>
                             </thead>
                             <tbody>
                               {selfList.map((item, i) => (
                                 <tr key={i} style={i % 2 === 0 ? styles.tableRowEven : styles.tableRow}>
+                                  <td style={{ ...styles.td, color: '#86868b', fontSize: '12px' }}>{item.category || '-'}</td>
                                   <td style={styles.td}>
                                     {item.productName}
                                     {item.isBase && (
@@ -2116,7 +2118,7 @@ function PayslipPageContent() {
                                       </span>
                                     )}
                                   </td>
-                                  <td style={{ ...styles.td, color: '#86868b', fontSize: '12px' }}>{item.category || '-'}</td>
+                                  <td style={{ ...styles.td, textAlign: 'right' }}>{currencyFormatter.format(item.quantity > 0 ? Math.round(item.subtotal / item.quantity) : 0)}</td>
                                   <td style={{ ...styles.td, textAlign: 'right' }}>{item.quantity}</td>
                                   <td style={{ ...styles.td, textAlign: 'right' }}>{currencyFormatter.format(item.subtotal)}</td>
                                   <td style={{ ...styles.td, textAlign: 'center' }}>{item.backRate}%</td>
@@ -2126,7 +2128,7 @@ function PayslipPageContent() {
                                 </tr>
                               ))}
                               <tr style={styles.tableTotal}>
-                                <td colSpan={5} style={{ ...styles.td, fontWeight: 'bold' }}>小計</td>
+                                <td colSpan={6} style={{ ...styles.td, fontWeight: 'bold' }}>小計</td>
                                 <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold', color: '#FF9500' }}>
                                   {currencyFormatter.format(selfTotal)}
                                 </td>
@@ -2147,21 +2149,23 @@ function PayslipPageContent() {
                           <table style={styles.table}>
                             <thead>
                               <tr style={styles.tableHeader}>
-                                <th style={styles.th}>商品名</th>
                                 <th style={styles.th}>カテゴリ</th>
+                                <th style={styles.th}>商品名</th>
                                 <th style={styles.th}>ヘルプ</th>
+                                <th style={{ ...styles.th, textAlign: 'right' }}>単価</th>
                                 <th style={{ ...styles.th, textAlign: 'right' }}>数量</th>
                                 <th style={{ ...styles.th, textAlign: 'right' }}>金額</th>
-                                <th style={{ ...styles.th, textAlign: 'center' }}>率</th>
-                                <th style={{ ...styles.th, textAlign: 'right' }}>バック</th>
+                                <th style={{ ...styles.th, textAlign: 'center' }}>バック率</th>
+                                <th style={{ ...styles.th, textAlign: 'right' }}>バック金額</th>
                               </tr>
                             </thead>
                             <tbody>
                               {tableHelpList.map((item, i) => (
                                 <tr key={i} style={i % 2 === 0 ? styles.tableRowEven : styles.tableRow}>
-                                  <td style={styles.td}>{item.productName}</td>
                                   <td style={{ ...styles.td, color: '#86868b', fontSize: '12px' }}>{item.category || '-'}</td>
+                                  <td style={styles.td}>{item.productName}</td>
                                   <td style={{ ...styles.td, color: '#856404', fontSize: '12px' }}>{item.helpCastName}</td>
+                                  <td style={{ ...styles.td, textAlign: 'right' }}>{currencyFormatter.format(item.quantity > 0 ? Math.round(item.selfSales / item.quantity) : 0)}</td>
                                   <td style={{ ...styles.td, textAlign: 'right' }}>{item.quantity}</td>
                                   <td style={{ ...styles.td, textAlign: 'right' }}>{currencyFormatter.format(item.selfSales)}</td>
                                   <td style={{ ...styles.td, textAlign: 'center' }}>{item.backRate}%</td>
@@ -2189,21 +2193,23 @@ function PayslipPageContent() {
                           <table style={styles.table}>
                             <thead>
                               <tr style={styles.tableHeader}>
-                                <th style={styles.th}>商品名</th>
                                 <th style={styles.th}>カテゴリ</th>
+                                <th style={styles.th}>商品名</th>
                                 <th style={styles.th}>推し</th>
+                                <th style={{ ...styles.th, textAlign: 'right' }}>単価</th>
                                 <th style={{ ...styles.th, textAlign: 'right' }}>数量</th>
                                 <th style={{ ...styles.th, textAlign: 'right' }}>金額</th>
-                                <th style={{ ...styles.th, textAlign: 'center' }}>率</th>
-                                <th style={{ ...styles.th, textAlign: 'right' }}>バック</th>
+                                <th style={{ ...styles.th, textAlign: 'center' }}>バック率</th>
+                                <th style={{ ...styles.th, textAlign: 'right' }}>バック金額</th>
                               </tr>
                             </thead>
                             <tbody>
                               {helpList.map((item, i) => (
                                 <tr key={i} style={i % 2 === 0 ? styles.tableRowEven : styles.tableRow}>
-                                  <td style={styles.td}>{item.productName}</td>
                                   <td style={{ ...styles.td, color: '#86868b', fontSize: '12px' }}>{item.category || '-'}</td>
+                                  <td style={styles.td}>{item.productName}</td>
                                   <td style={{ ...styles.td, color: '#0066cc', fontSize: '12px' }}>{item.oshiCastName}</td>
+                                  <td style={{ ...styles.td, textAlign: 'right' }}>{currencyFormatter.format(item.quantity > 0 ? Math.round(item.subtotal / item.quantity) : 0)}</td>
                                   <td style={{ ...styles.td, textAlign: 'right' }}>{item.quantity}</td>
                                   <td style={{ ...styles.td, textAlign: 'right' }}>{currencyFormatter.format(item.subtotal)}</td>
                                   <td style={{ ...styles.td, textAlign: 'center' }}>{item.backRate}%</td>
@@ -2213,7 +2219,7 @@ function PayslipPageContent() {
                                 </tr>
                               ))}
                               <tr style={styles.tableTotal}>
-                                <td colSpan={6} style={{ ...styles.td, fontWeight: 'bold' }}>小計</td>
+                                <td colSpan={7} style={{ ...styles.td, fontWeight: 'bold' }}>小計</td>
                                 <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold', color: '#0066cc' }}>
                                   {currencyFormatter.format(helpTotal)}
                                 </td>
