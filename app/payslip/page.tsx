@@ -2345,11 +2345,9 @@ function PayslipPageContent() {
           }
           const group = selfOrderGroups.get(orderId)!
           group.items.push(item)
-          // 推しの売上のみ合計に加算（報酬形態の設定に基づく）
-          if (item.is_self) {
-            group.totalSales += getSelfSales(item)
-            group.totalBack += item.self_back_amount || 0
-          }
+          // 推しの売上を合計に加算（is_selfに関係なく全アイテム）
+          group.totalSales += getSelfSales(item)
+          group.totalBack += item.self_back_amount || 0
         })
 
         // 伝票ごとにグループ化（ヘルプ売上）
