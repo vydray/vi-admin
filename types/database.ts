@@ -702,9 +702,13 @@ export interface CastDailyItem {
   quantity: number
   self_sales: number        // 推しにつく売上（分配ロジック適用後）
   help_sales: number        // ヘルプにつく売上（分配ロジック適用後）
+  // バック率・バック額（計算時点の値を保存）
+  self_back_rate: number    // cast_idの推しバック率（%）
+  self_back_amount: number  // self_sales × self_back_rate / 100
+  help_back_rate: number    // help_cast_idのヘルプバック率（%）
+  help_back_amount: number  // help_sales × help_back_rate / 100
   // 以下は非推奨（後方互換性のため残す）
   subtotal: number          // @deprecated - self_sales + help_sales を使用
-  back_amount: number       // @deprecated - 報酬計算はpayslipsで行う
   is_self: boolean          // @deprecated - help_cast_id IS NULL で判定
   created_at: string
   updated_at: string

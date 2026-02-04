@@ -165,8 +165,12 @@ interface CastDailyItemData {
   needs_cast: boolean    // 指名必須商品か（ランキング表示用）
   // 後方互換用
   subtotal: number
-  back_amount: number
   is_self: boolean
+  // バック率・バック額（計算時点の値を保存）
+  self_back_rate: number
+  self_back_amount: number
+  help_back_rate: number
+  help_back_amount: number
 }
 
 function aggregateCastDailyItems(
@@ -292,8 +296,11 @@ function aggregateCastDailyItems(
                 help_sales: 0,
                 needs_cast: productNeedsCastMap.get(item.product_name) ?? true,
                 subtotal: adjustedSubtotal,
-                back_amount: 0,
-                is_self: true
+                is_self: true,
+                self_back_rate: 0,
+                self_back_amount: 0,
+                help_back_rate: 0,
+                help_back_amount: 0
               })
             }
             continue
@@ -324,8 +331,11 @@ function aggregateCastDailyItems(
                 help_sales: 0,
                 needs_cast: productNeedsCastMap.get(item.product_name) ?? true,
                 subtotal: adjustedSubtotal,
-                back_amount: 0,
-                is_self: true
+                is_self: true,
+                self_back_rate: 0,
+                self_back_amount: 0,
+                help_back_rate: 0,
+                help_back_amount: 0
               })
             }
           }
@@ -386,8 +396,11 @@ function aggregateCastDailyItems(
                 help_sales: helpShare,
                 needs_cast: productNeedsCastMap.get(item.product_name) ?? true,
                 subtotal: adjustedSubtotal,
-                back_amount: 0,
-                is_self: false
+                is_self: false,
+                self_back_rate: 0,
+                self_back_amount: 0,
+                help_back_rate: 0,
+                help_back_amount: 0
               })
             }
           }
@@ -432,8 +445,11 @@ function aggregateCastDailyItems(
               help_sales: 0,
               needs_cast: productNeedsCastMap.get(item.product_name) ?? true,
               subtotal: adjustedSubtotal,
-              back_amount: 0,
-              is_self: true
+              is_self: true,
+              self_back_rate: 0,
+              self_back_amount: 0,
+              help_back_rate: 0,
+              help_back_amount: 0
             })
           }
           continue
@@ -465,8 +481,11 @@ function aggregateCastDailyItems(
               help_sales: 0,
               needs_cast: productNeedsCastMap.get(item.product_name) ?? true,
               subtotal: adjustedSubtotal,
-              back_amount: 0,
-              is_self: true
+              is_self: true,
+              self_back_rate: 0,
+              self_back_amount: 0,
+              help_back_rate: 0,
+              help_back_amount: 0
             })
           }
         }
@@ -534,8 +553,11 @@ function aggregateCastDailyItems(
                 help_sales: helpSharePerCast,
                 needs_cast: productNeedsCastMap.get(item.product_name) ?? true,
                 subtotal: adjustedSubtotal,
-                back_amount: 0,
-                is_self: false
+                is_self: false,
+                self_back_rate: 0,
+                self_back_amount: 0,
+                help_back_rate: 0,
+                help_back_amount: 0
               })
             }
           }
@@ -566,8 +588,11 @@ function aggregateCastDailyItems(
                 help_sales: 0,
                 needs_cast: productNeedsCastMap.get(item.product_name) ?? true,
                 subtotal: adjustedSubtotal,
-                back_amount: 0,
-                is_self: true
+                is_self: true,
+                self_back_rate: 0,
+                self_back_amount: 0,
+                help_back_rate: 0,
+                help_back_amount: 0
               })
             }
           }
@@ -651,6 +676,21 @@ async function recalculateForStoreAndDate(
     products?.forEach((p: { name: string; needs_cast: boolean | null }) => {
       productNeedsCastMap.set(p.name, p.needs_cast ?? true)
     })
+
+    // cast_back_ratesを取得（バック率計算用）
+    const { data: castBackRates } = await supabaseAdmin
+      .from('cast_back_rates')
+      .select('cast_id, product_name, self_back_ratio, help_back_ratio')
+      .eq('store_id', storeId)
+
+    // cast_id + product_name をキーにしたMapを作成（検索高速化）
+    const backRateMap = new Map<string, { self_back_ratio: number; help_back_ratio: number | null }>()
+    for (const rate of castBackRates || []) {
+      if (rate.product_name) {
+        const key = `${rate.cast_id}:${rate.product_name}`
+        backRateMap.set(key, { self_back_ratio: rate.self_back_ratio ?? 0, help_back_ratio: rate.help_back_ratio })
+      }
+    }
 
     // BASE注文を取得（再計算なので処理済みも含む）
     const { data: baseOrders, error: baseOrdersError } = await supabaseAdmin
@@ -969,8 +1009,11 @@ async function recalculateForStoreAndDate(
           help_sales: 0,
           needs_cast: true,  // BASEは常に指名必須（キャストに紐づいている）
           subtotal: amount,
-          back_amount: 0,
-          is_self: true  // 後方互換用
+          is_self: true,  // 後方互換用
+          self_back_rate: 0,
+          self_back_amount: 0,
+          help_back_rate: 0,
+          help_back_amount: 0
         })
       }
     }
@@ -978,6 +1021,27 @@ async function recalculateForStoreAndDate(
 
     // POS + BASE を結合
     const allDailyItems = [...dailyItems, ...baseItems]
+
+    // バック率・バック額を計算
+    for (const item of allDailyItems) {
+      // 1. 推しバック率を取得
+      const selfKey = `${item.cast_id}:${item.product_name}`
+      const selfBackRate = backRateMap.get(selfKey)
+      if (selfBackRate) {
+        item.self_back_rate = selfBackRate.self_back_ratio ?? 0
+        item.self_back_amount = Math.floor(item.self_sales * item.self_back_rate / 100)
+      }
+
+      // 2. ヘルプバック率を取得（help_cast_idがある場合のみ）
+      if (item.help_cast_id) {
+        const helpKey = `${item.help_cast_id}:${item.product_name}`
+        const helpBackRate = backRateMap.get(helpKey)
+        if (helpBackRate) {
+          item.help_back_rate = helpBackRate.help_back_ratio ?? 0
+          item.help_back_amount = Math.floor(item.help_sales * item.help_back_rate / 100)
+        }
+      }
+    }
 
     // 既存データを削除してから挿入（日付・店舗単位で置き換え）
     if (allDailyItems.length > 0) {

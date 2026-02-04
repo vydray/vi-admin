@@ -82,8 +82,20 @@ interface CastDailyItemData {
   help_sales: number
   needs_cast: boolean
   subtotal: number
-  back_amount: number
+  // バック率・バック額（計算時点の値）
+  self_back_rate: number
+  self_back_amount: number
+  help_back_rate: number
+  help_back_amount: number
   is_self: boolean
+}
+
+// cast_back_ratesの型
+interface CastBackRate {
+  cast_id: number
+  product_name: string | null
+  self_back_ratio: number
+  help_back_ratio: number | null
 }
 
 // 商品別キャスト売上を集計（cast_daily_items用）
@@ -193,7 +205,10 @@ function aggregateCastDailyItems(
                 help_sales: 0,
                 needs_cast: productNeedsCastMap.get(item.product_name) ?? true,
                 subtotal: adjustedSubtotal,
-                back_amount: 0,
+                self_back_rate: 0,
+                self_back_amount: 0,
+                help_back_rate: 0,
+                help_back_amount: 0,
                 is_self: true
               })
             }
@@ -224,7 +239,10 @@ function aggregateCastDailyItems(
                 help_sales: 0,
                 needs_cast: productNeedsCastMap.get(item.product_name) ?? true,
                 subtotal: adjustedSubtotal,
-                back_amount: 0,
+                self_back_rate: 0,
+                self_back_amount: 0,
+                help_back_rate: 0,
+                help_back_amount: 0,
                 is_self: true
               })
             }
@@ -285,7 +303,10 @@ function aggregateCastDailyItems(
                 help_sales: helpShare,
                 needs_cast: productNeedsCastMap.get(item.product_name) ?? true,
                 subtotal: adjustedSubtotal,
-                back_amount: 0,
+                self_back_rate: 0,
+                self_back_amount: 0,
+                help_back_rate: 0,
+                help_back_amount: 0,
                 is_self: false
               })
             }
@@ -328,7 +349,10 @@ function aggregateCastDailyItems(
               help_sales: 0,
               needs_cast: productNeedsCastMap.get(item.product_name) ?? true,
               subtotal: adjustedSubtotal,
-              back_amount: 0,
+              self_back_rate: 0,
+              self_back_amount: 0,
+              help_back_rate: 0,
+              help_back_amount: 0,
               is_self: true
             })
           }
@@ -360,7 +384,10 @@ function aggregateCastDailyItems(
               help_sales: 0,
               needs_cast: productNeedsCastMap.get(item.product_name) ?? true,
               subtotal: adjustedSubtotal,
-              back_amount: 0,
+              self_back_rate: 0,
+              self_back_amount: 0,
+              help_back_rate: 0,
+              help_back_amount: 0,
               is_self: true
             })
           }
@@ -428,7 +455,10 @@ function aggregateCastDailyItems(
                 help_sales: helpSharePerCast,
                 needs_cast: productNeedsCastMap.get(item.product_name) ?? true,
                 subtotal: adjustedSubtotal,
-                back_amount: 0,
+                self_back_rate: 0,
+                self_back_amount: 0,
+                help_back_rate: 0,
+                help_back_amount: 0,
                 is_self: false
               })
             }
@@ -459,7 +489,10 @@ function aggregateCastDailyItems(
                 help_sales: 0,
                 needs_cast: productNeedsCastMap.get(item.product_name) ?? true,
                 subtotal: adjustedSubtotal,
-                back_amount: 0,
+                self_back_rate: 0,
+                self_back_amount: 0,
+                help_back_rate: 0,
+                help_back_amount: 0,
                 is_self: true
               })
             }
@@ -470,6 +503,43 @@ function aggregateCastDailyItems(
   }
 
   return Array.from(itemsMap.values())
+}
+
+// cast_back_ratesからバック率・バック額を計算して設定
+function calculateBackRatesAndAmounts(
+  items: CastDailyItemData[],
+  castBackRates: CastBackRate[]
+): CastDailyItemData[] {
+  // cast_id + product_name をキーにしたMapを作成（検索高速化）
+  const backRateMap = new Map<string, CastBackRate>()
+  for (const rate of castBackRates) {
+    if (rate.product_name) {
+      const key = `${rate.cast_id}:${rate.product_name}`
+      backRateMap.set(key, rate)
+    }
+  }
+
+  for (const item of items) {
+    // 1. 推しバック率を取得
+    const selfKey = `${item.cast_id}:${item.product_name}`
+    const selfBackRate = backRateMap.get(selfKey)
+    if (selfBackRate) {
+      item.self_back_rate = selfBackRate.self_back_ratio ?? 0
+      item.self_back_amount = Math.floor(item.self_sales * item.self_back_rate / 100)
+    }
+
+    // 2. ヘルプバック率を取得（help_cast_idがある場合のみ）
+    if (item.help_cast_id) {
+      const helpKey = `${item.help_cast_id}:${item.product_name}`
+      const helpBackRate = backRateMap.get(helpKey)
+      if (helpBackRate) {
+        item.help_back_rate = helpBackRate.help_back_ratio ?? 0
+        item.help_back_amount = Math.floor(item.help_sales * item.help_back_rate / 100)
+      }
+    }
+  }
+
+  return items
 }
 
 // 勤務時間を計算（時間単位）
@@ -629,6 +699,15 @@ export async function recalculateForDate(storeId: number, date: string): Promise
     products?.forEach((p: { name: string; needs_cast: boolean | null }) => {
       productNeedsCastMap.set(p.name, p.needs_cast ?? true)
     })
+
+    // バック率取得
+    const { data: castBackRates } = await supabaseAdmin
+      .from('cast_back_rates')
+      .select('cast_id, product_name, self_back_ratio, help_back_ratio')
+      .eq('store_id', storeId)
+      .eq('is_active', true)
+
+    const typedCastBackRates = (castBackRates || []) as CastBackRate[]
 
     const { data: attendances } = await supabaseAdmin
       .from('attendance')
@@ -919,7 +998,10 @@ export async function recalculateForDate(storeId: number, date: string): Promise
           help_sales: 0,
           needs_cast: true,
           subtotal: amount,
-          back_amount: 0,
+          self_back_rate: 0,
+          self_back_amount: 0,
+          help_back_rate: 0,
+          help_back_amount: 0,
           is_self: true
         })
       }
@@ -927,6 +1009,9 @@ export async function recalculateForDate(storeId: number, date: string): Promise
     const baseItems = Array.from(baseItemsMap.values())
 
     const allDailyItems = [...dailyItems, ...baseItems]
+
+    // バック率・バック額を計算
+    calculateBackRatesAndAmounts(allDailyItems, typedCastBackRates)
 
     if (allDailyItems.length > 0) {
       const itemsToUpsert = allDailyItems.filter(item => !finalizedCastIds.has(item.cast_id))
