@@ -726,16 +726,27 @@ async function recalculateForStoreAndDate(
 
     const { data: compensationSettings } = await supabaseAdmin
       .from('compensation_settings')
-      .select('cast_id, status_id, hourly_wage_override, help_back_calculation_method')
+      .select('cast_id, status_id, hourly_wage_override, compensation_types, selected_compensation_type_id')
       .eq('store_id', storeId)
 
     const compSettingsMap = new Map<number, CompensationSettingsWage>()
     compensationSettings?.forEach((c: CompensationSettingsWage) => compSettingsMap.set(c.cast_id, c))
 
     // ヘルプバック計算方法のマップを作成（cast_id -> help_back_calculation_method）
+    // compensation_types配列内の設定を参照
     const helpBackCalcMethodMap = new Map<number, string>()
-    compensationSettings?.forEach((c: { cast_id: number; help_back_calculation_method?: string }) => {
-      helpBackCalcMethodMap.set(c.cast_id, c.help_back_calculation_method || 'sales_based')
+    compensationSettings?.forEach((c: { cast_id: number; compensation_types?: Array<{ id: string; is_enabled?: boolean; help_back_calculation_method?: string }>; selected_compensation_type_id?: string }) => {
+      let method = 'sales_based'
+      if (c.compensation_types) {
+        const selectedTypeId = c.selected_compensation_type_id
+        const targetType = selectedTypeId
+          ? c.compensation_types.find(t => t.id === selectedTypeId)
+          : c.compensation_types.find(t => t.is_enabled !== false)
+        if (targetType?.help_back_calculation_method) {
+          method = targetType.help_back_calculation_method
+        }
+      }
+      helpBackCalcMethodMap.set(c.cast_id, method)
     })
 
     const { data: wageStatuses } = await supabaseAdmin

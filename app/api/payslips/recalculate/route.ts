@@ -287,8 +287,19 @@ async function calculatePayslipForCast(
       .gte('date', startDate)
       .lte('date', endDate)
 
-    // help_back_calculation_method を報酬設定から取得
-    const helpBackCalcMethod = (compensationSettings as Record<string, unknown> | null)?.help_back_calculation_method as string || 'sales_based'
+    // help_back_calculation_method を報酬設定から取得（compensation_types内の設定を参照）
+    let helpBackCalcMethod = 'sales_based'
+    if (compensationSettings?.compensation_types) {
+      const compTypes = compensationSettings.compensation_types as Array<{ id: string; is_enabled?: boolean; help_back_calculation_method?: string }>
+      // 選択された報酬形態または最初の有効な報酬形態から取得
+      const selectedTypeId = compensationSettings.selected_compensation_type_id
+      const targetType = selectedTypeId
+        ? compTypes.find(t => t.id === selectedTypeId)
+        : compTypes.find(t => t.is_enabled !== false)
+      if (targetType?.help_back_calculation_method) {
+        helpBackCalcMethod = targetType.help_back_calculation_method
+      }
+    }
 
     // バック率を取得するヘルパー関数（商品名 → カテゴリ → 全体の優先順位）
     const getBackRate = (productName: string, category: string | null): number => {
