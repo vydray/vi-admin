@@ -171,6 +171,14 @@ function CastBackRatesPageContent() {
         }
       }
 
+      // デバッグ：id=15695を直接検索
+      const target15695 = allRates.find(r => r.id === 15695)
+      console.log('[loadData] id=15695のレコード:', target15695 ? `found! category=${target15695.category}` : 'NOT FOUND')
+
+      // キャスト/キャストショットを検索
+      const castShot = allRates.filter(r => r.product_name === 'キャストショット' && r.cast_id === 15679)
+      console.log('[loadData] cast_id=15679のキャストショット:', castShot.map(r => `id=${r.id}, category=${r.category}`))
+
       setBackRates(allRates)
 
       // 最初のキャストを選択
