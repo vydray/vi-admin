@@ -2016,8 +2016,10 @@ function PayslipPageContent() {
                   productName: string
                   category: string | null
                   quantity: number
-                  subtotal: number
+                  selfSales: number
                   helpCastName: string
+                  backRate: number
+                  backAmount: number
                 }>()
                 tableHelpItems.forEach(item => {
                   const helpCast = casts.find(c => c.id === item.help_cast_id)
@@ -2026,18 +2028,21 @@ function PayslipPageContent() {
                   const existing = tableHelpGrouped.get(key)
                   if (existing) {
                     existing.quantity += item.quantity
-                    existing.subtotal += item.subtotal
+                    existing.selfSales += item.self_sales
+                    existing.backAmount += item.help_back_amount
                   } else {
                     tableHelpGrouped.set(key, {
                       productName: item.product_name,
                       category: item.category,
                       quantity: item.quantity,
-                      subtotal: item.subtotal,
-                      helpCastName
+                      selfSales: item.self_sales,
+                      helpCastName,
+                      backRate: item.help_back_rate,
+                      backAmount: item.help_back_amount
                     })
                   }
                 })
-                const tableHelpList = Array.from(tableHelpGrouped.values()).sort((a, b) => b.subtotal - a.subtotal)
+                const tableHelpList = Array.from(tableHelpGrouped.values()).sort((a, b) => b.backAmount - a.backAmount)
 
                 // 3. ヘルプ商品バック: 他の推しの卓で自分がヘルプ (helpDailyItems)
                 const helpGrouped = new Map<string, {
@@ -2147,6 +2152,8 @@ function PayslipPageContent() {
                                 <th style={styles.th}>ヘルプ</th>
                                 <th style={{ ...styles.th, textAlign: 'right' }}>数量</th>
                                 <th style={{ ...styles.th, textAlign: 'right' }}>金額</th>
+                                <th style={{ ...styles.th, textAlign: 'center' }}>率</th>
+                                <th style={{ ...styles.th, textAlign: 'right' }}>バック</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -2156,7 +2163,11 @@ function PayslipPageContent() {
                                   <td style={{ ...styles.td, color: '#86868b', fontSize: '12px' }}>{item.category || '-'}</td>
                                   <td style={{ ...styles.td, color: '#856404', fontSize: '12px' }}>{item.helpCastName}</td>
                                   <td style={{ ...styles.td, textAlign: 'right' }}>{item.quantity}</td>
-                                  <td style={{ ...styles.td, textAlign: 'right' }}>{currencyFormatter.format(item.subtotal)}</td>
+                                  <td style={{ ...styles.td, textAlign: 'right' }}>{currencyFormatter.format(item.selfSales)}</td>
+                                  <td style={{ ...styles.td, textAlign: 'center' }}>{item.backRate}%</td>
+                                  <td style={{ ...styles.td, textAlign: 'right', fontWeight: '600', color: '#856404' }}>
+                                    {currencyFormatter.format(item.backAmount)}
+                                  </td>
                                 </tr>
                               ))}
                             </tbody>
