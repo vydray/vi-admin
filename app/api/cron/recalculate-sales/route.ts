@@ -735,7 +735,7 @@ async function recalculateForStoreAndDate(
     // ヘルプバック計算方法のマップを作成（cast_id -> help_back_calculation_method）
     const helpBackCalcMethodMap = new Map<number, string>()
     compensationSettings?.forEach((c: { cast_id: number; help_back_calculation_method?: string }) => {
-      helpBackCalcMethodMap.set(c.cast_id, c.help_back_calculation_method || 'sales_settings')
+      helpBackCalcMethodMap.set(c.cast_id, c.help_back_calculation_method || 'sales_based')
     })
 
     const { data: wageStatuses } = await supabaseAdmin
@@ -1056,7 +1056,7 @@ async function recalculateForStoreAndDate(
             // 分配額基準: self_sales × rate
             baseAmount = item.self_sales || 0
             break
-          case 'sales_settings':
+          case 'sales_based':
           default:
             // 売上設定に従う: help_sales × rate
             baseAmount = item.help_sales || 0
