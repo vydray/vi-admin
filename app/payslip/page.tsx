@@ -91,6 +91,7 @@ interface CastDailyItem {
   self_sales: number
   help_sales: number
   needs_cast: boolean
+  cast_id: number
   help_cast_id: number | null
   // 商品バック情報（計算時点の値）
   self_back_rate: number
@@ -107,6 +108,9 @@ interface OrderGroup {
   items: CastDailyItem[]
   totalSales: number
   totalBack: number
+  type: 'self' | 'help'
+  oshiCastId?: number
+  oshiCastName?: string
 }
 
 interface OrderItemWithTax {
@@ -484,7 +488,7 @@ function PayslipPageContent() {
     // 1. 推しとして参加した分（cast_id = castId）
     const { data: dailyItems, error: dailyItemsError } = await supabase
       .from('cast_daily_items')
-      .select('id, order_id, table_number, guest_name, product_name, category, quantity, subtotal, is_self, self_sales, help_sales, needs_cast, date, help_cast_id, self_back_rate, self_back_amount, help_back_rate, help_back_amount')
+      .select('id, order_id, table_number, guest_name, product_name, category, quantity, subtotal, is_self, self_sales, help_sales, needs_cast, date, cast_id, help_cast_id, self_back_rate, self_back_amount, help_back_rate, help_back_amount')
       .eq('cast_id', castId)
       .eq('store_id', storeId)
       .gte('date', startDate)
@@ -506,7 +510,7 @@ function PayslipPageContent() {
     // 2. ヘルプとして参加した分（help_cast_id = castId）
     const { data: helpItems, error: helpItemsError } = await supabase
       .from('cast_daily_items')
-      .select('id, order_id, table_number, guest_name, product_name, category, quantity, subtotal, is_self, self_sales, help_sales, needs_cast, date, help_cast_id, self_back_rate, self_back_amount, help_back_rate, help_back_amount')
+      .select('id, order_id, table_number, guest_name, product_name, category, quantity, subtotal, is_self, self_sales, help_sales, needs_cast, date, cast_id, help_cast_id, self_back_rate, self_back_amount, help_back_rate, help_back_amount')
       .eq('help_cast_id', castId)
       .eq('store_id', storeId)
       .gte('date', startDate)
@@ -2303,13 +2307,13 @@ function PayslipPageContent() {
         const dayItems = castDailyItems.filter(item => item.date === selectedDayDetail)
         const dayHelpItems = helpDailyItems.filter(item => item.date === selectedDayDetail)
 
-        // 伝票ごとにグループ化（推し売上のみ）
+        // 伝票ごとにグループ化（推し売上）
         const selfOrderGroups = new Map<string, OrderGroup>()
 
         dayItems.forEach(item => {
           // BASE売上の場合はorderIdを"BASE"にする
           const isBase = item.category === 'BASE' || (!item.order_id && !item.table_number)
-          const orderId = isBase ? 'BASE' : (item.order_id || 'no-order')
+          const orderId = isBase ? 'BASE-self' : (item.order_id || 'no-order') + '-self'
           const tableNumber = isBase ? 'BASE' : item.table_number
           const guestName = isBase ? null : item.guest_name
 
@@ -2322,7 +2326,9 @@ function PayslipPageContent() {
                 guestName,
                 items: [],
                 totalSales: 0,
-                totalBack: 0
+                totalBack: 0,
+                type: 'self',
+                oshiCastName: selectedCast?.name
               })
             }
             const group = selfOrderGroups.get(orderId)!
@@ -2332,7 +2338,38 @@ function PayslipPageContent() {
           }
         })
 
+        // 伝票ごとにグループ化（ヘルプ売上）
+        const helpOrderGroups = new Map<string, OrderGroup>()
+
+        dayHelpItems.forEach(item => {
+          const isBase = item.category === 'BASE' || (!item.order_id && !item.table_number)
+          const orderId = isBase ? 'BASE-help-' + item.cast_id : (item.order_id || 'no-order') + '-help'
+          const tableNumber = isBase ? 'BASE' : item.table_number
+          const guestName = isBase ? null : item.guest_name
+          const oshiCast = casts.find(c => c.id === item.cast_id)
+
+          if (!helpOrderGroups.has(orderId)) {
+            helpOrderGroups.set(orderId, {
+              orderId,
+              tableNumber,
+              guestName,
+              items: [],
+              totalSales: 0,
+              totalBack: 0,
+              type: 'help',
+              oshiCastId: item.cast_id,
+              oshiCastName: oshiCast?.name || '不明'
+            })
+          }
+          const group = helpOrderGroups.get(orderId)!
+          group.items.push(item)
+          group.totalSales += item.subtotal
+          group.totalBack += item.help_back_amount || 0
+        })
+
         const selfOrders = Array.from(selfOrderGroups.values())
+        const helpOrders = Array.from(helpOrderGroups.values())
+        const allOrders = [...selfOrders, ...helpOrders]
         const totalSelfSales = selfOrders.reduce((sum, g) => sum + g.totalSales, 0)
 
         // 商品バック合計（推しバック + ヘルプバック）
@@ -2381,22 +2418,31 @@ function PayslipPageContent() {
                       <div style={{ fontSize: '12px', color: '#6c757d', marginBottom: '4px' }}>推し売上合計</div>
                       <div style={{ fontSize: '24px', fontWeight: '700' }}>{currencyFormatter.format(totalSelfSales)}</div>
                     </div>
-                    {totalProductBack > 0 && (
-                      <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: '12px', color: '#27ae60', marginBottom: '4px' }}>商品バック合計</div>
-                        <div style={{ fontSize: '20px', fontWeight: '700', color: '#27ae60' }}>{currencyFormatter.format(totalProductBack)}</div>
-                      </div>
-                    )}
+                    <div style={{ display: 'flex', gap: '20px' }}>
+                      {totalSelfBack > 0 && (
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontSize: '12px', color: '#FF9500', marginBottom: '4px' }}>推し商品バック</div>
+                          <div style={{ fontSize: '18px', fontWeight: '700', color: '#FF9500' }}>{currencyFormatter.format(totalSelfBack)}</div>
+                        </div>
+                      )}
+                      {totalHelpBack > 0 && (
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontSize: '12px', color: '#27ae60', marginBottom: '4px' }}>ヘルプ商品バック</div>
+                          <div style={{ fontSize: '18px', fontWeight: '700', color: '#27ae60' }}>{currencyFormatter.format(totalHelpBack)}</div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
 
                 {/* 売上一覧（伝票ごと） */}
-                {selfOrders.length > 0 && (
+                {allOrders.length > 0 && (
                   <div style={styles.modalSection}>
-                    <div style={styles.modalSectionTitle}>伝票一覧 ({selfOrders.length}件)</div>
+                    <div style={styles.modalSectionTitle}>伝票一覧 ({allOrders.length}件)</div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                      {selfOrders.map(order => {
+                      {allOrders.map(order => {
                         const isExpanded = expandedOrders.has(order.orderId)
+                        const backColor = order.type === 'self' ? '#FF9500' : '#27ae60'
                         return (
                           <div key={order.orderId}>
                             {/* 伝票ヘッダー */}
@@ -2413,8 +2459,17 @@ function PayslipPageContent() {
                               }}
                             >
                               <div>
-                                <div style={{ fontWeight: '500' }}>
+                                <div style={{ fontWeight: '500', display: 'flex', alignItems: 'center', gap: '8px' }}>
                                   {order.tableNumber === 'BASE' ? 'BASE' : `${order.tableNumber || '-'}番 / ${order.guestName || '無記名'}`}
+                                  <span style={{
+                                    fontSize: '10px',
+                                    padding: '2px 6px',
+                                    borderRadius: '4px',
+                                    backgroundColor: order.type === 'self' ? '#fff3e0' : '#e8f5e9',
+                                    color: order.type === 'self' ? '#e65100' : '#2e7d32'
+                                  }}>
+                                    推し: {order.oshiCastName}
+                                  </span>
                                 </div>
                                 <div style={{ fontSize: '11px', color: '#6c757d' }}>
                                   #{order.orderId.slice(0, 6)}
@@ -2426,8 +2481,8 @@ function PayslipPageContent() {
                                   <span style={{ marginLeft: '8px', color: '#6c757d' }}>{isExpanded ? '▲' : '▼'}</span>
                                 </div>
                                 {order.totalBack > 0 && (
-                                  <div style={{ fontSize: '11px', color: '#27ae60', fontWeight: '500' }}>
-                                    バック: {currencyFormatter.format(order.totalBack)}
+                                  <div style={{ fontSize: '11px', color: backColor, fontWeight: '500' }}>
+                                    {order.type === 'self' ? '推しバック' : 'ヘルプバック'}: {currencyFormatter.format(order.totalBack)}
                                   </div>
                                 )}
                               </div>
@@ -2437,8 +2492,8 @@ function PayslipPageContent() {
                               <div style={{ backgroundColor: '#f8f9fa', padding: '8px 12px' }}>
                                 {order.items.map((item, idx) => {
                                   const unitPrice = Math.floor(item.subtotal / item.quantity)
-                                  const backRate = item.self_back_rate || 0
-                                  const backAmount = item.self_back_amount || 0
+                                  const backRate = order.type === 'self' ? (item.self_back_rate || 0) : (item.help_back_rate || 0)
+                                  const backAmount = order.type === 'self' ? (item.self_back_amount || 0) : (item.help_back_amount || 0)
                                   return (
                                     <div key={idx} style={{
                                       padding: '10px 0',
@@ -2467,7 +2522,7 @@ function PayslipPageContent() {
                                           <span>×{item.quantity}個</span>
                                         </div>
                                         {backAmount > 0 && (
-                                          <div style={{ fontSize: '11px', color: '#27ae60', fontWeight: '500' }}>
+                                          <div style={{ fontSize: '11px', color: backColor, fontWeight: '500' }}>
                                             バック: {currencyFormatter.format(backAmount)} ({backRate}%)
                                           </div>
                                         )}
