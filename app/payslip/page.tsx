@@ -92,6 +92,11 @@ interface CastDailyItem {
   self_sales: number
   help_sales: number
   needs_cast: boolean
+  // 商品バック情報（計算時点の値）
+  self_back_rate: number
+  self_back_amount: number
+  help_back_rate: number
+  help_back_amount: number
 }
 
 // 伝票ごとにグループ化したデータ
@@ -474,7 +479,7 @@ function PayslipPageContent() {
     const endDate = format(endOfMonth(month), 'yyyy-MM-dd')
     const { data: dailyItems, error: dailyItemsError } = await supabase
       .from('cast_daily_items')
-      .select('id, order_id, table_number, guest_name, product_name, category, quantity, subtotal, back_amount, is_self, self_sales, help_sales, needs_cast, date')
+      .select('id, order_id, table_number, guest_name, product_name, category, quantity, subtotal, back_amount, is_self, self_sales, help_sales, needs_cast, date, self_back_rate, self_back_amount, help_back_rate, help_back_amount')
       .eq('cast_id', castId)
       .eq('store_id', storeId)
       .gte('date', startDate)
@@ -2271,11 +2276,13 @@ function PayslipPageContent() {
             const group = selfOrderGroups.get(orderId)!
             group.items.push(item)
             group.totalSales += item.subtotal
+            group.totalBack += item.self_back_amount || 0
           }
         })
 
         const selfOrders = Array.from(selfOrderGroups.values())
         const totalSelfSales = selfOrders.reduce((sum, g) => sum + g.totalSales, 0)
+        const totalProductBack = selfOrders.reduce((sum, g) => sum + g.totalBack, 0)
 
         const toggleOrder = (orderId: string) => {
           setExpandedOrders(prev => {
@@ -2313,8 +2320,18 @@ function PayslipPageContent() {
               <div style={{ ...styles.modalContent, overflowY: 'auto', maxHeight: 'calc(80vh - 140px)' }}>
                 {/* サマリー */}
                 <div style={{ ...styles.modalSummary, backgroundColor: '#f8f9fa', borderRadius: '8px', padding: '16px', marginBottom: '16px' }}>
-                  <div style={{ fontSize: '12px', color: '#6c757d', marginBottom: '4px' }}>推し売上合計</div>
-                  <div style={{ fontSize: '24px', fontWeight: '700' }}>{currencyFormatter.format(totalSelfSales)}</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+                    <div>
+                      <div style={{ fontSize: '12px', color: '#6c757d', marginBottom: '4px' }}>推し売上合計</div>
+                      <div style={{ fontSize: '24px', fontWeight: '700' }}>{currencyFormatter.format(totalSelfSales)}</div>
+                    </div>
+                    {totalProductBack > 0 && (
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: '12px', color: '#27ae60', marginBottom: '4px' }}>商品バック合計</div>
+                        <div style={{ fontSize: '20px', fontWeight: '700', color: '#27ae60' }}>{currencyFormatter.format(totalProductBack)}</div>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* 売上一覧（伝票ごと） */}
@@ -2347,9 +2364,16 @@ function PayslipPageContent() {
                                   #{order.orderId.slice(0, 6)}
                                 </div>
                               </div>
-                              <div style={{ fontWeight: '600' }}>
-                                {currencyFormatter.format(order.totalSales)}
-                                <span style={{ marginLeft: '8px', color: '#6c757d' }}>{isExpanded ? '▲' : '▼'}</span>
+                              <div style={{ textAlign: 'right' }}>
+                                <div style={{ fontWeight: '600' }}>
+                                  {currencyFormatter.format(order.totalSales)}
+                                  <span style={{ marginLeft: '8px', color: '#6c757d' }}>{isExpanded ? '▲' : '▼'}</span>
+                                </div>
+                                {order.totalBack > 0 && (
+                                  <div style={{ fontSize: '11px', color: '#27ae60', fontWeight: '500' }}>
+                                    バック: {currencyFormatter.format(order.totalBack)}
+                                  </div>
+                                )}
                               </div>
                             </div>
                             {/* 展開時の商品明細 */}
@@ -2357,6 +2381,8 @@ function PayslipPageContent() {
                               <div style={{ backgroundColor: '#f8f9fa', padding: '8px 12px' }}>
                                 {order.items.map((item, idx) => {
                                   const unitPrice = Math.floor(item.subtotal / item.quantity)
+                                  const backRate = item.self_back_rate || 0
+                                  const backAmount = item.self_back_amount || 0
                                   return (
                                     <div key={idx} style={{
                                       padding: '10px 0',
@@ -2379,9 +2405,16 @@ function PayslipPageContent() {
                                           {currencyFormatter.format(item.subtotal)}
                                         </div>
                                       </div>
-                                      <div style={{ display: 'flex', gap: '16px', fontSize: '11px', color: '#6c757d' }}>
-                                        <span>単価: {currencyFormatter.format(unitPrice)}</span>
-                                        <span>×{item.quantity}個</span>
+                                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <div style={{ display: 'flex', gap: '16px', fontSize: '11px', color: '#6c757d' }}>
+                                          <span>単価: {currencyFormatter.format(unitPrice)}</span>
+                                          <span>×{item.quantity}個</span>
+                                        </div>
+                                        {backAmount > 0 && (
+                                          <div style={{ fontSize: '11px', color: '#27ae60', fontWeight: '500' }}>
+                                            バック: {currencyFormatter.format(backAmount)} ({backRate}%)
+                                          </div>
+                                        )}
                                       </div>
                                     </div>
                                   )
