@@ -697,6 +697,9 @@ export interface CastDailyItem {
   help_cast_id: number | null // ヘルプしたキャスト（推し自身の注文ならnull）
   store_id: number
   date: string
+  order_id: string | null   // 伝票ID
+  table_number: string | null // 卓番号
+  guest_name: string | null // ゲスト名
   category: string | null
   product_name: string | null
   quantity: number

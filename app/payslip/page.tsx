@@ -268,7 +268,9 @@ function PayslipPageContent() {
   const [selectedProductDetail, setSelectedProductDetail] = useState<{
     productName: string
     category: string | null
-    salesType: 'self' | 'help'
+    type: 'self' | 'tableHelp' | 'help'
+    helpCastId?: number  // 卓内ヘルプの場合
+    oshiCastId?: number  // ヘルプ商品の場合（推しキャストID）
   } | null>(null) // 商品別詳細モーダル用
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null) // 伝票詳細モーダル用
   const [orderDetail, setOrderDetail] = useState<{
@@ -2017,6 +2019,7 @@ function PayslipPageContent() {
                   category: string | null
                   quantity: number
                   selfSales: number
+                  helpCastId: number
                   helpCastName: string
                   backRate: number
                   backAmount: number
@@ -2036,6 +2039,7 @@ function PayslipPageContent() {
                       category: item.category,
                       quantity: item.quantity,
                       selfSales: item.self_sales,
+                      helpCastId: item.help_cast_id!,
                       helpCastName,
                       backRate: item.help_back_rate,
                       backAmount: item.help_back_amount
@@ -2052,6 +2056,7 @@ function PayslipPageContent() {
                   subtotal: number
                   backRate: number
                   backAmount: number
+                  oshiCastId: number
                   oshiCastName: string
                 }>()
                 helpDailyItems.filter(item => item.help_back_amount > 0).forEach(item => {
@@ -2071,6 +2076,7 @@ function PayslipPageContent() {
                       subtotal: item.help_sales || item.subtotal,
                       backRate: item.help_back_rate,
                       backAmount: item.help_back_amount,
+                      oshiCastId: item.cast_id,
                       oshiCastName
                     })
                   }
@@ -2101,7 +2107,17 @@ function PayslipPageContent() {
                             </thead>
                             <tbody>
                               {selfList.map((item, i) => (
-                                <tr key={i} style={i % 2 === 0 ? styles.tableRowEven : styles.tableRow}>
+                                <tr
+                                  key={i}
+                                  style={{ ...(i % 2 === 0 ? styles.tableRowEven : styles.tableRow), cursor: 'pointer' }}
+                                  onClick={() => setSelectedProductDetail({
+                                    productName: item.productName,
+                                    category: item.category,
+                                    type: 'self'
+                                  })}
+                                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f0f7ff'}
+                                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = i % 2 === 0 ? '#fafafa' : 'transparent'}
+                                >
                                   <td style={{ ...styles.td, color: '#86868b', fontSize: '12px' }}>{item.category || '-'}</td>
                                   <td style={styles.td}>
                                     {item.productName}
@@ -2161,7 +2177,18 @@ function PayslipPageContent() {
                             </thead>
                             <tbody>
                               {tableHelpList.map((item, i) => (
-                                <tr key={i} style={i % 2 === 0 ? styles.tableRowEven : styles.tableRow}>
+                                <tr
+                                  key={i}
+                                  style={{ ...(i % 2 === 0 ? styles.tableRowEven : styles.tableRow), cursor: 'pointer' }}
+                                  onClick={() => setSelectedProductDetail({
+                                    productName: item.productName,
+                                    category: item.category,
+                                    type: 'tableHelp',
+                                    helpCastId: item.helpCastId
+                                  })}
+                                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f0f7ff'}
+                                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = i % 2 === 0 ? '#fafafa' : 'transparent'}
+                                >
                                   <td style={{ ...styles.td, color: '#86868b', fontSize: '12px' }}>{item.category || '-'}</td>
                                   <td style={styles.td}>{item.productName}</td>
                                   <td style={{ ...styles.td, color: '#856404', fontSize: '12px' }}>{item.helpCastName}</td>
@@ -2177,9 +2204,6 @@ function PayslipPageContent() {
                             </tbody>
                           </table>
                         </div>
-                        <p style={{ fontSize: '11px', color: '#86868b', marginTop: '4px' }}>
-                          ※ 卓内ヘルプの商品バックはヘルプキャストに付与されます
-                        </p>
                       </div>
                     )}
 
@@ -2205,7 +2229,18 @@ function PayslipPageContent() {
                             </thead>
                             <tbody>
                               {helpList.map((item, i) => (
-                                <tr key={i} style={i % 2 === 0 ? styles.tableRowEven : styles.tableRow}>
+                                <tr
+                                  key={i}
+                                  style={{ ...(i % 2 === 0 ? styles.tableRowEven : styles.tableRow), cursor: 'pointer' }}
+                                  onClick={() => setSelectedProductDetail({
+                                    productName: item.productName,
+                                    category: item.category,
+                                    type: 'help',
+                                    oshiCastId: item.oshiCastId
+                                  })}
+                                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f0f7ff'}
+                                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = i % 2 === 0 ? '#fafafa' : 'transparent'}
+                                >
                                   <td style={{ ...styles.td, color: '#86868b', fontSize: '12px' }}>{item.category || '-'}</td>
                                   <td style={styles.td}>{item.productName}</td>
                                   <td style={{ ...styles.td, color: '#0066cc', fontSize: '12px' }}>{item.oshiCastName}</td>
@@ -2766,36 +2801,51 @@ function PayslipPageContent() {
 
       {/* 商品別詳細モーダル */}
       {selectedProductDetail && (() => {
-        // 選択した商品の日別明細を抽出
-        const dailyBreakdown: { date: string; quantity: number; subtotal: number; backAmount: number }[] = []
+        // 選択した商品のアイテム一覧を抽出
+        let matchingItems: CastDailyItem[] = []
+        let typeLabel = ''
+        let headerColor = '#FF9500'
 
-        dailySalesData.forEach((dayData, dateStr) => {
-          const matchingItems = dayData.items.filter(item =>
-            item.productName === selectedProductDetail.productName &&
+        if (selectedProductDetail.type === 'self') {
+          // 推し商品バック: 自分の卓で自分の商品
+          matchingItems = castDailyItems.filter(item =>
+            item.is_self &&
+            item.product_name === selectedProductDetail.productName &&
             item.category === selectedProductDetail.category &&
-            item.salesType === selectedProductDetail.salesType
+            item.self_back_amount > 0
           )
-
-          if (matchingItems.length > 0) {
-            const totalQuantity = matchingItems.reduce((sum, item) => sum + item.quantity, 0)
-            const totalSubtotal = matchingItems.reduce((sum, item) => sum + item.subtotal, 0)
-            const totalBack = matchingItems.reduce((sum, item) => sum + item.backAmount, 0)
-
-            dailyBreakdown.push({
-              date: dateStr,
-              quantity: totalQuantity,
-              subtotal: totalSubtotal,
-              backAmount: totalBack
-            })
-          }
-        })
+          typeLabel = '推し商品'
+          headerColor = '#34C759'
+        } else if (selectedProductDetail.type === 'tableHelp') {
+          // 卓内ヘルプ: 自分の卓で他キャストの商品
+          matchingItems = castDailyItems.filter(item =>
+            !item.is_self &&
+            item.help_cast_id === selectedProductDetail.helpCastId &&
+            item.product_name === selectedProductDetail.productName &&
+            item.category === selectedProductDetail.category
+          )
+          typeLabel = '卓内ヘルプ'
+          headerColor = '#FF9500'
+        } else if (selectedProductDetail.type === 'help') {
+          // ヘルプ商品バック: 他の推しの卓で自分の商品
+          matchingItems = helpDailyItems.filter(item =>
+            item.cast_id === selectedProductDetail.oshiCastId &&
+            item.product_name === selectedProductDetail.productName &&
+            item.category === selectedProductDetail.category &&
+            item.help_back_amount > 0
+          )
+          typeLabel = 'ヘルプ商品'
+          headerColor = '#5856D6'
+        }
 
         // 日付順にソート
-        dailyBreakdown.sort((a, b) => a.date.localeCompare(b.date))
+        matchingItems.sort((a, b) => a.date.localeCompare(b.date))
 
-        const totalQuantity = dailyBreakdown.reduce((sum, d) => sum + d.quantity, 0)
-        const totalSubtotal = dailyBreakdown.reduce((sum, d) => sum + d.subtotal, 0)
-        const totalBack = dailyBreakdown.reduce((sum, d) => sum + d.backAmount, 0)
+        // 合計計算
+        const totalQuantity = matchingItems.reduce((sum, item) => sum + item.quantity, 0)
+        const totalBack = selectedProductDetail.type === 'help'
+          ? matchingItems.reduce((sum, item) => sum + (item.help_back_amount || 0), 0)
+          : matchingItems.reduce((sum, item) => sum + (item.self_back_amount || 0), 0)
 
         return (
           <>
@@ -2803,8 +2853,8 @@ function PayslipPageContent() {
               style={styles.modalOverlay}
               onClick={() => setSelectedProductDetail(null)}
             />
-            <div style={styles.modal}>
-              <div style={{ ...styles.modalHeader, backgroundColor: '#FF9500' }}>
+            <div style={{ ...styles.modal, maxWidth: '600px' }}>
+              <div style={{ ...styles.modalHeader, backgroundColor: headerColor }}>
                 <h3 style={styles.modalTitle}>
                   {selectedProductDetail.productName}
                   <span style={{
@@ -2814,7 +2864,7 @@ function PayslipPageContent() {
                     borderRadius: '4px',
                     backgroundColor: 'rgba(255,255,255,0.2)',
                   }}>
-                    {selectedProductDetail.salesType === 'self' ? '推し' : 'ヘルプ'}
+                    {typeLabel}
                   </span>
                 </h3>
                 <button
@@ -2834,71 +2884,72 @@ function PayslipPageContent() {
                   </div>
                   <div style={styles.modalSummaryItem}>
                     <div style={styles.modalSummaryLabel}>合計バック</div>
-                    <div style={{ ...styles.modalSummaryValue, color: '#FF9500' }}>
+                    <div style={{ ...styles.modalSummaryValue, color: headerColor }}>
                       {currencyFormatter.format(totalBack)}
                     </div>
                   </div>
                 </div>
 
-                {/* 日別明細 */}
+                {/* 詳細一覧 */}
                 <div style={styles.modalSection}>
-                  <div style={styles.modalSectionTitle}>日別明細</div>
+                  <div style={styles.modalSectionTitle}>詳細一覧</div>
                   <div style={styles.tableWrapper}>
                     <table style={{ ...styles.table, fontSize: '13px' }}>
                       <thead>
                         <tr style={styles.tableHeader}>
                           <th style={styles.th}>日付</th>
+                          <th style={styles.th}>伝票番号</th>
+                          <th style={styles.th}>卓番号</th>
+                          <th style={styles.th}>ゲスト名</th>
                           <th style={{ ...styles.th, textAlign: 'right' }}>数量</th>
-                          <th style={{ ...styles.th, textAlign: 'right' }}>金額</th>
                           <th style={{ ...styles.th, textAlign: 'right' }}>バック</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {dailyBreakdown.map((day, i) => (
-                          <tr
-                            key={day.date}
-                            style={{
-                              ...(i % 2 === 0 ? styles.tableRowEven : styles.tableRow),
-                              cursor: 'pointer'
-                            }}
-                            onClick={() => {
-                              const dayData = dailySalesData.get(day.date)
-                              if (dayData) {
-                                const matchingItem = dayData.items.find(item =>
-                                  item.productName === selectedProductDetail.productName &&
-                                  item.category === selectedProductDetail.category &&
-                                  item.salesType === selectedProductDetail.salesType
-                                )
-                                if (matchingItem) {
-                                  setSelectedOrderId(matchingItem.orderId)
-                                }
-                              }
-                            }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.backgroundColor = '#fff5e6'
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.backgroundColor = i % 2 === 0 ? '#fafafa' : 'transparent'
-                            }}
-                          >
-                            <td style={styles.td}>
-                              {format(new Date(day.date), 'M/d(E)', { locale: ja })}
-                            </td>
-                            <td style={{ ...styles.td, textAlign: 'right' }}>{day.quantity}</td>
-                            <td style={{ ...styles.td, textAlign: 'right' }}>{currencyFormatter.format(day.subtotal)}</td>
-                            <td style={{ ...styles.td, textAlign: 'right', color: '#FF9500', fontWeight: '600' }}>
-                              {currencyFormatter.format(day.backAmount)}
+                        {matchingItems.map((item, i) => {
+                          const backAmount = selectedProductDetail.type === 'help'
+                            ? item.help_back_amount || 0
+                            : item.self_back_amount || 0
+                          return (
+                            <tr
+                              key={item.id}
+                              style={i % 2 === 0 ? styles.tableRowEven : styles.tableRow}
+                            >
+                              <td style={styles.td}>
+                                {format(new Date(item.date), 'M/d(E)', { locale: ja })}
+                              </td>
+                              <td style={styles.td}>
+                                {item.order_id ? `#${item.order_id.slice(-6)}` : '-'}
+                              </td>
+                              <td style={styles.td}>
+                                {item.table_number || '-'}
+                              </td>
+                              <td style={styles.td}>
+                                {item.guest_name || '-'}
+                              </td>
+                              <td style={{ ...styles.td, textAlign: 'right' }}>{item.quantity}</td>
+                              <td style={{ ...styles.td, textAlign: 'right', color: headerColor, fontWeight: '600' }}>
+                                {currencyFormatter.format(backAmount)}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                        {matchingItems.length === 0 && (
+                          <tr>
+                            <td colSpan={6} style={{ ...styles.td, textAlign: 'center', color: '#999' }}>
+                              データがありません
                             </td>
                           </tr>
-                        ))}
-                        <tr style={styles.tableTotal}>
-                          <td style={{ ...styles.td, fontWeight: 'bold' }}>合計</td>
-                          <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold' }}>{totalQuantity}</td>
-                          <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold' }}>{currencyFormatter.format(totalSubtotal)}</td>
-                          <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold', color: '#FF9500' }}>
-                            {currencyFormatter.format(totalBack)}
-                          </td>
-                        </tr>
+                        )}
+                        {matchingItems.length > 0 && (
+                          <tr style={styles.tableTotal}>
+                            <td colSpan={4} style={{ ...styles.td, fontWeight: 'bold' }}>合計</td>
+                            <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold' }}>{totalQuantity}</td>
+                            <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold', color: headerColor }}>
+                              {currencyFormatter.format(totalBack)}
+                            </td>
+                          </tr>
+                        )}
                       </tbody>
                     </table>
                   </div>
@@ -2908,7 +2959,7 @@ function PayslipPageContent() {
               <div style={styles.modalFooter}>
                 <button
                   onClick={() => setSelectedProductDetail(null)}
-                  style={{ ...styles.modalButton, backgroundColor: '#FF9500' }}
+                  style={{ ...styles.modalButton, backgroundColor: headerColor }}
                 >
                   閉じる
                 </button>
