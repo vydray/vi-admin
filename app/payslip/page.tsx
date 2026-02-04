@@ -2476,10 +2476,14 @@ function PayslipPageContent() {
                                 </div>
                               </div>
                               <div style={{ textAlign: 'right' }}>
-                                <div style={{ fontWeight: '600' }}>
-                                  {currencyFormatter.format(order.totalSales)}
-                                  <span style={{ marginLeft: '8px', color: '#6c757d' }}>{isExpanded ? '▲' : '▼'}</span>
-                                </div>
+                                {order.type === 'self' ? (
+                                  <div style={{ fontWeight: '600' }}>
+                                    {currencyFormatter.format(order.totalSales)}
+                                    <span style={{ marginLeft: '8px', color: '#6c757d' }}>{isExpanded ? '▲' : '▼'}</span>
+                                  </div>
+                                ) : (
+                                  <span style={{ color: '#6c757d' }}>{isExpanded ? '▲' : '▼'}</span>
+                                )}
                                 {order.totalBack > 0 && (
                                   <div style={{ fontSize: '11px', color: backColor, fontWeight: '500' }}>
                                     {order.type === 'self' ? '推しバック' : 'ヘルプバック'}: {currencyFormatter.format(order.totalBack)}
