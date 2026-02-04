@@ -268,6 +268,101 @@ async function calculatePayslipForCast(
       .eq('store_id', storeId)
       .eq('is_active', true)
 
+    // ===== cast_daily_itemsの商品バックを更新 =====
+    // 1. cast_id = cast.id のレコード（推しとして）→ self_back_rate, self_back_amount を更新
+    const { data: selfItems } = await supabaseAdmin
+      .from('cast_daily_items')
+      .select('id, product_name, category, self_sales')
+      .eq('cast_id', cast.id)
+      .eq('store_id', storeId)
+      .gte('date', startDate)
+      .lte('date', endDate)
+
+    // 2. help_cast_id = cast.id のレコード（ヘルプとして）→ help_back_rate, help_back_amount を更新
+    const { data: helpItems } = await supabaseAdmin
+      .from('cast_daily_items')
+      .select('id, product_name, category, help_sales, cast_id')
+      .eq('help_cast_id', cast.id)
+      .eq('store_id', storeId)
+      .gte('date', startDate)
+      .lte('date', endDate)
+
+    // バック率を取得するヘルパー関数（商品名 → カテゴリ → 全体の優先順位）
+    const getBackRate = (productName: string, category: string | null): number => {
+      if (!backRates || backRates.length === 0) return 0
+
+      // 1. 商品名+カテゴリ完全一致
+      let matched = backRates.find(r => r.product_name === productName && r.category === category)
+      // 2. 商品名のみ一致
+      if (!matched) {
+        matched = backRates.find(r => r.product_name === productName && (r.category === null || r.source === 'all'))
+      }
+      // 3. カテゴリのみ一致
+      if (!matched && category) {
+        matched = backRates.find(r => r.category === category && (r.product_name === null || r.product_name === ''))
+      }
+      if (!matched) return 0
+
+      return matched.self_back_ratio ?? matched.back_ratio ?? 0
+    }
+
+    // ヘルプバック率を取得（推しキャストのバック設定からhelp_back_ratioを使う）
+    const getHelpBackRateFromSelfCast = async (selfCastId: number, productName: string, category: string | null): Promise<number> => {
+      // 推しキャストのバック設定を取得
+      const { data: selfCastBackRates } = await supabaseAdmin
+        .from('cast_back_rates')
+        .select('product_name, category, help_back_ratio, back_ratio, source')
+        .eq('cast_id', selfCastId)
+        .eq('store_id', storeId)
+        .eq('is_active', true)
+
+      if (!selfCastBackRates || selfCastBackRates.length === 0) return 0
+
+      // 1. 商品名+カテゴリ完全一致
+      let matched = selfCastBackRates.find(r => r.product_name === productName && r.category === category)
+      // 2. 商品名のみ一致
+      if (!matched) {
+        matched = selfCastBackRates.find(r => r.product_name === productName && (r.category === null || r.source === 'all'))
+      }
+      // 3. カテゴリのみ一致
+      if (!matched && category) {
+        matched = selfCastBackRates.find(r => r.category === category && (r.product_name === null || r.product_name === ''))
+      }
+      if (!matched) return 0
+
+      return matched.help_back_ratio ?? 0
+    }
+
+    // 推しとしてのバック更新
+    for (const item of selfItems || []) {
+      const backRate = getBackRate(item.product_name, item.category)
+      const backAmount = Math.floor((item.self_sales || 0) * backRate / 100)
+
+      await supabaseAdmin
+        .from('cast_daily_items')
+        .update({
+          self_back_rate: backRate,
+          self_back_amount: backAmount
+        })
+        .eq('id', item.id)
+    }
+
+    // ヘルプとしてのバック更新
+    for (const item of helpItems || []) {
+      const helpBackRate = await getHelpBackRateFromSelfCast(item.cast_id, item.product_name, item.category)
+      const helpBackAmount = Math.floor((item.help_sales || 0) * helpBackRate / 100)
+
+      await supabaseAdmin
+        .from('cast_daily_items')
+        .update({
+          help_back_rate: helpBackRate,
+          help_back_amount: helpBackAmount
+        })
+        .eq('id', item.id)
+    }
+
+    console.log(`[${cast.name}] cast_daily_items バック更新: self=${(selfItems || []).length}件, help=${(helpItems || []).length}件`)
+
     // 売上設定を取得（全フィールド）
     const { data: salesSettings } = await supabaseAdmin
       .from('sales_settings')
