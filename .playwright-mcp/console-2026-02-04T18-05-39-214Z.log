@@ -1,0 +1,8 @@
+[    1394ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://vi-admin-psi.vercel.app/api/auth/session:0
+[    1432ms] [ERROR] Failed to load resource: the server responded with a status of 400 () @ https://ivgkberavxekkqgoavmo.supabase.co/auth/v1/token?grant_type=refresh_token:0
+[    1433ms] [ERROR] AuthApiError: Invalid Refresh Token: Refresh Token Not Found
+    at tC (https://vi-admin-psi.vercel.app/_next/static/chunks/4697f0527a1c0797.js?dpl=dpl_3MGDVT32VUg2azqbLZYMX1tkmczw:21:42321)
+    at async tU (https://vi-admin-psi.vercel.app/_next/static/chunks/4697f0527a1c0797.js?dpl=dpl_3MGDVT32VUg2azqbLZYMX1tkmczw:21:43265)
+    at async t$ (https://vi-admin-psi.vercel.app/_next/static/chunks/4697f0527a1c0797.js?dpl=dpl_3MGDVT32VUg2azqbLZYMX1tkmczw:21:42705)
+    at async r (https://vi-admin-psi.vercel.app/_next/static/chunks/4697f0527a1c0797.js?dpl=dpl_3MGDVT32VUg2azqbLZYMX1tkmczw:34:24232)
+    at async https://vi-admin-psi.vercel.app/_next/static/chunks/4697f0527a1c0797.js?dpl=dpl_3MGDVT32VUg2azqbLZYMX1tkmczw:34:24495 @ https://vi-admin-psi.vercel.app/_next/static/chunks/4697f0527a1c0797.js?dpl=dpl_3MGDVT32VUg2azqbLZYMX1tkmczw:33
