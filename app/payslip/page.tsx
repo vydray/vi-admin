@@ -2536,7 +2536,13 @@ function PayslipPageContent() {
                                             <span style={{ fontWeight: '500' }}>{item.product_name}</span>
                                           </div>
                                           {itemCastName && (
-                                            <div style={{ fontSize: '11px', color: '#6c757d', marginTop: '2px' }}>{itemCastName}</div>
+                                            <div style={{
+                                              fontSize: '11px',
+                                              color: item.is_self ? '#e65100' : '#2e7d32',
+                                              marginTop: '2px'
+                                            }}>
+                                              {item.is_self ? '推し: ' : 'ヘルプ: '}{itemCastName}
+                                            </div>
                                           )}
                                         </div>
                                         <div style={{ textAlign: 'right' }}>
