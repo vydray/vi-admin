@@ -158,6 +158,7 @@ function CastBackRatesPageContent() {
           .eq('store_id', storeId)
           .eq('is_active', true)
           .order('created_at', { ascending: false })
+          .order('id', { ascending: false })  // ページネーション安定化のため
           .range(page * pageSize, (page + 1) * pageSize - 1)
 
         if (ratesError) throw ratesError
