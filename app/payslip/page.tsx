@@ -2498,8 +2498,10 @@ function PayslipPageContent() {
                                   const unitPrice = Math.floor(item.subtotal / item.quantity)
                                   const backRate = order.type === 'self' ? (item.self_back_rate || 0) : (item.help_back_rate || 0)
                                   const backAmount = order.type === 'self' ? (item.self_back_amount || 0) : (item.help_back_amount || 0)
-                                  // ヘルプキャスト名を取得
-                                  const helpCastName = item.help_cast_id ? casts.find(c => c.id === item.help_cast_id)?.name : null
+                                  // 商品に付いているキャスト名を取得（is_self=true→cast_id、is_self=false→help_cast_id）
+                                  const itemCastName = item.is_self
+                                    ? casts.find(c => c.id === item.cast_id)?.name
+                                    : casts.find(c => c.id === item.help_cast_id)?.name
                                   return (
                                     <div key={idx} style={{
                                       padding: '10px 0',
@@ -2517,16 +2519,8 @@ function PayslipPageContent() {
                                             {item.category || '-'}
                                           </span>
                                           <span style={{ fontWeight: '500' }}>{item.product_name}</span>
-                                          {order.type === 'self' && helpCastName && (
-                                            <span style={{
-                                              fontSize: '10px',
-                                              padding: '2px 6px',
-                                              borderRadius: '4px',
-                                              backgroundColor: '#e8f5e9',
-                                              color: '#2e7d32'
-                                            }}>
-                                              ヘルプ: {helpCastName}
-                                            </span>
+                                          {itemCastName && (
+                                            <span style={{ fontSize: '12px', color: '#6c757d' }}>({itemCastName})</span>
                                           )}
                                         </div>
                                         <div style={{ fontWeight: '600', fontSize: '14px' }}>
