@@ -1975,124 +1975,261 @@ function PayslipPageContent() {
           {summary.totalProductBack > 0 && (
             <div style={styles.section}>
               <h2 style={styles.sectionTitle}>商品バック詳細</h2>
-              <div style={styles.tableWrapper}>
-                <table style={styles.table}>
-                  <thead>
-                    <tr style={styles.tableHeader}>
-                      <th style={styles.th}>商品名</th>
-                      <th style={styles.th}>カテゴリ</th>
-                      <th style={{ ...styles.th, textAlign: 'right' }}>数量</th>
-                      <th style={{ ...styles.th, textAlign: 'right' }}>金額</th>
-                      <th style={{ ...styles.th, textAlign: 'center' }}>率</th>
-                      <th style={{ ...styles.th, textAlign: 'right' }}>バック</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(() => {
-                      // 全商品バックアイテムを集約
-                      const allItems: ProductBackItem[] = []
-                      dailySalesData.forEach(day => {
-                        allItems.push(...day.items)
-                      })
+              {(() => {
+                // 1. 推し商品バック: 自分の卓で自分の商品 (is_self=true)
+                const selfItems = castDailyItems.filter(item => item.is_self && item.self_back_amount > 0)
+                const selfGrouped = new Map<string, {
+                  productName: string
+                  category: string | null
+                  quantity: number
+                  subtotal: number
+                  backRate: number
+                  backAmount: number
+                  isBase: boolean
+                }>()
+                selfItems.forEach(item => {
+                  const isBase = item.category === 'BASE'
+                  const key = `${item.category || ''}:${item.product_name}:${isBase ? 'base' : 'pos'}`
+                  const existing = selfGrouped.get(key)
+                  if (existing) {
+                    existing.quantity += item.quantity
+                    existing.subtotal += item.self_sales
+                    existing.backAmount += item.self_back_amount
+                  } else {
+                    selfGrouped.set(key, {
+                      productName: item.product_name,
+                      category: item.category,
+                      quantity: item.quantity,
+                      subtotal: item.self_sales,
+                      backRate: item.self_back_rate,
+                      backAmount: item.self_back_amount,
+                      isBase
+                    })
+                  }
+                })
+                const selfList = Array.from(selfGrouped.values()).sort((a, b) => b.backAmount - a.backAmount)
+                const selfTotal = selfList.reduce((sum, item) => sum + item.backAmount, 0)
 
-                      // 商品名+カテゴリ+売上タイプ+BASEフラグでグループ化
-                      const grouped = new Map<string, {
-                        productName: string
-                        category: string | null
-                        salesType: 'self' | 'help'
-                        quantity: number
-                        subtotal: number
-                        backRatio: number
-                        backAmount: number
-                        isBase: boolean
-                      }>()
+                // 2. 卓内ヘルプ: 自分の卓で他キャストの商品 (is_self=false, help_cast_idあり)
+                const tableHelpItems = castDailyItems.filter(item => !item.is_self && item.help_cast_id)
+                const tableHelpGrouped = new Map<string, {
+                  productName: string
+                  category: string | null
+                  quantity: number
+                  subtotal: number
+                  helpCastName: string
+                }>()
+                tableHelpItems.forEach(item => {
+                  const helpCast = casts.find(c => c.id === item.help_cast_id)
+                  const helpCastName = helpCast?.name || '不明'
+                  const key = `${item.category || ''}:${item.product_name}:${item.help_cast_id}`
+                  const existing = tableHelpGrouped.get(key)
+                  if (existing) {
+                    existing.quantity += item.quantity
+                    existing.subtotal += item.subtotal
+                  } else {
+                    tableHelpGrouped.set(key, {
+                      productName: item.product_name,
+                      category: item.category,
+                      quantity: item.quantity,
+                      subtotal: item.subtotal,
+                      helpCastName
+                    })
+                  }
+                })
+                const tableHelpList = Array.from(tableHelpGrouped.values()).sort((a, b) => b.subtotal - a.subtotal)
 
-                      allItems.forEach(item => {
-                        const key = `${item.category || ''}:${item.productName}:${item.salesType}:${item.isBase ? 'base' : 'pos'}`
-                        const existing = grouped.get(key)
-                        if (existing) {
-                          existing.quantity += item.quantity
-                          existing.subtotal += item.subtotal
-                          existing.backAmount += item.backAmount
-                        } else {
-                          grouped.set(key, {
-                            productName: item.productName,
-                            category: item.category,
-                            salesType: item.salesType,
-                            quantity: item.quantity,
-                            subtotal: item.subtotal,
-                            backRatio: item.backRatio,
-                            backAmount: item.backAmount,
-                            isBase: item.isBase || false,
-                          })
-                        }
-                      })
+                // 3. ヘルプ商品バック: 他の推しの卓で自分がヘルプ (helpDailyItems)
+                const helpGrouped = new Map<string, {
+                  productName: string
+                  category: string | null
+                  quantity: number
+                  subtotal: number
+                  backRate: number
+                  backAmount: number
+                  oshiCastName: string
+                }>()
+                helpDailyItems.filter(item => item.help_back_amount > 0).forEach(item => {
+                  const oshiCast = casts.find(c => c.id === item.cast_id)
+                  const oshiCastName = oshiCast?.name || '不明'
+                  const key = `${item.category || ''}:${item.product_name}:${item.cast_id}`
+                  const existing = helpGrouped.get(key)
+                  if (existing) {
+                    existing.quantity += item.quantity
+                    existing.subtotal += item.help_sales || item.subtotal
+                    existing.backAmount += item.help_back_amount
+                  } else {
+                    helpGrouped.set(key, {
+                      productName: item.product_name,
+                      category: item.category,
+                      quantity: item.quantity,
+                      subtotal: item.help_sales || item.subtotal,
+                      backRate: item.help_back_rate,
+                      backAmount: item.help_back_amount,
+                      oshiCastName
+                    })
+                  }
+                })
+                const helpList = Array.from(helpGrouped.values()).sort((a, b) => b.backAmount - a.backAmount)
+                const helpTotal = helpList.reduce((sum, item) => sum + item.backAmount, 0)
 
-                      return Array.from(grouped.values())
-                        .sort((a, b) => b.backAmount - a.backAmount)
-                        .map((item, i) => (
-                          <tr
-                            key={i}
-                            style={{
-                              ...(i % 2 === 0 ? styles.tableRowEven : styles.tableRow),
-                              cursor: 'pointer'
-                            }}
-                            onClick={() => setSelectedProductDetail({
-                              productName: item.productName,
-                              category: item.category,
-                              salesType: item.salesType
-                            })}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.backgroundColor = '#f0f7ff'
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.backgroundColor = i % 2 === 0 ? '#fafafa' : 'transparent'
-                            }}
-                          >
-                            <td style={styles.td}>
-                              {item.productName}
-                              <span style={{
-                                marginLeft: '6px',
-                                fontSize: '11px',
-                                padding: '2px 6px',
-                                borderRadius: '4px',
-                                backgroundColor: item.salesType === 'self' ? '#d4edda' : '#fff3cd',
-                                color: item.salesType === 'self' ? '#155724' : '#856404'
-                              }}>
-                                {item.salesType === 'self' ? '推し' : 'ヘルプ'}
-                              </span>
-                              {item.isBase && (
-                                <span style={{
-                                  marginLeft: '4px',
-                                  fontSize: '11px',
-                                  padding: '2px 6px',
-                                  borderRadius: '4px',
-                                  backgroundColor: '#ede9fe',
-                                  color: '#6b21a8'
-                                }}>
-                                  BASE
-                                </span>
-                              )}
-                            </td>
-                            <td style={{ ...styles.td, color: '#86868b', fontSize: '12px' }}>{item.category || '-'}</td>
-                            <td style={{ ...styles.td, textAlign: 'right' }}>{item.quantity}</td>
-                            <td style={{ ...styles.td, textAlign: 'right' }}>{currencyFormatter.format(item.subtotal)}</td>
-                            <td style={{ ...styles.td, textAlign: 'center' }}>{item.backRatio}%</td>
-                            <td style={{ ...styles.td, textAlign: 'right', fontWeight: '600', color: '#FF9500' }}>
-                              {currencyFormatter.format(item.backAmount)}
-                            </td>
-                          </tr>
-                        ))
-                    })()}
-                    <tr style={styles.tableTotal}>
-                      <td colSpan={5} style={{ ...styles.td, fontWeight: 'bold' }}>合計</td>
-                      <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold', color: '#FF9500' }}>
+                return (
+                  <>
+                    {/* 推し商品バック */}
+                    {selfList.length > 0 && (
+                      <div style={{ marginBottom: '20px' }}>
+                        <h3 style={{ fontSize: '14px', fontWeight: '600', marginBottom: '8px', color: '#155724' }}>
+                          推し商品バック（自分の卓・自分の商品）
+                        </h3>
+                        <div style={styles.tableWrapper}>
+                          <table style={styles.table}>
+                            <thead>
+                              <tr style={styles.tableHeader}>
+                                <th style={styles.th}>商品名</th>
+                                <th style={styles.th}>カテゴリ</th>
+                                <th style={{ ...styles.th, textAlign: 'right' }}>数量</th>
+                                <th style={{ ...styles.th, textAlign: 'right' }}>金額</th>
+                                <th style={{ ...styles.th, textAlign: 'center' }}>率</th>
+                                <th style={{ ...styles.th, textAlign: 'right' }}>バック</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {selfList.map((item, i) => (
+                                <tr key={i} style={i % 2 === 0 ? styles.tableRowEven : styles.tableRow}>
+                                  <td style={styles.td}>
+                                    {item.productName}
+                                    {item.isBase && (
+                                      <span style={{
+                                        marginLeft: '6px',
+                                        fontSize: '11px',
+                                        padding: '2px 6px',
+                                        borderRadius: '4px',
+                                        backgroundColor: '#ede9fe',
+                                        color: '#6b21a8'
+                                      }}>
+                                        BASE
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td style={{ ...styles.td, color: '#86868b', fontSize: '12px' }}>{item.category || '-'}</td>
+                                  <td style={{ ...styles.td, textAlign: 'right' }}>{item.quantity}</td>
+                                  <td style={{ ...styles.td, textAlign: 'right' }}>{currencyFormatter.format(item.subtotal)}</td>
+                                  <td style={{ ...styles.td, textAlign: 'center' }}>{item.backRate}%</td>
+                                  <td style={{ ...styles.td, textAlign: 'right', fontWeight: '600', color: '#FF9500' }}>
+                                    {currencyFormatter.format(item.backAmount)}
+                                  </td>
+                                </tr>
+                              ))}
+                              <tr style={styles.tableTotal}>
+                                <td colSpan={5} style={{ ...styles.td, fontWeight: 'bold' }}>小計</td>
+                                <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold', color: '#FF9500' }}>
+                                  {currencyFormatter.format(selfTotal)}
+                                </td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 卓内ヘルプ（参考情報） */}
+                    {tableHelpList.length > 0 && (
+                      <div style={{ marginBottom: '20px' }}>
+                        <h3 style={{ fontSize: '14px', fontWeight: '600', marginBottom: '8px', color: '#856404' }}>
+                          卓内ヘルプ（自分の卓・他キャストの商品）
+                        </h3>
+                        <div style={styles.tableWrapper}>
+                          <table style={styles.table}>
+                            <thead>
+                              <tr style={styles.tableHeader}>
+                                <th style={styles.th}>商品名</th>
+                                <th style={styles.th}>カテゴリ</th>
+                                <th style={styles.th}>ヘルプ</th>
+                                <th style={{ ...styles.th, textAlign: 'right' }}>数量</th>
+                                <th style={{ ...styles.th, textAlign: 'right' }}>金額</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {tableHelpList.map((item, i) => (
+                                <tr key={i} style={i % 2 === 0 ? styles.tableRowEven : styles.tableRow}>
+                                  <td style={styles.td}>{item.productName}</td>
+                                  <td style={{ ...styles.td, color: '#86868b', fontSize: '12px' }}>{item.category || '-'}</td>
+                                  <td style={{ ...styles.td, color: '#856404', fontSize: '12px' }}>{item.helpCastName}</td>
+                                  <td style={{ ...styles.td, textAlign: 'right' }}>{item.quantity}</td>
+                                  <td style={{ ...styles.td, textAlign: 'right' }}>{currencyFormatter.format(item.subtotal)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                        <p style={{ fontSize: '11px', color: '#86868b', marginTop: '4px' }}>
+                          ※ 卓内ヘルプの商品バックはヘルプキャストに付与されます
+                        </p>
+                      </div>
+                    )}
+
+                    {/* ヘルプ商品バック */}
+                    {helpList.length > 0 && (
+                      <div style={{ marginBottom: '20px' }}>
+                        <h3 style={{ fontSize: '14px', fontWeight: '600', marginBottom: '8px', color: '#0066cc' }}>
+                          ヘルプ商品バック（他の推しの卓）
+                        </h3>
+                        <div style={styles.tableWrapper}>
+                          <table style={styles.table}>
+                            <thead>
+                              <tr style={styles.tableHeader}>
+                                <th style={styles.th}>商品名</th>
+                                <th style={styles.th}>カテゴリ</th>
+                                <th style={styles.th}>推し</th>
+                                <th style={{ ...styles.th, textAlign: 'right' }}>数量</th>
+                                <th style={{ ...styles.th, textAlign: 'right' }}>金額</th>
+                                <th style={{ ...styles.th, textAlign: 'center' }}>率</th>
+                                <th style={{ ...styles.th, textAlign: 'right' }}>バック</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {helpList.map((item, i) => (
+                                <tr key={i} style={i % 2 === 0 ? styles.tableRowEven : styles.tableRow}>
+                                  <td style={styles.td}>{item.productName}</td>
+                                  <td style={{ ...styles.td, color: '#86868b', fontSize: '12px' }}>{item.category || '-'}</td>
+                                  <td style={{ ...styles.td, color: '#0066cc', fontSize: '12px' }}>{item.oshiCastName}</td>
+                                  <td style={{ ...styles.td, textAlign: 'right' }}>{item.quantity}</td>
+                                  <td style={{ ...styles.td, textAlign: 'right' }}>{currencyFormatter.format(item.subtotal)}</td>
+                                  <td style={{ ...styles.td, textAlign: 'center' }}>{item.backRate}%</td>
+                                  <td style={{ ...styles.td, textAlign: 'right', fontWeight: '600', color: '#0066cc' }}>
+                                    {currencyFormatter.format(item.backAmount)}
+                                  </td>
+                                </tr>
+                              ))}
+                              <tr style={styles.tableTotal}>
+                                <td colSpan={6} style={{ ...styles.td, fontWeight: 'bold' }}>小計</td>
+                                <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold', color: '#0066cc' }}>
+                                  {currencyFormatter.format(helpTotal)}
+                                </td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 合計 */}
+                    <div style={{
+                      padding: '12px 16px',
+                      backgroundColor: '#f8f9fa',
+                      borderRadius: '8px',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center'
+                    }}>
+                      <span style={{ fontWeight: 'bold' }}>商品バック合計</span>
+                      <span style={{ fontWeight: 'bold', fontSize: '18px', color: '#FF9500' }}>
                         {currencyFormatter.format(summary.totalProductBack)}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
+                      </span>
+                    </div>
+                  </>
+                )
+              })()}
             </div>
           )}
 
