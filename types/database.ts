@@ -700,8 +700,12 @@ export interface CastDailyItem {
   category: string | null
   product_name: string | null
   quantity: number
-  self_sales: number        // 推しにつく売上（分配ロジック適用後）
+  self_sales: number        // 推しにつく売上（分配ロジック適用後）- 後方互換用
   help_sales: number        // ヘルプにつく売上（分配ロジック適用後）
+  // 売上集計方法別の値
+  self_sales_item_based: number     // 推し小計（キャスト名ありの商品のみ）
+  self_sales_receipt_based: number  // 伝票小計（全商品）
+  needs_cast: boolean       // 指名必須商品か
   // バック率・バック額（計算時点の値を保存）
   self_back_rate: number    // cast_idの推しバック率（%）
   self_back_amount: number  // self_sales × self_back_rate / 100

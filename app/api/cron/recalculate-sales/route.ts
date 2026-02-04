@@ -160,9 +160,12 @@ interface CastDailyItemData {
   category: string | null
   product_name: string
   quantity: number
-  self_sales: number     // 推しにつく売上（分配ロジック適用後）
+  self_sales: number     // 推しにつく売上（分配ロジック適用後）- 後方互換用
   help_sales: number     // ヘルプにつく売上（分配ロジック適用後）
   needs_cast: boolean    // 指名必須商品か（ランキング表示用）
+  // 売上集計方法別の値
+  self_sales_item_based: number     // 推し小計（キャスト名ありの商品のみ）
+  self_sales_receipt_based: number  // 伝票小計（全商品）
   // 後方互換用
   subtotal: number
   is_self: boolean
@@ -273,13 +276,16 @@ function aggregateCastDailyItems(
           const nominationCast = castMap.get(nominationName)
           if (!nominationCast) continue
 
-          // キャストなし商品 → self_sales=0
+          // キャストなし商品 → item_based: self_sales=0, receipt_based: 分配額
           if (noCast) {
+            // receipt_basedで計算した場合の分配額
+            const perNominationReceipt = Math.floor(itemAmount / realNominations.length)
             const key = `${order.id}:${nominationCast.id}:null:${item.product_name}:${item.category || ''}`
             if (itemsMap.has(key)) {
               const existing = itemsMap.get(key)!
               existing.quantity += item.quantity
               existing.subtotal += adjustedSubtotal
+              existing.self_sales_receipt_based += perNominationReceipt
             } else {
               itemsMap.set(key, {
                 cast_id: nominationCast.id,
@@ -295,6 +301,8 @@ function aggregateCastDailyItems(
                 self_sales: 0,
                 help_sales: 0,
                 needs_cast: productNeedsCastMap.get(item.product_name) ?? true,
+                self_sales_item_based: 0,
+                self_sales_receipt_based: perNominationReceipt,
                 subtotal: adjustedSubtotal,
                 is_self: true,
                 self_back_rate: 0,
@@ -314,6 +322,8 @@ function aggregateCastDailyItems(
               const existing = itemsMap.get(key)!
               existing.quantity += item.quantity
               existing.self_sales += perCast
+              existing.self_sales_item_based += perCast
+              existing.self_sales_receipt_based += perCast
               existing.subtotal += adjustedSubtotal
             } else {
               itemsMap.set(key, {
@@ -330,6 +340,8 @@ function aggregateCastDailyItems(
                 self_sales: perCast,
                 help_sales: 0,
                 needs_cast: productNeedsCastMap.get(item.product_name) ?? true,
+                self_sales_item_based: perCast,
+                self_sales_receipt_based: perCast,
                 subtotal: adjustedSubtotal,
                 is_self: true,
                 self_back_rate: 0,
@@ -378,6 +390,8 @@ function aggregateCastDailyItems(
               const existing = itemsMap.get(key)!
               existing.quantity += item.quantity
               existing.self_sales += selfShare
+              existing.self_sales_item_based += selfShare
+              existing.self_sales_receipt_based += selfShare
               existing.help_sales += helpShare
               existing.subtotal += adjustedSubtotal
             } else {
@@ -395,6 +409,8 @@ function aggregateCastDailyItems(
                 self_sales: selfShare,
                 help_sales: helpShare,
                 needs_cast: productNeedsCastMap.get(item.product_name) ?? true,
+                self_sales_item_based: selfShare,
+                self_sales_receipt_based: selfShare,
                 subtotal: adjustedSubtotal,
                 is_self: false,
                 self_back_rate: 0,
@@ -419,15 +435,22 @@ function aggregateCastDailyItems(
         const nominationCast = castMap.get(nominationName)
         if (!nominationCast) continue
 
-        // キャストなし商品 → 推しの売上としてカウント
+        // キャストなし商品 → 推しの売上としてカウント（receipt_based）
+        // item_basedでは0になる
         if (noCast) {
           const perNomination = Math.floor(itemAmount / realNominations.length)
+          const needsCastValue = productNeedsCastMap.get(item.product_name) ?? true
           const key = `${order.id}:${nominationCast.id}:null:${item.product_name}:${item.category || ''}`
 
           if (itemsMap.has(key)) {
             const existing = itemsMap.get(key)!
             existing.quantity += item.quantity
             existing.self_sales += perNomination
+            existing.self_sales_receipt_based += perNomination
+            // item_basedはneeds_cast=trueの場合のみ加算
+            if (needsCastValue) {
+              existing.self_sales_item_based += perNomination
+            }
             existing.subtotal += adjustedSubtotal
           } else {
             itemsMap.set(key, {
@@ -443,7 +466,9 @@ function aggregateCastDailyItems(
               quantity: item.quantity,
               self_sales: perNomination,
               help_sales: 0,
-              needs_cast: productNeedsCastMap.get(item.product_name) ?? true,
+              needs_cast: needsCastValue,
+              self_sales_item_based: needsCastValue ? perNomination : 0,
+              self_sales_receipt_based: perNomination,
               subtotal: adjustedSubtotal,
               is_self: true,
               self_back_rate: 0,
@@ -455,7 +480,7 @@ function aggregateCastDailyItems(
           continue
         }
 
-        // SELF商品 → 推しのself_salesに全額
+        // SELF商品 → 推しのself_salesに全額（キャスト名ありなので両方同じ値）
         if (isSelfOnly) {
           const perNomination = Math.floor(itemAmount / realNominations.length)
           const key = `${order.id}:${nominationCast.id}:null:${item.product_name}:${item.category || ''}`
@@ -464,6 +489,8 @@ function aggregateCastDailyItems(
             const existing = itemsMap.get(key)!
             existing.quantity += item.quantity
             existing.self_sales += perNomination
+            existing.self_sales_item_based += perNomination
+            existing.self_sales_receipt_based += perNomination
             existing.subtotal += adjustedSubtotal
           } else {
             itemsMap.set(key, {
@@ -480,6 +507,8 @@ function aggregateCastDailyItems(
               self_sales: perNomination,
               help_sales: 0,
               needs_cast: productNeedsCastMap.get(item.product_name) ?? true,
+              self_sales_item_based: perNomination,
+              self_sales_receipt_based: perNomination,
               subtotal: adjustedSubtotal,
               is_self: true,
               self_back_rate: 0,
@@ -535,6 +564,8 @@ function aggregateCastDailyItems(
               const existing = itemsMap.get(key)!
               existing.quantity += item.quantity
               existing.self_sales += selfShare
+              existing.self_sales_item_based += selfShare
+              existing.self_sales_receipt_based += selfShare
               existing.help_sales += helpSharePerCast
               existing.subtotal += adjustedSubtotal
             } else {
@@ -552,6 +583,8 @@ function aggregateCastDailyItems(
                 self_sales: selfShare,
                 help_sales: helpSharePerCast,
                 needs_cast: productNeedsCastMap.get(item.product_name) ?? true,
+                self_sales_item_based: selfShare,
+                self_sales_receipt_based: selfShare,
                 subtotal: adjustedSubtotal,
                 is_self: false,
                 self_back_rate: 0,
@@ -562,7 +595,7 @@ function aggregateCastDailyItems(
             }
           }
 
-          // MIXED商品の場合、推し自身の分もレコードに
+          // MIXED商品の場合、推し自身の分もレコードに（キャスト名ありなので両方同じ値）
           if (isMixed && selfCastsOnItem.includes(nominationName)) {
             const selfKey = `${order.id}:${nominationCast.id}:null:${item.product_name}:${item.category || ''}`
             const selfAmount = Math.floor(itemAmount / (selfCastsOnItem.length + helpCastsOnItem.length))
@@ -571,6 +604,8 @@ function aggregateCastDailyItems(
               const existing = itemsMap.get(selfKey)!
               existing.quantity += item.quantity
               existing.self_sales += selfAmount
+              existing.self_sales_item_based += selfAmount
+              existing.self_sales_receipt_based += selfAmount
               existing.subtotal += adjustedSubtotal
             } else {
               itemsMap.set(selfKey, {
@@ -587,6 +622,8 @@ function aggregateCastDailyItems(
                 self_sales: selfAmount,
                 help_sales: 0,
                 needs_cast: productNeedsCastMap.get(item.product_name) ?? true,
+                self_sales_item_based: selfAmount,
+                self_sales_receipt_based: selfAmount,
                 subtotal: adjustedSubtotal,
                 is_self: true,
                 self_back_rate: 0,
@@ -1000,6 +1037,7 @@ async function recalculateForStoreAndDate(
     const dailyItems = aggregateCastDailyItems(typedOrders, castMap, storeId, date, salesSettings, taxRate, productNeedsCastMap)
 
     // BASE注文もcast_daily_itemsに追加（推し扱い、カテゴリは"BASE"）
+    // BASEは常にキャストに紐づいているのでitem_basedもreceipt_basedも同じ値
     const baseItemsMap = new Map<string, CastDailyItemData>()
     for (const order of baseOrders || []) {
       if (!order.cast_id || !order.product_name) continue
@@ -1009,6 +1047,8 @@ async function recalculateForStoreAndDate(
         const existing = baseItemsMap.get(key)!
         existing.quantity += order.quantity
         existing.self_sales += amount
+        existing.self_sales_item_based += amount
+        existing.self_sales_receipt_based += amount
         existing.subtotal += amount
       } else {
         baseItemsMap.set(key, {
@@ -1025,6 +1065,8 @@ async function recalculateForStoreAndDate(
           self_sales: amount,
           help_sales: 0,
           needs_cast: true,  // BASEは常に指名必須（キャストに紐づいている）
+          self_sales_item_based: amount,
+          self_sales_receipt_based: amount,
           subtotal: amount,
           is_self: true,  // 後方互換用
           self_back_rate: 0,

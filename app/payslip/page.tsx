@@ -93,6 +93,9 @@ interface CastDailyItem {
   needs_cast: boolean
   cast_id: number
   help_cast_id: number | null
+  // 売上集計方法別の値
+  self_sales_item_based: number
+  self_sales_receipt_based: number
   // 商品バック情報（計算時点の値）
   self_back_rate: number
   self_back_amount: number
@@ -488,7 +491,7 @@ function PayslipPageContent() {
     // 1. 推しとして参加した分（cast_id = castId）
     const { data: dailyItems, error: dailyItemsError } = await supabase
       .from('cast_daily_items')
-      .select('id, order_id, table_number, guest_name, product_name, category, quantity, subtotal, is_self, self_sales, help_sales, needs_cast, date, cast_id, help_cast_id, self_back_rate, self_back_amount, help_back_rate, help_back_amount')
+      .select('id, order_id, table_number, guest_name, product_name, category, quantity, subtotal, is_self, self_sales, help_sales, needs_cast, date, cast_id, help_cast_id, self_sales_item_based, self_sales_receipt_based, self_back_rate, self_back_amount, help_back_rate, help_back_amount')
       .eq('cast_id', castId)
       .eq('store_id', storeId)
       .gte('date', startDate)
@@ -510,7 +513,7 @@ function PayslipPageContent() {
     // 2. ヘルプとして参加した分（help_cast_id = castId）
     const { data: helpItems, error: helpItemsError } = await supabase
       .from('cast_daily_items')
-      .select('id, order_id, table_number, guest_name, product_name, category, quantity, subtotal, is_self, self_sales, help_sales, needs_cast, date, cast_id, help_cast_id, self_back_rate, self_back_amount, help_back_rate, help_back_amount')
+      .select('id, order_id, table_number, guest_name, product_name, category, quantity, subtotal, is_self, self_sales, help_sales, needs_cast, date, cast_id, help_cast_id, self_sales_item_based, self_sales_receipt_based, self_back_rate, self_back_amount, help_back_rate, help_back_amount')
       .eq('help_cast_id', castId)
       .eq('store_id', storeId)
       .gte('date', startDate)
@@ -2303,11 +2306,21 @@ function PayslipPageContent() {
         const dayData = dailySalesData.get(selectedDayDetail)
         const dayDetail = dailyDetails.find(d => d.date === selectedDayDetail)
 
+        // 売上集計方法（報酬形態の設定に基づく）
+        const salesAggregation = activeCompensationType?.sales_aggregation || 'item_based'
+
         // cast_daily_itemsから当日のデータを取得して伝票ごとにグループ化
         const dayItems = castDailyItems.filter(item => item.date === selectedDayDetail)
         const dayHelpItems = helpDailyItems.filter(item => item.date === selectedDayDetail)
 
-        // 伝票ごとにグループ化（推し売上）
+        // 売上額を取得するヘルパー関数
+        const getSelfSales = (item: CastDailyItem) => {
+          return salesAggregation === 'item_based'
+            ? (item.self_sales_item_based || 0)
+            : (item.self_sales_receipt_based || 0)
+        }
+
+        // 伝票ごとにグループ化（推し売上 - 伝票内の全アイテムを表示）
         const selfOrderGroups = new Map<string, OrderGroup>()
 
         dayItems.forEach(item => {
@@ -2317,23 +2330,24 @@ function PayslipPageContent() {
           const tableNumber = isBase ? 'BASE' : item.table_number
           const guestName = isBase ? null : item.guest_name
 
+          // 伝票内の全アイテムを追加（is_selfに関係なく）
+          if (!selfOrderGroups.has(orderId)) {
+            selfOrderGroups.set(orderId, {
+              orderId,
+              tableNumber,
+              guestName,
+              items: [],
+              totalSales: 0,
+              totalBack: 0,
+              type: 'self',
+              oshiCastName: selectedCast?.name
+            })
+          }
+          const group = selfOrderGroups.get(orderId)!
+          group.items.push(item)
+          // 推しの売上のみ合計に加算（報酬形態の設定に基づく）
           if (item.is_self) {
-            // 推し売上
-            if (!selfOrderGroups.has(orderId)) {
-              selfOrderGroups.set(orderId, {
-                orderId,
-                tableNumber,
-                guestName,
-                items: [],
-                totalSales: 0,
-                totalBack: 0,
-                type: 'self',
-                oshiCastName: selectedCast?.name
-              })
-            }
-            const group = selfOrderGroups.get(orderId)!
-            group.items.push(item)
-            group.totalSales += item.subtotal
+            group.totalSales += getSelfSales(item)
             group.totalBack += item.self_back_amount || 0
           }
         })
@@ -2363,7 +2377,8 @@ function PayslipPageContent() {
           }
           const group = helpOrderGroups.get(orderId)!
           group.items.push(item)
-          group.totalSales += item.subtotal
+          // ヘルプ売上を使用（subtotalではなくhelp_sales）
+          group.totalSales += item.help_sales || 0
           group.totalBack += item.help_back_amount || 0
         })
 
@@ -2495,15 +2510,14 @@ function PayslipPageContent() {
                             {isExpanded && (
                               <div style={{ backgroundColor: '#f8f9fa', padding: '8px 12px' }}>
                                 {order.items.map((item, idx) => {
-                                  // 表示する売上額（推し売上 or ヘルプ売上）
-                                  const displaySales = order.type === 'self' ? item.self_sales : item.help_sales
+                                  // 表示する売上額（推し売上 or ヘルプ売上）- 報酬形態の設定に基づく
+                                  const displaySales = order.type === 'self' ? getSelfSales(item) : item.help_sales
                                   const unitPrice = Math.floor(item.subtotal / item.quantity)
                                   const backRate = order.type === 'self' ? (item.self_back_rate || 0) : (item.help_back_rate || 0)
                                   const backAmount = order.type === 'self' ? (item.self_back_amount || 0) : (item.help_back_amount || 0)
-                                  // 商品に付いているキャスト名を取得（is_self=true→cast_id、is_self=false→help_cast_id）
-                                  const itemCastName = item.is_self
-                                    ? casts.find(c => c.id === item.cast_id)?.name
-                                    : casts.find(c => c.id === item.help_cast_id)?.name
+                                  // 商品に付いているキャスト名を取得（help_cast_idがあればヘルパー、なければ推し）
+                                  const displayCastId = item.help_cast_id || item.cast_id
+                                  const itemCastName = casts.find(c => c.id === displayCastId)?.name
                                   return (
                                     <div key={idx} style={{
                                       padding: '10px 0',
