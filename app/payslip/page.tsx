@@ -496,6 +496,11 @@ function PayslipPageContent() {
       console.error('cast_daily_items取得エラー:', dailyItemsError)
       setCastDailyItems([])
     } else {
+      console.log(`[DEBUG] cast_daily_items取得: castId=${castId}, 件数=${(dailyItems || []).length}`)
+      if (dailyItems && dailyItems.length > 0) {
+        const totalSelfBack = dailyItems.reduce((sum: number, item: { self_back_amount?: number }) => sum + (item.self_back_amount || 0), 0)
+        console.log(`[DEBUG] self_back_amount合計: ${totalSelfBack}`)
+      }
       setCastDailyItems((dailyItems || []) as CastDailyItem[])
     }
 
@@ -513,6 +518,11 @@ function PayslipPageContent() {
       console.error('cast_daily_items(help)取得エラー:', helpItemsError)
       setHelpDailyItems([])
     } else {
+      console.log(`[DEBUG] cast_daily_items(help)取得: castId=${castId}, 件数=${(helpItems || []).length}`)
+      if (helpItems && helpItems.length > 0) {
+        const totalHelpBack = helpItems.reduce((sum: number, item: { help_back_amount?: number }) => sum + (item.help_back_amount || 0), 0)
+        console.log(`[DEBUG] help_back_amount合計: ${totalHelpBack}`)
+      }
       setHelpDailyItems((helpItems || []) as CastDailyItem[])
     }
   }, [storeId])
