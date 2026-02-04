@@ -2500,7 +2500,7 @@ function PayslipPageContent() {
                                       borderBottom: idx < order.items.length - 1 ? '1px solid #e9ecef' : 'none'
                                     }}>
                                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                                           <span style={{
                                             fontSize: '10px',
                                             padding: '2px 6px',
@@ -2511,6 +2511,7 @@ function PayslipPageContent() {
                                             {item.category || '-'}
                                           </span>
                                           <span style={{ fontWeight: '500' }}>{item.product_name}</span>
+                                          <span style={{ fontSize: '11px', color: '#6c757d' }}>({order.oshiCastName})</span>
                                         </div>
                                         <div style={{ fontWeight: '600', fontSize: '14px' }}>
                                           {currencyFormatter.format(item.subtotal)}
