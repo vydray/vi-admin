@@ -726,11 +726,17 @@ async function recalculateForStoreAndDate(
 
     const { data: compensationSettings } = await supabaseAdmin
       .from('compensation_settings')
-      .select('cast_id, status_id, hourly_wage_override')
+      .select('cast_id, status_id, hourly_wage_override, help_back_calculation_method')
       .eq('store_id', storeId)
 
     const compSettingsMap = new Map<number, CompensationSettingsWage>()
     compensationSettings?.forEach((c: CompensationSettingsWage) => compSettingsMap.set(c.cast_id, c))
+
+    // ヘルプバック計算方法のマップを作成（cast_id -> help_back_calculation_method）
+    const helpBackCalcMethodMap = new Map<number, string>()
+    compensationSettings?.forEach((c: { cast_id: number; help_back_calculation_method?: string }) => {
+      helpBackCalcMethodMap.set(c.cast_id, c.help_back_calculation_method || 'sales_settings')
+    })
 
     const { data: wageStatuses } = await supabaseAdmin
       .from('wage_statuses')
@@ -1038,8 +1044,8 @@ async function recalculateForStoreAndDate(
       if (item.help_cast_id && selfBackRate) {
         item.help_back_rate = selfBackRate.help_back_ratio ?? 0
 
-        // help_back_calculation_methodに基づいて計算ベースを決定
-        const helpBackCalcMethod = salesSettings.help_back_calculation_method || 'sales_settings'
+        // 推しキャストの報酬設定からhelp_back_calculation_methodを取得
+        const helpBackCalcMethod = helpBackCalcMethodMap.get(item.cast_id) || 'sales_settings'
         let baseAmount: number
         switch (helpBackCalcMethod) {
           case 'full_amount':

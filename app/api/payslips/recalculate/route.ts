@@ -287,14 +287,8 @@ async function calculatePayslipForCast(
       .gte('date', startDate)
       .lte('date', endDate)
 
-    // help_back_calculation_method を取得するために先に sales_settings を取得
-    const { data: salesSettingsForBack } = await supabaseAdmin
-      .from('sales_settings')
-      .select('help_back_calculation_method')
-      .eq('store_id', storeId)
-      .single()
-
-    const helpBackCalcMethod = salesSettingsForBack?.help_back_calculation_method || 'sales_settings'
+    // help_back_calculation_method を報酬設定から取得
+    const helpBackCalcMethod = (compensationSettings as Record<string, unknown> | null)?.help_back_calculation_method as string || 'sales_settings'
 
     // バック率を取得するヘルパー関数（商品名 → カテゴリ → 全体の優先順位）
     const getBackRate = (productName: string, category: string | null): number => {
