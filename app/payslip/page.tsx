@@ -87,7 +87,6 @@ interface CastDailyItem {
   category: string | null
   quantity: number
   subtotal: number
-  back_amount: number
   is_self: boolean
   self_sales: number
   help_sales: number
@@ -485,7 +484,7 @@ function PayslipPageContent() {
     // 1. 推しとして参加した分（cast_id = castId）
     const { data: dailyItems, error: dailyItemsError } = await supabase
       .from('cast_daily_items')
-      .select('id, order_id, table_number, guest_name, product_name, category, quantity, subtotal, back_amount, is_self, self_sales, help_sales, needs_cast, date, help_cast_id, self_back_rate, self_back_amount, help_back_rate, help_back_amount')
+      .select('id, order_id, table_number, guest_name, product_name, category, quantity, subtotal, is_self, self_sales, help_sales, needs_cast, date, help_cast_id, self_back_rate, self_back_amount, help_back_rate, help_back_amount')
       .eq('cast_id', castId)
       .eq('store_id', storeId)
       .gte('date', startDate)
@@ -507,7 +506,7 @@ function PayslipPageContent() {
     // 2. ヘルプとして参加した分（help_cast_id = castId）
     const { data: helpItems, error: helpItemsError } = await supabase
       .from('cast_daily_items')
-      .select('id, order_id, table_number, guest_name, product_name, category, quantity, subtotal, back_amount, is_self, self_sales, help_sales, needs_cast, date, help_cast_id, self_back_rate, self_back_amount, help_back_rate, help_back_amount')
+      .select('id, order_id, table_number, guest_name, product_name, category, quantity, subtotal, is_self, self_sales, help_sales, needs_cast, date, help_cast_id, self_back_rate, self_back_amount, help_back_rate, help_back_amount')
       .eq('help_cast_id', castId)
       .eq('store_id', storeId)
       .gte('date', startDate)
