@@ -188,32 +188,30 @@ function aggregateCastDailyItems(
   const itemsMap = new Map<string, CastDailyItemData>()
   const method = salesSettings.published_aggregation ?? 'item_based'
   const nonHelpNames = salesSettings.non_help_staff_names || []
-
-  // 設定に応じた税抜き計算と端数処理
   const isItemBased = method === 'item_based'
-  const excludeTax = isItemBased
-    ? (salesSettings.item_exclude_consumption_tax ?? salesSettings.use_tax_excluded ?? false)
-    : (salesSettings.receipt_exclude_consumption_tax ?? salesSettings.use_tax_excluded ?? false)
-  const helpDistMethod = isItemBased
-    ? (salesSettings.item_help_distribution_method ?? 'all_to_nomination')
-    : (salesSettings.receipt_help_distribution_method ?? 'all_to_nomination')
-  const giveHelpSales = isItemBased
-    ? (salesSettings.item_help_sales_inclusion === 'both')
-    : (salesSettings.receipt_help_sales_inclusion === 'both')
-  const helpRatio = isItemBased
-    ? (salesSettings.item_help_ratio ?? 50)
-    : (salesSettings.receipt_help_ratio ?? 50)
 
-  // 端数処理設定
-  const roundingMethod = isItemBased
-    ? (salesSettings.item_rounding_method ?? 'floor_100')
-    : (salesSettings.receipt_rounding_method ?? 'floor_100')
-  const roundingPosition = isItemBased
-    ? (salesSettings.item_rounding_position ?? 100)
-    : (salesSettings.receipt_rounding_position ?? 100)
+  // ========================================
+  // item_based用の設定
+  // ========================================
+  const itemExcludeTax = salesSettings.item_exclude_consumption_tax ?? salesSettings.use_tax_excluded ?? false
+  const itemHelpDistMethod = salesSettings.item_help_distribution_method ?? 'all_to_nomination'
+  const itemGiveHelpSales = salesSettings.item_help_sales_inclusion === 'both'
+  const itemHelpRatio = salesSettings.item_help_ratio ?? 50
+  const itemRoundingMethod = salesSettings.item_rounding_method ?? 'floor_100'
+  const itemRoundingPosition = salesSettings.item_rounding_position ?? 100
 
-  // 端数処理関数
-  const applyRounding = (amount: number) => {
+  // ========================================
+  // receipt_based用の設定
+  // ========================================
+  const receiptExcludeTax = salesSettings.receipt_exclude_consumption_tax ?? salesSettings.use_tax_excluded ?? false
+  const receiptHelpDistMethod = salesSettings.receipt_help_distribution_method ?? 'all_to_nomination'
+  const receiptGiveHelpSales = salesSettings.receipt_help_sales_inclusion === 'both'
+  const receiptHelpRatio = salesSettings.receipt_help_ratio ?? 50
+  const receiptRoundingMethod = salesSettings.receipt_rounding_method ?? 'floor_100'
+  const receiptRoundingPosition = salesSettings.receipt_rounding_position ?? 100
+
+  // 端数処理関数（汎用）
+  const applyRounding = (amount: number, roundingMethod: string, roundingPosition: number) => {
     if (roundingPosition <= 0) return amount
     if (roundingMethod.startsWith('floor')) {
       return Math.floor(amount / roundingPosition) * roundingPosition
@@ -225,14 +223,85 @@ function aggregateCastDailyItems(
     return amount
   }
 
-  // 税抜き計算 + 端数処理
-  const applyTaxAndRounding = (amount: number) => {
+  // 税抜き計算 + 端数処理（item_based用）
+  const applyTaxAndRoundingItem = (amount: number) => {
     let result = amount
-    if (excludeTax) {
+    if (itemExcludeTax) {
       const taxPercent = Math.round(taxRate * 100)
       result = Math.floor(result * 100 / (100 + taxPercent))
     }
-    return applyRounding(result)
+    return applyRounding(result, itemRoundingMethod, itemRoundingPosition)
+  }
+
+  // 税抜き計算 + 端数処理（receipt_based用）
+  const applyTaxAndRoundingReceipt = (amount: number) => {
+    let result = amount
+    if (receiptExcludeTax) {
+      const taxPercent = Math.round(taxRate * 100)
+      result = Math.floor(result * 100 / (100 + taxPercent))
+    }
+    return applyRounding(result, receiptRoundingMethod, receiptRoundingPosition)
+  }
+
+  // ヘルプ分配計算（item_based用）
+  const calcHelpShareItem = (itemAmount: number, helpCastCount: number) => {
+    const perItem = Math.floor(itemAmount / helpCastCount)
+    let selfShare = 0
+    let helpShare = 0
+    switch (itemHelpDistMethod) {
+      case 'all_to_nomination':
+        selfShare = perItem
+        helpShare = 0
+        break
+      case 'equal':
+        selfShare = Math.floor(perItem / 2)
+        helpShare = itemGiveHelpSales ? perItem - selfShare : 0
+        break
+      case 'ratio':
+        const helpAmount = Math.floor(perItem * itemHelpRatio / 100)
+        selfShare = perItem - helpAmount
+        helpShare = itemGiveHelpSales ? helpAmount : 0
+        break
+      case 'equal_per_person':
+        // 推し1人+ヘルプ1人で均等分配
+        selfShare = Math.floor(perItem / 2)
+        helpShare = itemGiveHelpSales ? perItem - selfShare : 0
+        break
+      default:
+        selfShare = perItem
+        helpShare = 0
+    }
+    return { selfShare, helpShare }
+  }
+
+  // ヘルプ分配計算（receipt_based用）
+  const calcHelpShareReceipt = (itemAmount: number, helpCastCount: number) => {
+    const perItem = Math.floor(itemAmount / helpCastCount)
+    let selfShare = 0
+    let helpShare = 0
+    switch (receiptHelpDistMethod) {
+      case 'all_to_nomination':
+        selfShare = perItem
+        helpShare = 0
+        break
+      case 'equal':
+        selfShare = Math.floor(perItem / 2)
+        helpShare = receiptGiveHelpSales ? perItem - selfShare : 0
+        break
+      case 'ratio':
+        const helpAmount = Math.floor(perItem * receiptHelpRatio / 100)
+        selfShare = perItem - helpAmount
+        helpShare = receiptGiveHelpSales ? helpAmount : 0
+        break
+      case 'equal_per_person':
+        selfShare = Math.floor(perItem / 2)
+        helpShare = receiptGiveHelpSales ? perItem - selfShare : 0
+        break
+      default:
+        selfShare = perItem
+        helpShare = 0
+    }
+    return { selfShare, helpShare }
   }
 
   for (const order of orders) {
@@ -255,12 +324,18 @@ function aggregateCastDailyItems(
       const castsOnItem = item.cast_name || []
       const realCastsOnItem = castsOnItem.filter(c => !nonHelpNames.includes(c))
 
-      // 商品金額（税抜き + 端数処理適用）
+      // 商品金額（両モード用に計算）
       const rawAmount = (item.unit_price || 0) * (item.quantity || 0)
-      const itemAmount = applyTaxAndRounding(rawAmount)
+      const itemAmountItem = applyTaxAndRoundingItem(rawAmount)      // item_based用
+      const itemAmountReceipt = applyTaxAndRoundingReceipt(rawAmount) // receipt_based用
 
-      // subtotalも税抜き + 端数処理を適用
-      const adjustedSubtotal = applyTaxAndRounding(item.subtotal)
+      // subtotalも両モード用に計算
+      const adjustedSubtotalItem = applyTaxAndRoundingItem(item.subtotal)
+      const adjustedSubtotalReceipt = applyTaxAndRoundingReceipt(item.subtotal)
+
+      // 現在のモードに応じた値（後方互換用）
+      const itemAmount = isItemBased ? itemAmountItem : itemAmountReceipt
+      const adjustedSubtotal = isItemBased ? adjustedSubtotalItem : adjustedSubtotalReceipt
 
       // SELF/HELP判定
       const selfCastsOnItem = realCastsOnItem.filter(c => realNominations.includes(c))
@@ -278,8 +353,8 @@ function aggregateCastDailyItems(
 
           // キャストなし商品 → item_based: self_sales=0, receipt_based: 分配額
           if (noCast) {
-            // receipt_basedで計算した場合の分配額
-            const perNominationReceipt = Math.floor(itemAmount / realNominations.length)
+            // receipt_basedで計算した場合の分配額（receipt_based設定を使用）
+            const perNominationReceipt = Math.floor(itemAmountReceipt / realNominations.length)
             const key = `${order.id}:${nominationCast.id}:null:${item.product_name}:${item.category || ''}`
             if (itemsMap.has(key)) {
               const existing = itemsMap.get(key)!
@@ -314,16 +389,18 @@ function aggregateCastDailyItems(
             continue
           }
 
-          // 推し自身の商品
+          // 推し自身の商品（両モードで計算）
           if (selfCastsOnItem.includes(nominationName)) {
-            const perCast = Math.floor(itemAmount / selfCastsOnItem.length)
+            const perCastItem = Math.floor(itemAmountItem / selfCastsOnItem.length)
+            const perCastReceipt = Math.floor(itemAmountReceipt / selfCastsOnItem.length)
+            const perCast = isItemBased ? perCastItem : perCastReceipt  // 後方互換用
             const key = `${order.id}:${nominationCast.id}:null:${item.product_name}:${item.category || ''}`
             if (itemsMap.has(key)) {
               const existing = itemsMap.get(key)!
               existing.quantity += item.quantity
               existing.self_sales += perCast
-              existing.self_sales_item_based += perCast
-              existing.self_sales_receipt_based += perCast
+              existing.self_sales_item_based += perCastItem
+              existing.self_sales_receipt_based += perCastReceipt
               existing.subtotal += adjustedSubtotal
             } else {
               itemsMap.set(key, {
@@ -340,8 +417,8 @@ function aggregateCastDailyItems(
                 self_sales: perCast,
                 help_sales: 0,
                 needs_cast: productNeedsCastMap.get(item.product_name) ?? true,
-                self_sales_item_based: perCast,
-                self_sales_receipt_based: perCast,
+                self_sales_item_based: perCastItem,
+                self_sales_receipt_based: perCastReceipt,
                 subtotal: adjustedSubtotal,
                 is_self: true,
                 self_back_rate: 0,
@@ -352,46 +429,27 @@ function aggregateCastDailyItems(
             }
           }
 
-          // ヘルプ商品
+          // ヘルプ商品（両モードで計算）
           for (const helpCastName of helpCastsOnItem) {
             const helpCast = castMap.get(helpCastName)
             if (!helpCast) continue
 
-            let selfShare = 0
-            let helpShare = 0
-            const perItem = Math.floor(itemAmount / helpCastsOnItem.length)
+            // item_based用の分配計算
+            const shareItem = calcHelpShareItem(itemAmountItem, helpCastsOnItem.length)
+            // receipt_based用の分配計算
+            const shareReceipt = calcHelpShareReceipt(itemAmountReceipt, helpCastsOnItem.length)
 
-            switch (helpDistMethod) {
-              case 'all_to_nomination':
-                selfShare = perItem
-                helpShare = 0
-                break
-              case 'equal':
-                selfShare = Math.floor(perItem / 2)
-                helpShare = giveHelpSales ? perItem - selfShare : 0
-                break
-              case 'ratio':
-                const helpAmount = Math.floor(perItem * helpRatio / 100)
-                selfShare = perItem - helpAmount
-                helpShare = giveHelpSales ? helpAmount : 0
-                break
-              case 'equal_per_person':
-                const total = realNominations.length + 1
-                selfShare = Math.floor(perItem / total)
-                helpShare = giveHelpSales ? Math.floor(perItem / total) : 0
-                break
-              default:
-                selfShare = perItem
-                helpShare = 0
-            }
+            // 後方互換用（現在のモードに応じた値）
+            const selfShare = isItemBased ? shareItem.selfShare : shareReceipt.selfShare
+            const helpShare = isItemBased ? shareItem.helpShare : shareReceipt.helpShare
 
             const key = `${order.id}:${nominationCast.id}:${helpCast.id}:${item.product_name}:${item.category || ''}`
             if (itemsMap.has(key)) {
               const existing = itemsMap.get(key)!
               existing.quantity += item.quantity
               existing.self_sales += selfShare
-              existing.self_sales_item_based += selfShare
-              existing.self_sales_receipt_based += selfShare
+              existing.self_sales_item_based += shareItem.selfShare
+              existing.self_sales_receipt_based += shareReceipt.selfShare
               existing.help_sales += helpShare
               existing.subtotal += adjustedSubtotal
             } else {
@@ -409,8 +467,8 @@ function aggregateCastDailyItems(
                 self_sales: selfShare,
                 help_sales: helpShare,
                 needs_cast: productNeedsCastMap.get(item.product_name) ?? true,
-                self_sales_item_based: selfShare,
-                self_sales_receipt_based: selfShare,
+                self_sales_item_based: shareItem.selfShare,
+                self_sales_receipt_based: shareReceipt.selfShare,
                 subtotal: adjustedSubtotal,
                 is_self: false,
                 self_back_rate: 0,
@@ -436,21 +494,18 @@ function aggregateCastDailyItems(
         if (!nominationCast) continue
 
         // キャストなし商品 → 推しの売上としてカウント（receipt_based）
-        // item_basedでは0になる
+        // item_basedでは常に0（キャスト名がないため）
         if (noCast) {
-          const perNomination = Math.floor(itemAmount / realNominations.length)
+          const perNominationReceipt = Math.floor(itemAmountReceipt / realNominations.length)
           const needsCastValue = productNeedsCastMap.get(item.product_name) ?? true
           const key = `${order.id}:${nominationCast.id}:null:${item.product_name}:${item.category || ''}`
 
           if (itemsMap.has(key)) {
             const existing = itemsMap.get(key)!
             existing.quantity += item.quantity
-            existing.self_sales += perNomination
-            existing.self_sales_receipt_based += perNomination
-            // item_basedはneeds_cast=trueの場合のみ加算
-            if (needsCastValue) {
-              existing.self_sales_item_based += perNomination
-            }
+            existing.self_sales += perNominationReceipt  // 後方互換（receipt_basedモード）
+            existing.self_sales_receipt_based += perNominationReceipt
+            // item_basedは常に0（キャスト名なし商品）
             existing.subtotal += adjustedSubtotal
           } else {
             itemsMap.set(key, {
@@ -464,11 +519,11 @@ function aggregateCastDailyItems(
               category: item.category,
               product_name: item.product_name,
               quantity: item.quantity,
-              self_sales: perNomination,
+              self_sales: perNominationReceipt,  // 後方互換（receipt_basedモード）
               help_sales: 0,
               needs_cast: needsCastValue,
-              self_sales_item_based: needsCastValue ? perNomination : 0,
-              self_sales_receipt_based: perNomination,
+              self_sales_item_based: 0,  // item_basedでは常に0
+              self_sales_receipt_based: perNominationReceipt,
               subtotal: adjustedSubtotal,
               is_self: true,
               self_back_rate: 0,
@@ -480,17 +535,19 @@ function aggregateCastDailyItems(
           continue
         }
 
-        // SELF商品 → 推しのself_salesに全額（キャスト名ありなので両方同じ値）
+        // SELF商品 → 推しのself_salesに全額（両モードで計算）
         if (isSelfOnly) {
-          const perNomination = Math.floor(itemAmount / realNominations.length)
+          const perNominationItem = Math.floor(itemAmountItem / realNominations.length)
+          const perNominationReceipt = Math.floor(itemAmountReceipt / realNominations.length)
+          const perNomination = isItemBased ? perNominationItem : perNominationReceipt  // 後方互換
           const key = `${order.id}:${nominationCast.id}:null:${item.product_name}:${item.category || ''}`
 
           if (itemsMap.has(key)) {
             const existing = itemsMap.get(key)!
             existing.quantity += item.quantity
             existing.self_sales += perNomination
-            existing.self_sales_item_based += perNomination
-            existing.self_sales_receipt_based += perNomination
+            existing.self_sales_item_based += perNominationItem
+            existing.self_sales_receipt_based += perNominationReceipt
             existing.subtotal += adjustedSubtotal
           } else {
             itemsMap.set(key, {
@@ -507,8 +564,8 @@ function aggregateCastDailyItems(
               self_sales: perNomination,
               help_sales: 0,
               needs_cast: productNeedsCastMap.get(item.product_name) ?? true,
-              self_sales_item_based: perNomination,
-              self_sales_receipt_based: perNomination,
+              self_sales_item_based: perNominationItem,
+              self_sales_receipt_based: perNominationReceipt,
               subtotal: adjustedSubtotal,
               is_self: true,
               self_back_rate: 0,
@@ -519,40 +576,16 @@ function aggregateCastDailyItems(
           }
         }
 
-        // HELP商品またはMIXED → 分配設定に基づく
+        // HELP商品またはMIXED → 分配設定に基づく（両モードで計算）
         if (isHelpOnly || isMixed) {
-          let selfShare = 0
-          let helpSharePerCast = 0
-          const perNominationBase = Math.floor(itemAmount / realNominations.length)
+          // item_based用の分配計算
+          const shareItem = calcHelpShareItem(itemAmountItem, helpCastsOnItem.length)
+          // receipt_based用の分配計算
+          const shareReceipt = calcHelpShareReceipt(itemAmountReceipt, helpCastsOnItem.length)
 
-          switch (helpDistMethod) {
-            case 'all_to_nomination':
-              selfShare = perNominationBase
-              helpSharePerCast = 0
-              break
-            case 'equal':
-              selfShare = Math.floor(perNominationBase / 2)
-              helpSharePerCast = giveHelpSales
-                ? Math.floor((perNominationBase - selfShare) / helpCastsOnItem.length)
-                : 0
-              break
-            case 'ratio':
-              const helpShareTotal = Math.floor(perNominationBase * helpRatio / 100)
-              selfShare = perNominationBase - helpShareTotal
-              helpSharePerCast = giveHelpSales
-                ? Math.floor(helpShareTotal / helpCastsOnItem.length)
-                : 0
-              break
-            case 'equal_per_person':
-              const allCastsCount = realNominations.length + helpCastsOnItem.length
-              const perPerson = Math.floor(itemAmount / allCastsCount)
-              selfShare = perPerson
-              helpSharePerCast = giveHelpSales ? perPerson : 0
-              break
-            default:
-              selfShare = perNominationBase
-              helpSharePerCast = 0
-          }
+          // 後方互換用（現在のモードに応じた値）
+          const selfShare = isItemBased ? shareItem.selfShare : shareReceipt.selfShare
+          const helpSharePerCast = isItemBased ? shareItem.helpShare : shareReceipt.helpShare
 
           for (const helpCastName of helpCastsOnItem) {
             const helpCast = castMap.get(helpCastName)
@@ -564,8 +597,8 @@ function aggregateCastDailyItems(
               const existing = itemsMap.get(key)!
               existing.quantity += item.quantity
               existing.self_sales += selfShare
-              existing.self_sales_item_based += selfShare
-              existing.self_sales_receipt_based += selfShare
+              existing.self_sales_item_based += shareItem.selfShare
+              existing.self_sales_receipt_based += shareReceipt.selfShare
               existing.help_sales += helpSharePerCast
               existing.subtotal += adjustedSubtotal
             } else {
@@ -583,8 +616,8 @@ function aggregateCastDailyItems(
                 self_sales: selfShare,
                 help_sales: helpSharePerCast,
                 needs_cast: productNeedsCastMap.get(item.product_name) ?? true,
-                self_sales_item_based: selfShare,
-                self_sales_receipt_based: selfShare,
+                self_sales_item_based: shareItem.selfShare,
+                self_sales_receipt_based: shareReceipt.selfShare,
                 subtotal: adjustedSubtotal,
                 is_self: false,
                 self_back_rate: 0,
@@ -595,17 +628,19 @@ function aggregateCastDailyItems(
             }
           }
 
-          // MIXED商品の場合、推し自身の分もレコードに（キャスト名ありなので両方同じ値）
+          // MIXED商品の場合、推し自身の分もレコードに（両モードで計算）
           if (isMixed && selfCastsOnItem.includes(nominationName)) {
             const selfKey = `${order.id}:${nominationCast.id}:null:${item.product_name}:${item.category || ''}`
-            const selfAmount = Math.floor(itemAmount / (selfCastsOnItem.length + helpCastsOnItem.length))
+            const selfAmountItem = Math.floor(itemAmountItem / (selfCastsOnItem.length + helpCastsOnItem.length))
+            const selfAmountReceipt = Math.floor(itemAmountReceipt / (selfCastsOnItem.length + helpCastsOnItem.length))
+            const selfAmount = isItemBased ? selfAmountItem : selfAmountReceipt  // 後方互換
 
             if (itemsMap.has(selfKey)) {
               const existing = itemsMap.get(selfKey)!
               existing.quantity += item.quantity
               existing.self_sales += selfAmount
-              existing.self_sales_item_based += selfAmount
-              existing.self_sales_receipt_based += selfAmount
+              existing.self_sales_item_based += selfAmountItem
+              existing.self_sales_receipt_based += selfAmountReceipt
               existing.subtotal += adjustedSubtotal
             } else {
               itemsMap.set(selfKey, {
@@ -622,8 +657,8 @@ function aggregateCastDailyItems(
                 self_sales: selfAmount,
                 help_sales: 0,
                 needs_cast: productNeedsCastMap.get(item.product_name) ?? true,
-                self_sales_item_based: selfAmount,
-                self_sales_receipt_based: selfAmount,
+                self_sales_item_based: selfAmountItem,
+                self_sales_receipt_based: selfAmountReceipt,
                 subtotal: adjustedSubtotal,
                 is_self: true,
                 self_back_rate: 0,
