@@ -790,20 +790,6 @@ export async function recalculateForDate(storeId: number, date: string): Promise
       existingStats?.filter((s: { is_finalized: boolean }) => s.is_finalized).map((s: { cast_id: number }) => s.cast_id) || []
     )
 
-    const castInfos = (casts || []).map((c: Cast) => ({ id: c.id, name: c.name }))
-    const calculatedSales = calculateCastSalesByPublishedMethod(
-      typedOrders,
-      castInfos,
-      salesSettings,
-      taxRate,
-      serviceRate
-    )
-
-    const salesMap = new Map<number, CastSalesSummary>()
-    calculatedSales.forEach((summary: CastSalesSummary) => {
-      salesMap.set(summary.cast_id, summary)
-    })
-
     const nominationCountByCast = new Map<number, number>()
     for (const order of typedOrders) {
       if (!order.staff_name || !order.guest_count) continue
@@ -811,6 +797,97 @@ export async function recalculateForDate(storeId: number, date: string): Promise
       if (cast) {
         const current = nominationCountByCast.get(cast.id) || 0
         nominationCountByCast.set(cast.id, current + order.guest_count)
+      }
+    }
+
+    // 先にdailyItemsを作成（両方の売上フィールドを持つ）
+    const dailyItems = aggregateCastDailyItems(typedOrders, castMap, storeId, date, salesSettings, taxRate, productNeedsCastMap)
+
+    // BASE注文をdailyItemsに追加
+    const baseItemsMap = new Map<string, CastDailyItemData>()
+    for (const order of baseOrders || []) {
+      if (!order.cast_id || !order.product_name) continue
+      const key = `${order.cast_id}:${order.product_name}`
+      const amount = order.actual_price * order.quantity
+      if (baseItemsMap.has(key)) {
+        const existing = baseItemsMap.get(key)!
+        existing.quantity += order.quantity
+        existing.self_sales += amount
+        existing.subtotal += amount
+        existing.self_sales_item_based += amount
+        existing.self_sales_receipt_based += amount
+      } else {
+        baseItemsMap.set(key, {
+          cast_id: order.cast_id,
+          help_cast_id: null,
+          store_id: storeId,
+          date: date,
+          order_id: null,
+          table_number: null,
+          guest_name: null,
+          category: 'BASE',
+          product_name: order.product_name,
+          quantity: order.quantity,
+          self_sales: amount,
+          help_sales: 0,
+          needs_cast: true,
+          subtotal: amount,
+          self_back_rate: 0,
+          self_back_amount: 0,
+          help_back_rate: 0,
+          help_back_amount: 0,
+          is_self: true,
+          self_sales_item_based: amount,
+          self_sales_receipt_based: amount
+        })
+      }
+    }
+    const baseItems = Array.from(baseItemsMap.values())
+    const allDailyItems = [...dailyItems, ...baseItems]
+
+    // バック率・バック額を計算
+    calculateBackRatesAndAmounts(allDailyItems, typedCastBackRates)
+
+    // キャストごとに売上を集計（両方の方式で計算）
+    const castSalesMap = new Map<number, {
+      self_sales_item_based: number
+      help_sales_item_based: number
+      self_sales_receipt_based: number
+      help_sales_receipt_based: number
+      product_back: number
+    }>()
+
+    for (const item of allDailyItems) {
+      const existing = castSalesMap.get(item.cast_id)
+      if (existing) {
+        existing.self_sales_item_based += item.self_sales_item_based
+        existing.self_sales_receipt_based += item.self_sales_receipt_based
+        existing.product_back += item.self_back_amount
+        // ヘルプ売上は help_cast_id がある場合のみ
+        if (item.help_cast_id) {
+          const helpExisting = castSalesMap.get(item.help_cast_id)
+          if (helpExisting) {
+            helpExisting.help_sales_item_based += item.needs_cast ? item.help_sales : 0
+            helpExisting.help_sales_receipt_based += item.help_sales
+            helpExisting.product_back += item.help_back_amount
+          } else {
+            castSalesMap.set(item.help_cast_id, {
+              self_sales_item_based: 0,
+              help_sales_item_based: item.needs_cast ? item.help_sales : 0,
+              self_sales_receipt_based: 0,
+              help_sales_receipt_based: item.help_sales,
+              product_back: item.help_back_amount
+            })
+          }
+        }
+      } else {
+        castSalesMap.set(item.cast_id, {
+          self_sales_item_based: item.self_sales_item_based,
+          help_sales_item_based: 0,
+          self_sales_receipt_based: item.self_sales_receipt_based,
+          help_sales_receipt_based: 0,
+          product_back: item.self_back_amount
+        })
       }
     }
 
@@ -841,15 +918,16 @@ export async function recalculateForDate(storeId: number, date: string): Promise
 
     const processedCastIds = new Set<number>()
 
-    for (const summary of calculatedSales) {
-      if (finalizedCastIds.has(summary.cast_id)) continue
-      processedCastIds.add(summary.cast_id)
+    // キャストごとにstatsを作成
+    for (const [castId, sales] of castSalesMap) {
+      if (finalizedCastIds.has(castId)) continue
+      processedCastIds.add(castId)
 
-      const cast = [...castMap.values()].find(c => c.id === summary.cast_id)
+      const cast = [...castMap.values()].find(c => c.id === castId)
       if (!cast) continue
 
       const attendance = attendanceMap.get(cast.name)
-      const compSettings = compSettingsMap.get(summary.cast_id)
+      const compSettings = compSettingsMap.get(castId)
       const workHours = calculateWorkHours(attendance?.check_in_datetime || null, attendance?.check_out_datetime || null)
       const costumeId = attendance?.costume_id || null
       const wageStatusId = compSettings?.status_id || null
@@ -866,23 +944,18 @@ export async function recalculateForDate(storeId: number, date: string): Promise
       const totalHourlyWage = baseHourlyWage + specialDayBonus + costumeBonus
       const wageAmount = Math.round(totalHourlyWage * workHours)
 
-      const method = salesSettings.published_aggregation ?? 'item_based'
-      const baseSales = baseSalesByCast.get(summary.cast_id) || 0
-      const includeBaseInItem = salesSettings.include_base_in_item_sales ?? false
-      const includeBaseInReceipt = salesSettings.include_base_in_receipt_sales ?? false
-
       statsToUpsert.push({
-        cast_id: summary.cast_id,
+        cast_id: castId,
         store_id: storeId,
         date: date,
-        self_sales_item_based: (method === 'item_based' ? summary.self_sales : 0) + (includeBaseInItem ? baseSales : 0),
-        help_sales_item_based: method === 'item_based' ? summary.help_sales : 0,
-        total_sales_item_based: (method === 'item_based' ? summary.total_sales : 0) + (includeBaseInItem ? baseSales : 0),
-        product_back_item_based: Math.round(summary.total_back),
-        self_sales_receipt_based: (method === 'receipt_based' ? summary.self_sales : 0) + (includeBaseInReceipt ? baseSales : 0),
-        help_sales_receipt_based: method === 'receipt_based' ? summary.help_sales : 0,
-        total_sales_receipt_based: (method === 'receipt_based' ? summary.total_sales : 0) + (includeBaseInReceipt ? baseSales : 0),
-        product_back_receipt_based: method === 'receipt_based' ? Math.round(summary.total_back) : 0,
+        self_sales_item_based: sales.self_sales_item_based,
+        help_sales_item_based: sales.help_sales_item_based,
+        total_sales_item_based: sales.self_sales_item_based + sales.help_sales_item_based,
+        product_back_item_based: Math.round(sales.product_back),
+        self_sales_receipt_based: sales.self_sales_receipt_based,
+        help_sales_receipt_based: sales.help_sales_receipt_based,
+        total_sales_receipt_based: sales.self_sales_receipt_based + sales.help_sales_receipt_based,
+        product_back_receipt_based: Math.round(sales.product_back),
         work_hours: workHours,
         base_hourly_wage: baseHourlyWage,
         special_day_bonus: specialDayBonus,
@@ -891,7 +964,7 @@ export async function recalculateForDate(storeId: number, date: string): Promise
         wage_amount: wageAmount,
         costume_id: costumeId,
         wage_status_id: wageStatusId,
-        nomination_count: nominationCountByCast.get(summary.cast_id) || 0,
+        nomination_count: nominationCountByCast.get(castId) || 0,
         is_finalized: false,
         updated_at: new Date().toISOString()
       })
@@ -996,51 +1069,7 @@ export async function recalculateForDate(storeId: number, date: string): Promise
       if (upsertError) throw upsertError
     }
 
-    const dailyItems = aggregateCastDailyItems(typedOrders, castMap, storeId, date, salesSettings, taxRate, productNeedsCastMap)
-
-    const baseItemsMap = new Map<string, CastDailyItemData>()
-    for (const order of baseOrders || []) {
-      if (!order.cast_id || !order.product_name) continue
-      const key = `${order.cast_id}:${order.product_name}`
-      const amount = order.actual_price * order.quantity
-      if (baseItemsMap.has(key)) {
-        const existing = baseItemsMap.get(key)!
-        existing.quantity += order.quantity
-        existing.self_sales += amount
-        existing.subtotal += amount
-      } else {
-        baseItemsMap.set(key, {
-          cast_id: order.cast_id,
-          help_cast_id: null,
-          store_id: storeId,
-          date: date,
-          order_id: null,
-          table_number: null,
-          guest_name: null,
-          category: 'BASE',
-          product_name: order.product_name,
-          quantity: order.quantity,
-          self_sales: amount,
-          help_sales: 0,
-          needs_cast: true,
-          subtotal: amount,
-          self_back_rate: 0,
-          self_back_amount: 0,
-          help_back_rate: 0,
-          help_back_amount: 0,
-          is_self: true,
-          self_sales_item_based: amount,
-          self_sales_receipt_based: amount
-        })
-      }
-    }
-    const baseItems = Array.from(baseItemsMap.values())
-
-    const allDailyItems = [...dailyItems, ...baseItems]
-
-    // バック率・バック額を計算
-    calculateBackRatesAndAmounts(allDailyItems, typedCastBackRates)
-
+    // cast_daily_itemsの保存
     if (allDailyItems.length > 0) {
       const itemsToUpsert = allDailyItems.filter(item => !finalizedCastIds.has(item.cast_id))
       if (itemsToUpsert.length > 0) {
