@@ -2718,9 +2718,9 @@ function PayslipPageContent() {
           item.date === selectedDayDetail && (!isItemBased || item.needs_cast)
         )
 
-        // 売上額を取得するヘルパー関数（後方互換のためself_salesを使用）
+        // 売上額を取得するヘルパー関数（売上集計方法に応じたフィールドを使用）
         const getSelfSales = (item: CastDailyItem) => {
-          return item.self_sales || 0
+          return isItemBased ? (item.self_sales_item_based || 0) : (item.self_sales_receipt_based || 0)
         }
 
         // 伝票ごとにグループ化（推し売上 - 伝票内の全アイテムを表示）

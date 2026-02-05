@@ -88,6 +88,9 @@ interface CastDailyItemData {
   help_back_rate: number
   help_back_amount: number
   is_self: boolean
+  // 売上集計方法別の売上額
+  self_sales_item_based: number
+  self_sales_receipt_based: number
 }
 
 // cast_back_ratesの型
@@ -209,7 +212,9 @@ function aggregateCastDailyItems(
                 self_back_amount: 0,
                 help_back_rate: 0,
                 help_back_amount: 0,
-                is_self: true
+                is_self: true,
+                self_sales_item_based: 0,
+                self_sales_receipt_based: 0
               })
             }
             continue
@@ -243,7 +248,9 @@ function aggregateCastDailyItems(
                 self_back_amount: 0,
                 help_back_rate: 0,
                 help_back_amount: 0,
-                is_self: true
+                is_self: true,
+                self_sales_item_based: 0,
+                self_sales_receipt_based: 0
               })
             }
           }
@@ -307,7 +314,9 @@ function aggregateCastDailyItems(
                 self_back_amount: 0,
                 help_back_rate: 0,
                 help_back_amount: 0,
-                is_self: false
+                is_self: false,
+                self_sales_item_based: 0,
+                self_sales_receipt_based: 0
               })
             }
           }
@@ -353,7 +362,9 @@ function aggregateCastDailyItems(
               self_back_amount: 0,
               help_back_rate: 0,
               help_back_amount: 0,
-              is_self: true
+              is_self: true,
+              self_sales_item_based: 0,
+              self_sales_receipt_based: 0
             })
           }
           continue
@@ -388,7 +399,9 @@ function aggregateCastDailyItems(
               self_back_amount: 0,
               help_back_rate: 0,
               help_back_amount: 0,
-              is_self: true
+              is_self: true,
+              self_sales_item_based: 0,
+              self_sales_receipt_based: 0
             })
           }
         }
@@ -459,7 +472,9 @@ function aggregateCastDailyItems(
                 self_back_amount: 0,
                 help_back_rate: 0,
                 help_back_amount: 0,
-                is_self: false
+                is_self: false,
+                self_sales_item_based: 0,
+                self_sales_receipt_based: 0
               })
             }
           }
@@ -493,7 +508,9 @@ function aggregateCastDailyItems(
                 self_back_amount: 0,
                 help_back_rate: 0,
                 help_back_amount: 0,
-                is_self: true
+                is_self: true,
+                self_sales_item_based: 0,
+                self_sales_receipt_based: 0
               })
             }
           }
@@ -502,7 +519,16 @@ function aggregateCastDailyItems(
     }
   }
 
-  return Array.from(itemsMap.values())
+  // 売上集計方法別のフィールドを設定
+  const items = Array.from(itemsMap.values())
+  for (const item of items) {
+    // item_based: needs_cast=true の商品のみ売上計上
+    item.self_sales_item_based = item.needs_cast ? item.self_sales : 0
+    // receipt_based: 全商品を売上計上（self_salesは現在のモードで計算済み、needs_cast=falseはsubtotalを使用）
+    item.self_sales_receipt_based = item.needs_cast ? item.self_sales : item.subtotal
+  }
+
+  return items
 }
 
 // cast_back_ratesからバック率・バック額を計算して設定
@@ -1002,7 +1028,9 @@ export async function recalculateForDate(storeId: number, date: string): Promise
           self_back_amount: 0,
           help_back_rate: 0,
           help_back_amount: 0,
-          is_self: true
+          is_self: true,
+          self_sales_item_based: amount,
+          self_sales_receipt_based: amount
         })
       }
     }
