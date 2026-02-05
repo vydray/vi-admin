@@ -2024,6 +2024,36 @@ function PayslipPageContent() {
               <div style={styles.grossLabel}>総支給額</div>
               <div style={styles.grossValue}>{currencyFormatter.format(summary.grossEarnings)}</div>
             </div>
+
+            {/* 控除内訳 */}
+            <div style={{ marginTop: '20px' }}>
+              <h2 style={{ ...styles.sectionTitle, marginBottom: '12px' }}>控除内訳</h2>
+              {deductions.length > 0 ? (
+                <div style={styles.deductionList}>
+                  {deductions.map((d, i) => (
+                    <div key={i} style={styles.deductionItem}>
+                      <div style={styles.deductionName}>
+                        {d.name}
+                        {d.detail && <span style={styles.deductionDetail}>（{d.detail}）</span>}
+                      </div>
+                      <div style={styles.deductionAmount}>-{currencyFormatter.format(d.amount)}</div>
+                    </div>
+                  ))}
+                  <div style={styles.deductionTotal}>
+                    <div style={styles.deductionName}>控除合計</div>
+                    <div style={styles.deductionAmount}>-{currencyFormatter.format(totalDeduction)}</div>
+                  </div>
+                </div>
+              ) : (
+                <div style={styles.noData}>控除項目がありません</div>
+              )}
+            </div>
+
+            {/* 差引支給額 */}
+            <div style={{ ...styles.netEarningsSection, marginTop: '16px' }}>
+              <div style={styles.netEarningsLabel}>差引支給額</div>
+              <div style={styles.netEarningsValue}>{currencyFormatter.format(netEarnings)}</div>
+            </div>
           </div>
 
           {/* 日別明細 */}
@@ -2495,35 +2525,6 @@ function PayslipPageContent() {
             </div>
           )}
 
-          {/* 控除内訳 */}
-          <div style={styles.section}>
-            <h2 style={styles.sectionTitle}>控除内訳</h2>
-            {deductions.length > 0 ? (
-              <div style={styles.deductionList}>
-                {deductions.map((d, i) => (
-                  <div key={i} style={styles.deductionItem}>
-                    <div style={styles.deductionName}>
-                      {d.name}
-                      {d.detail && <span style={styles.deductionDetail}>（{d.detail}）</span>}
-                    </div>
-                    <div style={styles.deductionAmount}>-{currencyFormatter.format(d.amount)}</div>
-                  </div>
-                ))}
-                <div style={styles.deductionTotal}>
-                  <div style={styles.deductionName}>控除合計</div>
-                  <div style={styles.deductionAmount}>-{currencyFormatter.format(totalDeduction)}</div>
-                </div>
-              </div>
-            ) : (
-              <div style={styles.noData}>控除項目がありません</div>
-            )}
-          </div>
-
-          {/* 差引支給額 */}
-          <div style={styles.netEarningsSection}>
-            <div style={styles.netEarningsLabel}>差引支給額</div>
-            <div style={styles.netEarningsValue}>{currencyFormatter.format(netEarnings)}</div>
-          </div>
         </div>
       )}
 
