@@ -522,10 +522,12 @@ function aggregateCastDailyItems(
   // 売上集計方法別のフィールドを設定
   const items = Array.from(itemsMap.values())
   for (const item of items) {
-    // item_based: needs_cast=true の商品のみ売上計上
+    // item_based: needs_cast=true かつ キャストが割り当てられている商品のみ売上計上
     item.self_sales_item_based = item.needs_cast ? item.self_sales : 0
-    // receipt_based: 全商品を売上計上（self_salesは現在のモードで計算済み、needs_cast=falseはsubtotalを使用）
-    item.self_sales_receipt_based = item.needs_cast ? item.self_sales : item.subtotal
+    // receipt_based: 伝票上の全商品を売上計上
+    // キャストが割り当てられている場合はself_sales、そうでなければsubtotalを使用
+    // （例：セットなどneeds_cast=trueでもキャスト未割当の場合はsubtotalで計上）
+    item.self_sales_receipt_based = item.self_sales > 0 ? item.self_sales : item.subtotal
   }
 
   return items
