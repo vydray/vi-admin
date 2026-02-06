@@ -3,15 +3,26 @@ import { cookies } from 'next/headers'
 import { getSupabaseServerClient } from '@/lib/supabase'
 import { format, startOfMonth, endOfMonth } from 'date-fns'
 
-// セッション検証
-async function validateSession(): Promise<{ storeId: number } | null> {
+// セッション検証（store_idオーバーライド対応）
+async function validateSession(requestedStoreId?: number): Promise<{ storeId: number } | null> {
   const cookieStore = await cookies()
   const sessionCookie = cookieStore.get('admin_session')
   if (!sessionCookie) return null
 
   try {
     const session = JSON.parse(sessionCookie.value)
-    return { storeId: session.store_id }
+
+    // super_adminの場合、リクエストされたstore_idを使用可能
+    if (requestedStoreId && session.isAllStore) {
+      return { storeId: requestedStoreId }
+    }
+
+    // store_adminの場合、自分のstore_idのみ使用可能
+    if (requestedStoreId && requestedStoreId !== session.store_id && !session.isAllStore) {
+      return null
+    }
+
+    return { storeId: requestedStoreId || session.store_id }
   } catch {
     return null
   }
@@ -57,14 +68,15 @@ function calculateLatePenalty(lateMinutes: number, rule: {
 }
 
 export async function POST(request: NextRequest) {
-  const session = await validateSession()
-  if (!session) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
   try {
     const body = await request.json()
-    const { year_month } = body
+    const { year_month, store_id } = body
+
+    // セッション検証（store_idオーバーライド対応）
+    const session = await validateSession(store_id)
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
 
     if (!year_month) {
       return NextResponse.json({ error: 'year_month is required' }, { status: 400 })

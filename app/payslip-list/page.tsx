@@ -58,7 +58,7 @@ function PayslipListContent() {
       const response = await fetch('/api/payslip-list', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ year_month: yearMonth })
+        body: JSON.stringify({ year_month: yearMonth, store_id: storeId })
       })
 
       if (!response.ok) {

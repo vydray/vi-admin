@@ -475,6 +475,15 @@ function PayslipPageContent() {
     }
 
     const result = settings || null
+    console.log('[DEBUG] loadCompensationSettings:', {
+      castId,
+      targetYear,
+      targetMonthNum,
+      allSettingsCount: allSettings?.length || 0,
+      selectedSetting: result ? { target_year: result.target_year, target_month: result.target_month } : null,
+      compensation_types: result?.compensation_types,
+      use_product_back: (result?.compensation_types as CompensationType[] | null)?.[0]?.use_product_back
+    })
     setCompensationSettings(result)
     compensationSettingsRef.current = result
     return result
@@ -555,7 +564,8 @@ function PayslipPageContent() {
         body: JSON.stringify({
           cast_id: castId,
           start_date: startDate,
-          end_date: endDate
+          end_date: endDate,
+          store_id: storeId
         })
       })
 

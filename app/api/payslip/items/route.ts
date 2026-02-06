@@ -2,15 +2,28 @@ import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { getSupabaseServerClient } from '@/lib/supabase'
 
-// セッション検証
-async function validateSession(): Promise<{ storeId: number } | null> {
+// セッション検証（store_idオーバーライド対応）
+async function validateSession(requestedStoreId?: number): Promise<{ storeId: number } | null> {
   const cookieStore = await cookies()
   const sessionCookie = cookieStore.get('admin_session')
   if (!sessionCookie) return null
 
   try {
     const session = JSON.parse(sessionCookie.value)
-    return { storeId: session.store_id }  // セッションはsnake_caseで保存されている
+
+    // super_adminの場合、リクエストされたstore_idを使用可能
+    if (requestedStoreId && session.isAllStore) {
+      return { storeId: requestedStoreId }
+    }
+
+    // store_adminの場合、自分のstore_idのみ使用可能
+    // リクエストされたstore_idが自分のstore_idと一致するか、指定がない場合はセッションのstore_idを使用
+    if (requestedStoreId && requestedStoreId !== session.store_id && !session.isAllStore) {
+      console.warn(`[payslip/items] Unauthorized store access attempt: requested=${requestedStoreId}, session=${session.store_id}`)
+      return null
+    }
+
+    return { storeId: requestedStoreId || session.store_id }
   } catch {
     return null
   }
@@ -18,20 +31,19 @@ async function validateSession(): Promise<{ storeId: number } | null> {
 
 // POST: キャストの日別売上アイテムを取得（推し + ヘルプ両方）
 export async function POST(request: NextRequest) {
-  const session = await validateSession()
-  if (!session) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
   try {
     const body = await request.json()
-    const { cast_id, start_date, end_date } = body
+    const { cast_id, start_date, end_date, store_id } = body
+
+    // セッション検証（store_idオーバーライド対応）
+    const session = await validateSession(store_id)
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
 
     if (!cast_id || !start_date || !end_date) {
       return NextResponse.json({ error: 'cast_id, start_date, end_date are required' }, { status: 400 })
     }
-
-    console.log('[payslip/items] Request:', { cast_id, start_date, end_date, storeId: session.storeId })
 
     const supabase = getSupabaseServerClient()
 
