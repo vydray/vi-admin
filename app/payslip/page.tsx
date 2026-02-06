@@ -914,7 +914,11 @@ function PayslipPageContent() {
   const summary = useMemo(() => {
     // 時給関連はcast_daily_statsから
     const totalWorkHours = dailyStats.reduce((sum, d) => sum + (d.work_hours || 0), 0)
-    const totalWageAmount = dailyStats.reduce((sum, d) => sum + (d.wage_amount || 0), 0)
+    // cast_daily_stats.wage_amountが0の場合、時給×勤務時間で計算
+    let totalWageAmount = dailyStats.reduce((sum, d) => sum + (d.wage_amount || 0), 0)
+    if (totalWageAmount === 0 && totalWorkHours > 0 && actualHourlyWage && actualHourlyWage > 0) {
+      totalWageAmount = Math.round(totalWorkHours * actualHourlyWage)
+    }
 
     // 報酬形態のsales_aggregationに基づいて売上を選択
     const salesAggregation = activeCompensationType?.sales_aggregation || 'item_based'
@@ -975,7 +979,7 @@ function PayslipPageContent() {
       useWageData: !!useWageData,
       salesAggregation
     }
-  }, [dailyStats, dailySalesData, activeCompensationType, castDailyItems, helpDailyItems])
+  }, [dailyStats, dailySalesData, activeCompensationType, castDailyItems, helpDailyItems, actualHourlyWage])
 
   // 遅刻罰金を計算
   const calculateLatePenalty = useCallback((lateMinutes: number, rule: LatePenaltyRule): number => {
