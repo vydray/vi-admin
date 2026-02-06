@@ -728,14 +728,25 @@ export async function recalculateForDate(storeId: number, date: string): Promise
       productNeedsCastMap.set(p.name, p.needs_cast ?? true)
     })
 
-    // バック率取得
-    const { data: castBackRates } = await supabaseAdmin
-      .from('cast_back_rates')
-      .select('cast_id, product_name, self_back_ratio, help_back_ratio')
-      .eq('store_id', storeId)
-      .eq('is_active', true)
+    // バック率取得（デフォルトの1000件制限を回避するためページネーション）
+    let allCastBackRates: CastBackRate[] = []
+    let page = 0
+    const pageSize = 1000
+    while (true) {
+      const { data: castBackRatesPage } = await supabaseAdmin
+        .from('cast_back_rates')
+        .select('cast_id, product_name, self_back_ratio, help_back_ratio')
+        .eq('store_id', storeId)
+        .eq('is_active', true)
+        .range(page * pageSize, (page + 1) * pageSize - 1)
 
-    const typedCastBackRates = (castBackRates || []) as CastBackRate[]
+      if (!castBackRatesPage || castBackRatesPage.length === 0) break
+      allCastBackRates = allCastBackRates.concat(castBackRatesPage as CastBackRate[])
+      if (castBackRatesPage.length < pageSize) break
+      page++
+    }
+
+    const typedCastBackRates = allCastBackRates
 
     const { data: attendances } = await supabaseAdmin
       .from('attendance')
