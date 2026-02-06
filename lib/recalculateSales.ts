@@ -182,7 +182,7 @@ function aggregateCastDailyItems(
     const isFreeTabe = realNominations.length === 0
 
     if (isFreeTabe) {
-      // フリー卓の場合：cast_nameが割り当てられたアイテムのみ処理
+      // フリー卓の場合：cast_nameが割り当てられたアイテムはヘルプとして扱う
       // 商品バックは付くが、売上（推し小計・伝票小計）には含めない
       for (const item of order.order_items || []) {
         const castsOnItem = item.cast_name || []
@@ -198,17 +198,17 @@ function aggregateCastDailyItems(
           const cast = castMap.get(castName)
           if (!cast) continue
 
-          // フリー卓用のキー（通常と区別）
-          const key = `${order.id}:${cast.id}:null:${item.product_name}:${item.category || ''}:free`
+          // フリー卓用のキー（ヘルプとして区別）
+          const key = `${order.id}:${cast.id}:${cast.id}:${item.product_name}:${item.category || ''}:free_help`
           if (itemsMap.has(key)) {
             const existing = itemsMap.get(key)!
             existing.quantity += item.quantity
-            existing.self_sales += perCast
+            existing.help_sales += perCast  // ヘルプ売上として加算
             existing.subtotal += adjustedSubtotal
           } else {
             itemsMap.set(key, {
               cast_id: cast.id,
-              help_cast_id: null,
+              help_cast_id: cast.id,  // 同じキャスト（ヘルプとして自分を記録）
               store_id: storeId,
               date: date,
               order_id: order.id,
@@ -217,17 +217,17 @@ function aggregateCastDailyItems(
               category: item.category,
               product_name: item.product_name,
               quantity: item.quantity,
-              self_sales: perCast,  // バック計算用に設定
-              help_sales: 0,
+              self_sales: 0,
+              help_sales: perCast,  // ヘルプ売上として設定
               needs_cast: productNeedsCastMap.get(item.product_name) ?? true,
               subtotal: adjustedSubtotal,
               self_back_rate: 0,
               self_back_amount: 0,
               help_back_rate: 0,
               help_back_amount: 0,
-              is_self: true,
-              self_sales_item_based: -1,  // フリー卓マーカー（後で0にする）
-              self_sales_receipt_based: -1  // フリー卓マーカー（後で0にする）
+              is_self: false,  // ヘルプとして扱う
+              self_sales_item_based: 0,  // 売上には含めない
+              self_sales_receipt_based: 0  // 売上には含めない
             })
           }
         }
@@ -676,7 +676,13 @@ function calculateBackRatesAndAmounts(
 
         // ヘルプキャストのcompensation_settingsからhelp_back_calculation_methodを取得
         const helpCompSettings = compensationSettingsMap.get(item.help_cast_id)
-        const helpBackCalcMethod = getHelpBackCalculationMethod(helpCompSettings)
+        let helpBackCalcMethod = getHelpBackCalculationMethod(helpCompSettings)
+
+        // フリー卓の場合（cast_id === help_cast_id）は強制的にsales_based方式を使用
+        // （推しがいないため、distributed_amountでは計算できない）
+        if (item.cast_id === item.help_cast_id) {
+          helpBackCalcMethod = 'sales_based'
+        }
 
         // help_back_calculation_methodに基づいてベース金額を決定
         let baseAmount: number
