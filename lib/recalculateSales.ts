@@ -101,6 +101,23 @@ interface CastBackRate {
   help_back_ratio: number | null
 }
 
+// compensation_settingsの型（help_back_calculation_method用）
+interface CompensationType {
+  id: string
+  name: string
+  is_enabled: boolean
+  help_back_calculation_method?: string
+  use_help_product_back?: boolean
+}
+
+interface CompensationSettingsFull {
+  cast_id: number
+  selected_compensation_type_id: string | null
+  compensation_types: CompensationType[] | null
+  help_back_calculation_method?: string
+  use_help_product_back?: boolean
+}
+
 // 商品別キャスト売上を集計（cast_daily_items用）
 function aggregateCastDailyItems(
   orders: OrderWithStaff[],
@@ -533,10 +550,43 @@ function aggregateCastDailyItems(
   return items
 }
 
+// ヘルプキャストのhelp_back_calculation_methodを取得
+function getHelpBackCalculationMethod(
+  compSettings: CompensationSettingsFull | undefined
+): string {
+  if (!compSettings) return 'sales_based'
+
+  // selected_compensation_type_idがある場合、該当する報酬形態から取得
+  if (compSettings.selected_compensation_type_id && compSettings.compensation_types) {
+    const selectedType = compSettings.compensation_types.find(
+      t => t.id === compSettings.selected_compensation_type_id
+    )
+    if (selectedType?.help_back_calculation_method) {
+      return selectedType.help_back_calculation_method
+    }
+  }
+
+  // 選択されていない場合、最初の有効な報酬形態から取得
+  if (compSettings.compensation_types) {
+    const enabledType = compSettings.compensation_types.find(t => t.is_enabled)
+    if (enabledType?.help_back_calculation_method) {
+      return enabledType.help_back_calculation_method
+    }
+  }
+
+  // compensation_settingsのトップレベルに設定がある場合
+  if (compSettings.help_back_calculation_method) {
+    return compSettings.help_back_calculation_method
+  }
+
+  return 'sales_based'
+}
+
 // cast_back_ratesからバック率・バック額を計算して設定
 function calculateBackRatesAndAmounts(
   items: CastDailyItemData[],
-  castBackRates: CastBackRate[]
+  castBackRates: CastBackRate[],
+  compensationSettingsMap: Map<number, CompensationSettingsFull>
 ): CastDailyItemData[] {
   // cast_id + product_name をキーにしたMapを作成（検索高速化）
   const backRateMap = new Map<string, CastBackRate>()
@@ -562,7 +612,30 @@ function calculateBackRatesAndAmounts(
       const helpBackRate = backRateMap.get(helpKey)
       if (helpBackRate) {
         item.help_back_rate = helpBackRate.help_back_ratio ?? 0
-        item.help_back_amount = Math.floor(item.help_sales * item.help_back_rate / 100)
+
+        // ヘルプキャストのcompensation_settingsからhelp_back_calculation_methodを取得
+        const helpCompSettings = compensationSettingsMap.get(item.help_cast_id)
+        const helpBackCalcMethod = getHelpBackCalculationMethod(helpCompSettings)
+
+        // help_back_calculation_methodに基づいてベース金額を決定
+        let baseAmount: number
+        switch (helpBackCalcMethod) {
+          case 'full_amount':
+            // 商品の小計金額をベースに計算
+            baseAmount = item.subtotal || 0
+            break
+          case 'distributed_amount':
+            // 推し売上（分配後）をベースに計算
+            baseAmount = item.self_sales || 0
+            break
+          case 'sales_based':
+          default:
+            // ヘルプ売上をベースに計算
+            baseAmount = item.help_sales || 0
+            break
+        }
+
+        item.help_back_amount = Math.floor(baseAmount * item.help_back_rate / 100)
       }
     }
   }
@@ -759,11 +832,15 @@ export async function recalculateForDate(storeId: number, date: string): Promise
 
     const { data: compensationSettings } = await supabaseAdmin
       .from('compensation_settings')
-      .select('cast_id, status_id, hourly_wage_override')
+      .select('cast_id, status_id, hourly_wage_override, selected_compensation_type_id, compensation_types, help_back_calculation_method, use_help_product_back')
       .eq('store_id', storeId)
 
     const compSettingsMap = new Map<number, CompensationSettingsWage>()
-    compensationSettings?.forEach((c: CompensationSettingsWage) => compSettingsMap.set(c.cast_id, c))
+    const compSettingsFullMap = new Map<number, CompensationSettingsFull>()
+    compensationSettings?.forEach((c: CompensationSettingsWage & CompensationSettingsFull) => {
+      compSettingsMap.set(c.cast_id, c)
+      compSettingsFullMap.set(c.cast_id, c)
+    })
 
     const { data: wageStatuses } = await supabaseAdmin
       .from('wage_statuses')
@@ -858,8 +935,8 @@ export async function recalculateForDate(storeId: number, date: string): Promise
     const baseItems = Array.from(baseItemsMap.values())
     const allDailyItems = [...dailyItems, ...baseItems]
 
-    // バック率・バック額を計算
-    calculateBackRatesAndAmounts(allDailyItems, typedCastBackRates)
+    // バック率・バック額を計算（help_back_calculation_methodを考慮）
+    calculateBackRatesAndAmounts(allDailyItems, typedCastBackRates, compSettingsFullMap)
 
     // キャストごとに売上を集計（両方の方式で計算）
     const castSalesMap = new Map<number, {

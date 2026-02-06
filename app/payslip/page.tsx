@@ -502,52 +502,48 @@ function PayslipPageContent() {
 
     setSavedPayslip(error ? null : data as SavedPayslip)
 
-    // cast_daily_items を取得（伝票詳細表示用）
+    // cast_daily_items を取得（API経由でRLSをバイパス）
     const startDate = format(startOfMonth(month), 'yyyy-MM-dd')
     const endDate = format(endOfMonth(month), 'yyyy-MM-dd')
 
-    // 1. 推しとして参加した分（cast_id = castId）
-    const { data: dailyItems, error: dailyItemsError } = await supabase
-      .from('cast_daily_items')
-      .select('id, order_id, table_number, guest_name, product_name, category, quantity, subtotal, is_self, self_sales, help_sales, needs_cast, date, cast_id, help_cast_id, self_sales_item_based, self_sales_receipt_based, self_back_rate, self_back_amount, help_back_rate, help_back_amount')
-      .eq('cast_id', castId)
-      .eq('store_id', storeId)
-      .gte('date', startDate)
-      .lte('date', endDate)
-      .order('date')
+    try {
+      const response = await fetch('/api/payslip/items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cast_id: castId,
+          start_date: startDate,
+          end_date: endDate
+        })
+      })
 
-    if (dailyItemsError) {
-      console.error('cast_daily_items取得エラー:', dailyItemsError)
+      if (!response.ok) {
+        console.error('cast_daily_items API エラー:', response.status)
+        setCastDailyItems([])
+        setHelpDailyItems([])
+      } else {
+        const result = await response.json()
+        const selfItems = result.selfItems || []
+        const helpItems = result.helpItems || []
+
+        console.log(`[DEBUG] cast_daily_items取得: castId=${castId}, self=${selfItems.length}件, help=${helpItems.length}件`)
+
+        if (selfItems.length > 0) {
+          const totalSelfBack = selfItems.reduce((sum: number, item: { self_back_amount?: number }) => sum + (item.self_back_amount || 0), 0)
+          console.log(`[DEBUG] self_back_amount合計: ${totalSelfBack}`)
+        }
+        if (helpItems.length > 0) {
+          const totalHelpBack = helpItems.reduce((sum: number, item: { help_back_amount?: number }) => sum + (item.help_back_amount || 0), 0)
+          console.log(`[DEBUG] help_back_amount合計: ${totalHelpBack}`)
+        }
+
+        setCastDailyItems(selfItems as CastDailyItem[])
+        setHelpDailyItems(helpItems as CastDailyItem[])
+      }
+    } catch (error) {
+      console.error('cast_daily_items取得エラー:', error)
       setCastDailyItems([])
-    } else {
-      console.log(`[DEBUG] cast_daily_items取得: castId=${castId}, 件数=${(dailyItems || []).length}`)
-      if (dailyItems && dailyItems.length > 0) {
-        const totalSelfBack = dailyItems.reduce((sum: number, item: { self_back_amount?: number }) => sum + (item.self_back_amount || 0), 0)
-        console.log(`[DEBUG] self_back_amount合計: ${totalSelfBack}`)
-      }
-      setCastDailyItems((dailyItems || []) as CastDailyItem[])
-    }
-
-    // 2. ヘルプとして参加した分（help_cast_id = castId）
-    const { data: helpItems, error: helpItemsError } = await supabase
-      .from('cast_daily_items')
-      .select('id, order_id, table_number, guest_name, product_name, category, quantity, subtotal, is_self, self_sales, help_sales, needs_cast, date, cast_id, help_cast_id, self_sales_item_based, self_sales_receipt_based, self_back_rate, self_back_amount, help_back_rate, help_back_amount')
-      .eq('help_cast_id', castId)
-      .eq('store_id', storeId)
-      .gte('date', startDate)
-      .lte('date', endDate)
-      .order('date')
-
-    if (helpItemsError) {
-      console.error('cast_daily_items(help)取得エラー:', helpItemsError)
       setHelpDailyItems([])
-    } else {
-      console.log(`[DEBUG] cast_daily_items(help)取得: castId=${castId}, 件数=${(helpItems || []).length}`)
-      if (helpItems && helpItems.length > 0) {
-        const totalHelpBack = helpItems.reduce((sum: number, item: { help_back_amount?: number }) => sum + (item.help_back_amount || 0), 0)
-        console.log(`[DEBUG] help_back_amount合計: ${totalHelpBack}`)
-      }
-      setHelpDailyItems((helpItems || []) as CastDailyItem[])
     }
   }, [storeId])
 
@@ -2340,7 +2336,11 @@ function PayslipPageContent() {
                               </tr>
                             </thead>
                             <tbody>
-                              {selfList.map((item, i) => (
+                              {selfList.map((item, i) => {
+                                // バック金額から逆算してベース金額を算出
+                                const baseAmount = item.backRate > 0 ? Math.round(item.backAmount * 100 / item.backRate) : item.subtotal
+                                const unitPrice = item.quantity > 0 ? Math.round(baseAmount / item.quantity) : 0
+                                return (
                                 <tr
                                   key={i}
                                   style={{ ...(i % 2 === 0 ? styles.tableRowEven : styles.tableRow), cursor: 'pointer' }}
@@ -2368,15 +2368,15 @@ function PayslipPageContent() {
                                       </span>
                                     )}
                                   </td>
-                                  <td style={{ ...styles.td, textAlign: 'right' }}>{currencyFormatter.format(item.quantity > 0 ? Math.round(item.subtotal / item.quantity) : 0)}</td>
+                                  <td style={{ ...styles.td, textAlign: 'right' }}>{currencyFormatter.format(unitPrice)}</td>
                                   <td style={{ ...styles.td, textAlign: 'right' }}>{item.quantity}</td>
-                                  <td style={{ ...styles.td, textAlign: 'right' }}>{currencyFormatter.format(item.subtotal)}</td>
+                                  <td style={{ ...styles.td, textAlign: 'right' }}>{currencyFormatter.format(baseAmount)}</td>
                                   <td style={{ ...styles.td, textAlign: 'center' }}>{item.backRate}%</td>
                                   <td style={{ ...styles.td, textAlign: 'right', fontWeight: '600', color: '#FF9500' }}>
                                     {currencyFormatter.format(item.backAmount)}
                                   </td>
                                 </tr>
-                              ))}
+                              )})}
                               <tr style={styles.tableTotal}>
                                 <td colSpan={6} style={{ ...styles.td, fontWeight: 'bold' }}>小計</td>
                                 <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold', color: '#FF9500' }}>
@@ -2410,7 +2410,11 @@ function PayslipPageContent() {
                               </tr>
                             </thead>
                             <tbody>
-                              {tableHelpList.map((item, i) => (
+                              {tableHelpList.map((item, i) => {
+                                // バック金額から逆算してベース金額を算出
+                                const baseAmount = item.backRate > 0 ? Math.round(item.backAmount * 100 / item.backRate) : item.selfSales
+                                const unitPrice = item.quantity > 0 ? Math.round(baseAmount / item.quantity) : 0
+                                return (
                                 <tr
                                   key={i}
                                   style={{ ...(i % 2 === 0 ? styles.tableRowEven : styles.tableRow), cursor: 'pointer' }}
@@ -2426,15 +2430,15 @@ function PayslipPageContent() {
                                   <td style={{ ...styles.td, color: '#86868b', fontSize: '12px' }}>{item.category || '-'}</td>
                                   <td style={styles.td}>{item.productName}</td>
                                   <td style={{ ...styles.td, color: '#856404', fontSize: '12px' }}>{item.helpCastName}</td>
-                                  <td style={{ ...styles.td, textAlign: 'right' }}>{currencyFormatter.format(item.quantity > 0 ? Math.round(item.selfSales / item.quantity) : 0)}</td>
+                                  <td style={{ ...styles.td, textAlign: 'right' }}>{currencyFormatter.format(unitPrice)}</td>
                                   <td style={{ ...styles.td, textAlign: 'right' }}>{item.quantity}</td>
-                                  <td style={{ ...styles.td, textAlign: 'right' }}>{currencyFormatter.format(item.selfSales)}</td>
+                                  <td style={{ ...styles.td, textAlign: 'right' }}>{currencyFormatter.format(baseAmount)}</td>
                                   <td style={{ ...styles.td, textAlign: 'center' }}>{item.backRate}%</td>
                                   <td style={{ ...styles.td, textAlign: 'right', fontWeight: '600', color: '#856404' }}>
                                     {currencyFormatter.format(item.backAmount)}
                                   </td>
                                 </tr>
-                              ))}
+                              )})}
                               <tr style={styles.tableTotal}>
                                 <td colSpan={7} style={{ ...styles.td, fontWeight: 'bold' }}>小計</td>
                                 <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold', color: '#856404' }}>
@@ -2468,7 +2472,11 @@ function PayslipPageContent() {
                               </tr>
                             </thead>
                             <tbody>
-                              {helpList.map((item, i) => (
+                              {helpList.map((item, i) => {
+                                // バック金額から逆算してベース金額を算出
+                                const baseAmount = item.backRate > 0 ? Math.round(item.backAmount * 100 / item.backRate) : item.subtotal
+                                const unitPrice = item.quantity > 0 ? Math.round(baseAmount / item.quantity) : 0
+                                return (
                                 <tr
                                   key={i}
                                   style={{ ...(i % 2 === 0 ? styles.tableRowEven : styles.tableRow), cursor: 'pointer' }}
@@ -2484,15 +2492,15 @@ function PayslipPageContent() {
                                   <td style={{ ...styles.td, color: '#86868b', fontSize: '12px' }}>{item.category || '-'}</td>
                                   <td style={styles.td}>{item.productName}</td>
                                   <td style={{ ...styles.td, color: '#0066cc', fontSize: '12px' }}>{item.oshiCastName}</td>
-                                  <td style={{ ...styles.td, textAlign: 'right' }}>{currencyFormatter.format(item.quantity > 0 ? Math.round(item.subtotal / item.quantity) : 0)}</td>
+                                  <td style={{ ...styles.td, textAlign: 'right' }}>{currencyFormatter.format(unitPrice)}</td>
                                   <td style={{ ...styles.td, textAlign: 'right' }}>{item.quantity}</td>
-                                  <td style={{ ...styles.td, textAlign: 'right' }}>{currencyFormatter.format(item.subtotal)}</td>
+                                  <td style={{ ...styles.td, textAlign: 'right' }}>{currencyFormatter.format(baseAmount)}</td>
                                   <td style={{ ...styles.td, textAlign: 'center' }}>{item.backRate}%</td>
                                   <td style={{ ...styles.td, textAlign: 'right', fontWeight: '600', color: '#0066cc' }}>
                                     {currencyFormatter.format(item.backAmount)}
                                   </td>
                                 </tr>
-                              ))}
+                              )})}
                               <tr style={styles.tableTotal}>
                                 <td colSpan={7} style={{ ...styles.td, fontWeight: 'bold' }}>小計</td>
                                 <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold', color: '#0066cc' }}>
@@ -2912,11 +2920,13 @@ function PayslipPageContent() {
                             {isExpanded && (
                               <div style={{ backgroundColor: '#f8f9fa', padding: '8px 12px' }}>
                                 {order.items.map((item, idx) => {
-                                  // 表示する売上額（推し売上 or ヘルプ売上）- 報酬形態の設定に基づく
-                                  const displaySales = order.type === 'self' ? getSelfSales(item) : item.help_sales
-                                  const unitPrice = Math.floor(item.subtotal / item.quantity)
                                   const backRate = order.type === 'self' ? (item.self_back_rate || 0) : (item.help_back_rate || 0)
                                   const backAmount = order.type === 'self' ? (item.self_back_amount || 0) : (item.help_back_amount || 0)
+                                  // バック金額から逆算してベース金額を算出
+                                  const baseAmount = backRate > 0 ? Math.round(backAmount * 100 / backRate) : item.subtotal
+                                  const unitPrice = item.quantity > 0 ? Math.round(baseAmount / item.quantity) : 0
+                                  // 表示する売上額（推し売上 or ヘルプ売上）- 報酬形態の設定に基づく
+                                  const displaySales = order.type === 'self' ? getSelfSales(item) : baseAmount
                                   // 商品に付いているキャスト名を取得（help_cast_idがあればヘルパー、なければ推し）
                                   const displayCastId = item.help_cast_id || item.cast_id
                                   const itemCastName = casts.find(c => c.id === displayCastId)?.name
