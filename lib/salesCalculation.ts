@@ -381,16 +381,16 @@ export function calculateItemBased(
       if (castsOnItem.length === 0) return
 
       // SELF/HELP判定
-      // nominationIsNonHelpOnlyの場合は、商品についてる実キャスト全員がSELF
       // ※nonHelpNames自体は売上対象外（SELFにもHELPにも含めない）
       const realCastsOnItem = castsOnItem.filter(c => !nonHelpNames.includes(c))
 
-      const selfCasts = nominationIsNonHelpOnly
-        ? realCastsOnItem // フリー推しの場合は商品の実キャスト全員がSELF
-        : realCastsOnItem.filter(c => realNominations.includes(c))
-      const helpCasts = nominationIsNonHelpOnly
-        ? [] // フリー推しの場合はヘルプなし
-        : realCastsOnItem.filter(c => !realNominations.includes(c))
+      // フリー卓の場合は売上に含めない（商品バックはrecalculateSales.tsで別途計算）
+      if (nominationIsNonHelpOnly) {
+        return // フリー卓は売上計算をスキップ
+      }
+
+      const selfCasts = realCastsOnItem.filter(c => realNominations.includes(c))
+      const helpCasts = realCastsOnItem.filter(c => !realNominations.includes(c))
 
       const isSelfOnly = selfCasts.length > 0 && helpCasts.length === 0
       const isHelpOnly = helpCasts.length > 0 && selfCasts.length === 0
@@ -592,22 +592,16 @@ export function calculateReceiptBased(
     // 推しがヘルプ除外名のみの場合（フリーなど）
     const nominationIsNonHelpOnly = allNominations.length > 0 && realNominations.length === 0
 
-    // 分配先を決定（nominationIsNonHelpOnlyの場合は後で商品上のキャストを収集、それ以外は実推し）
-    let distributeTargets = nominationIsNonHelpOnly ? [] as string[] : realNominations
+    // フリー卓の場合は売上に含めない（商品バックはrecalculateSales.tsで別途計算）
+    if (nominationIsNonHelpOnly) {
+      return // フリー卓は売上計算をスキップ
+    }
+
+    // 分配先を決定
+    const distributeTargets = realNominations
 
     // per_itemの場合: 商品ごとに税計算＆ヘルプ分配を行う
     if (roundingTiming === 'per_item') {
-      // nominationIsNonHelpOnlyの場合、先に商品上のキャストを収集
-      if (nominationIsNonHelpOnly) {
-        order.order_items.forEach(item => {
-          const castsOnItem = item.cast_name || []
-          const realCastsOnItem = castsOnItem.filter(c => !nonHelpNames.includes(c))
-          realCastsOnItem.forEach(c => {
-            if (!distributeTargets.includes(c)) distributeTargets.push(c)
-          })
-        })
-      }
-
       order.order_items.forEach(item => {
         const itemAmount = item.unit_price * item.quantity
         // 商品ごとに税計算＆端数処理
@@ -616,13 +610,8 @@ export function calculateReceiptBased(
         const castsOnItem = item.cast_name || []
         const realCastsOnItem = castsOnItem.filter(c => !nonHelpNames.includes(c))
 
-        // nominationIsNonHelpOnlyの場合は、商品についてる実キャスト全員がSELF扱い
-        const selfCasts = nominationIsNonHelpOnly
-          ? realCastsOnItem
-          : realCastsOnItem.filter(c => realNominations.includes(c))
-        const helpCasts = nominationIsNonHelpOnly
-          ? []
-          : realCastsOnItem.filter(c => !realNominations.includes(c))
+        const selfCasts = realCastsOnItem.filter(c => realNominations.includes(c))
+        const helpCasts = realCastsOnItem.filter(c => !realNominations.includes(c))
 
         const isSelfOnly = selfCasts.length > 0 && helpCasts.length === 0
         const isHelpOnly = helpCasts.length > 0 && selfCasts.length === 0
@@ -897,13 +886,8 @@ export function calculateReceiptBased(
         const castsOnItem = item.cast_name || []
         const realCastsOnItem = castsOnItem.filter(c => !nonHelpNames.includes(c))
 
-        // nominationIsNonHelpOnlyの場合は、商品についてる実キャスト全員がSELF扱い
-        const selfCasts = nominationIsNonHelpOnly
-          ? realCastsOnItem
-          : realCastsOnItem.filter(c => realNominations.includes(c))
-        const helpCasts = nominationIsNonHelpOnly
-          ? []
-          : realCastsOnItem.filter(c => !realNominations.includes(c))
+        const selfCasts = realCastsOnItem.filter(c => realNominations.includes(c))
+        const helpCasts = realCastsOnItem.filter(c => !realNominations.includes(c))
 
         if (selfCasts.length > 0 && helpCasts.length === 0) {
           selfCasts.forEach(c => {
@@ -925,11 +909,6 @@ export function calculateReceiptBased(
         }
         // キャストなしの商品も伝票小計では推しの売上に含まれる（receiptTotalRawに加算済み）
       })
-
-      // nominationIsNonHelpOnlyの場合は商品上のキャストを分配先にする
-      if (nominationIsNonHelpOnly) {
-        distributeTargets = selfCastsInReceipt
-      }
 
       // 伝票全体に税計算＆端数処理を適用
       const receiptTotal = applyTaxAndRounding(receiptTotalRaw)

@@ -183,11 +183,11 @@ function aggregateCastDailyItems(
 
     if (isFreeTabe) {
       // フリー卓の場合：cast_nameが割り当てられたアイテムのみ処理
-      // その場合、飲んだキャストの推し売上として計上
+      // 商品バックは付くが、売上（推し小計・伝票小計）には含めない
       for (const item of order.order_items || []) {
         const castsOnItem = item.cast_name || []
         const realCastsOnItem = castsOnItem.filter(c => !nonHelpNames.includes(c))
-        if (realCastsOnItem.length === 0) continue
+        if (realCastsOnItem.length === 0) continue  // チャージなどcast_name無しはスキップ
 
         const rawAmount = (item.unit_price || 0) * (item.quantity || 0)
         const itemAmount = applyTaxAndRounding(rawAmount)
@@ -198,7 +198,8 @@ function aggregateCastDailyItems(
           const cast = castMap.get(castName)
           if (!cast) continue
 
-          const key = `${order.id}:${cast.id}:null:${item.product_name}:${item.category || ''}`
+          // フリー卓用のキー（通常と区別）
+          const key = `${order.id}:${cast.id}:null:${item.product_name}:${item.category || ''}:free`
           if (itemsMap.has(key)) {
             const existing = itemsMap.get(key)!
             existing.quantity += item.quantity
@@ -216,7 +217,7 @@ function aggregateCastDailyItems(
               category: item.category,
               product_name: item.product_name,
               quantity: item.quantity,
-              self_sales: perCast,
+              self_sales: perCast,  // バック計算用に設定
               help_sales: 0,
               needs_cast: productNeedsCastMap.get(item.product_name) ?? true,
               subtotal: adjustedSubtotal,
@@ -225,8 +226,8 @@ function aggregateCastDailyItems(
               help_back_rate: 0,
               help_back_amount: 0,
               is_self: true,
-              self_sales_item_based: 0,
-              self_sales_receipt_based: 0
+              self_sales_item_based: -1,  // フリー卓マーカー（後で0にする）
+              self_sales_receipt_based: -1  // フリー卓マーカー（後で0にする）
             })
           }
         }
@@ -593,6 +594,12 @@ function aggregateCastDailyItems(
   // 売上集計方法別のフィールドを設定
   const items = Array.from(itemsMap.values())
   for (const item of items) {
+    // フリー卓マーカー（-1）の場合は売上0にする（商品バックのみ）
+    if (item.self_sales_item_based === -1) {
+      item.self_sales_item_based = 0
+      item.self_sales_receipt_based = 0
+      continue
+    }
     // item_based: needs_cast=true かつ キャストが割り当てられている商品のみ売上計上
     item.self_sales_item_based = item.needs_cast ? item.self_sales : 0
     // receipt_based: 伝票上の全商品を売上計上
