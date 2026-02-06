@@ -475,15 +475,6 @@ function PayslipPageContent() {
     }
 
     const result = settings || null
-    console.log('[DEBUG] loadCompensationSettings:', {
-      castId,
-      targetYear,
-      targetMonthNum,
-      allSettingsCount: allSettings?.length || 0,
-      selectedSetting: result ? { target_year: result.target_year, target_month: result.target_month } : null,
-      compensation_types: result?.compensation_types,
-      use_product_back: (result?.compensation_types as CompensationType[] | null)?.[0]?.use_product_back
-    })
     setCompensationSettings(result)
     compensationSettingsRef.current = result
     return result
@@ -577,18 +568,6 @@ function PayslipPageContent() {
         const result = await response.json()
         const selfItems = result.selfItems || []
         const helpItems = result.helpItems || []
-
-        console.log(`[DEBUG] cast_daily_items取得: castId=${castId}, self=${selfItems.length}件, help=${helpItems.length}件`)
-
-        if (selfItems.length > 0) {
-          const totalSelfBack = selfItems.reduce((sum: number, item: { self_back_amount?: number }) => sum + (item.self_back_amount || 0), 0)
-          console.log(`[DEBUG] self_back_amount合計: ${totalSelfBack}`)
-        }
-        if (helpItems.length > 0) {
-          const totalHelpBack = helpItems.reduce((sum: number, item: { help_back_amount?: number }) => sum + (item.help_back_amount || 0), 0)
-          console.log(`[DEBUG] help_back_amount合計: ${totalHelpBack}`)
-        }
-
         setCastDailyItems(selfItems as CastDailyItem[])
         setHelpDailyItems(helpItems as CastDailyItem[])
       }
@@ -1264,13 +1243,20 @@ function PayslipPageContent() {
         .reduce((sum, item) => sum + (item.help_back_amount || 0), 0)
       const dayProductBack = daySelfBack + dayHelpBack
 
+      // 時給額: DBの値が0の場合、勤務時間×時給でフォールバック計算
+      const workHours = stats?.work_hours || 0
+      let wageAmount = stats?.wage_amount || 0
+      if (wageAmount === 0 && workHours > 0 && actualHourlyWage && actualHourlyWage > 0) {
+        wageAmount = Math.round(workHours * actualHourlyWage)
+      }
+
       return {
         date: dateStr,
         dayOfMonth: format(day, 'd'),
         dayOfWeek: format(day, 'E', { locale: ja }),
-        workHours: stats?.work_hours || 0,
+        workHours,
         workTimeRange,
-        wageAmount: stats?.wage_amount || 0,
+        wageAmount,
         sales: sales?.totalSales || 0,
         salesItemBased: sales?.totalSalesItemBased || 0,
         salesReceiptBased: sales?.totalSalesReceiptBased || 0,
@@ -1281,7 +1267,7 @@ function PayslipPageContent() {
         lateMinutes: attendance?.late_minutes || 0
       }
     }).filter(d => d.workHours > 0 || d.dailyPayment > 0 || d.lateMinutes > 0 || d.sales > 0 || d.salesItemBased > 0 || d.salesReceiptBased > 0)
-  }, [selectedMonth, dailyStats, attendanceData, dailySalesData, castDailyItems, helpDailyItems])
+  }, [selectedMonth, dailyStats, attendanceData, dailySalesData, castDailyItems, helpDailyItems, actualHourlyWage])
 
   const selectedCast = casts.find(c => c.id === selectedCastId)
 
