@@ -830,16 +830,72 @@ export async function recalculateForDate(storeId: number, date: string): Promise
     const attendanceMap = new Map<string, Attendance>()
     attendances?.forEach((a: Attendance) => attendanceMap.set(a.cast_name, a))
 
+    // 対象日から年月を取得
+    const targetDate = new Date(date)
+    const targetYear = targetDate.getFullYear()
+    const targetMonth = targetDate.getMonth() + 1
+
     const { data: compensationSettings } = await supabaseAdmin
       .from('compensation_settings')
-      .select('cast_id, status_id, hourly_wage_override, selected_compensation_type_id, compensation_types, help_back_calculation_method, use_help_product_back')
+      .select('cast_id, status_id, hourly_wage_override, selected_compensation_type_id, compensation_types, help_back_calculation_method, use_help_product_back, target_year, target_month')
       .eq('store_id', storeId)
+      .eq('is_active', true)
 
+    // キャストごとに最適な設定を選択（フォールバックロジック）
     const compSettingsMap = new Map<number, CompensationSettingsWage>()
     const compSettingsFullMap = new Map<number, CompensationSettingsFull>()
-    compensationSettings?.forEach((c: CompensationSettingsWage & CompensationSettingsFull) => {
-      compSettingsMap.set(c.cast_id, c)
-      compSettingsFullMap.set(c.cast_id, c)
+
+    // キャストIDでグループ化
+    const settingsByCast = new Map<number, (CompensationSettingsWage & CompensationSettingsFull & { target_year: number | null; target_month: number | null })[]>()
+    compensationSettings?.forEach((c: CompensationSettingsWage & CompensationSettingsFull & { target_year: number | null; target_month: number | null }) => {
+      const existing = settingsByCast.get(c.cast_id) || []
+      existing.push(c)
+      settingsByCast.set(c.cast_id, existing)
+    })
+
+    // 各キャストの最適な設定を選択
+    settingsByCast.forEach((settings, castId) => {
+      let selected: (CompensationSettingsWage & CompensationSettingsFull) | undefined
+
+      // 1. 完全一致（対象年月）
+      selected = settings.find(
+        s => s.target_year === targetYear && s.target_month === targetMonth
+      )
+
+      // 2. 直近の過去設定（対象月以前で最も新しいもの）
+      if (!selected) {
+        selected = settings
+          .filter(s => s.target_year !== null && s.target_month !== null)
+          .filter(s => {
+            if (s.target_year! < targetYear) return true
+            if (s.target_year! === targetYear && s.target_month! <= targetMonth) return true
+            return false
+          })
+          .sort((a, b) => {
+            if (a.target_year !== b.target_year) return (b.target_year || 0) - (a.target_year || 0)
+            return (b.target_month || 0) - (a.target_month || 0)
+          })[0]
+      }
+
+      // 3. デフォルト設定（年月指定なし）
+      if (!selected) {
+        selected = settings.find(s => s.target_year === null && s.target_month === null)
+      }
+
+      // 4. 最終フォールバック（最新の設定）
+      if (!selected && settings.length > 0) {
+        selected = settings
+          .filter(s => s.target_year !== null)
+          .sort((a, b) => {
+            if (a.target_year !== b.target_year) return (b.target_year || 0) - (a.target_year || 0)
+            return (b.target_month || 0) - (a.target_month || 0)
+          })[0] || settings[0]
+      }
+
+      if (selected) {
+        compSettingsMap.set(castId, selected)
+        compSettingsFullMap.set(castId, selected)
+      }
     })
 
     const { data: wageStatuses } = await supabaseAdmin
