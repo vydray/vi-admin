@@ -178,7 +178,61 @@ function aggregateCastDailyItems(
     const staffNames = order.staff_name?.split(',').map(n => n.trim()) || []
     const realNominations = staffNames.filter(n => !nonHelpNames.includes(n))
 
-    if (realNominations.length === 0) continue
+    // フリー卓（推しなし）でもorder_itemsにcast_nameがあれば処理する
+    const isFreeTabe = realNominations.length === 0
+
+    if (isFreeTabe) {
+      // フリー卓の場合：cast_nameが割り当てられたアイテムのみ処理
+      // その場合、飲んだキャストの推し売上として計上
+      for (const item of order.order_items || []) {
+        const castsOnItem = item.cast_name || []
+        const realCastsOnItem = castsOnItem.filter(c => !nonHelpNames.includes(c))
+        if (realCastsOnItem.length === 0) continue
+
+        const rawAmount = (item.unit_price || 0) * (item.quantity || 0)
+        const itemAmount = applyTaxAndRounding(rawAmount)
+        const adjustedSubtotal = applyTaxAndRounding(item.subtotal)
+        const perCast = Math.floor(itemAmount / realCastsOnItem.length)
+
+        for (const castName of realCastsOnItem) {
+          const cast = castMap.get(castName)
+          if (!cast) continue
+
+          const key = `${order.id}:${cast.id}:null:${item.product_name}:${item.category || ''}`
+          if (itemsMap.has(key)) {
+            const existing = itemsMap.get(key)!
+            existing.quantity += item.quantity
+            existing.self_sales += perCast
+            existing.subtotal += adjustedSubtotal
+          } else {
+            itemsMap.set(key, {
+              cast_id: cast.id,
+              help_cast_id: null,
+              store_id: storeId,
+              date: date,
+              order_id: order.id,
+              table_number: order.table_number,
+              guest_name: order.guest_name,
+              category: item.category,
+              product_name: item.product_name,
+              quantity: item.quantity,
+              self_sales: perCast,
+              help_sales: 0,
+              needs_cast: productNeedsCastMap.get(item.product_name) ?? true,
+              subtotal: adjustedSubtotal,
+              self_back_rate: 0,
+              self_back_amount: 0,
+              help_back_rate: 0,
+              help_back_amount: 0,
+              is_self: true,
+              self_sales_item_based: 0,
+              self_sales_receipt_based: 0
+            })
+          }
+        }
+      }
+      continue
+    }
 
     const nominationCastIds = realNominations
       .map(name => castMap.get(name)?.id)
