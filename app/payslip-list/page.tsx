@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { supabase } from '@/lib/supabase'
 import { format, addMonths, subMonths } from 'date-fns'
 import { jsPDF } from 'jspdf'
 import { ja } from 'date-fns/locale'
@@ -11,10 +10,8 @@ import LoadingSpinner from '@/components/LoadingSpinner'
 import ProtectedPage from '@/components/ProtectedPage'
 
 interface PayslipSummary {
-  id: number
   cast_id: number
   cast_name: string
-  cast_status: string
   work_days: number
   total_hours: number
   hourly_income: number
@@ -27,7 +24,6 @@ interface PayslipSummary {
   daily_payment: number
   withholding_tax: number
   other_deductions: number
-  status: 'draft' | 'finalized'
 }
 
 export default function PayslipListPage() {
@@ -42,7 +38,7 @@ function PayslipListContent() {
   const { storeId, storeName } = useStore()
   const [loading, setLoading] = useState(true)
   const [exporting, setExporting] = useState(false)
-  const [selectedMonth, setSelectedMonth] = useState(new Date())
+  const [selectedMonth, setSelectedMonth] = useState(subMonths(new Date(), 1))
   const [payslips, setPayslips] = useState<PayslipSummary[]>([])
   const [showExportModal, setShowExportModal] = useState(false)
   const printRef = useRef<HTMLDivElement>(null)
@@ -58,53 +54,19 @@ function PayslipListContent() {
     try {
       const yearMonth = format(selectedMonth, 'yyyy-MM')
 
-      const { data, error } = await supabase
-        .from('payslips')
-        .select('*, casts!inner(name, status)')
-        .eq('store_id', storeId)
-        .eq('year_month', yearMonth)
-        .order('casts(name)')
-
-      if (error) throw error
-
-      const summaries: PayslipSummary[] = (data || []).map(p => {
-        const cast = p.casts as { name: string; status: string }
-        const deductions = (p.deduction_details || []) as { name?: string; type?: string; amount?: number }[]
-
-        const dailyPayment = deductions
-          .filter(d => d.type === 'daily_payment' || d.name?.includes('日払い'))
-          .reduce((sum, d) => sum + (d.amount || 0), 0)
-
-        const withholdingTax = deductions
-          .filter(d => d.name?.includes('源泉') || d.name?.includes('所得税'))
-          .reduce((sum, d) => sum + (d.amount || 0), 0)
-
-        const otherDeductions = deductions
-          .filter(d => d.type !== 'daily_payment' && !d.name?.includes('日払い') && !d.name?.includes('源泉') && !d.name?.includes('所得税'))
-          .reduce((sum, d) => sum + (d.amount || 0), 0)
-
-        return {
-          id: p.id,
-          cast_id: p.cast_id,
-          cast_name: cast.name,
-          cast_status: cast.status,
-          work_days: p.work_days || 0,
-          total_hours: p.total_hours || 0,
-          hourly_income: p.hourly_income || 0,
-          sales_back: p.sales_back || 0,
-          product_back: p.product_back || 0,
-          fixed_amount: p.fixed_amount || 0,
-          gross_total: p.gross_total || 0,
-          total_deduction: p.total_deduction || 0,
-          net_payment: p.net_payment || 0,
-          daily_payment: dailyPayment,
-          withholding_tax: withholdingTax,
-          other_deductions: otherDeductions,
-          status: p.status,
-        }
+      // APIでリアルタイム計算
+      const response = await fetch('/api/payslip-list', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ year_month: yearMonth })
       })
 
-      setPayslips(summaries)
+      if (!response.ok) {
+        throw new Error('Failed to fetch payslips')
+      }
+
+      const data = await response.json()
+      setPayslips(data.payslips || [])
     } catch (error) {
       console.error('報酬明細取得エラー:', error)
     } finally {
@@ -300,7 +262,6 @@ function PayslipListContent() {
     try {
       const headers = [
         'キャスト名',
-        'ステータス',
         '出勤日数',
         '総勤務時間',
         '時給収入',
@@ -314,12 +275,10 @@ function PayslipListContent() {
         '控除合計',
         '残り支給額',
         '支払総額',
-        '確定状態',
       ]
 
       const rows = payslips.map(p => [
         p.cast_name,
-        p.cast_status || '',
         p.work_days,
         p.total_hours,
         p.hourly_income,
@@ -333,7 +292,6 @@ function PayslipListContent() {
         p.total_deduction,
         p.net_payment,
         p.net_payment + p.daily_payment,
-        p.status === 'finalized' ? '確定' : '下書き',
       ])
 
       const csvContent = [
@@ -473,12 +431,11 @@ function PayslipListContent() {
                   <th style={thStyleNum}>控除計</th>
                   <th style={{ ...thStyleNum, backgroundColor: '#dcfce7' }}>残り支給</th>
                   <th style={{ ...thStyleNum, backgroundColor: '#fef3c7' }}>支払総額</th>
-                  <th style={thStyle}>状態</th>
                 </tr>
               </thead>
               <tbody>
                 {payslips.map(p => (
-                  <tr key={p.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                  <tr key={p.cast_id} style={{ borderBottom: '1px solid #e2e8f0' }}>
                     <td style={tdStyle}>{p.cast_name}</td>
                     <td style={tdStyleNum}>{p.work_days}日</td>
                     <td style={tdStyleNum}>{p.total_hours.toFixed(1)}h</td>
@@ -498,17 +455,6 @@ function PayslipListContent() {
                     </td>
                     <td style={{ ...tdStyleNum, backgroundColor: '#fef9c3', fontWeight: '600' }}>
                       {formatCurrency(p.net_payment + p.daily_payment)}
-                    </td>
-                    <td style={{ ...tdStyle, textAlign: 'center' }}>
-                      <span style={{
-                        padding: '2px 8px',
-                        borderRadius: '4px',
-                        fontSize: '11px',
-                        backgroundColor: p.status === 'finalized' ? '#dcfce7' : '#fef3c7',
-                        color: p.status === 'finalized' ? '#166534' : '#92400e',
-                      }}>
-                        {p.status === 'finalized' ? '確定' : '下書き'}
-                      </span>
                     </td>
                   </tr>
                 ))}
@@ -534,7 +480,6 @@ function PayslipListContent() {
                   <td style={{ ...tdStyleNum, backgroundColor: '#fde68a' }}>
                     {formatCurrency(totals.net_payment + totals.daily_payment)}
                   </td>
-                  <td style={tdStyle}></td>
                 </tr>
               </tbody>
             </table>
