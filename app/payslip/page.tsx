@@ -418,24 +418,66 @@ function PayslipPageContent() {
     setWageStatuses(data || [])
   }, [storeId])
 
-  // キャストの報酬設定を取得
-  const loadCompensationSettings = useCallback(async (castId: number): Promise<CompensationSettings | null> => {
-    const { data, error } = await supabase
+  // キャストの報酬設定を取得（年月指定 → 直近 → デフォルトの順）
+  const loadCompensationSettings = useCallback(async (castId: number, month: Date): Promise<CompensationSettings | null> => {
+    const targetYear = month.getFullYear()
+    const targetMonthNum = month.getMonth() + 1
+
+    const { data: allSettings, error } = await supabase
       .from('compensation_settings')
-      .select('enabled_deduction_ids, compensation_types, payment_selection_method, selected_compensation_type_id, status_id, hourly_wage_override')
+      .select('enabled_deduction_ids, compensation_types, payment_selection_method, selected_compensation_type_id, status_id, hourly_wage_override, target_year, target_month')
       .eq('cast_id', castId)
       .eq('store_id', storeId)
-      .limit(1)
-      .maybeSingle()
+      .eq('is_active', true)
 
     if (error) {
       console.error('報酬設定取得エラー:', error.message, error.code)
+      setCompensationSettings(null)
+      compensationSettingsRef.current = null
+      return null
     }
 
-    const settings = error ? null : data
-    setCompensationSettings(settings)
-    compensationSettingsRef.current = settings
-    return settings
+    // 1. 指定年月に完全一致する設定を探す
+    let settings = (allSettings || []).find(
+      cs => cs.target_year === targetYear && cs.target_month === targetMonthNum
+    )
+
+    // 2. なければ直近の年月指定設定を探す（表示月以前で最も新しいもの）
+    if (!settings) {
+      settings = (allSettings || [])
+        .filter(cs => cs.target_year !== null && cs.target_month !== null)
+        .filter(cs => {
+          // 表示月以前の設定のみ
+          if (cs.target_year! < targetYear) return true
+          if (cs.target_year! === targetYear && cs.target_month! <= targetMonthNum) return true
+          return false
+        })
+        .sort((a, b) => {
+          if (a.target_year !== b.target_year) return (b.target_year || 0) - (a.target_year || 0)
+          return (b.target_month || 0) - (a.target_month || 0)
+        })[0]
+    }
+
+    // 3. なければデフォルト設定（年月指定なし）を探す
+    if (!settings) {
+      settings = (allSettings || []).find(
+        cs => cs.target_year === null && cs.target_month === null
+      )
+    }
+
+    // 4. それでもなければ最新の設定を使用
+    if (!settings && allSettings && allSettings.length > 0) {
+      settings = (allSettings || [])
+        .sort((a, b) => {
+          if (a.target_year !== b.target_year) return (b.target_year || 0) - (a.target_year || 0)
+          return (b.target_month || 0) - (a.target_month || 0)
+        })[0]
+    }
+
+    const result = settings || null
+    setCompensationSettings(result)
+    compensationSettingsRef.current = result
+    return result
   }, [storeId])
 
   // 日別統計データを取得
@@ -683,7 +725,7 @@ function PayslipPageContent() {
       const loadData = async () => {
         await loadDailyStats(selectedCastId, selectedMonth)
         await loadAttendanceData(selectedCastId, selectedMonth)
-        await loadCompensationSettings(selectedCastId)
+        await loadCompensationSettings(selectedCastId, selectedMonth)
         await loadPayslip(selectedCastId, selectedMonth)
       }
       loadData()
