@@ -651,11 +651,19 @@ async function calculatePayslipForCast(
     const totalSalesItemBased = (dailyStats || []).reduce((sum, d) => sum + (d.total_sales_item_based || 0), 0)
     const totalSalesReceiptBased = (dailyStats || []).reduce((sum, d) => sum + (d.total_sales_receipt_based || 0), 0)
 
-    // 商品バックはdailySalesMapから（後方互換性のため）
-    let totalProductBack = 0
+    // 商品バックはdailySalesMapから（推し/ヘルプ別に集計）
+    let selfProductBack = 0
+    let helpProductBack = 0
     dailySalesMap.forEach(day => {
-      totalProductBack += day.productBack
+      for (const item of day.items) {
+        if (item.sales_type === 'self') {
+          selfProductBack += item.back_amount
+        } else {
+          helpProductBack += item.back_amount
+        }
+      }
     })
+    const totalProductBack = selfProductBack + helpProductBack
 
     console.log(`[${cast.name}] totalSalesItemBased: ${totalSalesItemBased}, totalSalesReceiptBased: ${totalSalesReceiptBased}, totalProductBack: ${totalProductBack}`)
 
@@ -674,6 +682,8 @@ async function calculatePayslipForCast(
       sliding_rates: { min: number; max: number; rate: number }[] | null
       is_enabled: boolean
       sales_aggregation?: 'item_based' | 'receipt_based'
+      use_product_back?: boolean
+      use_help_product_back?: boolean
     }
     // is_enabled でフィルター（undefinedは有効として扱う - 後方互換性）
     const enabledTypes = compensationTypes.filter((t: CompType) => t.is_enabled !== false)
@@ -702,14 +712,19 @@ async function calculatePayslipForCast(
         typeSalesBack = Math.round(typeTotalSales * compType.commission_rate / 100)
       }
 
+      // 商品バック（use_product_back / use_help_product_back フラグに基づく）
+      const typeProductBack = (compType.use_product_back !== false ? selfProductBack : 0)
+        + (compType.use_help_product_back !== false ? helpProductBack : 0)
+
       // 総報酬額（時給は hourly_rate > 0 の場合のみ含める）
-      const typeGrossEarnings = (typeUseWage ? totalWageAmount : 0) + typeSalesBack + totalProductBack + typeFixedAmount
+      const typeGrossEarnings = (typeUseWage ? totalWageAmount : 0) + typeSalesBack + typeProductBack + typeFixedAmount
 
       return {
         compType,
         useWage: typeUseWage,
         fixedAmount: typeFixedAmount,
         salesBack: typeSalesBack,
+        productBack: typeProductBack,
         grossEarnings: typeGrossEarnings,
         totalSales: typeTotalSales
       }
@@ -736,6 +751,7 @@ async function calculatePayslipForCast(
     const useWageData = selectedResult?.useWage ?? false
     let fixedAmount = selectedResult?.fixedAmount ?? 0
     salesBack = selectedResult?.salesBack ?? 0
+    const productBack = selectedResult?.productBack ?? totalProductBack
     const grossEarnings = selectedResult?.grossEarnings ?? (totalProductBack + fixedAmount)
 
     if (activeCompType) {
@@ -903,7 +919,7 @@ async function calculatePayslipForCast(
       average_hourly_wage: useWageData ? averageHourlyWage : 0,
       hourly_income: useWageData ? totalWageAmount : 0,
       sales_back: salesBack,
-      product_back: totalProductBack,
+      product_back: productBack,
       fixed_amount: fixedAmount,
       gross_total: grossEarnings,
       total_deduction: totalDeduction,

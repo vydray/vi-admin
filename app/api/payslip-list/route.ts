@@ -243,6 +243,8 @@ export async function POST(request: NextRequest) {
         sliding_rates?: Array<{ min: number; max: number; rate: number }>
         hourly_rate?: number
         fixed_amount?: number
+        use_product_back?: boolean
+        use_help_product_back?: boolean
       }> || []
 
       const enabledTypes = compensationTypes.filter(t => t.is_enabled !== false)
@@ -269,9 +271,11 @@ export async function POST(request: NextRequest) {
         const typeUseWage = (compType.hourly_rate || 0) > 0
         const typeHourlyIncome = typeUseWage ? totalWageAmount : 0
         const typeFixedAmount = compType.fixed_amount || 0
-        const typeGrossTotal = typeHourlyIncome + typeSalesBack + totalProductBack + typeFixedAmount
+        const typeProductBack = (compType.use_product_back !== false ? selfBackAmount : 0)
+          + (compType.use_help_product_back !== false ? helpBackAmount : 0)
+        const typeGrossTotal = typeHourlyIncome + typeSalesBack + typeProductBack + typeFixedAmount
 
-        return { compType, salesBack: typeSalesBack, useWage: typeUseWage, hourlyIncome: typeHourlyIncome, fixedAmount: typeFixedAmount, grossTotal: typeGrossTotal }
+        return { compType, salesBack: typeSalesBack, useWage: typeUseWage, hourlyIncome: typeHourlyIncome, fixedAmount: typeFixedAmount, productBack: typeProductBack, grossTotal: typeGrossTotal }
       }
 
       const allResults = enabledTypes.map(calculateForType)
@@ -290,6 +294,7 @@ export async function POST(request: NextRequest) {
       const salesBack = selected?.salesBack ?? 0
       const fixedAmount = selected?.fixedAmount ?? 0
       const hourlyIncome = selected?.hourlyIncome ?? 0
+      const productBack = selected?.productBack ?? totalProductBack
       const grossTotal = selected?.grossTotal ?? totalProductBack
 
       // 控除計算
@@ -360,7 +365,7 @@ export async function POST(request: NextRequest) {
         total_hours: Math.round(totalWorkHours * 100) / 100,
         hourly_income: hourlyIncome,
         sales_back: salesBack,
-        product_back: totalProductBack,
+        product_back: productBack,
         fixed_amount: fixedAmount,
         gross_total: grossTotal,
         daily_payment: dailyPayment,
