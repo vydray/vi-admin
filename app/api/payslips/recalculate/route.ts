@@ -148,7 +148,7 @@ async function calculatePayslipForCast(
     // 日別統計データを取得（推し小計・伝票小計の両方）
     const { data: dailyStats } = await supabaseAdmin
       .from('cast_daily_stats')
-      .select('date, work_hours, wage_amount, total_sales_item_based, total_sales_receipt_based')
+      .select('date, work_hours, wage_amount, total_sales_item_based, total_sales_receipt_based, product_back_item_based')
       .eq('cast_id', cast.id)
       .eq('store_id', storeId)
       .gte('date', startDate)
@@ -258,7 +258,7 @@ async function calculatePayslipForCast(
     // 日別売上データを取得（cast_daily_itemsから）
     const { data: dailyItems } = await supabaseAdmin
       .from('cast_daily_items')
-      .select('date, category, product_name, quantity, subtotal, back_amount, is_self')
+      .select('date, category, product_name, quantity, subtotal, self_back_amount, help_back_amount, is_self, help_cast_id')
       .eq('cast_id', cast.id)
       .eq('store_id', storeId)
       .gte('date', startDate)
@@ -294,7 +294,7 @@ async function calculatePayslipForCast(
     // 2. help_cast_id = cast.id のレコード（ヘルプとして）→ help_back_rate, help_back_amount を更新
     const { data: helpItems } = await supabaseAdmin
       .from('cast_daily_items')
-      .select('id, product_name, category, help_sales, self_sales, subtotal, cast_id')
+      .select('id, date, product_name, category, help_sales, self_sales, subtotal, cast_id, quantity, help_back_amount')
       .eq('help_cast_id', cast.id)
       .eq('store_id', storeId)
       .gte('date', startDate)
@@ -562,9 +562,10 @@ async function calculatePayslipForCast(
       const dayData = dailySalesMap.get(item.date)!
       dayData.totalSales += item.subtotal  // POS売上を追加
 
-      // cast_back_ratesからバック情報を取得して計算
+      // DBに保存済みのバック額を使用（self_back_amount）
+      const storedBackAmount = item.self_back_amount || 0
       const backInfo = getPosBackInfo(item.product_name, item.category, item.is_self)
-      let calculatedBackAmount = item.back_amount || 0  // DBに値があればそれを使用
+      let calculatedBackAmount = storedBackAmount
       let backRatio: number | null = null
 
       if (backInfo && calculatedBackAmount === 0) {
@@ -586,6 +587,32 @@ async function calculatePayslipForCast(
         subtotal: item.subtotal,
         back_ratio: backRatio,
         back_amount: calculatedBackAmount,
+        is_base: false
+      })
+    }
+
+    // ヘルプとしての商品明細をdailySalesMapに追加
+    for (const item of helpItems || []) {
+      if (!item.date) continue
+      if (!dailySalesMap.has(item.date)) {
+        dailySalesMap.set(item.date, {
+          date: item.date,
+          totalSales: 0,
+          productBack: 0,
+          items: []
+        })
+      }
+      const dayData = dailySalesMap.get(item.date)!
+      const helpBackAmount = item.help_back_amount || 0
+      dayData.productBack += helpBackAmount
+      dayData.items.push({
+        product_name: item.product_name,
+        category: item.category || '',
+        sales_type: 'help',
+        quantity: item.quantity || 1,
+        subtotal: item.help_sales || 0,
+        back_ratio: null,
+        back_amount: helpBackAmount,
         is_base: false
       })
     }
@@ -651,19 +678,8 @@ async function calculatePayslipForCast(
     const totalSalesItemBased = (dailyStats || []).reduce((sum, d) => sum + (d.total_sales_item_based || 0), 0)
     const totalSalesReceiptBased = (dailyStats || []).reduce((sum, d) => sum + (d.total_sales_receipt_based || 0), 0)
 
-    // 商品バックはdailySalesMapから（推し/ヘルプ別に集計）
-    let selfProductBack = 0
-    let helpProductBack = 0
-    dailySalesMap.forEach(day => {
-      for (const item of day.items) {
-        if (item.sales_type === 'self') {
-          selfProductBack += item.back_amount
-        } else {
-          helpProductBack += item.back_amount
-        }
-      }
-    })
-    const totalProductBack = selfProductBack + helpProductBack
+    // 商品バックはcast_daily_statsから取得（報酬明細ページと同じソース）
+    const totalProductBack = (dailyStats || []).reduce((sum, d) => sum + (d.product_back_item_based || 0), 0)
 
     console.log(`[${cast.name}] totalSalesItemBased: ${totalSalesItemBased}, totalSalesReceiptBased: ${totalSalesReceiptBased}, totalProductBack: ${totalProductBack}`)
 
@@ -712,9 +728,8 @@ async function calculatePayslipForCast(
         typeSalesBack = Math.round(typeTotalSales * compType.commission_rate / 100)
       }
 
-      // 商品バック（use_product_back / use_help_product_back フラグに基づく）
-      const typeProductBack = (compType.use_product_back !== false ? selfProductBack : 0)
-        + (compType.use_help_product_back !== false ? helpProductBack : 0)
+      // 商品バック（use_product_back / use_help_product_back フラグに基づく - 報酬明細ページと同じロジック）
+      const typeProductBack = (compType.use_product_back || compType.use_help_product_back) ? totalProductBack : 0
 
       // 総報酬額（時給は hourly_rate > 0 の場合のみ含める）
       const typeGrossEarnings = (typeUseWage ? totalWageAmount : 0) + typeSalesBack + typeProductBack + typeFixedAmount
