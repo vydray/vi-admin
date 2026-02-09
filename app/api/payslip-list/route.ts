@@ -133,11 +133,9 @@ export async function POST(request: NextRequest) {
       .eq('store_id', storeId)
       .eq('is_active', true)
 
-    // 出勤系コードで出勤日判定
-    const workDayCodes = new Set(['present', 'late', 'early_leave', 'request_shift'])
     const workDayStatusIds = new Set(
       (attendanceStatuses || [])
-        .filter(s => s.code && workDayCodes.has(s.code))
+        .filter(s => s.is_active)
         .map(s => s.id.toString())
     )
 
@@ -249,41 +247,50 @@ export async function POST(request: NextRequest) {
 
       const enabledTypes = compensationTypes.filter(t => t.is_enabled !== false)
 
-      // アクティブな報酬形態を決定
-      let activeCompType = enabledTypes.length > 0 ? enabledTypes[0] : null
-      if (compSettings?.payment_selection_method === 'specific' && compSettings?.selected_compensation_type_id) {
-        activeCompType = enabledTypes.find(t => t.id === compSettings.selected_compensation_type_id) || activeCompType
-      }
+      // 各報酬形態の報酬額を計算
+      const calculateForType = (compType: typeof enabledTypes[0]) => {
+        const typeIsItemBased = compType.sales_aggregation !== 'receipt_based'
+        const typeTotalSales = castStats.reduce((sum, s) => {
+          return sum + (typeIsItemBased ? (s.total_sales_item_based || 0) : (s.total_sales_receipt_based || 0))
+        }, 0)
 
-      const isItemBased = activeCompType?.sales_aggregation !== 'receipt_based'
-      const totalSales = castStats.reduce((sum, s) => {
-        return sum + (isItemBased ? (s.total_sales_item_based || 0) : (s.total_sales_receipt_based || 0))
-      }, 0)
-
-      // 売上バック計算
-      let salesBack = 0
-      if (activeCompType) {
-        if (activeCompType.use_sliding_rate && activeCompType.sliding_rates) {
-          const rate = activeCompType.sliding_rates.find(
-            r => totalSales >= r.min && (r.max === 0 || totalSales <= r.max)
+        let typeSalesBack = 0
+        if (compType.use_sliding_rate && compType.sliding_rates) {
+          const rate = compType.sliding_rates.find(
+            r => typeTotalSales >= r.min && (r.max === 0 || typeTotalSales <= r.max)
           )
           if (rate) {
-            salesBack = Math.round(totalSales * rate.rate / 100)
+            typeSalesBack = Math.round(typeTotalSales * rate.rate / 100)
           }
-        } else if (activeCompType.commission_rate && activeCompType.commission_rate > 0) {
-          salesBack = Math.round(totalSales * activeCompType.commission_rate / 100)
+        } else if (compType.commission_rate && compType.commission_rate > 0) {
+          typeSalesBack = Math.round(typeTotalSales * compType.commission_rate / 100)
         }
+
+        const typeUseWage = (compType.hourly_rate || 0) > 0
+        const typeHourlyIncome = typeUseWage ? totalWageAmount : 0
+        const typeFixedAmount = compType.fixed_amount || 0
+        const typeGrossTotal = typeHourlyIncome + typeSalesBack + totalProductBack + typeFixedAmount
+
+        return { compType, salesBack: typeSalesBack, useWage: typeUseWage, hourlyIncome: typeHourlyIncome, fixedAmount: typeFixedAmount, grossTotal: typeGrossTotal }
       }
 
-      // 固定額
-      const fixedAmount = activeCompType?.fixed_amount || 0
+      const allResults = enabledTypes.map(calculateForType)
 
-      // 時給を使うか
-      const useWage = (activeCompType?.hourly_rate || 0) > 0
-      const hourlyIncome = useWage ? totalWageAmount : 0
+      // 採用する報酬形態を決定（recalculate APIと同じロジック）
+      let selected = allResults[0] || null
+      if (compSettings?.payment_selection_method === 'specific' && compSettings?.selected_compensation_type_id) {
+        selected = allResults.find(r => r.compType.id === compSettings.selected_compensation_type_id) || selected
+      } else if (allResults.length > 1) {
+        // 最高額を選択
+        selected = allResults.reduce((best, current) =>
+          current.grossTotal > best.grossTotal ? current : best
+        )
+      }
 
-      // 総支給額
-      const grossTotal = hourlyIncome + salesBack + totalProductBack + fixedAmount
+      const salesBack = selected?.salesBack ?? 0
+      const fixedAmount = selected?.fixedAmount ?? 0
+      const hourlyIncome = selected?.hourlyIncome ?? 0
+      const grossTotal = selected?.grossTotal ?? totalProductBack
 
       // 控除計算
       const enabledDeductionIds = compSettings?.enabled_deduction_ids || []
