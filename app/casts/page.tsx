@@ -398,7 +398,8 @@ function CastsPageContent() {
     }
 
     if (isNewCast) {
-      // 新規作成
+      // 新規作成 - display_orderを現在の最大値+1に設定
+      const maxOrder = casts.reduce((max, c) => Math.max(max, c.display_order || 0), 0)
       const { error } = await supabase
         .from('casts')
         .insert({
@@ -422,6 +423,7 @@ function CastsPageContent() {
           residence_record: editingCast.residence_record,
           attendance_certificate: editingCast.attendance_certificate,
           contract_documents: editingCast.contract_documents,
+          display_order: maxOrder + 1,
         })
 
       if (handleSupabaseError(error, { operation: 'キャストの作成' })) {
@@ -663,19 +665,21 @@ function CastsPageContent() {
 
     // データベースに保存
     try {
-      const updates = updatedCasts.map((cast, index) => ({
-        id: cast.id,
-        display_order: index + 1
-      }))
-
-      // N個のUPDATEクエリをまとめて1つのupsertに変更（N+1問題の解決）
-      await supabase
-        .from('casts')
-        .upsert(updates, { onConflict: 'id' })
+      for (const cast of updatedCasts) {
+        const { error } = await supabase
+          .from('casts')
+          .update({ display_order: cast.display_order })
+          .eq('id', cast.id)
+        if (error) {
+          console.error('並び順の保存エラー:', error)
+          toast.error('並び順の保存に失敗しました')
+          loadCasts()
+          return
+        }
+      }
     } catch (error) {
       console.error('並び順の保存エラー:', error)
       toast.error('並び順の保存に失敗しました')
-      // エラー時はリロード
       loadCasts()
     }
   }
