@@ -769,6 +769,9 @@ function AttendancePageContent() {
                   <div style={{ fontSize: isMobile ? '12px' : '12px', fontWeight: '400', marginTop: isMobile ? '2px' : '4px' }}>
                     出勤日数
                   </div>
+                  <div style={{ fontSize: isMobile ? '11px' : '12px', fontWeight: '400', marginTop: '2px', color: '#dc2626' }}>
+                    日払い
+                  </div>
                 </th>
               </tr>
             </thead>
@@ -888,6 +891,16 @@ function AttendancePageContent() {
                       const status = attendanceStatuses.find(s => s.id === a.status_id)
                       return status?.is_work_day ?? status?.is_active ?? false
                     }).length}日
+                    {(() => {
+                      const totalDailyPayment = attendances
+                        .filter(a => a.cast_name === cast.name)
+                        .reduce((sum, a) => sum + (a.daily_payment || 0), 0)
+                      return totalDailyPayment > 0 ? (
+                        <div style={{ fontSize: isMobile ? '11px' : '12px', fontWeight: '500', color: '#dc2626', marginTop: '2px' }}>
+                          ¥{totalDailyPayment.toLocaleString()}
+                        </div>
+                      ) : null
+                    })()
                   </td>
                 </tr>
               ))}
