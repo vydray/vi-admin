@@ -451,6 +451,13 @@ function CastsPageContent() {
           instagram: editingCast.instagram,
           password2: editingCast.password2,
           primary_cast_id: editingCast.primary_cast_id,
+          show_in_pos: editingCast.show_in_pos,
+          is_active: editingCast.is_active,
+          is_admin: editingCast.is_admin,
+          is_manager: editingCast.is_manager,
+          residence_record: editingCast.residence_record,
+          attendance_certificate: editingCast.attendance_certificate,
+          contract_documents: editingCast.contract_documents,
         })
         .eq('id', editingCast.id)
 
@@ -1085,6 +1092,7 @@ function CastsPageContent() {
                   style={inputStyle}
                 >
                   <option value="在籍">在籍</option>
+                  <option value="体験">体験</option>
                   <option value="退店">退店</option>
                   <option value="不明">不明</option>
                 </select>
