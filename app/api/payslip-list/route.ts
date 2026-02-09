@@ -129,13 +129,15 @@ export async function POST(request: NextRequest) {
     // 5. 勤怠ステータス（出勤扱い判定用）
     const { data: attendanceStatuses } = await supabase
       .from('attendance_statuses')
-      .select('id, counts_as_work_day')
+      .select('id, code, is_active')
       .eq('store_id', storeId)
       .eq('is_active', true)
 
+    // 出勤系コードで出勤日判定
+    const workDayCodes = new Set(['present', 'late', 'early_leave', 'request_shift'])
     const workDayStatusIds = new Set(
       (attendanceStatuses || [])
-        .filter(s => s.counts_as_work_day)
+        .filter(s => s.code && workDayCodes.has(s.code))
         .map(s => s.id.toString())
     )
 
@@ -171,7 +173,7 @@ export async function POST(request: NextRequest) {
     const castIds = casts.map(c => c.id)
     const { data: allCompSettings } = await supabase
       .from('compensation_settings')
-      .select('cast_id, status_id, hourly_wage_override, enabled_deduction_ids, compensation_types, payment_selection_method, selected_type_id, target_year, target_month')
+      .select('cast_id, status_id, hourly_wage_override, enabled_deduction_ids, compensation_types, payment_selection_method, selected_compensation_type_id, target_year, target_month')
       .eq('store_id', storeId)
       .in('cast_id', castIds)
       .eq('is_active', true)
@@ -249,8 +251,8 @@ export async function POST(request: NextRequest) {
 
       // アクティブな報酬形態を決定
       let activeCompType = enabledTypes.length > 0 ? enabledTypes[0] : null
-      if (compSettings?.payment_selection_method === 'specific' && compSettings?.selected_type_id) {
-        activeCompType = enabledTypes.find(t => t.id === compSettings.selected_type_id) || activeCompType
+      if (compSettings?.payment_selection_method === 'specific' && compSettings?.selected_compensation_type_id) {
+        activeCompType = enabledTypes.find(t => t.id === compSettings.selected_compensation_type_id) || activeCompType
       }
 
       const isItemBased = activeCompType?.sales_aggregation !== 'receipt_based'
