@@ -984,7 +984,7 @@ function CastsPageContent() {
                       </button>
                     </div>
                   </td>
-                  <td style={tdStyle}>{cast.birthday ? cast.birthday.substring(5).replace('-', '') : '-'}</td>
+                  <td style={tdStyle}>{cast.birthday || '-'}</td>
                   <td style={tdStyle}>
                     {cast.status ? (
                       <span style={{
@@ -1069,13 +1069,11 @@ function CastsPageContent() {
                   type="text"
                   maxLength={4}
                   placeholder="0315"
-                  value={editingCast.birthday ? editingCast.birthday.substring(5).replace('-', '') : ''}
+                  value={editingCast.birthday || ''}
                   onChange={(e) => {
                     const value = e.target.value.replace(/[^0-9]/g, '').substring(0, 4)
                     if (value.length === 4) {
-                      const month = value.substring(0, 2)
-                      const day = value.substring(2, 4)
-                      handleFieldChange('birthday', `2000-${month}-${day}`)
+                      handleFieldChange('birthday', value)
                     } else if (value.length === 0) {
                       handleFieldChange('birthday', null)
                     }
