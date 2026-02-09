@@ -900,7 +900,7 @@ function AttendancePageContent() {
                           ¥{totalDailyPayment.toLocaleString()}
                         </div>
                       ) : null
-                    })()
+                    })()}
                   </td>
                 </tr>
               ))}
