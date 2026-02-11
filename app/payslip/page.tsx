@@ -1507,23 +1507,25 @@ function PayslipPageContent() {
     }
   }, [selectedCastId, casts, selectedMonth])
 
-  // 全キャストCSV一括出力
+  // 全キャストCSV一括出力（payslip-list APIでリアルタイム計算）
   const handleExportAllCSV = useCallback(async () => {
     setCsvExporting(true)
     try {
       const yearMonth = format(selectedMonth, 'yyyy-MM')
 
-      // 全キャストの報酬明細を取得
-      const { data: allPayslips, error } = await supabase
-        .from('payslips')
-        .select('*, casts!inner(name, status)')
-        .eq('store_id', storeId)
-        .eq('year_month', yearMonth)
-        .order('casts(name)')
+      // payslip-list APIでリアルタイム計算
+      const response = await fetch('/api/payslip-list', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ year_month: yearMonth, store_id: storeId })
+      })
 
-      if (error) throw error
+      if (!response.ok) throw new Error('Failed to fetch payslips')
 
-      if (!allPayslips || allPayslips.length === 0) {
+      const data = await response.json()
+      const allPayslips = data.payslips || []
+
+      if (allPayslips.length === 0) {
         alert('エクスポートするデータがありません')
         return
       }
@@ -1531,10 +1533,8 @@ function PayslipPageContent() {
       // CSVヘッダー
       const headers = [
         'キャスト名',
-        'ステータス',
         '出勤日数',
         '総勤務時間',
-        '平均時給',
         '時給収入',
         '売上バック',
         '商品バック',
@@ -1548,48 +1548,31 @@ function PayslipPageContent() {
       ]
 
       // データ行を作成
-      const rows = allPayslips.map(payslip => {
-        const cast = payslip.casts as { name: string; status: string }
-        const deductions = (payslip.deduction_details || []) as { name: string; type: string; amount: number }[]
-
-        // 日払い
-        const dailyPayment = deductions
-          .filter(d => d.type === 'daily_payment' || d.name?.includes('日払い'))
-          .reduce((sum, d) => sum + (d.amount || 0), 0)
-
-        // 源泉徴収
-        const withholdingTax = deductions
-          .filter(d => d.name?.includes('源泉') || d.name?.includes('所得税'))
-          .reduce((sum, d) => sum + (d.amount || 0), 0)
-
-        // その他控除
-        const otherDeductions = deductions
-          .filter(d => d.type !== 'daily_payment' && !d.name?.includes('日払い') && !d.name?.includes('源泉') && !d.name?.includes('所得税'))
-          .reduce((sum, d) => sum + (d.amount || 0), 0)
-
-        return [
-          cast.name,
-          cast.status || '',
-          payslip.work_days || 0,
-          payslip.total_hours || 0,
-          payslip.average_hourly_wage || 0,
-          payslip.hourly_income || 0,
-          payslip.sales_back || 0,
-          payslip.product_back || 0,
-          payslip.fixed_amount || 0,
-          payslip.gross_total || 0,
-          dailyPayment,
-          withholdingTax,
-          otherDeductions,
-          payslip.total_deduction || 0,
-          payslip.net_payment || 0,
-        ]
-      })
+      const rows = allPayslips.map((p: {
+        cast_name: string; work_days: number; total_hours: number; hourly_income: number;
+        sales_back: number; product_back: number; fixed_amount: number; gross_total: number;
+        daily_payment: number; withholding_tax: number; other_deductions: number;
+        total_deduction: number; net_payment: number;
+      }) => [
+        p.cast_name,
+        p.work_days,
+        p.total_hours,
+        p.hourly_income,
+        p.sales_back,
+        p.product_back,
+        p.fixed_amount,
+        p.gross_total,
+        p.daily_payment,
+        p.withholding_tax,
+        p.other_deductions,
+        p.total_deduction,
+        p.net_payment,
+      ])
 
       // CSV文字列生成
       const csvContent = [
         headers.join(','),
-        ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+        ...rows.map((row: (string | number)[]) => row.map(cell => `"${cell}"`).join(','))
       ].join('\n')
 
       // BOM付きUTF-8でダウンロード
@@ -1609,9 +1592,9 @@ function PayslipPageContent() {
     }
   }, [storeId, selectedMonth])
 
-  // 個人CSV出力
+  // 個人CSV出力（画面表示と同じライブ計算値を使用）
   const handleExportIndividualCSV = useCallback(async () => {
-    if (!selectedCastId || !savedPayslip) {
+    if (!selectedCastId) {
       alert('キャストを選択してください')
       return
     }
@@ -1622,23 +1605,23 @@ function PayslipPageContent() {
     setCsvExporting(true)
     setShowExportModal(false)
     try {
-      const payslip = savedPayslip
-      const deductions = (payslip.deduction_details || []) as { name: string; type: string; amount: number }[]
+      // ライブ計算値から控除を分類
+      const csvDailyPayment = deductions
+        .filter(d => d.name?.includes('日払い'))
+        .reduce((sum, d) => sum + d.amount, 0)
 
-      // 日払い
-      const dailyPayment = deductions
-        .filter(d => d.type === 'daily_payment' || d.name?.includes('日払い'))
-        .reduce((sum, d) => sum + (d.amount || 0), 0)
-
-      // 源泉徴収
-      const withholdingTax = deductions
+      const csvWithholdingTax = deductions
         .filter(d => d.name?.includes('源泉') || d.name?.includes('所得税'))
-        .reduce((sum, d) => sum + (d.amount || 0), 0)
+        .reduce((sum, d) => sum + d.amount, 0)
 
-      // その他控除
-      const otherDeductions = deductions
-        .filter(d => d.type !== 'daily_payment' && !d.name?.includes('日払い') && !d.name?.includes('源泉') && !d.name?.includes('所得税'))
-        .reduce((sum, d) => sum + (d.amount || 0), 0)
+      const csvOtherDeductions = deductions
+        .filter(d => !d.name?.includes('日払い') && !d.name?.includes('源泉') && !d.name?.includes('所得税'))
+        .reduce((sum, d) => sum + d.amount, 0)
+
+      const workDays = dailyDetails.filter(d => d.workHours > 0).length
+      const averageHourlyWage = summary.useWageData && summary.totalWorkHours > 0
+        ? Math.round(summary.totalWageAmount / summary.totalWorkHours)
+        : 0
 
       // CSVヘッダー
       const headers = [
@@ -1662,19 +1645,19 @@ function PayslipPageContent() {
       const row = [
         cast.name,
         cast.status || '',
-        payslip.work_days || 0,
-        payslip.total_hours || 0,
-        payslip.average_hourly_wage || 0,
-        payslip.hourly_income || 0,
-        payslip.sales_back || 0,
-        payslip.product_back || 0,
-        payslip.fixed_amount || 0,
-        payslip.gross_total || 0,
-        dailyPayment,
-        withholdingTax,
-        otherDeductions,
-        payslip.total_deduction || 0,
-        payslip.net_payment || 0,
+        workDays,
+        summary.totalWorkHours,
+        averageHourlyWage,
+        summary.useWageData ? summary.totalWageAmount : 0,
+        summary.salesBack,
+        summary.totalProductBack,
+        summary.fixedAmount,
+        summary.grossEarnings,
+        csvDailyPayment,
+        csvWithholdingTax,
+        csvOtherDeductions,
+        totalDeduction,
+        netEarnings,
       ]
 
       // CSV文字列生成
@@ -1698,7 +1681,7 @@ function PayslipPageContent() {
     } finally {
       setCsvExporting(false)
     }
-  }, [selectedCastId, savedPayslip, casts, selectedMonth])
+  }, [selectedCastId, casts, selectedMonth, summary, deductions, dailyDetails, totalDeduction, netEarnings])
 
   // 全キャストPDF出力
   const handleExportAllPDF = useCallback(async () => {
