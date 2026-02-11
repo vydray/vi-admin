@@ -869,6 +869,16 @@ function AttendancePageContent() {
                                 </div>
                               )
                             })()}
+                            {(attendance.daily_payment || 0) > 0 && !isMobile && (
+                              <div style={{
+                                fontSize: '10px',
+                                color: '#e74c3c',
+                                fontWeight: '500',
+                                marginTop: '2px'
+                              }}>
+                                ¥{(attendance.daily_payment || 0).toLocaleString()}
+                              </div>
+                            )}
                           </div>
                         )}
                       </td>
