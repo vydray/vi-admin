@@ -100,13 +100,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, payslips: [] })
     }
 
-    // 2. 全キャストの日別統計を一括取得
+    // 2. 全キャストの日別統計を一括取得（デフォルト1000行制限を回避）
     const { data: allDailyStats } = await supabase
       .from('cast_daily_stats')
       .select('cast_id, date, work_hours, wage_amount, total_sales_item_based, total_sales_receipt_based, product_back_item_based, product_back_receipt_based')
       .eq('store_id', storeId)
       .gte('date', startDate)
       .lte('date', endDate)
+      .limit(10000)
 
     // 3. 全キャストの日別アイテムを一括取得（商品バック計算用 - 報酬明細ページと同じソース）
     const { data: allDailyItems } = await supabase
@@ -115,6 +116,7 @@ export async function POST(request: NextRequest) {
       .eq('store_id', storeId)
       .gte('date', startDate)
       .lte('date', endDate)
+      .limit(50000)
 
     // 4. 勤怠データを一括取得
     const castNames = casts.map(c => c.name)
@@ -125,6 +127,7 @@ export async function POST(request: NextRequest) {
       .in('cast_name', castNames)
       .gte('date', startDate)
       .lte('date', endDate)
+      .limit(10000)
 
     // 5. 勤怠ステータス（出勤扱い判定用）
     const { data: attendanceStatuses } = await supabase
