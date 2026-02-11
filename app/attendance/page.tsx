@@ -770,7 +770,7 @@ function AttendancePageContent() {
                     出勤日数
                   </div>
                   <div style={{ fontSize: isMobile ? '11px' : '12px', fontWeight: '500', marginTop: '2px', color: '#dc2626' }}>
-                    ¥{attendances.reduce((sum, a) => sum + (a.daily_payment || 0), 0).toLocaleString()}
+                    ¥{attendances.filter(a => casts.some(c => c.name === a.cast_name)).reduce((sum, a) => sum + (a.daily_payment || 0), 0).toLocaleString()}
                   </div>
                 </th>
               </tr>
