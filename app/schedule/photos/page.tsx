@@ -109,7 +109,8 @@ export default function CastPhotosPage() {
       .select('id, name, photo_path, photo_crop, is_active')
       .eq('store_id', storeId)
       .eq('is_active', true)
-      .order('display_order', { ascending: true })
+      .order('display_order', { ascending: true, nullsFirst: false })
+      .order('name')
 
     if (!error && data) {
       setCasts(data)

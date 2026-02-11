@@ -286,6 +286,7 @@ function ReceiptsPageContent() {
         .eq('store_id', storeId)
         .eq('is_active', true)
         .eq('show_in_pos', true)
+        .order('display_order', { ascending: true, nullsFirst: false })
         .order('name')
 
       setProducts(productsData || [])
@@ -437,6 +438,7 @@ function ReceiptsPageContent() {
           .eq('store_id', receipt.store_id)
           .eq('is_active', true)
           .eq('show_in_pos', true)
+          .order('display_order', { ascending: true, nullsFirst: false })
           .order('name')
       ])
 

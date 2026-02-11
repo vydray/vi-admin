@@ -95,6 +95,7 @@ export async function POST(request: NextRequest) {
       .select('id, name')
       .eq('store_id', storeId)
       .eq('is_active', true)
+      .order('display_order', { ascending: true, nullsFirst: false })
       .order('name')
 
     if (!casts || casts.length === 0) {

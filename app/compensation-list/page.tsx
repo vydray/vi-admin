@@ -59,6 +59,7 @@ function CompensationListContent() {
         .select('id, name, is_active')
         .eq('store_id', storeId)
         .eq('is_active', true)
+        .order('display_order', { ascending: true, nullsFirst: false })
         .order('name')
 
       if (castsError) throw castsError
