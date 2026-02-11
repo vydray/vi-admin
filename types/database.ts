@@ -943,6 +943,7 @@ export interface BaseOrder {
   is_processed: boolean
   processed_at: string | null
   error_message: string | null
+  manually_edited: boolean  // 手動でcast_idを編集済み（cron同期でcast_idを上書きしない）
   created_at: string
   updated_at: string
 }

@@ -212,12 +212,23 @@ async function executeSyncBaseOrders() {
           order => order.dispatch_status !== 'cancelled'
         )
 
+        // 手動編集済みのbase_ordersキーを取得（cast_idを上書きしないため）
+        const { data: manuallyEditedData } = await supabase
+          .from('base_orders')
+          .select('base_order_id, product_name, variation_name')
+          .eq('store_id', setting.store_id)
+          .eq('manually_edited', true)
+
+        const manuallyEditedKeys = new Set(
+          (manuallyEditedData || []).map(r => `${r.base_order_id}|${r.product_name}|${r.variation_name}`)
+        )
+
         let successCount = 0
         let errorCount = 0
         const BATCH_SIZE = 5
         const errorDetails: string[] = []
 
-        console.log(`[BASE Sync] Store ${setting.store_id}: Processing ${activeOrders.length} orders`)
+        console.log(`[BASE Sync] Store ${setting.store_id}: Processing ${activeOrders.length} orders (${manuallyEditedKeys.size} manually edited)`)
 
         for (let i = 0; i < activeOrders.length; i += BATCH_SIZE) {
           const batch = activeOrders.slice(i, i + BATCH_SIZE)
@@ -262,6 +273,33 @@ async function executeSyncBaseOrders() {
               // NULLではなく空文字を使用（一意インデックスがCOALESCEを使用しているため）
               const productName = item.title || ''
               const variationName = item.variation || ''
+
+              // 手動編集済みの注文はcast_idを上書きしない
+              const key = `${orderSummary.unique_key}|${productName}|${variationName}`
+              if (manuallyEditedKeys.has(key)) {
+                // cast_id以外のフィールドのみ更新（価格・数量の更新は許可）
+                const { error: updateError } = await supabase
+                  .from('base_orders')
+                  .update({
+                    order_datetime: orderDatetime,
+                    base_price: item.price,
+                    actual_price: actualPrice,
+                    quantity: item.amount,
+                    business_date: businessDate,
+                  })
+                  .eq('store_id', setting.store_id)
+                  .eq('base_order_id', orderSummary.unique_key)
+                  .eq('product_name', productName)
+                  .eq('variation_name', variationName)
+
+                if (updateError) {
+                  errorCount++
+                  errorDetails.push(`update failed (manually_edited) for ${orderSummary.unique_key}: ${updateError.message}`)
+                } else {
+                  successCount++
+                }
+                continue
+              }
 
               // local_product_idはproductsテーブルを参照するので、base_products.idは使わない
               // 将来的にはbase_productsにlocal_product_id（products.id）を持たせるべき

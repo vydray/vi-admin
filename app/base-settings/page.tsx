@@ -89,6 +89,8 @@ function BaseSettingsPageContent() {
   const [orders, setOrders] = useState<any[]>([])
   const [ordersLoading, setOrdersLoading] = useState(false)
   const [ordersMonth, setOrdersMonth] = useState(new Date())
+  const [editingOrderId, setEditingOrderId] = useState<number | null>(null)
+  const [editCastId, setEditCastId] = useState<number | null>(null)
 
   // 締め時間設定
   const [cutoffHour, setCutoffHour] = useState(6)
@@ -571,6 +573,30 @@ function BaseSettingsPageContent() {
       loadOrders()
     }
   }, [activeTab, storeId, ordersMonth, loadOrders])
+
+  // 注文のキャストを手動設定
+  const handleSaveOrderCast = async (orderId: number, castId: number | null) => {
+    try {
+      const { error } = await supabase
+        .from('base_orders')
+        .update({
+          cast_id: castId,
+          manually_edited: castId !== null,
+          is_processed: false,
+        })
+        .eq('id', orderId)
+        .eq('store_id', storeId)
+
+      if (error) throw error
+
+      toast.success(castId ? 'キャストを設定しました' : 'キャスト設定を解除しました')
+      setEditingOrderId(null)
+      loadOrders()
+    } catch (err) {
+      console.error('キャスト設定エラー:', err)
+      toast.error('キャストの設定に失敗しました')
+    }
+  }
 
   // BASE設定を保存
   const handleSaveSettings = async () => {
@@ -1200,7 +1226,48 @@ function BaseSettingsPageContent() {
                         </span>
                       </td>
                       <td style={styles.td}>{order.product_name}</td>
-                      <td style={styles.td}>{order.variation_name || '-'}</td>
+                      <td style={styles.td}>
+                        {editingOrderId === order.id ? (
+                          <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                            <select
+                              value={editCastId ?? ''}
+                              onChange={(e) => setEditCastId(e.target.value ? Number(e.target.value) : null)}
+                              style={{ padding: '4px 6px', borderRadius: '4px', border: '1px solid #d1d5db', fontSize: '12px', maxWidth: '120px' }}
+                            >
+                              <option value="">未設定</option>
+                              {casts.map(cast => (
+                                <option key={cast.id} value={cast.id}>{cast.name}</option>
+                              ))}
+                            </select>
+                            <button
+                              onClick={() => handleSaveOrderCast(order.id, editCastId)}
+                              style={{ padding: '2px 8px', fontSize: '11px', backgroundColor: '#3b82f6', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                            >保存</button>
+                            <button
+                              onClick={() => setEditingOrderId(null)}
+                              style={{ padding: '2px 8px', fontSize: '11px', backgroundColor: '#e5e7eb', color: '#374151', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                            >取消</button>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                            <span>
+                              {order.cast_id
+                                ? casts.find((c: CastBasic) => c.id === order.cast_id)?.name || order.variation_name || '-'
+                                : order.variation_name || '-'}
+                            </span>
+                            {order.manually_edited && (
+                              <span style={{ fontSize: '10px', color: '#6366f1', fontWeight: '500' }}>手動</span>
+                            )}
+                            <button
+                              onClick={() => {
+                                setEditingOrderId(order.id)
+                                setEditCastId(order.cast_id)
+                              }}
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#3b82f6', fontSize: '11px', textDecoration: 'underline', whiteSpace: 'nowrap' }}
+                            >{order.manually_edited ? '編集' : '設定'}</button>
+                          </div>
+                        )}
+                      </td>
                       <td style={styles.td}>¥{order.base_price.toLocaleString()}</td>
                       <td style={styles.td}>
                         {order.actual_price ? `¥${order.actual_price.toLocaleString()}` : '-'}

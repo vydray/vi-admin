@@ -165,6 +165,17 @@ export async function POST(request: NextRequest) {
     // dispatch_status: unpaid(入金待ち), ordered(未対応), shipping(配送中), dispatched(対応済み), cancelled(キャンセル)
     const activeOrders = allOrders.filter(order => order.dispatch_status !== 'cancelled')
 
+    // 手動編集済みのbase_ordersキーを取得（cast_idを上書きしないため）
+    const { data: manuallyEditedData } = await supabase
+      .from('base_orders')
+      .select('base_order_id, product_name, variation_name')
+      .eq('store_id', store_id)
+      .eq('manually_edited', true)
+
+    const manuallyEditedKeys = new Set(
+      (manuallyEditedData || []).map(r => `${r.base_order_id}|${r.product_name}|${r.variation_name}`)
+    )
+
     // 注文詳細を並列取得（5件ずつ）
     let successCount = 0
     let errorCount = 0
@@ -214,6 +225,37 @@ export async function POST(request: NextRequest) {
           // 店舗価格（税抜）を決定: store_priceがあればそれを使用、なければbase_priceを税抜換算
           const actualPrice = baseProduct?.store_price ?? Math.floor(item.price / 1.1)
 
+          // NULLではなく空文字を使用（ユニーク制約でNULL != NULLになるため）
+          const productName = item.title || ''
+          const variationName = item.variation || ''
+
+          // 手動編集済みの注文はcast_idを上書きしない
+          const key = `${orderSummary.unique_key}|${productName}|${variationName}`
+          if (manuallyEditedKeys.has(key)) {
+            // cast_id以外のフィールドのみ更新
+            const { error: updateError } = await supabase
+              .from('base_orders')
+              .update({
+                order_datetime: orderDatetime,
+                base_price: item.price,
+                actual_price: actualPrice,
+                quantity: item.amount,
+                business_date: businessDate,
+              })
+              .eq('store_id', store_id)
+              .eq('base_order_id', orderSummary.unique_key)
+              .eq('product_name', productName)
+              .eq('variation_name', variationName)
+
+            if (updateError) {
+              console.error('Order update error (manually_edited):', updateError)
+              errorCount++
+            } else {
+              successCount++
+            }
+            continue
+          }
+
           // local_product_idはproductsテーブルを参照するので、base_products.idは使わない
           const { error: upsertError } = await supabase
             .from('base_orders')
@@ -221,8 +263,8 @@ export async function POST(request: NextRequest) {
               store_id,
               base_order_id: orderSummary.unique_key,
               order_datetime: orderDatetime,
-              product_name: item.title,
-              variation_name: item.variation || null,
+              product_name: productName,
+              variation_name: variationName,
               cast_id: cast?.id || null,
               local_product_id: null, // base_products.idは外部キー制約違反になるためnull
               base_price: item.price,
