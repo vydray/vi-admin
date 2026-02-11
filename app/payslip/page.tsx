@@ -994,7 +994,8 @@ function PayslipPageContent() {
   // 控除を計算
   const deductions = useMemo((): DeductionResult[] => {
     const results: DeductionResult[] = []
-    const enabledIds = compensationSettings?.enabled_deduction_ids || []
+    // null = 未設定（全控除適用、後方互換）, [] = 全控除無効, [1,2,3] = 指定控除のみ
+    const enabledIds = compensationSettings?.enabled_deduction_ids ?? null
 
     // 日払い合計
     const totalDailyPayment = attendanceData.reduce((sum, a) => sum + (a.daily_payment || 0), 0)
@@ -1008,7 +1009,7 @@ function PayslipPageContent() {
     }
 
     // 遅刻罰金
-    const lateDeduction = deductionTypes.find(d => d.type === 'penalty_late' && (enabledIds.length === 0 || enabledIds.includes(d.id)))
+    const lateDeduction = deductionTypes.find(d => d.type === 'penalty_late' && (enabledIds === null || enabledIds.includes(d.id)))
     if (lateDeduction) {
       const rule = latePenaltyRules.get(lateDeduction.id)
       if (rule) {
@@ -1033,7 +1034,7 @@ function PayslipPageContent() {
 
     // ステータス連動罰金
     deductionTypes
-      .filter(d => d.type === 'penalty_status' && d.attendance_status_id && (enabledIds.length === 0 || enabledIds.includes(d.id)))
+      .filter(d => d.type === 'penalty_status' && d.attendance_status_id && (enabledIds === null || enabledIds.includes(d.id)))
       .forEach(d => {
         const count = attendanceData.filter(a => a.status_id === d.attendance_status_id).length
         if (count > 0) {
@@ -1048,7 +1049,7 @@ function PayslipPageContent() {
 
     // 固定控除
     deductionTypes
-      .filter(d => d.type === 'fixed' && (enabledIds.length === 0 || enabledIds.includes(d.id)))
+      .filter(d => d.type === 'fixed' && (enabledIds === null || enabledIds.includes(d.id)))
       .forEach(d => {
         if (d.default_amount > 0) {
           results.push({
@@ -1060,7 +1061,7 @@ function PayslipPageContent() {
 
     // 出勤控除（1出勤あたり×出勤日数）
     deductionTypes
-      .filter(d => d.type === 'per_attendance' && (enabledIds.length === 0 || enabledIds.includes(d.id)))
+      .filter(d => d.type === 'per_attendance' && (enabledIds === null || enabledIds.includes(d.id)))
       .forEach(d => {
         // 出勤扱いのステータスを持つ日数をカウント
         const workDayCount = attendanceData.filter(a =>
@@ -1077,7 +1078,7 @@ function PayslipPageContent() {
       })
 
     // 源泉徴収（%計算）- 総支給額に対して計算
-    const percentageDeductions = deductionTypes.filter(d => d.type === 'percentage' && d.percentage && (enabledIds.length === 0 || enabledIds.includes(d.id)))
+    const percentageDeductions = deductionTypes.filter(d => d.type === 'percentage' && d.percentage && (enabledIds === null || enabledIds.includes(d.id)))
     percentageDeductions.forEach(d => {
       // 総支給額に対して源泉徴収を計算（他の控除を引く前）
       const amount = Math.round(summary.grossEarnings * (d.percentage || 0) / 100)

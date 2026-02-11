@@ -336,7 +336,8 @@ export async function POST(request: NextRequest) {
       const grossTotal = selected?.grossTotal ?? totalProductBack
 
       // 控除計算
-      const enabledDeductionIds = compSettings?.enabled_deduction_ids || []
+      // null = 未設定（全控除適用、後方互換）, [] = 全控除無効, [1,2,3] = 指定控除のみ
+      const enabledDeductionIds = compSettings?.enabled_deduction_ids ?? null
 
       // 日払い
       const dailyPayment = castAttendance.reduce((sum, a) => sum + (a.daily_payment || 0), 0)
@@ -344,7 +345,7 @@ export async function POST(request: NextRequest) {
       // 遅刻罰金
       let latePenalty = 0
       const lateDeduction = (deductionTypes || []).find(
-        d => d.type === 'penalty_late' && (enabledDeductionIds.length === 0 || enabledDeductionIds.includes(d.id))
+        d => d.type === 'penalty_late' && (enabledDeductionIds === null || enabledDeductionIds.includes(d.id))
       )
       if (lateDeduction) {
         const rule = latePenaltyRules.find(r => r.deduction_type_id === lateDeduction.id)
@@ -360,7 +361,7 @@ export async function POST(request: NextRequest) {
       // ステータス連動罰金
       let statusPenalty = 0
       for (const d of (deductionTypes || []).filter(d => d.type === 'penalty_status' && d.attendance_status_id)) {
-        if (enabledDeductionIds.length > 0 && !enabledDeductionIds.includes(d.id)) continue
+        if (enabledDeductionIds !== null && !enabledDeductionIds.includes(d.id)) continue
         const count = castAttendance.filter(a => a.status_id === d.attendance_status_id).length
         statusPenalty += d.penalty_amount * count
       }
@@ -368,14 +369,14 @@ export async function POST(request: NextRequest) {
       // 固定控除
       let fixedDeduction = 0
       for (const d of (deductionTypes || []).filter(d => d.type === 'fixed')) {
-        if (enabledDeductionIds.length > 0 && !enabledDeductionIds.includes(d.id)) continue
+        if (enabledDeductionIds !== null && !enabledDeductionIds.includes(d.id)) continue
         fixedDeduction += d.default_amount || 0
       }
 
       // 出勤控除
       let perAttendanceDeduction = 0
       for (const d of (deductionTypes || []).filter(d => d.type === 'per_attendance')) {
-        if (enabledDeductionIds.length > 0 && !enabledDeductionIds.includes(d.id)) continue
+        if (enabledDeductionIds !== null && !enabledDeductionIds.includes(d.id)) continue
         const workDayCount = castAttendance.filter(a => a.status_id && workDayStatusIds.has(a.status_id)).length
         perAttendanceDeduction += (d.default_amount || 0) * workDayCount
       }
@@ -383,7 +384,7 @@ export async function POST(request: NextRequest) {
       // 源泉徴収
       let withholdingTax = 0
       for (const d of (deductionTypes || []).filter(d => d.type === 'percentage' && d.percentage)) {
-        if (enabledDeductionIds.length > 0 && !enabledDeductionIds.includes(d.id)) continue
+        if (enabledDeductionIds !== null && !enabledDeductionIds.includes(d.id)) continue
         withholdingTax += Math.round(grossTotal * (d.percentage || 0) / 100)
       }
 

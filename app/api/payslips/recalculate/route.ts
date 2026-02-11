@@ -687,7 +687,8 @@ async function calculatePayslipForCast(
 
     // 売上バック計算
     let salesBack = 0
-    const enabledDeductionIds = compensationSettings?.enabled_deduction_ids || []
+    // null = 未設定（全控除適用、後方互換）, [] = 全控除無効, [1,2,3] = 指定控除のみ
+    const enabledDeductionIds = compensationSettings?.enabled_deduction_ids ?? null
 
     // アクティブな報酬タイプを取得
     type CompType = {
@@ -796,7 +797,7 @@ async function calculatePayslipForCast(
 
     // 遅刻罰金
     const lateDeduction = (deductionTypes || []).find(
-      d => d.type === 'penalty_late' && (enabledDeductionIds.length === 0 || enabledDeductionIds.includes(d.id))
+      d => d.type === 'penalty_late' && (enabledDeductionIds === null || enabledDeductionIds.includes(d.id))
     )
     if (lateDeduction) {
       const rule = latePenaltyRules.find(r => r.deduction_type_id === lateDeduction.id)
@@ -822,7 +823,7 @@ async function calculatePayslipForCast(
 
     // ステータス連動罰金
     for (const d of (deductionTypes || []).filter(d => d.type === 'penalty_status' && d.attendance_status_id)) {
-      if (enabledDeductionIds.length > 0 && !enabledDeductionIds.includes(d.id)) continue
+      if (enabledDeductionIds !== null && !enabledDeductionIds.includes(d.id)) continue
       const count = (attendanceData || []).filter(a => a.status_id === d.attendance_status_id).length
       if (count > 0) {
         deductions.push({
@@ -836,7 +837,7 @@ async function calculatePayslipForCast(
 
     // 固定控除
     for (const d of (deductionTypes || []).filter(d => d.type === 'fixed')) {
-      if (enabledDeductionIds.length > 0 && !enabledDeductionIds.includes(d.id)) continue
+      if (enabledDeductionIds !== null && !enabledDeductionIds.includes(d.id)) continue
       if (d.default_amount > 0) {
         deductions.push({
           name: d.name,
@@ -848,7 +849,7 @@ async function calculatePayslipForCast(
 
     // 出勤控除（1出勤あたり×出勤日数）
     for (const d of (deductionTypes || []).filter(d => d.type === 'per_attendance')) {
-      if (enabledDeductionIds.length > 0 && !enabledDeductionIds.includes(d.id)) continue
+      if (enabledDeductionIds !== null && !enabledDeductionIds.includes(d.id)) continue
       // 出勤扱いのステータスを持つ日数をカウント
       const workDayCount = (attendanceData || []).filter(a =>
         a.status_id && workDayStatusIds.has(a.status_id)
@@ -865,7 +866,7 @@ async function calculatePayslipForCast(
 
     // 源泉徴収
     for (const d of (deductionTypes || []).filter(d => d.type === 'percentage' && d.percentage)) {
-      if (enabledDeductionIds.length > 0 && !enabledDeductionIds.includes(d.id)) continue
+      if (enabledDeductionIds !== null && !enabledDeductionIds.includes(d.id)) continue
       const amount = Math.round(grossEarnings * (d.percentage || 0) / 100)
       if (amount > 0) {
         deductions.push({
