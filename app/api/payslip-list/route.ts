@@ -100,34 +100,64 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, payslips: [] })
     }
 
-    // 2. 全キャストの日別統計を一括取得（デフォルト1000行制限を回避）
-    const { data: allDailyStats } = await supabase
-      .from('cast_daily_stats')
-      .select('cast_id, date, work_hours, wage_amount, total_sales_item_based, total_sales_receipt_based, product_back_item_based, product_back_receipt_based')
-      .eq('store_id', storeId)
-      .gte('date', startDate)
-      .lte('date', endDate)
-      .limit(10000)
+    // 2. 全キャストの日別統計を一括取得（ページネーションでmax-rows制限を回避）
+    const allDailyStats: { cast_id: number; date: string; work_hours: number; wage_amount: number; total_sales_item_based: number; total_sales_receipt_based: number; product_back_item_based: number; product_back_receipt_based: number }[] = []
+    {
+      let offset = 0
+      while (true) {
+        const { data } = await supabase
+          .from('cast_daily_stats')
+          .select('cast_id, date, work_hours, wage_amount, total_sales_item_based, total_sales_receipt_based, product_back_item_based, product_back_receipt_based')
+          .eq('store_id', storeId)
+          .gte('date', startDate)
+          .lte('date', endDate)
+          .range(offset, offset + 999)
+        if (!data || data.length === 0) break
+        allDailyStats.push(...data)
+        if (data.length < 1000) break
+        offset += 1000
+      }
+    }
 
     // 3. 全キャストの日別アイテムを一括取得（商品バック計算用 - 報酬明細ページと同じソース）
-    const { data: allDailyItems } = await supabase
-      .from('cast_daily_items')
-      .select('cast_id, help_cast_id, self_back_amount, help_back_amount')
-      .eq('store_id', storeId)
-      .gte('date', startDate)
-      .lte('date', endDate)
-      .limit(50000)
+    const allDailyItems: { cast_id: number; help_cast_id: number | null; self_back_amount: number; help_back_amount: number }[] = []
+    {
+      let offset = 0
+      while (true) {
+        const { data } = await supabase
+          .from('cast_daily_items')
+          .select('cast_id, help_cast_id, self_back_amount, help_back_amount')
+          .eq('store_id', storeId)
+          .gte('date', startDate)
+          .lte('date', endDate)
+          .range(offset, offset + 999)
+        if (!data || data.length === 0) break
+        allDailyItems.push(...data)
+        if (data.length < 1000) break
+        offset += 1000
+      }
+    }
 
     // 4. 勤怠データを一括取得
     const castNames = casts.map(c => c.name)
-    const { data: allAttendance } = await supabase
-      .from('attendance')
-      .select('cast_name, date, daily_payment, late_minutes, status_id')
-      .eq('store_id', storeId)
-      .in('cast_name', castNames)
-      .gte('date', startDate)
-      .lte('date', endDate)
-      .limit(10000)
+    const allAttendance: { cast_name: string; date: string; daily_payment: number; late_minutes: number; status_id: string }[] = []
+    {
+      let offset = 0
+      while (true) {
+        const { data } = await supabase
+          .from('attendance')
+          .select('cast_name, date, daily_payment, late_minutes, status_id')
+          .eq('store_id', storeId)
+          .in('cast_name', castNames)
+          .gte('date', startDate)
+          .lte('date', endDate)
+          .range(offset, offset + 999)
+        if (!data || data.length === 0) break
+        allAttendance.push(...data)
+        if (data.length < 1000) break
+        offset += 1000
+      }
+    }
 
     // 5. 勤怠ステータス（出勤扱い判定用）
     const { data: attendanceStatuses } = await supabase
