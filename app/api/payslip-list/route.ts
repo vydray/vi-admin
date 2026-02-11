@@ -108,7 +108,15 @@ export async function POST(request: NextRequest) {
       .gte('date', startDate)
       .lte('date', endDate)
 
-    // 3. 勤怠データを一括取得
+    // 3. 全キャストの日別アイテムを一括取得（商品バック計算用 - 報酬明細ページと同じソース）
+    const { data: allDailyItems } = await supabase
+      .from('cast_daily_items')
+      .select('cast_id, help_cast_id, self_back_amount, help_back_amount')
+      .eq('store_id', storeId)
+      .gte('date', startDate)
+      .lte('date', endDate)
+
+    // 4. 勤怠データを一括取得
     const castNames = casts.map(c => c.name)
     const { data: allAttendance } = await supabase
       .from('attendance')
@@ -184,8 +192,14 @@ export async function POST(request: NextRequest) {
       const castStats = (allDailyStats || []).filter(s => s.cast_id === cast.id)
       const castAttendance = (allAttendance || []).filter(a => a.cast_name === cast.name)
 
-      // 商品バック（cast_daily_stats.product_back_item_basedから取得 - 報酬明細ページと同じソース）
-      const totalProductBack = castStats.reduce((sum, s) => sum + (s.product_back_item_based || 0), 0)
+      // 商品バック（cast_daily_items から取得 - 報酬明細ページと同じソース）
+      const selfBackAmount = (allDailyItems || [])
+        .filter(i => i.cast_id === cast.id)
+        .reduce((sum, i) => sum + (i.self_back_amount || 0), 0)
+      const helpBackAmount = (allDailyItems || [])
+        .filter(i => i.help_cast_id === cast.id)
+        .reduce((sum, i) => sum + (i.help_back_amount || 0), 0)
+      const totalProductBack = selfBackAmount + helpBackAmount
 
       // 報酬設定を取得（年月指定 → 直近 → デフォルトの順）
       const targetYear = targetMonth.getFullYear()
@@ -257,7 +271,7 @@ export async function POST(request: NextRequest) {
         const typeUseWage = (compType.hourly_rate || 0) > 0
         const typeHourlyIncome = typeUseWage ? totalWageAmount : 0
         const typeFixedAmount = compType.fixed_amount || 0
-        const typeProductBack = (compType.use_product_back || compType.use_help_product_back) ? totalProductBack : 0
+        const typeProductBack = compType.use_product_back ? totalProductBack : 0
         const typeGrossTotal = typeHourlyIncome + typeSalesBack + typeProductBack + typeFixedAmount
 
         return { compType, salesBack: typeSalesBack, useWage: typeUseWage, hourlyIncome: typeHourlyIncome, fixedAmount: typeFixedAmount, productBack: typeProductBack, grossTotal: typeGrossTotal }

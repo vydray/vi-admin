@@ -678,8 +678,10 @@ async function calculatePayslipForCast(
     const totalSalesItemBased = (dailyStats || []).reduce((sum, d) => sum + (d.total_sales_item_based || 0), 0)
     const totalSalesReceiptBased = (dailyStats || []).reduce((sum, d) => sum + (d.total_sales_receipt_based || 0), 0)
 
-    // 商品バックはcast_daily_statsから取得（報酬明細ページと同じソース）
-    const totalProductBack = (dailyStats || []).reduce((sum, d) => sum + (d.product_back_item_based || 0), 0)
+    // 商品バックはcast_daily_itemsから計算（報酬明細ページと同じソース: self_back_amount + help_back_amount）
+    const totalSelfBack = (dailyItems || []).reduce((sum, item) => sum + (item.self_back_amount || 0), 0)
+    const totalHelpBack = (helpItems || []).reduce((sum, item) => sum + (item.help_back_amount || 0), 0)
+    const totalProductBack = totalSelfBack + totalHelpBack
 
     console.log(`[${cast.name}] totalSalesItemBased: ${totalSalesItemBased}, totalSalesReceiptBased: ${totalSalesReceiptBased}, totalProductBack: ${totalProductBack}`)
 
@@ -728,8 +730,8 @@ async function calculatePayslipForCast(
         typeSalesBack = Math.round(typeTotalSales * compType.commission_rate / 100)
       }
 
-      // 商品バック（use_product_back / use_help_product_back フラグに基づく - 報酬明細ページと同じロジック）
-      const typeProductBack = (compType.use_product_back || compType.use_help_product_back) ? totalProductBack : 0
+      // 商品バック（use_product_back フラグに基づく - 報酬明細ページと同じロジック）
+      const typeProductBack = compType.use_product_back ? totalProductBack : 0
 
       // 総報酬額（時給は hourly_rate > 0 の場合のみ含める）
       const typeGrossEarnings = (typeUseWage ? totalWageAmount : 0) + typeSalesBack + typeProductBack + typeFixedAmount
