@@ -182,6 +182,7 @@ const createDefaultCompensationType = (index: number): CompensationType => ({
   hourly_rate: 0,
   commission_rate: 50,
   fixed_amount: 0,
+  per_attendance_amount: 0,
   use_sliding_rate: false,
   sliding_rates: null,
   use_product_back: false,
@@ -249,6 +250,7 @@ const legacyToCompensationTypes = (data: CompensationSettings): CompensationType
     hourly_rate: data.hourly_rate ?? 0,
     commission_rate: data.commission_rate ?? 50,
     fixed_amount: data.fixed_amount ?? 0,
+    per_attendance_amount: 0,
     use_sliding_rate: (data.sliding_rates?.length ?? 0) > 0,
     sliding_rates: data.sliding_rates,
     use_product_back: data.use_product_back ?? false,
@@ -268,6 +270,7 @@ const legacyToCompensationTypes = (data: CompensationSettings): CompensationType
       hourly_rate: data.compare_hourly_rate ?? 0,
       commission_rate: data.compare_commission_rate ?? 50,
       fixed_amount: data.compare_fixed_amount ?? 0,
+      per_attendance_amount: 0,
       use_sliding_rate: false,
       sliding_rates: null,
       use_product_back: data.compare_use_product_back ?? false,
@@ -1275,11 +1278,13 @@ function CompensationSettingsPageContent() {
       }
     }
 
-    const total = hourly + fixed + salesBack + selfProductBack + helpProductBack
+    const perAttendance = type.per_attendance_amount || 0
+    const total = hourly + fixed + perAttendance + salesBack + selfProductBack + helpProductBack
 
     return {
       hourly,
       fixed,
+      perAttendance,
       salesBack,
       selfProductBack,
       helpProductBack,
@@ -3194,6 +3199,33 @@ function CompensationSettingsPageContent() {
                       </div>
                     </div>
 
+                    {/* 1出勤あたり固定額 */}
+                    <div style={styles.payRow}>
+                      <label style={styles.payLabel}>
+                        <input
+                          type="checkbox"
+                          checked={(activeCompensationType.per_attendance_amount || 0) > 0}
+                          onChange={(e) => updateCompensationType(activeCompensationType.id, {
+                            per_attendance_amount: e.target.checked ? 5000 : 0
+                          })}
+                          style={styles.checkbox}
+                        />
+                        <span>1出勤あたり固定額</span>
+                      </label>
+                      <div style={styles.payInputGroup}>
+                        <input
+                          type="number"
+                          value={activeCompensationType.per_attendance_amount || 0}
+                          onChange={(e) => updateCompensationType(activeCompensationType.id, {
+                            per_attendance_amount: Number(e.target.value)
+                          })}
+                          style={styles.payInput}
+                          disabled={(activeCompensationType.per_attendance_amount || 0) === 0}
+                        />
+                        <span style={styles.payUnit}>円/出勤</span>
+                      </div>
+                    </div>
+
                     {/* 売上バック率 */}
                     <div style={styles.payRow}>
                       <label style={styles.payLabel}>
@@ -4021,14 +4053,14 @@ function CompensationSettingsPageContent() {
                   {(() => {
                     const selectedResult = compensationResults.find(r => r.type.id === simSelectedTypeId)
                     if (!selectedResult) return null
-                    const { type, hourly, fixed, salesBack, selfProductBack, helpProductBack, itemsWithSelfBack, itemsWithHelpBack, total, salesAmount, mode } = selectedResult
+                    const { type, hourly, fixed, perAttendance, salesBack, selfProductBack, helpProductBack, itemsWithSelfBack, itemsWithHelpBack, total, salesAmount, mode } = selectedResult
 
-                    // 実績データ使用時は実際の時給収入で合計を再計算（固定額も含める）
+                    // 実績データ使用時は実際の時給収入で合計を再計算（固定額・1出勤あたりも含める）
                     // 時給がオンの場合のみ時給実績を含める
                     const useWageStats = wageStats && type.hourly_rate > 0
                     const actualTotal = useWageStats
-                      ? wageStats.totalWageAmount + fixed + salesBack + selfProductBack + helpProductBack
-                      : fixed + salesBack + selfProductBack + helpProductBack
+                      ? wageStats.totalWageAmount + fixed + perAttendance + salesBack + selfProductBack + helpProductBack
+                      : fixed + perAttendance + salesBack + selfProductBack + helpProductBack
 
                     return (
                       <div style={{
@@ -4081,6 +4113,15 @@ function CompensationSettingsPageContent() {
                             <div style={styles.slipRow}>
                               <span style={{ ...styles.slipRowLabel, fontSize: '11px' }}>月額固定</span>
                               <span style={{ ...styles.slipRowValue, fontSize: '11px', color: '#0369a1' }}>¥{fixed.toLocaleString()}</span>
+                            </div>
+                          </div>
+                        )}
+                        {perAttendance > 0 && (
+                          <div style={{ backgroundColor: '#fce7f3', borderLeft: '3px solid #ec4899', padding: '8px 10px', marginBottom: '8px', borderRadius: '0 4px 4px 0' }}>
+                            <div style={{ fontSize: '11px', color: '#be185d', marginBottom: '4px', fontWeight: 'bold' }}>1出勤あたり固定額</div>
+                            <div style={styles.slipRow}>
+                              <span style={{ ...styles.slipRowLabel, fontSize: '11px' }}>1出勤 × ¥{perAttendance.toLocaleString()}</span>
+                              <span style={{ ...styles.slipRowValue, fontSize: '11px', color: '#be185d' }}>¥{perAttendance.toLocaleString()}</span>
                             </div>
                           </div>
                         )}

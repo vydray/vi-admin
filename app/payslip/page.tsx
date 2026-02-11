@@ -779,7 +779,8 @@ function PayslipPageContent() {
     totalWageAmount: number,
     totalSalesItemBased: number,
     totalSalesReceiptBased: number,
-    totalProductBack: number
+    totalProductBack: number,
+    workDays: number = 0
   ): number => {
     let total = 0
 
@@ -815,6 +816,9 @@ function PayslipPageContent() {
     // 固定額
     total += compensationType.fixed_amount || 0
 
+    // 1出勤あたり固定額
+    total += (compensationType.per_attendance_amount || 0) * workDays
+
     return total
   }, [])
 
@@ -840,10 +844,13 @@ function PayslipPageContent() {
       totalProductBack += day.productBack
     })
 
+    // workDays = 勤務時間 > 0 の日数
+    const workDays = dailyStats.filter(d => (d.work_hours || 0) > 0).length
+
     // 各報酬形態で総報酬額を計算（それぞれのsales_aggregationを使用）
     return types.map(type => ({
       type,
-      total: calculateTotalCompensation(type, totalWorkHours, totalWageAmount, totalSalesItemBased, totalSalesReceiptBased, totalProductBack)
+      total: calculateTotalCompensation(type, totalWorkHours, totalWageAmount, totalSalesItemBased, totalSalesReceiptBased, totalProductBack, workDays)
     }))
   }, [compensationSettings, dailyStats, dailySalesData, calculateTotalCompensation])
 
@@ -938,6 +945,11 @@ function PayslipPageContent() {
     // 固定額（月額固定報酬）
     const fixedAmount = activeCompensationType?.fixed_amount || 0
 
+    // 1出勤あたり固定額
+    const perAttendanceAmount = activeCompensationType?.per_attendance_amount || 0
+    const workDays = dailyStats.filter(d => (d.work_hours || 0) > 0).length
+    const perAttendanceIncome = perAttendanceAmount * workDays
+
     // 時給がオンの場合のみ時給収入を含める
     const useWageData = activeCompensationType?.hourly_rate && activeCompensationType.hourly_rate > 0
 
@@ -945,7 +957,7 @@ function PayslipPageContent() {
     const useProductBackForGross = activeCompensationType?.use_product_back ?? false
 
     // 総支給額（商品バックは報酬形態設定に依存）
-    const grossEarnings = (useWageData ? totalWageAmount : 0) + salesBack + (useProductBackForGross ? totalProductBack : 0) + fixedAmount
+    const grossEarnings = (useWageData ? totalWageAmount : 0) + salesBack + (useProductBackForGross ? totalProductBack : 0) + fixedAmount + perAttendanceIncome
 
     return {
       totalWorkHours: Math.round(totalWorkHours * 100) / 100,
@@ -954,6 +966,9 @@ function PayslipPageContent() {
       salesBack,
       totalProductBack,  // 表示用は常に計算値を返す
       fixedAmount,
+      perAttendanceAmount,
+      perAttendanceIncome,
+      workDays,
       grossEarnings,
       useWageData: !!useWageData,
       salesAggregation
@@ -1198,6 +1213,13 @@ function PayslipPageContent() {
       if (type.fixed_amount && type.fixed_amount > 0) {
         const amount = type.fixed_amount
         items.push({ label: '固定額', amount })
+        total += amount
+      }
+
+      // 1出勤あたり固定額
+      if (type.per_attendance_amount && type.per_attendance_amount > 0) {
+        const amount = type.per_attendance_amount * summary.workDays
+        items.push({ label: `1出勤あたり（${summary.workDays}日）`, amount })
         total += amount
       }
 
@@ -1634,6 +1656,7 @@ function PayslipPageContent() {
         '売上バック',
         '商品バック',
         '固定給',
+        '1出勤あたり',
         '総支給額',
         '日払い',
         '源泉徴収',
@@ -1652,6 +1675,7 @@ function PayslipPageContent() {
         summary.salesBack,
         summary.totalProductBack,
         summary.fixedAmount,
+        summary.perAttendanceIncome,
         summary.grossEarnings,
         csvDailyPayment,
         csvWithholdingTax,

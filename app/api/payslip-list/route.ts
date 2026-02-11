@@ -37,6 +37,7 @@ interface PayslipSummary {
   sales_back: number
   product_back: number
   fixed_amount: number
+  per_attendance_income: number
   gross_total: number
   daily_payment: number
   withholding_tax: number
@@ -276,6 +277,7 @@ export async function POST(request: NextRequest) {
         sliding_rates?: Array<{ min: number; max: number; rate: number }>
         hourly_rate?: number
         fixed_amount?: number
+        per_attendance_amount?: number
         use_product_back?: boolean
         use_help_product_back?: boolean
       }> || []
@@ -304,10 +306,13 @@ export async function POST(request: NextRequest) {
         const typeUseWage = (compType.hourly_rate || 0) > 0
         const typeHourlyIncome = typeUseWage ? totalWageAmount : 0
         const typeFixedAmount = compType.fixed_amount || 0
+        const typePerAttendanceAmount = compType.per_attendance_amount || 0
+        const typeWorkDays = castStats.filter(s => (s.work_hours || 0) > 0).length
+        const typePerAttendanceIncome = typePerAttendanceAmount * typeWorkDays
         const typeProductBack = compType.use_product_back ? totalProductBack : 0
-        const typeGrossTotal = typeHourlyIncome + typeSalesBack + typeProductBack + typeFixedAmount
+        const typeGrossTotal = typeHourlyIncome + typeSalesBack + typeProductBack + typeFixedAmount + typePerAttendanceIncome
 
-        return { compType, salesBack: typeSalesBack, useWage: typeUseWage, hourlyIncome: typeHourlyIncome, fixedAmount: typeFixedAmount, productBack: typeProductBack, grossTotal: typeGrossTotal }
+        return { compType, salesBack: typeSalesBack, useWage: typeUseWage, hourlyIncome: typeHourlyIncome, fixedAmount: typeFixedAmount, perAttendanceIncome: typePerAttendanceIncome, productBack: typeProductBack, grossTotal: typeGrossTotal }
       }
 
       const allResults = enabledTypes.map(calculateForType)
@@ -325,6 +330,7 @@ export async function POST(request: NextRequest) {
 
       const salesBack = selected?.salesBack ?? 0
       const fixedAmount = selected?.fixedAmount ?? 0
+      const perAttendanceIncome = selected?.perAttendanceIncome ?? 0
       const hourlyIncome = selected?.hourlyIncome ?? 0
       const productBack = selected?.productBack ?? totalProductBack
       const grossTotal = selected?.grossTotal ?? totalProductBack
@@ -399,6 +405,7 @@ export async function POST(request: NextRequest) {
         sales_back: salesBack,
         product_back: productBack,
         fixed_amount: fixedAmount,
+        per_attendance_income: perAttendanceIncome,
         gross_total: grossTotal,
         daily_payment: dailyPayment,
         withholding_tax: withholdingTax,

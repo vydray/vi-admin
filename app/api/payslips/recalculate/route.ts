@@ -695,6 +695,7 @@ async function calculatePayslipForCast(
       name: string
       commission_rate: number
       fixed_amount: number
+      per_attendance_amount?: number
       hourly_rate: number
       use_sliding_rate: boolean
       sliding_rates: { min: number; max: number; rate: number }[] | null
@@ -711,6 +712,9 @@ async function calculatePayslipForCast(
       const typeHourlyRate = Number(compType.hourly_rate) || 0
       const typeUseWage = typeHourlyRate > 0
       const typeFixedAmount = Number(compType.fixed_amount) || 0
+      const typePerAttendanceAmount = Number(compType.per_attendance_amount) || 0
+      const typeWorkDays = (dailyStats || []).filter((s: { work_hours?: number }) => (s.work_hours || 0) > 0).length
+      const typePerAttendanceIncome = typePerAttendanceAmount * typeWorkDays
 
       // 報酬形態のsales_aggregationに基づいて売上を選択
       const typeTotalSales = compType.sales_aggregation === 'receipt_based'
@@ -734,12 +738,13 @@ async function calculatePayslipForCast(
       const typeProductBack = compType.use_product_back ? totalProductBack : 0
 
       // 総報酬額（時給は hourly_rate > 0 の場合のみ含める）
-      const typeGrossEarnings = (typeUseWage ? totalWageAmount : 0) + typeSalesBack + typeProductBack + typeFixedAmount
+      const typeGrossEarnings = (typeUseWage ? totalWageAmount : 0) + typeSalesBack + typeProductBack + typeFixedAmount + typePerAttendanceIncome
 
       return {
         compType,
         useWage: typeUseWage,
         fixedAmount: typeFixedAmount,
+        perAttendanceIncome: typePerAttendanceIncome,
         salesBack: typeSalesBack,
         productBack: typeProductBack,
         grossEarnings: typeGrossEarnings,

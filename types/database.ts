@@ -413,6 +413,7 @@ export interface CompensationType {
   hourly_rate: number                 // 時給（未使用時は0）
   commission_rate: number             // 売上バック率（%）（未使用時は0）
   fixed_amount: number                // 固定額（未使用時は0）
+  per_attendance_amount: number       // 1出勤あたり固定額（未使用時は0）
 
   // スライド式バック率
   use_sliding_rate: boolean           // スライド式を使用するか
