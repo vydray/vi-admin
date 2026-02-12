@@ -721,11 +721,9 @@ function PayslipPageContent() {
     }
   }, [initialized, selectedCastId, selectedMonth, casts, loadDailyStats, loadAttendanceData, loadCompensationSettings, loadPayslip])
 
-  // dailyStatsが更新されたら売上データを構築
+  // dailyStatsが更新されたら売上データを構築（空の場合もクリアするため常に実行）
   useEffect(() => {
-    if (dailyStats.length > 0) {
-      calculateSummaryFromStats()
-    }
+    calculateSummaryFromStats()
   }, [dailyStats, calculateSummaryFromStats])
 
   // 伝票詳細を取得
