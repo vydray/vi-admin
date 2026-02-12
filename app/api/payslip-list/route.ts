@@ -337,8 +337,12 @@ export async function POST(request: NextRequest) {
       const grossTotal = selected?.grossTotal ?? totalProductBack
 
       // 控除計算
-      // null = 未設定（全控除適用、後方互換）, [] = 全控除無効, [1,2,3] = 指定控除のみ
-      const enabledDeductionIds = compSettings?.enabled_deduction_ids ?? null
+      // compensation_settingsが存在しない場合は控除なし（未設定キャストに不要な控除を適用しない）
+      // compensation_settingsが存在してenabled_deduction_idsがnullの場合は全控除適用（後方互換）
+      // [] = 全控除無効, [1,2,3] = 指定控除のみ
+      const enabledDeductionIds = compSettings
+        ? (compSettings.enabled_deduction_ids ?? null)
+        : []
 
       // 日払い
       const dailyPayment = castAttendance.reduce((sum, a) => sum + (a.daily_payment || 0), 0)

@@ -997,8 +997,12 @@ function PayslipPageContent() {
   // 控除を計算
   const deductions = useMemo((): DeductionResult[] => {
     const results: DeductionResult[] = []
-    // null = 未設定（全控除適用、後方互換）, [] = 全控除無効, [1,2,3] = 指定控除のみ
-    const enabledIds = compensationSettings?.enabled_deduction_ids ?? null
+    // compensation_settingsが存在しない場合は控除なし（未設定キャストに不要な控除を適用しない）
+    // compensation_settingsが存在してenabled_deduction_idsがnullの場合は全控除適用（後方互換）
+    // [] = 全控除無効, [1,2,3] = 指定控除のみ
+    const enabledIds = compensationSettings
+      ? (compensationSettings.enabled_deduction_ids ?? null)
+      : []
 
     // 日払い合計
     const totalDailyPayment = attendanceData.reduce((sum, a) => sum + (a.daily_payment || 0), 0)
