@@ -1272,6 +1272,38 @@ export async function recalculateForDate(storeId: number, date: string): Promise
       })
     }
 
+    // 未処理の既存stats（出勤→公欠変更等）をゼロリセット
+    const unprocessedExisting = (existingStats || []).filter(
+      (s: { cast_id: number; is_finalized: boolean }) =>
+        !s.is_finalized && !processedCastIds.has(s.cast_id)
+    )
+    for (const stat of unprocessedExisting) {
+      statsToUpsert.push({
+        cast_id: stat.cast_id,
+        store_id: storeId,
+        date: date,
+        self_sales_item_based: 0,
+        help_sales_item_based: 0,
+        total_sales_item_based: 0,
+        product_back_item_based: 0,
+        self_sales_receipt_based: 0,
+        help_sales_receipt_based: 0,
+        total_sales_receipt_based: 0,
+        product_back_receipt_based: 0,
+        work_hours: 0,
+        base_hourly_wage: 0,
+        special_day_bonus: 0,
+        costume_bonus: 0,
+        total_hourly_wage: 0,
+        wage_amount: 0,
+        costume_id: null,
+        wage_status_id: null,
+        nomination_count: 0,
+        is_finalized: false,
+        updated_at: new Date().toISOString()
+      })
+    }
+
     if (statsToUpsert.length > 0) {
       const { error: upsertError } = await supabaseAdmin
         .from('cast_daily_stats')
@@ -1280,6 +1312,17 @@ export async function recalculateForDate(storeId: number, date: string): Promise
         })
 
       if (upsertError) throw upsertError
+    }
+
+    // 未処理キャストのcast_daily_itemsも削除
+    if (unprocessedExisting.length > 0) {
+      const unprocessedCastIds = unprocessedExisting.map((s: { cast_id: number }) => s.cast_id)
+      await supabaseAdmin
+        .from('cast_daily_items')
+        .delete()
+        .eq('store_id', storeId)
+        .eq('date', date)
+        .in('cast_id', unprocessedCastIds)
     }
 
     // cast_daily_itemsの保存
