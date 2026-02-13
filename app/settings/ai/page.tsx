@@ -26,6 +26,7 @@ interface AISettings {
   public_absence_approval_roles: string;
   discord_notify_auto_approved: boolean;
   discord_webhook_url: string;
+  discord_webhook_url_inquiry: string;
   reminder_shift_confirmation_enabled: boolean;
   reminder_shift_confirmation_time: string;
   reminder_public_absence_receipt_enabled: boolean;
@@ -71,6 +72,7 @@ function AISettingsPageContent() {
     public_absence_approval_roles: 'admin,manager',
     discord_notify_auto_approved: true,
     discord_webhook_url: '',
+    discord_webhook_url_inquiry: '',
     reminder_shift_confirmation_enabled: true,
     reminder_shift_confirmation_time: '13:00',
     reminder_public_absence_receipt_enabled: true,
@@ -502,6 +504,31 @@ function AISettingsPageContent() {
               fontSize: '14px',
             }}
           />
+          <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>
+            シフト確認・欠勤・遅刻・リクエスト出勤の通知先
+          </p>
+        </div>
+
+        <div style={{ marginBottom: '16px' }}>
+          <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '6px' }}>
+            Discord Webhook URL（お問い合わせ・エラー用）
+          </label>
+          <input
+            type="text"
+            value={settings.discord_webhook_url_inquiry}
+            onChange={(e) => setSettings({ ...settings, discord_webhook_url_inquiry: e.target.value })}
+            placeholder="https://discord.com/api/webhooks/..."
+            style={{
+              width: '100%',
+              padding: '10px',
+              borderRadius: '6px',
+              border: '1px solid #e2e8f0',
+              fontSize: '14px',
+            }}
+          />
+          <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>
+            お問い合わせ・画像問い合わせ・AIエラー転送の通知先（未設定時は通常URLにフォールバック）
+          </p>
         </div>
 
         <label
