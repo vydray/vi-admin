@@ -1096,6 +1096,9 @@ export default function Home() {
                   } : {})
                 }}>合計</td>
                 <td style={{ ...styles.dailyTableTd, textAlign: 'right', fontWeight: 'bold', ...(isMobile ? { padding: '8px 6px' } : {}) }}>
+                  ¥{(data.monthlySales + data.monthlyBaseSales).toLocaleString()}
+                </td>
+                <td style={{ ...styles.dailyTableTd, textAlign: 'right', fontWeight: 'bold', ...(isMobile ? { padding: '8px 6px' } : {}) }}>
                   ¥{data.monthlySales.toLocaleString()}
                 </td>
                 <td style={{ ...styles.dailyTableTd, textAlign: 'right', fontWeight: 'bold', ...(isMobile ? { padding: '8px 6px' } : {}) }}>
@@ -1103,6 +1106,9 @@ export default function Home() {
                 </td>
                 <td style={{ ...styles.dailyTableTd, textAlign: 'right', fontWeight: 'bold', ...(isMobile ? { padding: '8px 6px' } : {}) }}>
                   {data.monthlyGroups}
+                </td>
+                <td style={{ ...styles.dailyTableTd, textAlign: 'right', fontWeight: 'bold', ...(isMobile ? { padding: '8px 6px' } : {}) }}>
+                  {dailySales.reduce((sum, d) => sum + d.attendanceCount, 0)}
                 </td>
                 <td style={{ ...styles.dailyTableTd, textAlign: 'right', fontWeight: 'bold', ...(isMobile ? { padding: '8px 6px' } : {}) }}>
                   ¥{data.monthlyCashSales.toLocaleString()}
