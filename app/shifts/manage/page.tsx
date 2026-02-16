@@ -210,6 +210,7 @@ function ShiftManageContent() {
     const { data, error } = await supabase
       .from('shifts')
       .select('id, cast_id, date, start_time, end_time, is_locked, is_confirmed, source')
+      .eq('store_id', storeId)
       .gte('date', format(start, 'yyyy-MM-dd'))
       .lte('date', format(end, 'yyyy-MM-dd'))
 
@@ -230,6 +231,7 @@ function ShiftManageContent() {
     const { data, error } = await supabase
       .from('shift_requests')
       .select('id, cast_id, date, start_time, end_time, status, is_locked')
+      .eq('store_id', storeId)
       .eq('status', 'pending')
       .gte('date', format(start, 'yyyy-MM-dd'))
       .lte('date', format(end, 'yyyy-MM-dd'))
