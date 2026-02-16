@@ -476,10 +476,20 @@ export default function Home() {
         .lte('business_date', monthEnd)
 
       // 日別データ用の追加クエリ
+      // 出勤扱いステータスを取得
+      const { data: attendanceStatuses } = await supabase
+        .from('attendance_statuses')
+        .select('id, is_active')
+        .eq('store_id', storeId)
+        .eq('is_active', true)
+      const workDayStatusIds = new Set(
+        (attendanceStatuses || []).map(s => s.id.toString())
+      )
+
       // 日払い（勤怠から）
       const { data: attendanceData } = await supabase
         .from('attendance')
-        .select('date, daily_payment, check_in_datetime, check_out_datetime')
+        .select('date, daily_payment, status_id')
         .eq('store_id', storeId)
         .gte('date', monthStart)
         .lte('date', monthEnd)
@@ -678,7 +688,7 @@ export default function Home() {
         // 日払い・出勤人数（勤怠から）
         const dayAttendance = (attendanceData || []).filter(att => att.date === dateStr)
         const dayDailyPayment = dayAttendance.reduce((sum, att) => sum + (att.daily_payment || 0), 0)
-        const dayAttendanceCount = dayAttendance.filter(att => att.check_in_datetime && att.check_out_datetime).length
+        const dayAttendanceCount = dayAttendance.filter(att => att.status_id && workDayStatusIds.has(att.status_id)).length
 
         // 経費入金（業務日報から：レジ→小口へ入金）
         const dayExpenseDepositRecord = (dailyReportsData || []).find(dr => dr.business_date === dateStr)
