@@ -986,6 +986,7 @@ export default function Home() {
                     minWidth: '45px',
                   } : {})
                 }}>日付</th>
+                <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>総売上</th>
                 <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>店舗売上</th>
                 <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>会計数</th>
                 <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>人数</th>
@@ -1036,6 +1037,9 @@ export default function Home() {
                       const color = d.getDay() === 0 || isHoliday ? '#dc2626' : d.getDay() === 6 ? '#2563eb' : undefined
                       return <span style={color ? { color } : undefined}>{day.day}({dow})</span>
                     })()}
+                  </td>
+                  <td style={{ ...styles.dailyTableTd, textAlign: 'right', fontWeight: 600, ...(isMobile ? { padding: '8px 6px' } : {}) }}>
+                    ¥{(day.sales + day.baseSales).toLocaleString()}
                   </td>
                   <td style={{ ...styles.dailyTableTd, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>
                     ¥{day.sales.toLocaleString()}
