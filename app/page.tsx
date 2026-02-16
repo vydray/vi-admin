@@ -10,6 +10,7 @@ import { Payment } from '@/types'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
 import { useIsMobile } from '@/hooks/useIsMobile'
+import holidayJp from '@holiday-jp/holiday_jp'
 
 interface DashboardData {
   todaySales: number
@@ -1004,7 +1005,15 @@ export default function Home() {
                       zIndex: 1,
                       padding: '8px 6px',
                     } : {})
-                  }}>{day.day}</td>
+                  }}>
+                    {(() => {
+                      const d = new Date(day.date)
+                      const dow = ['日','月','火','水','木','金','土'][d.getDay()]
+                      const isHoliday = holidayJp.isHoliday(d)
+                      const color = d.getDay() === 0 || isHoliday ? '#dc2626' : d.getDay() === 6 ? '#2563eb' : undefined
+                      return <span style={color ? { color } : undefined}>{day.day}({dow})</span>
+                    })()}
+                  </td>
                   <td style={{ ...styles.dailyTableTd, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>
                     ¥{day.sales.toLocaleString()}
                   </td>
