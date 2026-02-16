@@ -479,7 +479,7 @@ export default function Home() {
       // 日払い（勤怠から）
       const { data: attendanceData } = await supabase
         .from('attendance')
-        .select('date, daily_payment, cast_id')
+        .select('date, daily_payment, check_in_datetime, check_out_datetime')
         .eq('store_id', storeId)
         .gte('date', monthStart)
         .lte('date', monthEnd)
@@ -678,7 +678,7 @@ export default function Home() {
         // 日払い・出勤人数（勤怠から）
         const dayAttendance = (attendanceData || []).filter(att => att.date === dateStr)
         const dayDailyPayment = dayAttendance.reduce((sum, att) => sum + (att.daily_payment || 0), 0)
-        const dayAttendanceCount = dayAttendance.length
+        const dayAttendanceCount = dayAttendance.filter(att => att.check_in_datetime && att.check_out_datetime).length
 
         // 経費入金（業務日報から：レジ→小口へ入金）
         const dayExpenseDepositRecord = (dailyReportsData || []).find(dr => dr.business_date === dateStr)
