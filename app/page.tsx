@@ -57,6 +57,7 @@ interface DailySalesData {
   expense: number         // 経費支出（小口から支払い）
   cashCollection: number
   baseSales: number
+  attendanceCount: number
 }
 
 interface OrderItemExport {
@@ -478,7 +479,7 @@ export default function Home() {
       // 日払い（勤怠から）
       const { data: attendanceData } = await supabase
         .from('attendance')
-        .select('date, daily_payment')
+        .select('date, daily_payment, cast_id')
         .eq('store_id', storeId)
         .gte('date', monthStart)
         .lte('date', monthEnd)
@@ -674,10 +675,10 @@ export default function Home() {
         // 日別来店人数（guest_countの合計）
         const dayGuests = dayOrders.reduce((sum, order) => sum + (Number(order.guest_count) || 0), 0)
 
-        // 日払い（勤怠から）
-        const dayDailyPayment = (attendanceData || [])
-          .filter(att => att.date === dateStr)
-          .reduce((sum, att) => sum + (att.daily_payment || 0), 0)
+        // 日払い・出勤人数（勤怠から）
+        const dayAttendance = (attendanceData || []).filter(att => att.date === dateStr)
+        const dayDailyPayment = dayAttendance.reduce((sum, att) => sum + (att.daily_payment || 0), 0)
+        const dayAttendanceCount = dayAttendance.length
 
         // 経費入金（業務日報から：レジ→小口へ入金）
         const dayExpenseDepositRecord = (dailyReportsData || []).find(dr => dr.business_date === dateStr)
@@ -714,6 +715,7 @@ export default function Home() {
           expense: dayExpense,
           cashCollection: dayCashCollection,
           baseSales: dayBaseSales,
+          attendanceCount: dayAttendanceCount,
         })
       }
 
@@ -900,9 +902,19 @@ export default function Home() {
             <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
             <XAxis
               dataKey="day"
-              tick={{ fontSize: isMobile ? 9 : 12 }}
+              tick={({ x, y, payload, index }: { x: number; y: number; payload: { value: string }; index: number }) => {
+                const entry = dailySales[index]
+                let fill = '#666'
+                if (entry) {
+                  const d = new Date(entry.date)
+                  const isHoliday = holidayJp.isHoliday(d)
+                  if (d.getDay() === 0 || isHoliday) fill = '#dc2626'
+                  else if (d.getDay() === 6) fill = '#2563eb'
+                }
+                const label = isMobile ? payload.value.replace('日', '') : payload.value
+                return <text x={x} y={y + 12} textAnchor="middle" fontSize={isMobile ? 9 : 12} fill={fill}>{label}</text>
+              }}
               interval={isMobile ? 6 : 0}
-              tickFormatter={isMobile ? (value: string) => value.replace('日', '') : undefined}
             />
             <YAxis
               yAxisId="left"
@@ -967,6 +979,7 @@ export default function Home() {
                 <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>店舗売上</th>
                 <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>会計数</th>
                 <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>人数</th>
+                <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>出勤</th>
                 <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>現金</th>
                 <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>カード</th>
                 <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>売掛</th>
@@ -1022,6 +1035,9 @@ export default function Home() {
                   </td>
                   <td style={{ ...styles.dailyTableTd, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>
                     {day.groups}
+                  </td>
+                  <td style={{ ...styles.dailyTableTd, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>
+                    {day.attendanceCount || '-'}
                   </td>
                   <td style={{ ...styles.dailyTableTd, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>
                     ¥{day.cashSales.toLocaleString()}
