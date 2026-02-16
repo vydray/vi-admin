@@ -58,6 +58,9 @@ interface DailySalesData {
   cashCollection: number
   baseSales: number
   attendanceCount: number
+  firstTimeGuests: number
+  returnGuests: number
+  regularGuests: number
 }
 
 interface OrderItemExport {
@@ -726,6 +729,9 @@ export default function Home() {
           cashCollection: dayCashCollection,
           baseSales: dayBaseSales,
           attendanceCount: dayAttendanceCount,
+          firstTimeGuests: dayOrders.filter(o => o.visit_type === '初回').reduce((sum, o) => sum + (Number(o.guest_count) || 0), 0),
+          returnGuests: dayOrders.filter(o => o.visit_type === '再訪').reduce((sum, o) => sum + (Number(o.guest_count) || 0), 0),
+          regularGuests: dayOrders.filter(o => o.visit_type === '常連').reduce((sum, o) => sum + (Number(o.guest_count) || 0), 0),
         })
       }
 
@@ -1275,6 +1281,11 @@ export default function Home() {
                   <div style={styles.dailyReportLabel}>来店人数</div>
                   <div style={styles.dailyReportBigValue}>
                     {selectedDayData.groups}<span style={{ fontSize: '16px' }}>人</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: '12px', marginTop: '8px', fontSize: '12px' }}>
+                    <span style={{ color: '#22c55e' }}>初回 {selectedDayData.firstTimeGuests}</span>
+                    <span style={{ color: '#3b82f6' }}>再訪 {selectedDayData.returnGuests}</span>
+                    <span style={{ color: '#f59e0b' }}>常連 {selectedDayData.regularGuests}</span>
                   </div>
                 </div>
               </div>
