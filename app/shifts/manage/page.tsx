@@ -30,6 +30,7 @@ interface Shift {
   end_time: string
   is_locked?: boolean
   is_confirmed?: boolean
+  source?: string
 }
 
 interface ShiftRequest {
@@ -208,7 +209,7 @@ function ShiftManageContent() {
 
     const { data, error } = await supabase
       .from('shifts')
-      .select('id, cast_id, date, start_time, end_time, is_locked, is_confirmed')
+      .select('id, cast_id, date, start_time, end_time, is_locked, is_confirmed, source')
       .gte('date', format(start, 'yyyy-MM-dd'))
       .lte('date', format(end, 'yyyy-MM-dd'))
 
@@ -1753,7 +1754,10 @@ function ShiftManageContent() {
                         {!isEditing && (
                           <>
                             {shift && (
-                              <div style={{ fontSize: isMobile ? '12px' : '13px', color: '#1a1a1a' }}>
+                              <div style={{ fontSize: isMobile ? '12px' : '13px', color: shift.source === 'request' ? '#7c3aed' : '#1a1a1a' }}>
+                                {shift.source === 'request' && (
+                                  <span style={{ fontSize: isMobile ? '9px' : '10px', fontWeight: 600 }}>リクエスト </span>
+                                )}
                                 {formatShiftTime(shift)}
                               </div>
                             )}
