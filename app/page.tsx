@@ -61,6 +61,8 @@ interface DailySalesData {
   firstTimeGuests: number
   returnGuests: number
   regularGuests: number
+  actualCash: number | null     // 実現金（cash_counts.total_amount）
+  cashDifference: number | null // 過不足（実現金 - 理論値）
 }
 
 interface OrderItemExport {
@@ -500,7 +502,7 @@ export default function Home() {
       // 経費（業務日報から）
       const { data: dailyReportsData } = await supabase
         .from('daily_reports')
-        .select('business_date, expense_amount')
+        .select('business_date, expense_amount, unpaid_amount, unknown_amount')
         .eq('store_id', storeId)
         .gte('business_date', monthStart)
         .lte('business_date', monthEnd)
@@ -508,7 +510,7 @@ export default function Home() {
       // 現金回収（レジ金チェックから）
       const { data: cashCountsData } = await supabase
         .from('cash_counts')
-        .select('business_date, cash_collection')
+        .select('business_date, cash_collection, total_amount, register_amount')
         .eq('store_id', storeId)
         .gte('business_date', monthStart)
         .lte('business_date', monthEnd)
@@ -702,9 +704,17 @@ export default function Home() {
           .filter(exp => exp.payment_date === dateStr)
           .reduce((sum, exp) => sum + (exp.amount || 0), 0)
 
-        // 現金回収
+        // 現金回収・実現金・過不足
         const dayCollectionRecord = (cashCountsData || []).find(cc => cc.business_date === dateStr)
         const dayCashCollection = dayCollectionRecord?.cash_collection || 0
+        const dayActualCash = dayCollectionRecord?.total_amount ?? null
+        let dayCashDifference: number | null = null
+        if (dayActualCash !== null && dayCollectionRecord) {
+          const dayUnpaid = dayExpenseDepositRecord?.unpaid_amount || 0
+          const dayUnknown = dayExpenseDepositRecord?.unknown_amount || 0
+          const theoretical = (dayCollectionRecord.register_amount || 0) + dayCashSales - dayDailyPayment - dayExpenseDeposit - dayExpense - dayUnpaid - dayUnknown
+          dayCashDifference = dayActualCash - theoretical
+        }
 
         // BASE売上
         const dayBaseSales = (baseOrdersData || [])
@@ -732,6 +742,8 @@ export default function Home() {
           firstTimeGuests: dayOrders.filter(o => o.visit_type === '初回').reduce((sum, o) => sum + (Number(o.guest_count) || 0), 0),
           returnGuests: dayOrders.filter(o => o.visit_type === '再訪').reduce((sum, o) => sum + (Number(o.guest_count) || 0), 0),
           regularGuests: dayOrders.filter(o => o.visit_type === '常連').reduce((sum, o) => sum + (Number(o.guest_count) || 0), 0),
+          actualCash: dayActualCash,
+          cashDifference: dayCashDifference,
         })
       }
 
@@ -1006,6 +1018,8 @@ export default function Home() {
                 <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>回収金</th>
                 <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>BASE</th>
                 <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>客単価</th>
+                <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>実現金</th>
+                <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>過不足</th>
               </tr>
             </thead>
             <tbody>
@@ -1086,6 +1100,12 @@ export default function Home() {
                   <td style={{ ...styles.dailyTableTd, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>
                     {day.orderCount > 0 ? `¥${Math.floor(day.sales / day.orderCount).toLocaleString()}` : '-'}
                   </td>
+                  <td style={{ ...styles.dailyTableTd, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>
+                    {day.actualCash !== null ? `¥${day.actualCash.toLocaleString()}` : '-'}
+                  </td>
+                  <td style={{ ...styles.dailyTableTd, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}), color: day.cashDifference !== null ? (day.cashDifference === 0 ? '#22c55e' : day.cashDifference > 0 ? '#f59e0b' : '#dc2626') : undefined }}>
+                    {day.cashDifference !== null ? `${day.cashDifference >= 0 ? '+' : ''}¥${day.cashDifference.toLocaleString()}` : '-'}
+                  </td>
                 </tr>
               ))}
               {/* 合計行 */}
@@ -1143,6 +1163,18 @@ export default function Home() {
                 <td style={{ ...styles.dailyTableTd, textAlign: 'right', fontWeight: 'bold', ...(isMobile ? { padding: '8px 6px' } : {}) }}>
                   ¥{avgMonthly.toLocaleString()}
                 </td>
+                <td style={{ ...styles.dailyTableTd, textAlign: 'right', fontWeight: 'bold', ...(isMobile ? { padding: '8px 6px' } : {}) }}>
+                  -
+                </td>
+                {(() => {
+                  const totalDiff = dailySales.reduce((sum, d) => d.cashDifference !== null ? sum + d.cashDifference : sum, 0)
+                  const hasDiff = dailySales.some(d => d.cashDifference !== null)
+                  return (
+                    <td style={{ ...styles.dailyTableTd, textAlign: 'right', fontWeight: 'bold', ...(isMobile ? { padding: '8px 6px' } : {}), color: !hasDiff ? undefined : totalDiff === 0 ? '#22c55e' : totalDiff > 0 ? '#f59e0b' : '#dc2626' }}>
+                      {hasDiff ? `${totalDiff >= 0 ? '+' : ''}¥${totalDiff.toLocaleString()}` : '-'}
+                    </td>
+                  )
+                })()}
               </tr>
             </tbody>
           </table>
