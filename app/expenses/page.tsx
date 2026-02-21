@@ -210,7 +210,7 @@ function ExpensesPageContent() {
   const loadTransactions = useCallback(async () => {
     const { data, error } = await supabase
       .from('petty_cash_transactions')
-      .select('*')
+      .select('*, expense:expenses(description, category:expense_categories(name))')
       .eq('store_id', storeId)
       .order('transaction_date', { ascending: false })
       .order('created_at', { ascending: false })
@@ -801,15 +801,20 @@ function ExpensesPageContent() {
   // 入出金履歴（petty_cash_transactions + daily_reports を統合）
   const mergedTransactions = [
     // petty_cash_transactions
-    ...transactions.map(tx => ({
-      id: `tx-${tx.id}`,
-      originalId: tx.id,
-      date: tx.transaction_date,
-      type: tx.transaction_type as 'deposit' | 'withdrawal' | 'adjustment',
-      amount: tx.amount,
-      description: tx.description || '',
-      source: 'petty_cash' as const,
-    })),
+    ...transactions.map(tx => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const exp = (tx as any).expense
+      return {
+        id: `tx-${tx.id}`,
+        originalId: tx.id,
+        date: tx.transaction_date,
+        type: tx.transaction_type as 'deposit' | 'withdrawal' | 'adjustment',
+        amount: tx.amount,
+        description: tx.description || exp?.description || '',
+        category: exp?.category?.name || null as string | null,
+        source: 'petty_cash' as const,
+      }
+    }),
     // daily_reports の入金
     ...dailyReportExpenses.map(dr => ({
       id: `dr-${dr.id}`,
@@ -817,7 +822,8 @@ function ExpensesPageContent() {
       date: dr.business_date,
       type: 'deposit' as const,
       amount: dr.expense_amount,
-      description: '業務日報',
+      description: '現金回収より入金',
+      category: null as string | null,
       source: 'daily_report' as const,
     })),
   ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
@@ -2152,6 +2158,18 @@ function ExpensesPageContent() {
                       <span style={styles.transactionDate}>
                         {format(new Date(tx.date), 'M/d')}
                       </span>
+                      {tx.category && (
+                        <span style={{
+                          fontSize: '11px',
+                          padding: '1px 6px',
+                          borderRadius: '4px',
+                          backgroundColor: '#f1f5f9',
+                          color: '#64748b',
+                          whiteSpace: 'nowrap',
+                        }}>
+                          {tx.category}
+                        </span>
+                      )}
                       <span style={{
                         ...styles.transactionDesc,
                         ...(isMobile ? { flex: '1 1 100%', marginTop: '4px' } : {}),
