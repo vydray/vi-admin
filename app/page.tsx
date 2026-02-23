@@ -712,7 +712,7 @@ export default function Home() {
         if (dayActualCash !== null && dayCollectionRecord) {
           const dayUnpaid = dayExpenseDepositRecord?.unpaid_amount || 0
           const dayUnknown = dayExpenseDepositRecord?.unknown_amount || 0
-          const theoretical = (dayCollectionRecord.register_amount || 0) + dayCashSales - dayDailyPayment - dayExpenseDeposit - dayExpense - dayUnpaid - dayUnknown
+          const theoretical = (dayCollectionRecord.register_amount || 0) + dayCashSales - dayDailyPayment - dayExpenseDeposit - dayUnpaid - dayUnknown
           dayCashDifference = dayActualCash - theoretical
         }
 
@@ -1347,7 +1347,7 @@ export default function Home() {
                     const unpaidAmount = dailyReportData?.unpaid_amount || 0
                     const unknownAmount = dailyReportData?.unknown_amount || 0
                     // 理論値 = 釣銭準備金 + 現金売上 - 日払い - 経費入金 - 経費支出 - 未収金 - 未送伝票額
-                    const theoreticalCash = cashCountData.register_amount + selectedDayData.cashSales - dailyPaymentTotal - expenseDepositAmount - expenseAmount - unpaidAmount - unknownAmount
+                    const theoreticalCash = cashCountData.register_amount + selectedDayData.cashSales - dailyPaymentTotal - expenseDepositAmount - unpaidAmount - unknownAmount
                     // 差額 = 実際の現金 - 理論値
                     const difference = cashCountData.total_amount - theoreticalCash
                     return (
