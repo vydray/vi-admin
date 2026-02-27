@@ -612,8 +612,8 @@ function AttendancePageContent() {
       return { name: cast?.name || '不明', startTime: s.start_time || '' }
     }).sort((a, b) => a.startTime.localeCompare(b.startTime))
 
-    // 空行を追加（手書き用）
-    const emptyRows = Array.from({ length: Math.max(5, 15 - shiftRows.length) }, () => ({ name: '', startTime: '' }))
+    // 空行を追加（手書き用、3行だけ）
+    const emptyRows = Array.from({ length: 3 }, () => ({ name: '', startTime: '' }))
     const allRows = [...shiftRows, ...emptyRows]
 
     const printWindow = window.open('', '_blank')
@@ -635,9 +635,9 @@ function AttendancePageContent() {
           .name { width: 14%; }
           .scheduled { width: 12%; text-align: center; }
           .time { width: 15%; }
-          .status { width: 15%; }
-          .late { width: 12%; text-align: center; }
-          .payment { width: 17%; }
+          .status { width: 18%; text-align: center; font-size: 12px; }
+          .late { width: 10%; text-align: center; }
+          .payment { width: 14%; }
         </style>
       </head>
       <body>
@@ -662,7 +662,7 @@ function AttendancePageContent() {
                 <td class="scheduled">${r.startTime ? r.startTime.slice(0, 5) : ''}</td>
                 <td class="time"></td>
                 <td class="time"></td>
-                <td class="status"></td>
+                <td class="status">出勤 ・ 遅刻 ・ 欠勤</td>
                 <td class="late"></td>
                 <td class="payment"></td>
               </tr>
