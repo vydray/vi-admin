@@ -51,7 +51,7 @@ export default function AttendancePage() {
 }
 
 function AttendancePageContent() {
-  const { storeId, isLoading: storeLoading } = useStore()
+  const { storeId, storeName, isLoading: storeLoading } = useStore()
   const { confirm } = useConfirm()
   const { isMobile, isLoading: mobileLoading } = useIsMobile()
   const [selectedMonth, setSelectedMonth] = useState(new Date())
@@ -597,6 +597,85 @@ function AttendancePageContent() {
     return { castId, dateStr, cast, date, attendance }
   }, [editingCell, casts, attendances])
 
+  // 今日の出勤表を印刷
+  const handlePrintToday = async () => {
+    const today = format(new Date(), 'yyyy-MM-dd')
+    const { data: todayShifts } = await supabase
+      .from('shifts')
+      .select('cast_id, start_time, end_time')
+      .eq('store_id', storeId)
+      .eq('date', today)
+      .order('start_time')
+
+    const shiftRows = (todayShifts || []).map(s => {
+      const cast = casts.find(c => c.id === s.cast_id)
+      return { name: cast?.name || '不明', startTime: s.start_time || '' }
+    }).sort((a, b) => a.startTime.localeCompare(b.startTime))
+
+    // 空行を追加（手書き用）
+    const emptyRows = Array.from({ length: Math.max(5, 15 - shiftRows.length) }, () => ({ name: '', startTime: '' }))
+    const allRows = [...shiftRows, ...emptyRows]
+
+    const printWindow = window.open('', '_blank')
+    if (!printWindow) return
+
+    const dateStr = format(new Date(), 'yyyy年M月d日(E)', { locale: ja })
+    printWindow.document.write(`
+      <html>
+      <head>
+        <title>出勤表 ${dateStr}</title>
+        <style>
+          @page { size: A4; margin: 15mm; }
+          body { font-family: 'Hiragino Kaku Gothic Pro', 'Yu Gothic', sans-serif; margin: 0; padding: 20px; }
+          h1 { font-size: 20px; margin-bottom: 4px; }
+          .date { font-size: 14px; color: #666; margin-bottom: 16px; }
+          table { width: 100%; border-collapse: collapse; }
+          th { background: #f0f0f0; font-size: 13px; padding: 8px 10px; border: 1px solid #333; text-align: center; }
+          td { font-size: 14px; padding: 10px; border: 1px solid #333; height: 28px; }
+          .name { width: 14%; }
+          .scheduled { width: 12%; text-align: center; }
+          .time { width: 15%; }
+          .status { width: 15%; }
+          .late { width: 12%; text-align: center; }
+          .payment { width: 17%; }
+        </style>
+      </head>
+      <body>
+        <h1>出勤表</h1>
+        <div class="date">${dateStr} ｜ ${storeName}</div>
+        <table>
+          <thead>
+            <tr>
+              <th class="name">名前</th>
+              <th class="scheduled">予定出勤</th>
+              <th class="time">出勤時間</th>
+              <th class="time">退勤時間</th>
+              <th class="status">ステータス</th>
+              <th class="late">遅刻時間</th>
+              <th class="payment">日払い</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${allRows.map(r => `
+              <tr>
+                <td class="name">${r.name}</td>
+                <td class="scheduled">${r.startTime ? r.startTime.slice(0, 5) : ''}</td>
+                <td class="time"></td>
+                <td class="time"></td>
+                <td class="status"></td>
+                <td class="late"></td>
+                <td class="payment"></td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </body>
+      </html>
+    `)
+    printWindow.document.close()
+    printWindow.print()
+  }
+
   if (storeLoading || loading || mobileLoading) {
     return <LoadingSpinner />
   }
@@ -635,6 +714,12 @@ function AttendancePageContent() {
           </h1>
           {!isMobile && (
             <div style={{ display: 'flex', gap: '10px' }}>
+              <Button
+                onClick={handlePrintToday}
+                variant="secondary"
+              >
+                今日の出勤表
+              </Button>
               <Button
                 onClick={handleRecalculate}
                 variant="secondary"
