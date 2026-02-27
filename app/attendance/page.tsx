@@ -673,7 +673,16 @@ function AttendancePageContent() {
       </html>
     `)
     printWindow.document.close()
-    printWindow.print()
+    // レンダリング完了後に印刷ダイアログを表示
+    printWindow.onload = () => {
+      printWindow.print()
+    }
+    // onloadが発火しない場合のフォールバック
+    setTimeout(() => {
+      if (!printWindow.closed) {
+        printWindow.print()
+      }
+    }, 500)
   }
 
   if (storeLoading || loading || mobileLoading) {
