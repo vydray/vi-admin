@@ -1826,18 +1826,18 @@ function ExpensesPageContent() {
             {recentChecks.length > 0 && (() => {
               const latest = recentChecks[0]
               return (
-                <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #e0e0e0', display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
-                  <div>
-                    <span style={{ fontSize: '12px', color: '#888' }}>最新確認 ({latest.created_at
+                <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.3)', display: 'flex', gap: '20px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                  <div style={{ textAlign: 'center' }}>
+                    <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.85)' }}>最新確認 ({latest.created_at
                       ? new Date(latest.created_at).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
                       : format(new Date(latest.check_date), 'M/d')})</span>
-                    <div style={{ fontSize: '14px', fontWeight: '600' }}>実際: {formatCurrency(latest.actual_balance)}</div>
+                    <div style={{ fontSize: '14px', fontWeight: '600', color: '#fff' }}>実際: {formatCurrency(latest.actual_balance)}</div>
                   </div>
-                  <div>
-                    <span style={{ fontSize: '12px', color: '#888' }}>差額</span>
+                  <div style={{ textAlign: 'center' }}>
+                    <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.85)' }}>差額</span>
                     <div style={{
                       fontSize: '14px', fontWeight: '600',
-                      color: latest.difference === 0 ? '#27ae60' : latest.difference > 0 ? '#3498db' : '#e74c3c'
+                      color: latest.difference === 0 ? '#a8f0c8' : latest.difference > 0 ? '#a8d8f0' : '#ffb3b3'
                     }}>
                       {latest.difference >= 0 ? '+' : ''}{formatCurrency(latest.difference)}
                     </div>
