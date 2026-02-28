@@ -846,7 +846,7 @@ async function calculatePayslipForCast(
       if (enabledBonusIds !== null && !enabledBonusIds.includes(bt.id)) continue
 
       const c = bt.conditions as {
-        attendance?: { eligible_status_ids?: string[]; late_status_ids?: string[]; require_all_shifts?: boolean; min_days?: number | null; max_late_count?: number | null; max_absent_count?: number | null; min_hours_per_day?: number | null; min_total_hours?: number | null } | null
+        attendance?: { eligible_status_ids?: string[]; disqualify_status_ids?: string[]; require_all_shifts?: boolean; min_days?: number | null; min_hours_per_day?: number | null; min_total_hours?: number | null } | null
         sales?: { sales_target?: string; min_amount?: number } | null
         nomination?: { min_count?: number } | null
         reward?: { type?: string; amount?: number; tiers?: Array<{ min: number; max: number | null; amount: number }>; sales_target?: string }
@@ -859,26 +859,21 @@ async function calculatePayslipForCast(
       if (c.attendance) {
         const att = c.attendance
         const eligibleIds = new Set(att.eligible_status_ids || [])
-        const lateIds = new Set(att.late_status_ids || [])
+        const disqualifyIds = new Set(att.disqualify_status_ids || [])
 
-        // このルール固有の出勤日数・遅刻回数を集計
+        // このルール固有の出勤日数を集計
         const bonusWorkDays = (attendanceData || []).filter(a => a.status_id && eligibleIds.has(a.status_id)).length
-        const bonusLateDays = (attendanceData || []).filter(a => a.status_id && lateIds.has(a.status_id)).length
+        // NGステータスが1回でもあれば皆勤賞対象外
+        const hasDisqualify = (attendanceData || []).some(a => a.status_id && disqualifyIds.has(a.status_id))
 
+        if (hasDisqualify) {
+          allConditionsMet = false
+        }
         if (att.require_all_shifts && totalShifts > 0 && bonusWorkDays < totalShifts) {
           allConditionsMet = false
         }
         if (att.min_days != null && bonusWorkDays < att.min_days) {
           allConditionsMet = false
-        }
-        if (att.max_late_count != null && bonusLateDays > att.max_late_count) {
-          allConditionsMet = false
-        }
-        if (att.max_absent_count != null) {
-          const absentCount = shiftDates.filter(d => !attendedDates.has(d)).length
-          if (absentCount > att.max_absent_count) {
-            allConditionsMet = false
-          }
         }
         // 1日の最低勤務時間チェック
         if (att.min_hours_per_day != null) {
@@ -892,7 +887,7 @@ async function calculatePayslipForCast(
           allConditionsMet = false
         }
 
-        detailParts.push(`出勤${bonusWorkDays}日/遅刻${bonusLateDays}回`)
+        detailParts.push(`出勤${bonusWorkDays}日${hasDisqualify ? '/NG有' : ''}`)
       }
 
       // --- 売上条件チェック ---

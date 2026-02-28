@@ -46,11 +46,9 @@ function BonusSettingsContent() {
 
   // 出勤条件
   const [eligibleStatusIds, setEligibleStatusIds] = useState<string[]>([])
-  const [lateStatusIds, setLateStatusIds] = useState<string[]>([])
+  const [disqualifyStatusIds, setDisqualifyStatusIds] = useState<string[]>([])
   const [requireAllShifts, setRequireAllShifts] = useState(true)
   const [minDays, setMinDays] = useState('')
-  const [maxLateCount, setMaxLateCount] = useState('')
-  const [maxAbsentCount, setMaxAbsentCount] = useState('')
   const [minHoursPerDay, setMinHoursPerDay] = useState('')
   const [minTotalHours, setMinTotalHours] = useState('')
 
@@ -91,11 +89,9 @@ function BonusSettingsContent() {
     setUseSalesCondition(false)
     setUseNominationCondition(false)
     setEligibleStatusIds([])
-    setLateStatusIds([])
+    setDisqualifyStatusIds([])
     setRequireAllShifts(true)
     setMinDays('')
-    setMaxLateCount('')
-    setMaxAbsentCount('')
     setMinHoursPerDay('')
     setMinTotalHours('')
     setSalesTarget('item_based')
@@ -115,11 +111,9 @@ function BonusSettingsContent() {
     if (c.attendance) {
       setUseAttendanceCondition(true)
       setEligibleStatusIds(c.attendance.eligible_status_ids || [])
-      setLateStatusIds(c.attendance.late_status_ids || [])
+      setDisqualifyStatusIds(c.attendance.disqualify_status_ids || [])
       setRequireAllShifts(c.attendance.require_all_shifts ?? true)
       setMinDays(c.attendance.min_days != null ? String(c.attendance.min_days) : '')
-      setMaxLateCount(c.attendance.max_late_count != null ? String(c.attendance.max_late_count) : '')
-      setMaxAbsentCount(c.attendance.max_absent_count != null ? String(c.attendance.max_absent_count) : '')
       setMinHoursPerDay(c.attendance.min_hours_per_day != null ? String(c.attendance.min_hours_per_day) : '')
       setMinTotalHours(c.attendance.min_total_hours != null ? String(c.attendance.min_total_hours) : '')
     } else {
@@ -163,11 +157,9 @@ function BonusSettingsContent() {
     if (useAttendanceCondition) {
       conditions.attendance = {
         eligible_status_ids: eligibleStatusIds,
-        late_status_ids: lateStatusIds,
+        disqualify_status_ids: disqualifyStatusIds,
         require_all_shifts: requireAllShifts,
         min_days: minDays ? Number(minDays) : null,
-        max_late_count: maxLateCount ? Number(maxLateCount) : null,
-        max_absent_count: maxAbsentCount ? Number(maxAbsentCount) : null,
         min_hours_per_day: minHoursPerDay ? Number(minHoursPerDay) : null,
         min_total_hours: minTotalHours ? Number(minTotalHours) : null,
       }
@@ -265,7 +257,7 @@ function BonusSettingsContent() {
       const attParts: string[] = []
       if (c.attendance.require_all_shifts) attParts.push('全シフト出勤')
       if (c.attendance.min_days != null) attParts.push(`${c.attendance.min_days}日以上`)
-      if (c.attendance.max_late_count != null) attParts.push(`遅刻${c.attendance.max_late_count}回以下`)
+      if (c.attendance.disqualify_status_ids?.length) attParts.push(`NG条件${c.attendance.disqualify_status_ids.length}件`)
       if (c.attendance.min_hours_per_day != null) attParts.push(`1日${c.attendance.min_hours_per_day}h以上`)
       if (c.attendance.min_total_hours != null) attParts.push(`合計${c.attendance.min_total_hours}h以上`)
       parts.push(`出勤(${attParts.join(',')})`)
@@ -402,11 +394,9 @@ function BonusSettingsContent() {
                 <AttendanceConditionForm
                   attendanceStatuses={attendanceStatuses}
                   eligibleStatusIds={eligibleStatusIds} setEligibleStatusIds={setEligibleStatusIds}
-                  lateStatusIds={lateStatusIds} setLateStatusIds={setLateStatusIds}
+                  disqualifyStatusIds={disqualifyStatusIds} setDisqualifyStatusIds={setDisqualifyStatusIds}
                   requireAllShifts={requireAllShifts} setRequireAllShifts={setRequireAllShifts}
                   minDays={minDays} setMinDays={setMinDays}
-                  maxLateCount={maxLateCount} setMaxLateCount={setMaxLateCount}
-                  maxAbsentCount={maxAbsentCount} setMaxAbsentCount={setMaxAbsentCount}
                   minHoursPerDay={minHoursPerDay} setMinHoursPerDay={setMinHoursPerDay}
                   minTotalHours={minTotalHours} setMinTotalHours={setMinTotalHours}
                 />
@@ -544,17 +534,15 @@ function ConditionSection({ title, color, enabled, onToggle, children }: {
 // 出勤条件フォーム
 // ============================================================================
 function AttendanceConditionForm({
-  attendanceStatuses, eligibleStatusIds, setEligibleStatusIds, lateStatusIds, setLateStatusIds,
-  requireAllShifts, setRequireAllShifts, minDays, setMinDays, maxLateCount, setMaxLateCount,
-  maxAbsentCount, setMaxAbsentCount, minHoursPerDay, setMinHoursPerDay, minTotalHours, setMinTotalHours,
+  attendanceStatuses, eligibleStatusIds, setEligibleStatusIds, disqualifyStatusIds, setDisqualifyStatusIds,
+  requireAllShifts, setRequireAllShifts, minDays, setMinDays,
+  minHoursPerDay, setMinHoursPerDay, minTotalHours, setMinTotalHours,
 }: {
   attendanceStatuses: AttendanceStatus[]
   eligibleStatusIds: string[]; setEligibleStatusIds: (v: string[]) => void
-  lateStatusIds: string[]; setLateStatusIds: (v: string[]) => void
+  disqualifyStatusIds: string[]; setDisqualifyStatusIds: (v: string[]) => void
   requireAllShifts: boolean; setRequireAllShifts: (v: boolean) => void
   minDays: string; setMinDays: (v: string) => void
-  maxLateCount: string; setMaxLateCount: (v: string) => void
-  maxAbsentCount: string; setMaxAbsentCount: (v: string) => void
   minHoursPerDay: string; setMinHoursPerDay: (v: string) => void
   minTotalHours: string; setMinTotalHours: (v: string) => void
 }) {
@@ -584,24 +572,24 @@ function AttendanceConditionForm({
         <div style={{ fontSize: '11px', color: '#999', marginTop: '2px' }}>※ 皆勤賞の「出勤」として数えるステータスを選択</div>
       </div>
 
-      {/* 遅刻扱いステータス */}
+      {/* 皆勤賞NGステータス */}
       <div>
-        <label style={labelStyle}>遅刻扱いにするステータス</label>
+        <label style={labelStyle}>皆勤賞NGにするステータス</label>
         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
           {attendanceStatuses.map(s => (
-            <button key={s.id} onClick={() => toggleId(lateStatusIds, s.id, setLateStatusIds)}
+            <button key={s.id} onClick={() => toggleId(disqualifyStatusIds, s.id, setDisqualifyStatusIds)}
               style={{
                 padding: '4px 12px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer',
-                border: `2px solid ${lateStatusIds.includes(s.id) ? '#FF9800' : '#ddd'}`,
-                backgroundColor: lateStatusIds.includes(s.id) ? '#FFF3E0' : '#fff',
-                color: lateStatusIds.includes(s.id) ? '#E65100' : '#666',
-                fontWeight: lateStatusIds.includes(s.id) ? 'bold' : 'normal',
+                border: `2px solid ${disqualifyStatusIds.includes(s.id) ? '#F44336' : '#ddd'}`,
+                backgroundColor: disqualifyStatusIds.includes(s.id) ? '#FFEBEE' : '#fff',
+                color: disqualifyStatusIds.includes(s.id) ? '#C62828' : '#666',
+                fontWeight: disqualifyStatusIds.includes(s.id) ? 'bold' : 'normal',
               }}>
               {s.name}
             </button>
           ))}
         </div>
-        <div style={{ fontSize: '11px', color: '#999', marginTop: '2px' }}>※ 遅刻としてカウントするステータスを選択</div>
+        <div style={{ fontSize: '11px', color: '#999', marginTop: '2px' }}>※ 1回でもこのステータスがあれば皆勤賞対象外</div>
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -613,17 +601,6 @@ function AttendanceConditionForm({
         <div style={{ flex: 1 }}>
           <label style={labelStyle}>最低出勤日数（空=なし）</label>
           <input type="number" value={minDays} onChange={e => setMinDays(e.target.value)} style={inputStyle} placeholder="20" />
-        </div>
-        <div style={{ flex: 1 }}>
-          <label style={labelStyle}>許容遅刻回数（空=なし）</label>
-          <input type="number" value={maxLateCount} onChange={e => setMaxLateCount(e.target.value)} style={inputStyle} placeholder="0" />
-        </div>
-      </div>
-
-      <div style={{ display: 'flex', gap: '12px' }}>
-        <div style={{ flex: 1 }}>
-          <label style={labelStyle}>許容欠勤回数（空=なし）</label>
-          <input type="number" value={maxAbsentCount} onChange={e => setMaxAbsentCount(e.target.value)} style={inputStyle} placeholder="0" />
         </div>
         <div style={{ flex: 1 }}>
           <label style={labelStyle}>1日の最低勤務時間（空=なし）</label>

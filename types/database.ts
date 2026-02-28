@@ -1127,14 +1127,12 @@ export type BonusCategory = 'sales' | 'attendance' | 'nomination' | 'combined'
 
 // 出勤条件（皆勤賞用）
 export interface BonusAttendanceCondition {
-  eligible_status_ids: string[]   // 出勤扱いのステータスID
-  late_status_ids: string[]       // 遅刻扱いのステータスID
-  require_all_shifts: boolean     // 全シフト出勤必須
-  min_days: number | null         // 最低出勤日数
-  max_late_count: number | null   // 許容遅刻回数
-  max_absent_count: number | null // 許容欠勤回数
-  min_hours_per_day: number | null  // 1日の最低勤務時間
-  min_total_hours: number | null    // 月の最低合計勤務時間
+  eligible_status_ids: string[]      // 出勤扱いのステータスID
+  disqualify_status_ids: string[]    // 1回でもあったら皆勤賞NGにするステータスID
+  require_all_shifts: boolean        // 全シフト出勤必須
+  min_days: number | null            // 最低出勤日数
+  min_hours_per_day: number | null   // 1日の最低勤務時間
+  min_total_hours: number | null     // 月の最低合計勤務時間
 }
 
 // 売上条件
