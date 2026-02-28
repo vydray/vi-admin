@@ -1825,6 +1825,7 @@ function ExpensesPageContent() {
             }}>{formatCurrency(systemBalance)}</p>
             {recentChecks.length > 0 && (() => {
               const latest = recentChecks[0]
+              const dynamicDiff = latest.actual_balance - systemBalance
               return (
                 <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.3)', display: 'flex', gap: '20px', flexWrap: 'wrap', justifyContent: 'center' }}>
                   <div style={{ textAlign: 'center' }}>
@@ -1837,9 +1838,9 @@ function ExpensesPageContent() {
                     <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.85)' }}>差額</span>
                     <div style={{
                       fontSize: '14px', fontWeight: '600',
-                      color: latest.difference === 0 ? '#a8f0c8' : latest.difference > 0 ? '#a8d8f0' : '#ffb3b3'
+                      color: dynamicDiff === 0 ? '#a8f0c8' : dynamicDiff > 0 ? '#a8d8f0' : '#ffb3b3'
                     }}>
-                      {latest.difference >= 0 ? '+' : ''}{formatCurrency(latest.difference)}
+                      {dynamicDiff >= 0 ? '+' : ''}{formatCurrency(dynamicDiff)}
                     </div>
                   </div>
                 </div>
