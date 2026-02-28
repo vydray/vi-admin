@@ -1828,7 +1828,9 @@ function ExpensesPageContent() {
               return (
                 <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #e0e0e0', display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
                   <div>
-                    <span style={{ fontSize: '12px', color: '#888' }}>最新確認 ({format(new Date(latest.check_date), 'M/d')})</span>
+                    <span style={{ fontSize: '12px', color: '#888' }}>最新確認 ({latest.created_at
+                      ? new Date(latest.created_at).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                      : format(new Date(latest.check_date), 'M/d')})</span>
                     <div style={{ fontSize: '14px', fontWeight: '600' }}>実際: {formatCurrency(latest.actual_balance)}</div>
                   </div>
                   <div>
@@ -2232,7 +2234,9 @@ function ExpensesPageContent() {
                         } : {}),
                       }}>
                         <span style={styles.checkDate}>
-                          {format(new Date(check.check_date), 'M/d')}
+                          {check.created_at
+                            ? new Date(check.created_at).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                            : format(new Date(check.check_date), 'M/d')}
                         </span>
                         <span style={isMobile ? { fontSize: '13px' } : undefined}>
                           システム: {formatCurrency(check.system_balance)} /
