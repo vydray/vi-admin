@@ -167,11 +167,11 @@ function BonusSettingsContent() {
 
     if (editingItem) {
       const { error } = await supabase.from('bonus_types').update(record).eq('id', editingItem.id)
-      if (error) { toast.error('更新に失敗しました'); return }
+      if (error) { console.error('update error:', error); toast.error(`更新に失敗しました: ${error.message}`); return }
       toast.success('更新しました')
     } else {
       const { error } = await supabase.from('bonus_types').insert(record)
-      if (error) { toast.error('追加に失敗しました'); return }
+      if (error) { console.error('insert error:', error); toast.error(`追加に失敗しました: ${error.message}`); return }
       toast.success('追加しました')
     }
 
