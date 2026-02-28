@@ -891,6 +891,9 @@ async function calculatePayslipForCast(
 
         if (c.reward.type === 'fixed') {
           bonusAmount = c.reward.amount || 0
+        } else if (c.reward.type === 'per_attendance') {
+          const days = bonusWorkDays || (attendanceData || []).length
+          bonusAmount = days * (c.reward.amount || 0)
         } else if (c.reward.type === 'attendance_tiered' && c.reward.tiers) {
           // 出勤条件なしの場合は全出勤日数を使う
           const days = bonusWorkDays || (attendanceData || []).length

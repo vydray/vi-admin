@@ -47,7 +47,7 @@ function BonusSettingsContent() {
   const [minTotalHours, setMinTotalHours] = useState('')
 
   // 報酬設定
-  const [rewardType, setRewardType] = useState<'fixed' | 'attendance_tiered' | 'sales_tiered' | 'nomination_tiered'>('fixed')
+  const [rewardType, setRewardType] = useState<'fixed' | 'per_attendance' | 'attendance_tiered' | 'sales_tiered' | 'nomination_tiered'>('fixed')
   const [rewardAmount, setRewardAmount] = useState('')
   const [rewardTiers, setRewardTiers] = useState<BonusRewardTier[]>([{ min: 0, max: null, amount: 0 }])
   const [rewardSalesTarget, setRewardSalesTarget] = useState<'item_based' | 'receipt_based'>('item_based')
@@ -130,6 +130,8 @@ function BonusSettingsContent() {
 
     if (rewardType === 'fixed') {
       conditions.reward = { type: 'fixed', amount: Number(rewardAmount) || 0 }
+    } else if (rewardType === 'per_attendance') {
+      conditions.reward = { type: 'per_attendance', amount: Number(rewardAmount) || 0 }
     } else if (rewardType === 'attendance_tiered') {
       conditions.reward = { type: 'attendance_tiered', tiers: rewardTiers }
     } else if (rewardType === 'sales_tiered') {
@@ -143,7 +145,7 @@ function BonusSettingsContent() {
 
   // bonus_category を報酬タイプと出勤条件から自動判定
   const determineBonusCategory = (): string => {
-    const hasAtt = useAttendanceCondition || rewardType === 'attendance_tiered'
+    const hasAtt = useAttendanceCondition || rewardType === 'per_attendance' || rewardType === 'attendance_tiered'
     const isSales = rewardType === 'sales_tiered'
     const isNom = rewardType === 'nomination_tiered'
     if (hasAtt && (isSales || isNom)) return 'combined'
@@ -216,6 +218,8 @@ function BonusSettingsContent() {
     if (c.reward) {
       if (c.reward.type === 'fixed' && c.reward.amount) {
         parts.push(`→ ¥${c.reward.amount.toLocaleString()}`)
+      } else if (c.reward.type === 'per_attendance' && c.reward.amount) {
+        parts.push(`→ 1日¥${c.reward.amount.toLocaleString()}`)
       } else if (c.reward.type === 'attendance_tiered' && c.reward.tiers?.length) {
         parts.push(`→ 出勤段階(${c.reward.tiers.length}段階)`)
       } else if (c.reward.type === 'sales_tiered' && c.reward.tiers?.length) {
@@ -352,6 +356,7 @@ function BonusSettingsContent() {
                 <div style={{ display: 'flex', gap: '8px' }}>
                   {[
                     { value: 'fixed' as const, label: '固定額' },
+                    { value: 'per_attendance' as const, label: '出勤日額' },
                     { value: 'attendance_tiered' as const, label: '出勤段階' },
                     { value: 'sales_tiered' as const, label: '売上段階' },
                     { value: 'nomination_tiered' as const, label: '指名段階' },
@@ -374,6 +379,16 @@ function BonusSettingsContent() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                     <input type="text" inputMode="numeric" value={formatComma(rewardAmount)} onChange={e => setRewardAmount(String(parseComma(e.target.value)))} style={inputStyle} placeholder="30,000" />
                     <span style={{ fontSize: '13px', color: '#666', whiteSpace: 'nowrap' }}>円</span>
+                  </div>
+                </div>
+              )}
+
+              {rewardType === 'per_attendance' && (
+                <div style={{ width: '50%' }}>
+                  <label style={labelStyle}>1日あたりの金額</label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <input type="text" inputMode="numeric" value={formatComma(rewardAmount)} onChange={e => setRewardAmount(String(parseComma(e.target.value)))} style={inputStyle} placeholder="500" />
+                    <span style={{ fontSize: '13px', color: '#666', whiteSpace: 'nowrap' }}>円/日</span>
                   </div>
                 </div>
               )}
