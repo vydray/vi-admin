@@ -367,7 +367,7 @@ function BonusSettingsContent() {
                 <div style={{ width: '50%' }}>
                   <label style={labelStyle}>支給額</label>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <input type="number" value={rewardAmount} onChange={e => setRewardAmount(e.target.value)} style={inputStyle} placeholder="30000" />
+                    <input type="text" inputMode="numeric" value={formatComma(rewardAmount)} onChange={e => setRewardAmount(String(parseComma(e.target.value)))} style={inputStyle} placeholder="30,000" />
                     <span style={{ fontSize: '13px', color: '#666', whiteSpace: 'nowrap' }}>円</span>
                   </div>
                 </div>
@@ -535,9 +535,9 @@ function TierEditor({ tiers, setTiers, unitLabel, divisor }: {
             onChange={e => { const t = [...tiers]; t[i] = { ...t[i], max: e.target.value ? (Number(e.target.value) || 0) * divisor : null }; setTiers(t) }}
             style={{ ...inputStyle, flex: 1 }} placeholder="上限(空=上限なし)" />
           <span style={{ color: '#999', fontSize: '12px', whiteSpace: 'nowrap' }}>{unitLabel} →</span>
-          <input type="number" value={tier.amount}
-            onChange={e => { const t = [...tiers]; t[i] = { ...t[i], amount: Number(e.target.value) || 0 }; setTiers(t) }}
-            style={{ ...inputStyle, flex: 1 }} placeholder="金額" />
+          <input type="text" inputMode="numeric" value={formatComma(tier.amount)}
+            onChange={e => { const t = [...tiers]; t[i] = { ...t[i], amount: parseComma(e.target.value) }; setTiers(t) }}
+            style={{ ...inputStyle, flex: 1 }} placeholder="30,000" />
           <span style={{ fontSize: '12px', color: '#999' }}>円</span>
           {tiers.length > 1 && (
             <button onClick={() => setTiers(tiers.filter((_, j) => j !== i))}
@@ -552,6 +552,14 @@ function TierEditor({ tiers, setTiers, unitLabel, divisor }: {
     </div>
   )
 }
+
+// カンマ区切りヘルパー
+const formatComma = (v: number | string): string => {
+  const n = typeof v === 'string' ? Number(v.replace(/,/g, '')) : v
+  if (isNaN(n) || n === 0) return ''
+  return n.toLocaleString()
+}
+const parseComma = (v: string): number => Number(v.replace(/,/g, '')) || 0
 
 // 共通スタイル
 const labelStyle: React.CSSProperties = { display: 'block', fontSize: '13px', fontWeight: '600', color: '#555', marginBottom: '4px' }
