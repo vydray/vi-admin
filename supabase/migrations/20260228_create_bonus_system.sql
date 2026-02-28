@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS bonus_types (
   id SERIAL PRIMARY KEY,
   store_id INT NOT NULL REFERENCES stores(id),
   name TEXT NOT NULL,
-  bonus_category TEXT NOT NULL CHECK (bonus_category IN ('sales', 'attendance', 'nomination', 'manual')),
+  bonus_category TEXT NOT NULL CHECK (bonus_category IN ('sales', 'attendance', 'nomination', 'combined')),
   conditions JSONB DEFAULT '{}',
   is_active BOOLEAN DEFAULT true,
   display_order INT DEFAULT 0,

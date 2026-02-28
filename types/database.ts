@@ -1123,65 +1123,52 @@ export interface PayslipItem {
 // 賞与システム
 // ============================================================================
 
-export type BonusCategory = 'sales' | 'attendance' | 'nomination' | 'manual'
+export type BonusCategory = 'sales' | 'attendance' | 'nomination' | 'combined'
 
-// 売上ボーナスの計算タイプ
-export type SalesBonusCalculationType = 'threshold' | 'fixed' | 'achievement'
-
-// 指名ボーナスの計算タイプ
-export type NominationBonusCalculationType = 'threshold' | 'fixed'
-
-// 売上ボーナスのティア
-export interface SalesBonusTier {
-  min_sales: number
-  max_sales: number | null
-  amount: number
+// 出勤条件（皆勤賞用）
+export interface BonusAttendanceCondition {
+  eligible_status_ids: string[]   // 出勤扱いのステータスID
+  late_status_ids: string[]       // 遅刻扱いのステータスID
+  require_all_shifts: boolean     // 全シフト出勤必須
+  min_days: number | null         // 最低出勤日数
+  max_late_count: number | null   // 許容遅刻回数
+  max_absent_count: number | null // 許容欠勤回数
+  min_hours_per_day: number | null  // 1日の最低勤務時間
+  min_total_hours: number | null    // 月の最低合計勤務時間
 }
 
-// 達成率ティア
-export interface AchievementTier {
-  min_rate: number
-  max_rate: number | null
-  amount: number
-}
-
-// 指名ボーナスのティア
-export interface NominationBonusTier {
-  min_count: number
-  max_count: number | null
-  amount: number
-}
-
-// 売上ボーナス条件
-export interface SalesBonusConditions {
-  calculation_type: SalesBonusCalculationType
+// 売上条件
+export interface BonusSalesCondition {
   sales_target: 'item_based' | 'receipt_based'
-  // threshold型
-  tiers?: SalesBonusTier[]
-  // fixed型
-  target_amount?: number
-  bonus_amount?: number
-  // achievement型
-  achievement_tiers?: AchievementTier[]
+  min_amount: number              // 最低売上額
 }
 
-// 皆勤賞条件
-export interface AttendanceBonusConditions {
+// 指名条件
+export interface BonusNominationCondition {
+  min_count: number               // 最低指名本数
+}
+
+// 報酬ティア
+export interface BonusRewardTier {
+  min: number
+  max: number | null
   amount: number
-  require_all_shifts: boolean
-  min_days: number | null
-  max_late_count: number | null
-  max_absent_count: number | null
 }
 
-// 指名ボーナス条件
-export interface NominationBonusConditions {
-  calculation_type: NominationBonusCalculationType
-  // threshold型
-  tiers?: NominationBonusTier[]
-  // fixed型
-  target_count?: number
-  bonus_amount?: number
+// 報酬設定
+export interface BonusReward {
+  type: 'fixed' | 'sales_tiered' | 'nomination_tiered'
+  amount?: number                    // fixed型
+  tiers?: BonusRewardTier[]          // tiered型
+  sales_target?: 'item_based' | 'receipt_based'  // sales_tiered用
+}
+
+// 複合条件（全てAND）
+export interface BonusConditions {
+  attendance?: BonusAttendanceCondition | null   // null=この条件なし
+  sales?: BonusSalesCondition | null             // null=この条件なし
+  nomination?: BonusNominationCondition | null   // null=この条件なし
+  reward: BonusReward
 }
 
 // 賞与ルール定義
@@ -1190,7 +1177,7 @@ export interface BonusType {
   store_id: number
   name: string
   bonus_category: BonusCategory
-  conditions: SalesBonusConditions | AttendanceBonusConditions | NominationBonusConditions | Record<string, never>
+  conditions: BonusConditions
   is_active: boolean
   display_order: number
   created_at: string

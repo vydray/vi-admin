@@ -10,35 +10,14 @@ import Button from '@/components/Button'
 import ProtectedPage from '@/components/ProtectedPage'
 import type {
   BonusType,
-  BonusCategory,
-  SalesBonusConditions,
-  AttendanceBonusConditions,
-  NominationBonusConditions,
-  SalesBonusTier,
-  AchievementTier,
-  NominationBonusTier,
+  BonusConditions,
+  BonusAttendanceCondition,
+  BonusSalesCondition,
+  BonusNominationCondition,
+  BonusReward,
+  BonusRewardTier,
+  AttendanceStatus,
 } from '@/types/database'
-
-const categoryLabels: Record<BonusCategory, string> = {
-  sales: '売上ボーナス',
-  attendance: '皆勤賞',
-  nomination: '指名ボーナス',
-  manual: '手動賞与',
-}
-
-const categoryDescriptions: Record<BonusCategory, string> = {
-  sales: '月間売上に応じてボーナスを支給',
-  attendance: '出勤条件を満たした場合にボーナスを支給',
-  nomination: '指名本数に応じてボーナスを支給',
-  manual: '管理者が任意の名目・金額で個別に支給',
-}
-
-const categoryColors: Record<BonusCategory, string> = {
-  sales: '#2196F3',
-  attendance: '#4CAF50',
-  nomination: '#FF9800',
-  manual: '#9C27B0',
-}
 
 export default function BonusSettingsPage() {
   return (
@@ -53,136 +32,196 @@ function BonusSettingsContent() {
   const { confirm } = useConfirm()
   const [loading, setLoading] = useState(true)
   const [bonusTypes, setBonusTypes] = useState<BonusType[]>([])
+  const [attendanceStatuses, setAttendanceStatuses] = useState<AttendanceStatus[]>([])
   const [showAddModal, setShowAddModal] = useState(false)
   const [editingItem, setEditingItem] = useState<BonusType | null>(null)
 
-  // フォーム
-  const [formCategory, setFormCategory] = useState<BonusCategory>('sales')
+  // フォーム共通
   const [formName, setFormName] = useState('')
 
-  // 売上ボーナス
-  const [salesCalcType, setSalesCalcType] = useState<'threshold' | 'fixed' | 'achievement'>('threshold')
-  const [salesTarget, setSalesTarget] = useState<'item_based' | 'receipt_based'>('item_based')
-  const [salesTiers, setSalesTiers] = useState<SalesBonusTier[]>([{ min_sales: 0, max_sales: null, amount: 0 }])
-  const [salesFixedTarget, setSalesFixedTarget] = useState('')
-  const [salesFixedBonus, setSalesFixedBonus] = useState('')
-  const [achievementTarget, setAchievementTarget] = useState('')
-  const [achievementTiers, setAchievementTiers] = useState<AchievementTier[]>([{ min_rate: 0, max_rate: null, amount: 0 }])
+  // 条件ON/OFF
+  const [useAttendanceCondition, setUseAttendanceCondition] = useState(false)
+  const [useSalesCondition, setUseSalesCondition] = useState(false)
+  const [useNominationCondition, setUseNominationCondition] = useState(false)
 
-  // 皆勤賞
-  const [attendanceAmount, setAttendanceAmount] = useState('')
+  // 出勤条件
+  const [eligibleStatusIds, setEligibleStatusIds] = useState<string[]>([])
+  const [lateStatusIds, setLateStatusIds] = useState<string[]>([])
   const [requireAllShifts, setRequireAllShifts] = useState(true)
   const [minDays, setMinDays] = useState('')
   const [maxLateCount, setMaxLateCount] = useState('')
   const [maxAbsentCount, setMaxAbsentCount] = useState('')
+  const [minHoursPerDay, setMinHoursPerDay] = useState('')
+  const [minTotalHours, setMinTotalHours] = useState('')
 
-  // 指名ボーナス
-  const [nominationCalcType, setNominationCalcType] = useState<'threshold' | 'fixed'>('threshold')
-  const [nominationTiers, setNominationTiers] = useState<NominationBonusTier[]>([{ min_count: 0, max_count: null, amount: 0 }])
-  const [nominationFixedTarget, setNominationFixedTarget] = useState('')
-  const [nominationFixedBonus, setNominationFixedBonus] = useState('')
+  // 売上条件
+  const [salesTarget, setSalesTarget] = useState<'item_based' | 'receipt_based'>('item_based')
+  const [salesMinAmount, setSalesMinAmount] = useState('')
 
-  const loadBonusTypes = useCallback(async () => {
+  // 指名条件
+  const [nominationMinCount, setNominationMinCount] = useState('')
+
+  // 報酬設定
+  const [rewardType, setRewardType] = useState<'fixed' | 'sales_tiered' | 'nomination_tiered'>('fixed')
+  const [rewardAmount, setRewardAmount] = useState('')
+  const [rewardTiers, setRewardTiers] = useState<BonusRewardTier[]>([{ min: 0, max: null, amount: 0 }])
+  const [rewardSalesTarget, setRewardSalesTarget] = useState<'item_based' | 'receipt_based'>('item_based')
+
+  const loadData = useCallback(async () => {
     if (!storeId) return
     setLoading(true)
-    const { data, error } = await supabase
-      .from('bonus_types')
-      .select('*')
-      .eq('store_id', storeId)
-      .order('display_order')
-    if (error) {
-      toast.error('賞与設定の読み込みに失敗しました')
-    } else {
-      setBonusTypes(data || [])
-    }
+
+    const [bonusRes, statusRes] = await Promise.all([
+      supabase.from('bonus_types').select('*').eq('store_id', storeId).order('display_order'),
+      supabase.from('attendance_statuses').select('*').eq('store_id', storeId).order('order_index'),
+    ])
+
+    if (bonusRes.error) toast.error('賞与設定の読み込みに失敗しました')
+    else setBonusTypes(bonusRes.data || [])
+
+    setAttendanceStatuses(statusRes.data || [])
     setLoading(false)
   }, [storeId])
 
-  useEffect(() => { loadBonusTypes() }, [loadBonusTypes])
+  useEffect(() => { loadData() }, [loadData])
 
   const resetForm = () => {
-    setFormCategory('sales')
     setFormName('')
-    setSalesCalcType('threshold')
-    setSalesTarget('item_based')
-    setSalesTiers([{ min_sales: 0, max_sales: null, amount: 0 }])
-    setSalesFixedTarget('')
-    setSalesFixedBonus('')
-    setAchievementTarget('')
-    setAchievementTiers([{ min_rate: 0, max_rate: null, amount: 0 }])
-    setAttendanceAmount('')
+    setUseAttendanceCondition(false)
+    setUseSalesCondition(false)
+    setUseNominationCondition(false)
+    setEligibleStatusIds([])
+    setLateStatusIds([])
     setRequireAllShifts(true)
     setMinDays('')
     setMaxLateCount('')
     setMaxAbsentCount('')
-    setNominationCalcType('threshold')
-    setNominationTiers([{ min_count: 0, max_count: null, amount: 0 }])
-    setNominationFixedTarget('')
-    setNominationFixedBonus('')
+    setMinHoursPerDay('')
+    setMinTotalHours('')
+    setSalesTarget('item_based')
+    setSalesMinAmount('')
+    setNominationMinCount('')
+    setRewardType('fixed')
+    setRewardAmount('')
+    setRewardTiers([{ min: 0, max: null, amount: 0 }])
+    setRewardSalesTarget('item_based')
   }
 
   const populateForm = (item: BonusType) => {
-    setFormCategory(item.bonus_category)
     setFormName(item.name)
+    const c = item.conditions as BonusConditions
 
-    if (item.bonus_category === 'sales') {
-      const c = item.conditions as SalesBonusConditions
-      setSalesCalcType(c.calculation_type || 'threshold')
-      setSalesTarget(c.sales_target || 'item_based')
-      if (c.tiers) setSalesTiers(c.tiers)
-      if (c.target_amount != null) setSalesFixedTarget(String(c.target_amount))
-      if (c.bonus_amount != null) setSalesFixedBonus(String(c.bonus_amount))
-      if (c.achievement_tiers) setAchievementTiers(c.achievement_tiers)
-      if (c.calculation_type === 'achievement' && c.target_amount != null) setAchievementTarget(String(c.target_amount))
-    } else if (item.bonus_category === 'attendance') {
-      const c = item.conditions as AttendanceBonusConditions
-      setAttendanceAmount(String(c.amount || 0))
-      setRequireAllShifts(c.require_all_shifts ?? true)
-      setMinDays(c.min_days != null ? String(c.min_days) : '')
-      setMaxLateCount(c.max_late_count != null ? String(c.max_late_count) : '')
-      setMaxAbsentCount(c.max_absent_count != null ? String(c.max_absent_count) : '')
-    } else if (item.bonus_category === 'nomination') {
-      const c = item.conditions as NominationBonusConditions
-      setNominationCalcType(c.calculation_type || 'threshold')
-      if (c.tiers) setNominationTiers(c.tiers)
-      if (c.target_count != null) setNominationFixedTarget(String(c.target_count))
-      if (c.bonus_amount != null) setNominationFixedBonus(String(c.bonus_amount))
+    // 出勤条件
+    if (c.attendance) {
+      setUseAttendanceCondition(true)
+      setEligibleStatusIds(c.attendance.eligible_status_ids || [])
+      setLateStatusIds(c.attendance.late_status_ids || [])
+      setRequireAllShifts(c.attendance.require_all_shifts ?? true)
+      setMinDays(c.attendance.min_days != null ? String(c.attendance.min_days) : '')
+      setMaxLateCount(c.attendance.max_late_count != null ? String(c.attendance.max_late_count) : '')
+      setMaxAbsentCount(c.attendance.max_absent_count != null ? String(c.attendance.max_absent_count) : '')
+      setMinHoursPerDay(c.attendance.min_hours_per_day != null ? String(c.attendance.min_hours_per_day) : '')
+      setMinTotalHours(c.attendance.min_total_hours != null ? String(c.attendance.min_total_hours) : '')
+    } else {
+      setUseAttendanceCondition(false)
+    }
+
+    // 売上条件
+    if (c.sales) {
+      setUseSalesCondition(true)
+      setSalesTarget(c.sales.sales_target || 'item_based')
+      setSalesMinAmount(String(c.sales.min_amount || 0))
+    } else {
+      setUseSalesCondition(false)
+    }
+
+    // 指名条件
+    if (c.nomination) {
+      setUseNominationCondition(true)
+      setNominationMinCount(String(c.nomination.min_count || 0))
+    } else {
+      setUseNominationCondition(false)
+    }
+
+    // 報酬
+    if (c.reward) {
+      setRewardType(c.reward.type || 'fixed')
+      setRewardAmount(c.reward.amount != null ? String(c.reward.amount) : '')
+      setRewardTiers(c.reward.tiers || [{ min: 0, max: null, amount: 0 }])
+      setRewardSalesTarget(c.reward.sales_target || 'item_based')
     }
   }
 
-  const buildConditions = (): SalesBonusConditions | AttendanceBonusConditions | NominationBonusConditions | Record<string, never> => {
-    if (formCategory === 'sales') {
-      const base: SalesBonusConditions = { calculation_type: salesCalcType, sales_target: salesTarget }
-      if (salesCalcType === 'threshold') base.tiers = salesTiers
-      if (salesCalcType === 'fixed') { base.target_amount = Number(salesFixedTarget) || 0; base.bonus_amount = Number(salesFixedBonus) || 0 }
-      if (salesCalcType === 'achievement') { base.target_amount = Number(achievementTarget) || 0; base.achievement_tiers = achievementTiers }
-      return base
+  const buildConditions = (): BonusConditions => {
+    const conditions: BonusConditions = {
+      attendance: null,
+      sales: null,
+      nomination: null,
+      reward: { type: rewardType },
     }
-    if (formCategory === 'attendance') {
-      return {
-        amount: Number(attendanceAmount) || 0,
+
+    if (useAttendanceCondition) {
+      conditions.attendance = {
+        eligible_status_ids: eligibleStatusIds,
+        late_status_ids: lateStatusIds,
         require_all_shifts: requireAllShifts,
         min_days: minDays ? Number(minDays) : null,
         max_late_count: maxLateCount ? Number(maxLateCount) : null,
         max_absent_count: maxAbsentCount ? Number(maxAbsentCount) : null,
+        min_hours_per_day: minHoursPerDay ? Number(minHoursPerDay) : null,
+        min_total_hours: minTotalHours ? Number(minTotalHours) : null,
       }
     }
-    if (formCategory === 'nomination') {
-      const base: NominationBonusConditions = { calculation_type: nominationCalcType }
-      if (nominationCalcType === 'threshold') base.tiers = nominationTiers
-      if (nominationCalcType === 'fixed') { base.target_count = Number(nominationFixedTarget) || 0; base.bonus_amount = Number(nominationFixedBonus) || 0 }
-      return base
+
+    if (useSalesCondition) {
+      conditions.sales = {
+        sales_target: salesTarget,
+        min_amount: Number(salesMinAmount) || 0,
+      }
     }
-    return {}
+
+    if (useNominationCondition) {
+      conditions.nomination = {
+        min_count: Number(nominationMinCount) || 0,
+      }
+    }
+
+    // 報酬
+    if (rewardType === 'fixed') {
+      conditions.reward = { type: 'fixed', amount: Number(rewardAmount) || 0 }
+    } else if (rewardType === 'sales_tiered') {
+      conditions.reward = { type: 'sales_tiered', tiers: rewardTiers, sales_target: rewardSalesTarget }
+    } else if (rewardType === 'nomination_tiered') {
+      conditions.reward = { type: 'nomination_tiered', tiers: rewardTiers }
+    }
+
+    return conditions
+  }
+
+  // bonus_category を条件から自動判定
+  const determineBonusCategory = (): string => {
+    const hasAtt = useAttendanceCondition
+    const hasSales = useSalesCondition
+    const hasNom = useNominationCondition
+    const count = [hasAtt, hasSales, hasNom].filter(Boolean).length
+    if (count >= 2) return 'combined'
+    if (hasAtt) return 'attendance'
+    if (hasSales) return 'sales'
+    if (hasNom) return 'nomination'
+    // 条件なし = manual扱い（固定額ボーナス）
+    return 'combined'
   }
 
   const handleSave = async () => {
     if (!formName.trim()) { toast.error('名前を入力してください'); return }
+    if (!useAttendanceCondition && !useSalesCondition && !useNominationCondition && rewardType === 'fixed' && !rewardAmount) {
+      toast.error('条件または報酬額を設定してください'); return
+    }
 
     const record = {
       store_id: storeId,
       name: formName.trim(),
-      bonus_category: formCategory,
+      bonus_category: determineBonusCategory(),
       conditions: buildConditions(),
       display_order: editingItem ? editingItem.display_order : bonusTypes.length,
     }
@@ -200,7 +239,7 @@ function BonusSettingsContent() {
     setShowAddModal(false)
     setEditingItem(null)
     resetForm()
-    loadBonusTypes()
+    loadData()
   }
 
   const handleDelete = async (item: BonusType) => {
@@ -209,44 +248,69 @@ function BonusSettingsContent() {
     const { error } = await supabase.from('bonus_types').delete().eq('id', item.id)
     if (error) { toast.error('削除に失敗しました'); return }
     toast.success('削除しました')
-    loadBonusTypes()
+    loadData()
   }
 
   const handleToggleActive = async (item: BonusType) => {
     const { error } = await supabase.from('bonus_types').update({ is_active: !item.is_active }).eq('id', item.id)
     if (error) { toast.error('更新に失敗しました'); return }
-    loadBonusTypes()
+    loadData()
   }
 
   const getConditionSummary = (item: BonusType): string => {
-    if (item.bonus_category === 'sales') {
-      const c = item.conditions as SalesBonusConditions
-      if (c.calculation_type === 'threshold' && c.tiers?.length) {
-        return c.tiers.map(t => `${(t.min_sales / 10000).toFixed(0)}万〜 → ¥${t.amount.toLocaleString()}`).join(' / ')
-      }
-      if (c.calculation_type === 'fixed') return `${((c.target_amount || 0) / 10000).toFixed(0)}万超で ¥${(c.bonus_amount || 0).toLocaleString()}`
-      if (c.calculation_type === 'achievement' && c.achievement_tiers?.length) {
-        return c.achievement_tiers.map(t => `${t.min_rate}%〜 → ¥${t.amount.toLocaleString()}`).join(' / ')
+    const c = item.conditions as BonusConditions
+    const parts: string[] = []
+
+    if (c.attendance) {
+      const attParts: string[] = []
+      if (c.attendance.require_all_shifts) attParts.push('全シフト出勤')
+      if (c.attendance.min_days != null) attParts.push(`${c.attendance.min_days}日以上`)
+      if (c.attendance.max_late_count != null) attParts.push(`遅刻${c.attendance.max_late_count}回以下`)
+      if (c.attendance.min_hours_per_day != null) attParts.push(`1日${c.attendance.min_hours_per_day}h以上`)
+      if (c.attendance.min_total_hours != null) attParts.push(`合計${c.attendance.min_total_hours}h以上`)
+      parts.push(`出勤(${attParts.join(',')})`)
+    }
+
+    if (c.sales) {
+      parts.push(`売上${Math.round(c.sales.min_amount / 10000)}万以上`)
+    }
+
+    if (c.nomination) {
+      parts.push(`指名${c.nomination.min_count}本以上`)
+    }
+
+    // 報酬
+    if (c.reward) {
+      if (c.reward.type === 'fixed' && c.reward.amount) {
+        parts.push(`→ ¥${c.reward.amount.toLocaleString()}`)
+      } else if (c.reward.type === 'sales_tiered' && c.reward.tiers?.length) {
+        parts.push(`→ 売上段階(${c.reward.tiers.length}段階)`)
+      } else if (c.reward.type === 'nomination_tiered' && c.reward.tiers?.length) {
+        parts.push(`→ 指名段階(${c.reward.tiers.length}段階)`)
       }
     }
-    if (item.bonus_category === 'attendance') {
-      const c = item.conditions as AttendanceBonusConditions
-      const parts: string[] = [`¥${(c.amount || 0).toLocaleString()}`]
-      if (c.require_all_shifts) parts.push('全シフト出勤')
-      if (c.min_days != null) parts.push(`${c.min_days}日以上`)
-      if (c.max_late_count != null) parts.push(`遅刻${c.max_late_count}回以下`)
-      if (c.max_absent_count != null) parts.push(`欠勤${c.max_absent_count}回以下`)
-      return parts.join(' / ')
+
+    return parts.join(' + ') || '設定なし'
+  }
+
+  const getCategoryColor = (item: BonusType): string => {
+    switch (item.bonus_category) {
+      case 'sales': return '#2196F3'
+      case 'attendance': return '#4CAF50'
+      case 'nomination': return '#FF9800'
+      case 'combined': return '#9C27B0'
+      default: return '#666'
     }
-    if (item.bonus_category === 'nomination') {
-      const c = item.conditions as NominationBonusConditions
-      if (c.calculation_type === 'threshold' && c.tiers?.length) {
-        return c.tiers.map(t => `${t.min_count}本〜 → ¥${t.amount.toLocaleString()}`).join(' / ')
-      }
-      if (c.calculation_type === 'fixed') return `${c.target_count || 0}本超で ¥${(c.bonus_amount || 0).toLocaleString()}`
+  }
+
+  const getCategoryLabel = (item: BonusType): string => {
+    switch (item.bonus_category) {
+      case 'sales': return '売上'
+      case 'attendance': return '皆勤'
+      case 'nomination': return '指名'
+      case 'combined': return '複合'
+      default: return item.bonus_category
     }
-    if (item.bonus_category === 'manual') return '管理者が個別に設定'
-    return ''
   }
 
   if (storeLoading || loading) return <LoadingSpinner />
@@ -274,17 +338,17 @@ function BonusSettingsContent() {
             <div key={item.id} style={{
               backgroundColor: '#fff', padding: '16px 20px', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
               opacity: item.is_active ? 1 : 0.5,
-              borderLeft: `4px solid ${categoryColors[item.bonus_category]}`,
+              borderLeft: `4px solid ${getCategoryColor(item)}`,
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
                     <span style={{
                       fontSize: '11px', padding: '2px 8px', borderRadius: '4px',
-                      backgroundColor: categoryColors[item.bonus_category] + '20',
-                      color: categoryColors[item.bonus_category], fontWeight: 'bold',
+                      backgroundColor: getCategoryColor(item) + '20',
+                      color: getCategoryColor(item), fontWeight: 'bold',
                     }}>
-                      {categoryLabels[item.bonus_category]}
+                      {getCategoryLabel(item)}
                     </span>
                     <span style={{ fontSize: '16px', fontWeight: '600', color: '#1a1a1a' }}>{item.name}</span>
                     {!item.is_active && <span style={{ fontSize: '11px', color: '#999', background: '#f0f0f0', padding: '2px 6px', borderRadius: '4px' }}>無効</span>}
@@ -311,68 +375,132 @@ function BonusSettingsContent() {
       {/* 追加・編集モーダル */}
       {showAddModal && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div style={{ backgroundColor: '#fff', borderRadius: '16px', padding: '24px', width: '600px', maxHeight: '80vh', overflow: 'auto' }}>
+          <div style={{ backgroundColor: '#fff', borderRadius: '16px', padding: '24px', width: '700px', maxHeight: '85vh', overflow: 'auto' }}>
             <h2 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '20px' }}>
               {editingItem ? '賞与ルール編集' : '賞与ルール追加'}
             </h2>
 
-            {/* カテゴリ選択 */}
-            {!editingItem && (
-              <div style={{ marginBottom: '16px' }}>
-                <label style={labelStyle}>カテゴリ</label>
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                  {(Object.keys(categoryLabels) as BonusCategory[]).map(cat => (
-                    <button key={cat} onClick={() => { setFormCategory(cat); setFormName(categoryLabels[cat]) }}
+            {/* 名前 */}
+            <div style={{ marginBottom: '20px' }}>
+              <label style={labelStyle}>ルール名</label>
+              <input value={formName} onChange={e => setFormName(e.target.value)} style={inputStyle} placeholder="例: 皆勤賞+売上達成ボーナス" />
+            </div>
+
+            {/* ===== 条件セクション ===== */}
+            <div style={{ marginBottom: '20px' }}>
+              <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#333', marginBottom: '12px', borderBottom: '2px solid #eee', paddingBottom: '8px' }}>
+                条件（AND条件: すべて満たした場合に支給）
+              </div>
+
+              {/* 出勤条件 */}
+              <ConditionSection
+                title="出勤条件"
+                color="#4CAF50"
+                enabled={useAttendanceCondition}
+                onToggle={setUseAttendanceCondition}
+              >
+                <AttendanceConditionForm
+                  attendanceStatuses={attendanceStatuses}
+                  eligibleStatusIds={eligibleStatusIds} setEligibleStatusIds={setEligibleStatusIds}
+                  lateStatusIds={lateStatusIds} setLateStatusIds={setLateStatusIds}
+                  requireAllShifts={requireAllShifts} setRequireAllShifts={setRequireAllShifts}
+                  minDays={minDays} setMinDays={setMinDays}
+                  maxLateCount={maxLateCount} setMaxLateCount={setMaxLateCount}
+                  maxAbsentCount={maxAbsentCount} setMaxAbsentCount={setMaxAbsentCount}
+                  minHoursPerDay={minHoursPerDay} setMinHoursPerDay={setMinHoursPerDay}
+                  minTotalHours={minTotalHours} setMinTotalHours={setMinTotalHours}
+                />
+              </ConditionSection>
+
+              {/* 売上条件 */}
+              <ConditionSection
+                title="売上条件"
+                color="#2196F3"
+                enabled={useSalesCondition}
+                onToggle={setUseSalesCondition}
+              >
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={labelStyle}>売上対象</label>
+                    <select value={salesTarget} onChange={e => setSalesTarget(e.target.value as 'item_based' | 'receipt_based')} style={inputStyle}>
+                      <option value="item_based">推し小計（商品ベース）</option>
+                      <option value="receipt_based">伝票小計（レシートベース）</option>
+                    </select>
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={labelStyle}>最低売上額</label>
+                    <input type="number" value={salesMinAmount} onChange={e => setSalesMinAmount(e.target.value)} style={inputStyle} placeholder="1000000" />
+                  </div>
+                </div>
+              </ConditionSection>
+
+              {/* 指名条件 */}
+              <ConditionSection
+                title="指名条件"
+                color="#FF9800"
+                enabled={useNominationCondition}
+                onToggle={setUseNominationCondition}
+              >
+                <div style={{ width: '50%' }}>
+                  <label style={labelStyle}>最低指名本数</label>
+                  <input type="number" value={nominationMinCount} onChange={e => setNominationMinCount(e.target.value)} style={inputStyle} placeholder="10" />
+                </div>
+              </ConditionSection>
+            </div>
+
+            {/* ===== 報酬セクション ===== */}
+            <div style={{ marginBottom: '20px' }}>
+              <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#333', marginBottom: '12px', borderBottom: '2px solid #eee', paddingBottom: '8px' }}>
+                報酬設定
+              </div>
+
+              <div style={{ marginBottom: '12px' }}>
+                <label style={labelStyle}>報酬タイプ</label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  {[
+                    { value: 'fixed' as const, label: '固定額', desc: '条件を満たしたら固定額を支給' },
+                    { value: 'sales_tiered' as const, label: '売上段階', desc: '売上額に応じて段階的に金額変動' },
+                    { value: 'nomination_tiered' as const, label: '指名段階', desc: '指名本数に応じて段階的に金額変動' },
+                  ].map(opt => (
+                    <button key={opt.value} onClick={() => setRewardType(opt.value)}
                       style={{
-                        padding: '8px 16px', borderRadius: '8px', border: `2px solid ${formCategory === cat ? categoryColors[cat] : '#ddd'}`,
-                        backgroundColor: formCategory === cat ? categoryColors[cat] + '15' : '#fff',
-                        color: formCategory === cat ? categoryColors[cat] : '#666', cursor: 'pointer', fontWeight: formCategory === cat ? 'bold' : 'normal',
+                        padding: '8px 16px', borderRadius: '8px', border: `2px solid ${rewardType === opt.value ? '#9C27B0' : '#ddd'}`,
+                        backgroundColor: rewardType === opt.value ? '#F3E5F5' : '#fff',
+                        color: rewardType === opt.value ? '#9C27B0' : '#666', cursor: 'pointer', fontWeight: rewardType === opt.value ? 'bold' : 'normal', fontSize: '13px',
                       }}>
-                      {categoryLabels[cat]}
+                      {opt.label}
                     </button>
                   ))}
                 </div>
-                <div style={{ fontSize: '12px', color: '#888', marginTop: '4px' }}>{categoryDescriptions[formCategory]}</div>
               </div>
-            )}
 
-            {/* 名前 */}
-            <div style={{ marginBottom: '16px' }}>
-              <label style={labelStyle}>名前</label>
-              <input value={formName} onChange={e => setFormName(e.target.value)} style={inputStyle} placeholder="例: 売上ボーナスA" />
+              {rewardType === 'fixed' && (
+                <div style={{ width: '50%' }}>
+                  <label style={labelStyle}>支給額</label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <input type="number" value={rewardAmount} onChange={e => setRewardAmount(e.target.value)} style={inputStyle} placeholder="30000" />
+                    <span style={{ fontSize: '13px', color: '#666', whiteSpace: 'nowrap' }}>円</span>
+                  </div>
+                </div>
+              )}
+
+              {rewardType === 'sales_tiered' && (
+                <div>
+                  <div style={{ marginBottom: '8px' }}>
+                    <label style={labelStyle}>売上対象</label>
+                    <select value={rewardSalesTarget} onChange={e => setRewardSalesTarget(e.target.value as 'item_based' | 'receipt_based')} style={{ ...inputStyle, width: '50%' }}>
+                      <option value="item_based">推し小計（商品ベース）</option>
+                      <option value="receipt_based">伝票小計（レシートベース）</option>
+                    </select>
+                  </div>
+                  <TierEditor tiers={rewardTiers} setTiers={setRewardTiers} unitLabel="万円" divisor={10000} />
+                </div>
+              )}
+
+              {rewardType === 'nomination_tiered' && (
+                <TierEditor tiers={rewardTiers} setTiers={setRewardTiers} unitLabel="本" divisor={1} />
+              )}
             </div>
-
-            {/* カテゴリ別フォーム */}
-            {formCategory === 'sales' && <SalesBonusForm
-              calcType={salesCalcType} setCalcType={setSalesCalcType}
-              salesTarget={salesTarget} setSalesTarget={setSalesTarget}
-              tiers={salesTiers} setTiers={setSalesTiers}
-              fixedTarget={salesFixedTarget} setFixedTarget={setSalesFixedTarget}
-              fixedBonus={salesFixedBonus} setFixedBonus={setSalesFixedBonus}
-              achievementTarget={achievementTarget} setAchievementTarget={setAchievementTarget}
-              achievementTiers={achievementTiers} setAchievementTiers={setAchievementTiers}
-            />}
-
-            {formCategory === 'attendance' && <AttendanceBonusForm
-              amount={attendanceAmount} setAmount={setAttendanceAmount}
-              requireAllShifts={requireAllShifts} setRequireAllShifts={setRequireAllShifts}
-              minDays={minDays} setMinDays={setMinDays}
-              maxLateCount={maxLateCount} setMaxLateCount={setMaxLateCount}
-              maxAbsentCount={maxAbsentCount} setMaxAbsentCount={setMaxAbsentCount}
-            />}
-
-            {formCategory === 'nomination' && <NominationBonusForm
-              calcType={nominationCalcType} setCalcType={setNominationCalcType}
-              tiers={nominationTiers} setTiers={setNominationTiers}
-              fixedTarget={nominationFixedTarget} setFixedTarget={setNominationFixedTarget}
-              fixedBonus={nominationFixedBonus} setFixedBonus={setNominationFixedBonus}
-            />}
-
-            {formCategory === 'manual' && (
-              <div style={{ padding: '16px', backgroundColor: '#f7f7f7', borderRadius: '8px', fontSize: '13px', color: '#666' }}>
-                手動賞与はルール設定不要です。「手動賞与管理」ページからキャスト個別に追加できます。
-              </div>
-            )}
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '24px' }}>
               <Button variant="secondary" onClick={() => { setShowAddModal(false); setEditingItem(null); resetForm() }}>キャンセル</Button>
@@ -386,209 +514,165 @@ function BonusSettingsContent() {
 }
 
 // ============================================================================
-// サブフォーム: 売上ボーナス
+// 条件セクション（トグル付き）
 // ============================================================================
-function SalesBonusForm({ calcType, setCalcType, salesTarget, setSalesTarget, tiers, setTiers,
-  fixedTarget, setFixedTarget, fixedBonus, setFixedBonus,
-  achievementTarget, setAchievementTarget, achievementTiers, setAchievementTiers,
-}: {
-  calcType: string; setCalcType: (v: 'threshold' | 'fixed' | 'achievement') => void
-  salesTarget: string; setSalesTarget: (v: 'item_based' | 'receipt_based') => void
-  tiers: SalesBonusTier[]; setTiers: (v: SalesBonusTier[]) => void
-  fixedTarget: string; setFixedTarget: (v: string) => void
-  fixedBonus: string; setFixedBonus: (v: string) => void
-  achievementTarget: string; setAchievementTarget: (v: string) => void
-  achievementTiers: AchievementTier[]; setAchievementTiers: (v: AchievementTier[]) => void
+function ConditionSection({ title, color, enabled, onToggle, children }: {
+  title: string; color: string; enabled: boolean; onToggle: (v: boolean) => void; children: React.ReactNode
 }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-      {/* 計算タイプ */}
-      <div>
-        <label style={labelStyle}>計算タイプ</label>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          {[
-            { value: 'threshold' as const, label: '段階型', desc: '売上範囲ごとに金額設定' },
-            { value: 'fixed' as const, label: '固定型', desc: '目標超えで固定額' },
-            { value: 'achievement' as const, label: '達成率型', desc: '達成率で金額変動' },
-          ].map(opt => (
-            <button key={opt.value} onClick={() => setCalcType(opt.value)}
-              style={{ ...chipStyle, borderColor: calcType === opt.value ? '#2196F3' : '#ddd', backgroundColor: calcType === opt.value ? '#E3F2FD' : '#fff', color: calcType === opt.value ? '#2196F3' : '#666' }}>
-              {opt.label}
-            </button>
-          ))}
-        </div>
+    <div style={{
+      marginBottom: '12px', borderRadius: '8px', border: `1px solid ${enabled ? color : '#ddd'}`,
+      backgroundColor: enabled ? color + '08' : '#fafafa',
+    }}>
+      <div
+        style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', cursor: 'pointer' }}
+        onClick={() => onToggle(!enabled)}
+      >
+        <input type="checkbox" checked={enabled} onChange={e => onToggle(e.target.checked)} style={{ accentColor: color }} />
+        <span style={{ fontWeight: 'bold', fontSize: '14px', color: enabled ? color : '#888' }}>{title}</span>
       </div>
-
-      {/* 売上対象 */}
-      <div>
-        <label style={labelStyle}>売上対象</label>
-        <select value={salesTarget} onChange={e => setSalesTarget(e.target.value as 'item_based' | 'receipt_based')} style={inputStyle}>
-          <option value="item_based">推し小計（商品ベース）</option>
-          <option value="receipt_based">伝票小計（レシートベース）</option>
-        </select>
-      </div>
-
-      {/* 段階型 */}
-      {calcType === 'threshold' && (
-        <div>
-          <label style={labelStyle}>ティア設定</label>
-          {tiers.map((tier, i) => (
-            <div key={i} style={{ display: 'flex', gap: '8px', marginBottom: '8px', alignItems: 'center' }}>
-              <input type="number" value={tier.min_sales} onChange={e => { const t = [...tiers]; t[i] = { ...t[i], min_sales: Number(e.target.value) }; setTiers(t) }} style={{ ...inputStyle, flex: 1 }} placeholder="下限" />
-              <span style={{ color: '#999' }}>〜</span>
-              <input type="number" value={tier.max_sales ?? ''} onChange={e => { const t = [...tiers]; t[i] = { ...t[i], max_sales: e.target.value ? Number(e.target.value) : null }; setTiers(t) }} style={{ ...inputStyle, flex: 1 }} placeholder="上限(空=上限なし)" />
-              <span style={{ color: '#999' }}>→</span>
-              <input type="number" value={tier.amount} onChange={e => { const t = [...tiers]; t[i] = { ...t[i], amount: Number(e.target.value) }; setTiers(t) }} style={{ ...inputStyle, flex: 1 }} placeholder="金額" />
-              <span style={{ fontSize: '12px', color: '#999' }}>円</span>
-              {tiers.length > 1 && (
-                <button onClick={() => setTiers(tiers.filter((_, j) => j !== i))} style={{ ...chipStyle, color: '#f44336', borderColor: '#f44336', padding: '4px 8px' }}>×</button>
-              )}
-            </div>
-          ))}
-          <button onClick={() => setTiers([...tiers, { min_sales: 0, max_sales: null, amount: 0 }])} style={{ ...chipStyle, color: '#2196F3', borderColor: '#2196F3' }}>+ ティア追加</button>
+      {enabled && (
+        <div style={{ padding: '0 14px 14px' }}>
+          {children}
         </div>
-      )}
-
-      {/* 固定型 */}
-      {calcType === 'fixed' && (
-        <div style={{ display: 'flex', gap: '12px' }}>
-          <div style={{ flex: 1 }}>
-            <label style={labelStyle}>目標売上</label>
-            <input type="number" value={fixedTarget} onChange={e => setFixedTarget(e.target.value)} style={inputStyle} placeholder="1000000" />
-          </div>
-          <div style={{ flex: 1 }}>
-            <label style={labelStyle}>ボーナス額</label>
-            <input type="number" value={fixedBonus} onChange={e => setFixedBonus(e.target.value)} style={inputStyle} placeholder="30000" />
-          </div>
-        </div>
-      )}
-
-      {/* 達成率型 */}
-      {calcType === 'achievement' && (
-        <>
-          <div>
-            <label style={labelStyle}>目標売上</label>
-            <input type="number" value={achievementTarget} onChange={e => setAchievementTarget(e.target.value)} style={inputStyle} placeholder="1000000" />
-          </div>
-          <div>
-            <label style={labelStyle}>達成率ティア</label>
-            {achievementTiers.map((tier, i) => (
-              <div key={i} style={{ display: 'flex', gap: '8px', marginBottom: '8px', alignItems: 'center' }}>
-                <input type="number" value={tier.min_rate} onChange={e => { const t = [...achievementTiers]; t[i] = { ...t[i], min_rate: Number(e.target.value) }; setAchievementTiers(t) }} style={{ ...inputStyle, flex: 1 }} placeholder="下限%" />
-                <span style={{ color: '#999' }}>%〜</span>
-                <input type="number" value={tier.max_rate ?? ''} onChange={e => { const t = [...achievementTiers]; t[i] = { ...t[i], max_rate: e.target.value ? Number(e.target.value) : null }; setAchievementTiers(t) }} style={{ ...inputStyle, flex: 1 }} placeholder="上限%(空=上限なし)" />
-                <span style={{ color: '#999' }}>% →</span>
-                <input type="number" value={tier.amount} onChange={e => { const t = [...achievementTiers]; t[i] = { ...t[i], amount: Number(e.target.value) }; setAchievementTiers(t) }} style={{ ...inputStyle, flex: 1 }} placeholder="金額" />
-                <span style={{ fontSize: '12px', color: '#999' }}>円</span>
-                {achievementTiers.length > 1 && (
-                  <button onClick={() => setAchievementTiers(achievementTiers.filter((_, j) => j !== i))} style={{ ...chipStyle, color: '#f44336', borderColor: '#f44336', padding: '4px 8px' }}>×</button>
-                )}
-              </div>
-            ))}
-            <button onClick={() => setAchievementTiers([...achievementTiers, { min_rate: 0, max_rate: null, amount: 0 }])} style={{ ...chipStyle, color: '#2196F3', borderColor: '#2196F3' }}>+ ティア追加</button>
-          </div>
-        </>
       )}
     </div>
   )
 }
 
 // ============================================================================
-// サブフォーム: 皆勤賞
+// 出勤条件フォーム
 // ============================================================================
-function AttendanceBonusForm({ amount, setAmount, requireAllShifts, setRequireAllShifts, minDays, setMinDays, maxLateCount, setMaxLateCount, maxAbsentCount, setMaxAbsentCount }: {
-  amount: string; setAmount: (v: string) => void
+function AttendanceConditionForm({
+  attendanceStatuses, eligibleStatusIds, setEligibleStatusIds, lateStatusIds, setLateStatusIds,
+  requireAllShifts, setRequireAllShifts, minDays, setMinDays, maxLateCount, setMaxLateCount,
+  maxAbsentCount, setMaxAbsentCount, minHoursPerDay, setMinHoursPerDay, minTotalHours, setMinTotalHours,
+}: {
+  attendanceStatuses: AttendanceStatus[]
+  eligibleStatusIds: string[]; setEligibleStatusIds: (v: string[]) => void
+  lateStatusIds: string[]; setLateStatusIds: (v: string[]) => void
   requireAllShifts: boolean; setRequireAllShifts: (v: boolean) => void
   minDays: string; setMinDays: (v: string) => void
   maxLateCount: string; setMaxLateCount: (v: string) => void
   maxAbsentCount: string; setMaxAbsentCount: (v: string) => void
+  minHoursPerDay: string; setMinHoursPerDay: (v: string) => void
+  minTotalHours: string; setMinTotalHours: (v: string) => void
 }) {
+  const toggleId = (list: string[], id: string, setter: (v: string[]) => void) => {
+    setter(list.includes(id) ? list.filter(x => x !== id) : [...list, id])
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      {/* 出勤扱いステータス */}
       <div>
-        <label style={labelStyle}>ボーナス額</label>
-        <input type="number" value={amount} onChange={e => setAmount(e.target.value)} style={inputStyle} placeholder="10000" />
+        <label style={labelStyle}>出勤扱いにするステータス</label>
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+          {attendanceStatuses.map(s => (
+            <button key={s.id} onClick={() => toggleId(eligibleStatusIds, s.id, setEligibleStatusIds)}
+              style={{
+                padding: '4px 12px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer',
+                border: `2px solid ${eligibleStatusIds.includes(s.id) ? '#4CAF50' : '#ddd'}`,
+                backgroundColor: eligibleStatusIds.includes(s.id) ? '#E8F5E9' : '#fff',
+                color: eligibleStatusIds.includes(s.id) ? '#2E7D32' : '#666',
+                fontWeight: eligibleStatusIds.includes(s.id) ? 'bold' : 'normal',
+              }}>
+              {s.name}
+            </button>
+          ))}
+        </div>
+        <div style={{ fontSize: '11px', color: '#999', marginTop: '2px' }}>※ 皆勤賞の「出勤」として数えるステータスを選択</div>
       </div>
+
+      {/* 遅刻扱いステータス */}
+      <div>
+        <label style={labelStyle}>遅刻扱いにするステータス</label>
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+          {attendanceStatuses.map(s => (
+            <button key={s.id} onClick={() => toggleId(lateStatusIds, s.id, setLateStatusIds)}
+              style={{
+                padding: '4px 12px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer',
+                border: `2px solid ${lateStatusIds.includes(s.id) ? '#FF9800' : '#ddd'}`,
+                backgroundColor: lateStatusIds.includes(s.id) ? '#FFF3E0' : '#fff',
+                color: lateStatusIds.includes(s.id) ? '#E65100' : '#666',
+                fontWeight: lateStatusIds.includes(s.id) ? 'bold' : 'normal',
+              }}>
+              {s.name}
+            </button>
+          ))}
+        </div>
+        <div style={{ fontSize: '11px', color: '#999', marginTop: '2px' }}>※ 遅刻としてカウントするステータスを選択</div>
+      </div>
+
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
         <input type="checkbox" id="requireAllShifts" checked={requireAllShifts} onChange={e => setRequireAllShifts(e.target.checked)} />
         <label htmlFor="requireAllShifts" style={{ fontSize: '14px' }}>全シフト出勤を必須とする</label>
       </div>
+
       <div style={{ display: 'flex', gap: '12px' }}>
         <div style={{ flex: 1 }}>
-          <label style={labelStyle}>最低出勤日数（空=チェックなし）</label>
+          <label style={labelStyle}>最低出勤日数（空=なし）</label>
           <input type="number" value={minDays} onChange={e => setMinDays(e.target.value)} style={inputStyle} placeholder="20" />
         </div>
         <div style={{ flex: 1 }}>
-          <label style={labelStyle}>許容遅刻回数（空=チェックなし）</label>
+          <label style={labelStyle}>許容遅刻回数（空=なし）</label>
           <input type="number" value={maxLateCount} onChange={e => setMaxLateCount(e.target.value)} style={inputStyle} placeholder="0" />
         </div>
       </div>
+
+      <div style={{ display: 'flex', gap: '12px' }}>
+        <div style={{ flex: 1 }}>
+          <label style={labelStyle}>許容欠勤回数（空=なし）</label>
+          <input type="number" value={maxAbsentCount} onChange={e => setMaxAbsentCount(e.target.value)} style={inputStyle} placeholder="0" />
+        </div>
+        <div style={{ flex: 1 }}>
+          <label style={labelStyle}>1日の最低勤務時間（空=なし）</label>
+          <input type="number" value={minHoursPerDay} onChange={e => setMinHoursPerDay(e.target.value)} style={inputStyle} placeholder="4" step="0.5" />
+        </div>
+      </div>
+
       <div style={{ width: '50%' }}>
-        <label style={labelStyle}>許容欠勤回数（空=チェックなし）</label>
-        <input type="number" value={maxAbsentCount} onChange={e => setMaxAbsentCount(e.target.value)} style={inputStyle} placeholder="0" />
+        <label style={labelStyle}>月間最低合計勤務時間（空=なし）</label>
+        <input type="number" value={minTotalHours} onChange={e => setMinTotalHours(e.target.value)} style={inputStyle} placeholder="80" step="0.5" />
       </div>
     </div>
   )
 }
 
 // ============================================================================
-// サブフォーム: 指名ボーナス
+// ティアエディタ
 // ============================================================================
-function NominationBonusForm({ calcType, setCalcType, tiers, setTiers, fixedTarget, setFixedTarget, fixedBonus, setFixedBonus }: {
-  calcType: string; setCalcType: (v: 'threshold' | 'fixed') => void
-  tiers: NominationBonusTier[]; setTiers: (v: NominationBonusTier[]) => void
-  fixedTarget: string; setFixedTarget: (v: string) => void
-  fixedBonus: string; setFixedBonus: (v: string) => void
+function TierEditor({ tiers, setTiers, unitLabel, divisor }: {
+  tiers: BonusRewardTier[]; setTiers: (v: BonusRewardTier[]) => void
+  unitLabel: string; divisor: number
 }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-      <div>
-        <label style={labelStyle}>計算タイプ</label>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          {[
-            { value: 'threshold' as const, label: '段階型' },
-            { value: 'fixed' as const, label: '固定型' },
-          ].map(opt => (
-            <button key={opt.value} onClick={() => setCalcType(opt.value)}
-              style={{ ...chipStyle, borderColor: calcType === opt.value ? '#FF9800' : '#ddd', backgroundColor: calcType === opt.value ? '#FFF3E0' : '#fff', color: calcType === opt.value ? '#FF9800' : '#666' }}>
-              {opt.label}
-            </button>
-          ))}
+    <div>
+      <label style={labelStyle}>段階設定</label>
+      {tiers.map((tier, i) => (
+        <div key={i} style={{ display: 'flex', gap: '8px', marginBottom: '8px', alignItems: 'center' }}>
+          <input type="number" value={divisor > 1 ? tier.min / divisor : tier.min}
+            onChange={e => { const t = [...tiers]; t[i] = { ...t[i], min: (Number(e.target.value) || 0) * divisor }; setTiers(t) }}
+            style={{ ...inputStyle, flex: 1 }} placeholder="下限" />
+          <span style={{ color: '#999', fontSize: '12px', whiteSpace: 'nowrap' }}>{unitLabel}〜</span>
+          <input type="number" value={tier.max != null ? (divisor > 1 ? tier.max / divisor : tier.max) : ''}
+            onChange={e => { const t = [...tiers]; t[i] = { ...t[i], max: e.target.value ? (Number(e.target.value) || 0) * divisor : null }; setTiers(t) }}
+            style={{ ...inputStyle, flex: 1 }} placeholder="上限(空=上限なし)" />
+          <span style={{ color: '#999', fontSize: '12px', whiteSpace: 'nowrap' }}>{unitLabel} →</span>
+          <input type="number" value={tier.amount}
+            onChange={e => { const t = [...tiers]; t[i] = { ...t[i], amount: Number(e.target.value) || 0 }; setTiers(t) }}
+            style={{ ...inputStyle, flex: 1 }} placeholder="金額" />
+          <span style={{ fontSize: '12px', color: '#999' }}>円</span>
+          {tiers.length > 1 && (
+            <button onClick={() => setTiers(tiers.filter((_, j) => j !== i))}
+              style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid #f44336', backgroundColor: '#fff', color: '#f44336', cursor: 'pointer', fontSize: '12px' }}>×</button>
+          )}
         </div>
-      </div>
-
-      {calcType === 'threshold' && (
-        <div>
-          <label style={labelStyle}>ティア設定</label>
-          {tiers.map((tier, i) => (
-            <div key={i} style={{ display: 'flex', gap: '8px', marginBottom: '8px', alignItems: 'center' }}>
-              <input type="number" value={tier.min_count} onChange={e => { const t = [...tiers]; t[i] = { ...t[i], min_count: Number(e.target.value) }; setTiers(t) }} style={{ ...inputStyle, flex: 1 }} placeholder="下限" />
-              <span style={{ color: '#999' }}>本〜</span>
-              <input type="number" value={tier.max_count ?? ''} onChange={e => { const t = [...tiers]; t[i] = { ...t[i], max_count: e.target.value ? Number(e.target.value) : null }; setTiers(t) }} style={{ ...inputStyle, flex: 1 }} placeholder="上限(空=上限なし)" />
-              <span style={{ color: '#999' }}>本 →</span>
-              <input type="number" value={tier.amount} onChange={e => { const t = [...tiers]; t[i] = { ...t[i], amount: Number(e.target.value) }; setTiers(t) }} style={{ ...inputStyle, flex: 1 }} placeholder="金額" />
-              <span style={{ fontSize: '12px', color: '#999' }}>円</span>
-              {tiers.length > 1 && (
-                <button onClick={() => setTiers(tiers.filter((_, j) => j !== i))} style={{ ...chipStyle, color: '#f44336', borderColor: '#f44336', padding: '4px 8px' }}>×</button>
-              )}
-            </div>
-          ))}
-          <button onClick={() => setTiers([...tiers, { min_count: 0, max_count: null, amount: 0 }])} style={{ ...chipStyle, color: '#FF9800', borderColor: '#FF9800' }}>+ ティア追加</button>
-        </div>
-      )}
-
-      {calcType === 'fixed' && (
-        <div style={{ display: 'flex', gap: '12px' }}>
-          <div style={{ flex: 1 }}>
-            <label style={labelStyle}>目標指名本数</label>
-            <input type="number" value={fixedTarget} onChange={e => setFixedTarget(e.target.value)} style={inputStyle} placeholder="10" />
-          </div>
-          <div style={{ flex: 1 }}>
-            <label style={labelStyle}>ボーナス額</label>
-            <input type="number" value={fixedBonus} onChange={e => setFixedBonus(e.target.value)} style={inputStyle} placeholder="10000" />
-          </div>
-        </div>
-      )}
+      ))}
+      <button onClick={() => setTiers([...tiers, { min: 0, max: null, amount: 0 }])}
+        style={{ padding: '6px 14px', borderRadius: '8px', border: '2px solid #9C27B0', backgroundColor: '#fff', color: '#9C27B0', cursor: 'pointer', fontSize: '13px', fontWeight: '500' }}>
+        + 段階追加
+      </button>
     </div>
   )
 }
@@ -596,4 +680,3 @@ function NominationBonusForm({ calcType, setCalcType, tiers, setTiers, fixedTarg
 // 共通スタイル
 const labelStyle: React.CSSProperties = { display: 'block', fontSize: '13px', fontWeight: '600', color: '#555', marginBottom: '4px' }
 const inputStyle: React.CSSProperties = { width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '14px', boxSizing: 'border-box' }
-const chipStyle: React.CSSProperties = { padding: '6px 14px', borderRadius: '8px', border: '2px solid #ddd', backgroundColor: '#fff', cursor: 'pointer', fontSize: '13px', fontWeight: '500' }

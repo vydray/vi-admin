@@ -745,7 +745,7 @@ function ExpensesPageContent() {
     }
   }
 
-  // 残高確認
+  // 残高確認（記録のみ、調整なし）
   const handleBalanceCheck = async () => {
     setSaving(true)
     try {
@@ -765,25 +765,6 @@ function ExpensesPageContent() {
         })
 
       if (error) throw error
-
-      // 差異がある場合、調整記録を追加
-      if (difference !== 0) {
-        const result = await confirm(
-          `${formatCurrency(Math.abs(difference))} の${difference > 0 ? '過剰' : '不足'}があります。調整しますか？`
-        )
-
-        if (result) {
-          await supabase
-            .from('petty_cash_transactions')
-            .insert({
-              store_id: storeId,
-              transaction_date: format(new Date(), 'yyyy-MM-dd'),
-              transaction_type: 'adjustment',
-              amount: difference, // 正なら残高増、負なら減
-              description: `残高確認調整: ${checkNote || ''}`,
-            })
-        }
-      }
 
       toast.success('残高確認を記録しました')
       setShowCheckForm(false)
@@ -1837,11 +1818,31 @@ function ExpensesPageContent() {
             <h3 style={{
               ...styles.balanceTitle,
               ...(isMobile ? { fontSize: '14px' } : {}),
-            }}>現在のシステム残高</h3>
+            }}>システム残高（理論値）</h3>
             <p style={{
               ...styles.balanceAmount,
               ...(isMobile ? { fontSize: '28px' } : {}),
             }}>{formatCurrency(systemBalance)}</p>
+            {recentChecks.length > 0 && (() => {
+              const latest = recentChecks[0]
+              return (
+                <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #e0e0e0', display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+                  <div>
+                    <span style={{ fontSize: '12px', color: '#888' }}>最新確認 ({format(new Date(latest.check_date), 'M/d')})</span>
+                    <div style={{ fontSize: '14px', fontWeight: '600' }}>実際: {formatCurrency(latest.actual_balance)}</div>
+                  </div>
+                  <div>
+                    <span style={{ fontSize: '12px', color: '#888' }}>差額</span>
+                    <div style={{
+                      fontSize: '14px', fontWeight: '600',
+                      color: latest.difference === 0 ? '#27ae60' : latest.difference > 0 ? '#3498db' : '#e74c3c'
+                    }}>
+                      {latest.difference >= 0 ? '+' : ''}{formatCurrency(latest.difference)}
+                    </div>
+                  </div>
+                </div>
+              )
+            })()}
           </div>
 
           {/* アクションボタン */}
@@ -2087,24 +2088,6 @@ function ExpensesPageContent() {
                           })
 
                         if (error) throw error
-
-                        if (difference !== 0) {
-                          const result = await confirm(
-                            `${formatCurrency(Math.abs(difference))} の${difference > 0 ? '過剰' : '不足'}があります。調整しますか？`
-                          )
-
-                          if (result) {
-                            await supabase
-                              .from('petty_cash_transactions')
-                              .insert({
-                                store_id: storeId,
-                                transaction_date: format(new Date(), 'yyyy-MM-dd'),
-                                transaction_type: 'adjustment',
-                                amount: difference,
-                                description: `残高確認調整: ${checkNote || ''}`,
-                              })
-                          }
-                        }
 
                         toast.success('残高確認を記録しました')
                         setShowCheckForm(false)

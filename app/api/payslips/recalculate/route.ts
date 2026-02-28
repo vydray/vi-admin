@@ -797,13 +797,17 @@ async function calculatePayslipForCast(
       console.log(`[${cast.name}] 採用報酬形態: ${activeCompType.name}, 時給使用: ${useWageData}, 売上バック: ${salesBack}, 固定額: ${fixedAmount}, 総報酬: ${grossEarnings}`)
     }
 
-    // ===== 賞与計算 =====
+    // ===== 賞与計算（複合条件対応） =====
     const enabledBonusIds = compensationSettings?.enabled_bonus_ids ?? null
     const bonusDetails: Array<{ name: string; type: string; amount: number; detail: string }> = []
 
-    // 指名数を取得（nomination bonus用）
+    // 指名数を取得（nomination条件 or nomination_tiered報酬用）
     let totalNominations = 0
-    if ((bonusTypes || []).some(bt => bt.bonus_category === 'nomination')) {
+    const needsNomination = (bonusTypes || []).some(bt => {
+      const c = bt.conditions as { nomination?: unknown; reward?: { type?: string } }
+      return c.nomination || c.reward?.type === 'nomination_tiered'
+    })
+    if (needsNomination) {
       const monthStart = format(startOfMonth(month), "yyyy-MM-dd'T'00:00:00")
       const monthEnd = format(endOfMonth(month), "yyyy-MM-dd'T'23:59:59")
       const { data: nominationOrders } = await supabaseAdmin
@@ -816,122 +820,122 @@ async function calculatePayslipForCast(
       totalNominations = (nominationOrders || []).reduce((sum, o) => sum + (o.guest_count || 0), 0)
     }
 
-    // シフト数を取得（attendance bonus用）
+    // シフト数・シフト日取得（attendance条件用）
     let totalShifts = 0
-    if ((bonusTypes || []).some(bt => bt.bonus_category === 'attendance')) {
-      const { count } = await supabaseAdmin
+    let shiftDates: string[] = []
+    const needsAttendance = (bonusTypes || []).some(bt => {
+      const c = bt.conditions as { attendance?: unknown }
+      return !!c.attendance
+    })
+    if (needsAttendance) {
+      const { data: shiftData } = await supabaseAdmin
         .from('shifts')
-        .select('id', { count: 'exact', head: true })
+        .select('date')
         .eq('store_id', storeId)
         .eq('cast_id', cast.id)
         .gte('date', startDate)
         .lte('date', endDate)
-      totalShifts = count || 0
+      shiftDates = (shiftData || []).map(s => s.date)
+      totalShifts = shiftDates.length
     }
 
-    // 出勤日数・遅刻回数・欠勤回数を集計
-    const workDayCount = (attendanceData || []).filter(a => a.status_id && workDayStatusIds.has(a.status_id)).length
-    const lateCount = (attendanceData || []).filter(a => (a.late_minutes || 0) > 0).length
-    // 欠勤 = シフトが入っていた日で出勤がない日の数
     const attendedDates = new Set((attendanceData || []).map(a => a.date))
 
     for (const bt of (bonusTypes || [])) {
       // enabled_bonus_ids フィルタ
       if (enabledBonusIds !== null && !enabledBonusIds.includes(bt.id)) continue
 
-      if (bt.bonus_category === 'sales') {
-        const c = bt.conditions as { calculation_type?: string; sales_target?: string; tiers?: Array<{ min_sales: number; max_sales: number | null; amount: number }>; target_amount?: number; bonus_amount?: number; achievement_tiers?: Array<{ min_rate: number; max_rate: number | null; amount: number }> }
-        const sales = c.sales_target === 'receipt_based' ? totalSalesReceiptBased : totalSalesItemBased
-        let bonusAmount = 0
-        let detail = ''
+      const c = bt.conditions as {
+        attendance?: { eligible_status_ids?: string[]; late_status_ids?: string[]; require_all_shifts?: boolean; min_days?: number | null; max_late_count?: number | null; max_absent_count?: number | null; min_hours_per_day?: number | null; min_total_hours?: number | null } | null
+        sales?: { sales_target?: string; min_amount?: number } | null
+        nomination?: { min_count?: number } | null
+        reward?: { type?: string; amount?: number; tiers?: Array<{ min: number; max: number | null; amount: number }>; sales_target?: string }
+      }
 
-        if (c.calculation_type === 'threshold' && c.tiers) {
-          const tier = [...c.tiers].reverse().find(t => sales >= t.min_sales)
-          if (tier) {
-            bonusAmount = tier.amount
-            detail = `売上${Math.round(sales / 10000)}万 → ¥${tier.amount.toLocaleString()}`
+      let allConditionsMet = true
+      const detailParts: string[] = []
+
+      // --- 出勤条件チェック ---
+      if (c.attendance) {
+        const att = c.attendance
+        const eligibleIds = new Set(att.eligible_status_ids || [])
+        const lateIds = new Set(att.late_status_ids || [])
+
+        // このルール固有の出勤日数・遅刻回数を集計
+        const bonusWorkDays = (attendanceData || []).filter(a => a.status_id && eligibleIds.has(a.status_id)).length
+        const bonusLateDays = (attendanceData || []).filter(a => a.status_id && lateIds.has(a.status_id)).length
+
+        if (att.require_all_shifts && totalShifts > 0 && bonusWorkDays < totalShifts) {
+          allConditionsMet = false
+        }
+        if (att.min_days != null && bonusWorkDays < att.min_days) {
+          allConditionsMet = false
+        }
+        if (att.max_late_count != null && bonusLateDays > att.max_late_count) {
+          allConditionsMet = false
+        }
+        if (att.max_absent_count != null) {
+          const absentCount = shiftDates.filter(d => !attendedDates.has(d)).length
+          if (absentCount > att.max_absent_count) {
+            allConditionsMet = false
           }
-        } else if (c.calculation_type === 'fixed' && c.target_amount && c.bonus_amount) {
-          if (sales >= c.target_amount) {
-            bonusAmount = c.bonus_amount
-            detail = `売上${Math.round(sales / 10000)}万 ≥ 目標${Math.round(c.target_amount / 10000)}万`
-          }
-        } else if (c.calculation_type === 'achievement' && c.target_amount && c.achievement_tiers) {
-          const rate = c.target_amount > 0 ? (sales / c.target_amount) * 100 : 0
-          const tier = [...c.achievement_tiers].reverse().find(t => rate >= t.min_rate)
-          if (tier) {
-            bonusAmount = tier.amount
-            detail = `達成率${rate.toFixed(0)}% → ¥${tier.amount.toLocaleString()}`
-          }
+        }
+        // 1日の最低勤務時間チェック
+        if (att.min_hours_per_day != null) {
+          const hasShortDay = (dailyStats || []).some((d: { work_hours?: number }) =>
+            (d.work_hours || 0) > 0 && (d.work_hours || 0) < att.min_hours_per_day!
+          )
+          if (hasShortDay) allConditionsMet = false
+        }
+        // 月間最低合計勤務時間チェック
+        if (att.min_total_hours != null && totalWorkHours < att.min_total_hours) {
+          allConditionsMet = false
+        }
+
+        detailParts.push(`出勤${bonusWorkDays}日/遅刻${bonusLateDays}回`)
+      }
+
+      // --- 売上条件チェック ---
+      if (c.sales) {
+        const sales = c.sales.sales_target === 'receipt_based' ? totalSalesReceiptBased : totalSalesItemBased
+        if (c.sales.min_amount && sales < c.sales.min_amount) {
+          allConditionsMet = false
+        }
+        detailParts.push(`売上${Math.round(sales / 10000)}万`)
+      }
+
+      // --- 指名条件チェック ---
+      if (c.nomination) {
+        if (c.nomination.min_count && totalNominations < c.nomination.min_count) {
+          allConditionsMet = false
+        }
+        detailParts.push(`指名${totalNominations}本`)
+      }
+
+      // --- 報酬計算 ---
+      if (allConditionsMet && c.reward) {
+        let bonusAmount = 0
+
+        if (c.reward.type === 'fixed') {
+          bonusAmount = c.reward.amount || 0
+        } else if (c.reward.type === 'sales_tiered' && c.reward.tiers) {
+          const sales = c.reward.sales_target === 'receipt_based' ? totalSalesReceiptBased : totalSalesItemBased
+          const tier = [...c.reward.tiers].sort((a, b) => b.min - a.min).find(t => sales >= t.min)
+          if (tier) bonusAmount = tier.amount
+        } else if (c.reward.type === 'nomination_tiered' && c.reward.tiers) {
+          const tier = [...c.reward.tiers].sort((a, b) => b.min - a.min).find(t => totalNominations >= t.min)
+          if (tier) bonusAmount = tier.amount
         }
 
         if (bonusAmount > 0) {
-          bonusDetails.push({ name: bt.name, type: 'sales', amount: bonusAmount, detail })
-        }
-
-      } else if (bt.bonus_category === 'attendance') {
-        const c = bt.conditions as { amount?: number; require_all_shifts?: boolean; min_days?: number | null; max_late_count?: number | null; max_absent_count?: number | null }
-        let eligible = true
-        const reasons: string[] = []
-
-        if (c.require_all_shifts && totalShifts > 0 && workDayCount < totalShifts) {
-          eligible = false
-        }
-        if (c.min_days != null && workDayCount < c.min_days) {
-          eligible = false
-        }
-        if (c.max_late_count != null && lateCount > c.max_late_count) {
-          eligible = false
-        }
-        // 欠勤数チェック
-        if (c.max_absent_count != null) {
-          // シフト日のうち出勤していない日数を欠勤とする
-          let absentCount = 0
-          if (totalShifts > 0) {
-            const { data: shiftDates } = await supabaseAdmin
-              .from('shifts')
-              .select('date')
-              .eq('store_id', storeId)
-              .eq('cast_id', cast.id)
-              .gte('date', startDate)
-              .lte('date', endDate)
-            absentCount = (shiftDates || []).filter(s => !attendedDates.has(s.date)).length
-          }
-          if (absentCount > c.max_absent_count) {
-            eligible = false
-          }
-        }
-
-        if (eligible && (c.amount || 0) > 0) {
-          reasons.push(`出勤${workDayCount}日`)
-          if (lateCount === 0) reasons.push('遅刻0回')
-          else reasons.push(`遅刻${lateCount}回`)
-          bonusDetails.push({ name: bt.name, type: 'attendance', amount: c.amount || 0, detail: reasons.join(' / ') })
-        }
-
-      } else if (bt.bonus_category === 'nomination') {
-        const c = bt.conditions as { calculation_type?: string; tiers?: Array<{ min_count: number; max_count: number | null; amount: number }>; target_count?: number; bonus_amount?: number }
-        let bonusAmount = 0
-        let detail = ''
-
-        if (c.calculation_type === 'threshold' && c.tiers) {
-          const tier = [...c.tiers].reverse().find(t => totalNominations >= t.min_count)
-          if (tier) {
-            bonusAmount = tier.amount
-            detail = `指名${totalNominations}本 → ¥${tier.amount.toLocaleString()}`
-          }
-        } else if (c.calculation_type === 'fixed' && c.target_count && c.bonus_amount) {
-          if (totalNominations >= c.target_count) {
-            bonusAmount = c.bonus_amount
-            detail = `指名${totalNominations}本 ≥ 目標${c.target_count}本`
-          }
-        }
-
-        if (bonusAmount > 0) {
-          bonusDetails.push({ name: bt.name, type: 'nomination', amount: bonusAmount, detail })
+          bonusDetails.push({
+            name: bt.name,
+            type: bt.bonus_category,
+            amount: bonusAmount,
+            detail: detailParts.join(' / ') + ` → ¥${bonusAmount.toLocaleString()}`
+          })
         }
       }
-      // manual は cast_bonuses から取得
     }
 
     // 手動賞与を追加
