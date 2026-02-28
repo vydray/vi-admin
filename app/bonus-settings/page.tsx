@@ -11,10 +11,6 @@ import ProtectedPage from '@/components/ProtectedPage'
 import type {
   BonusType,
   BonusConditions,
-  BonusAttendanceCondition,
-  BonusSalesCondition,
-  BonusNominationCondition,
-  BonusReward,
   BonusRewardTier,
   AttendanceStatus,
 } from '@/types/database'
@@ -39,10 +35,8 @@ function BonusSettingsContent() {
   // フォーム共通
   const [formName, setFormName] = useState('')
 
-  // 条件ON/OFF
+  // 出勤条件ON/OFF
   const [useAttendanceCondition, setUseAttendanceCondition] = useState(false)
-  const [useSalesCondition, setUseSalesCondition] = useState(false)
-  const [useNominationCondition, setUseNominationCondition] = useState(false)
 
   // 出勤条件
   const [eligibleStatusIds, setEligibleStatusIds] = useState<string[]>([])
@@ -51,13 +45,6 @@ function BonusSettingsContent() {
   const [minDays, setMinDays] = useState('')
   const [minHoursPerDay, setMinHoursPerDay] = useState('')
   const [minTotalHours, setMinTotalHours] = useState('')
-
-  // 売上条件
-  const [salesTarget, setSalesTarget] = useState<'item_based' | 'receipt_based'>('item_based')
-  const [salesMinAmount, setSalesMinAmount] = useState('')
-
-  // 指名条件
-  const [nominationMinCount, setNominationMinCount] = useState('')
 
   // 報酬設定
   const [rewardType, setRewardType] = useState<'fixed' | 'sales_tiered' | 'nomination_tiered'>('fixed')
@@ -86,17 +73,12 @@ function BonusSettingsContent() {
   const resetForm = () => {
     setFormName('')
     setUseAttendanceCondition(false)
-    setUseSalesCondition(false)
-    setUseNominationCondition(false)
     setEligibleStatusIds([])
     setDisqualifyStatusIds([])
     setRequireAllShifts(true)
     setMinDays('')
     setMinHoursPerDay('')
     setMinTotalHours('')
-    setSalesTarget('item_based')
-    setSalesMinAmount('')
-    setNominationMinCount('')
     setRewardType('fixed')
     setRewardAmount('')
     setRewardTiers([{ min: 0, max: null, amount: 0 }])
@@ -120,23 +102,6 @@ function BonusSettingsContent() {
       setUseAttendanceCondition(false)
     }
 
-    // 売上条件
-    if (c.sales) {
-      setUseSalesCondition(true)
-      setSalesTarget(c.sales.sales_target || 'item_based')
-      setSalesMinAmount(String(c.sales.min_amount || 0))
-    } else {
-      setUseSalesCondition(false)
-    }
-
-    // 指名条件
-    if (c.nomination) {
-      setUseNominationCondition(true)
-      setNominationMinCount(String(c.nomination.min_count || 0))
-    } else {
-      setUseNominationCondition(false)
-    }
-
     // 報酬
     if (c.reward) {
       setRewardType(c.reward.type || 'fixed')
@@ -149,8 +114,6 @@ function BonusSettingsContent() {
   const buildConditions = (): BonusConditions => {
     const conditions: BonusConditions = {
       attendance: null,
-      sales: null,
-      nomination: null,
       reward: { type: rewardType },
     }
 
@@ -165,20 +128,6 @@ function BonusSettingsContent() {
       }
     }
 
-    if (useSalesCondition) {
-      conditions.sales = {
-        sales_target: salesTarget,
-        min_amount: Number(salesMinAmount) || 0,
-      }
-    }
-
-    if (useNominationCondition) {
-      conditions.nomination = {
-        min_count: Number(nominationMinCount) || 0,
-      }
-    }
-
-    // 報酬
     if (rewardType === 'fixed') {
       conditions.reward = { type: 'fixed', amount: Number(rewardAmount) || 0 }
     } else if (rewardType === 'sales_tiered') {
@@ -190,24 +139,22 @@ function BonusSettingsContent() {
     return conditions
   }
 
-  // bonus_category を条件から自動判定
+  // bonus_category を報酬タイプと出勤条件から自動判定
   const determineBonusCategory = (): string => {
     const hasAtt = useAttendanceCondition
-    const hasSales = useSalesCondition
-    const hasNom = useNominationCondition
-    const count = [hasAtt, hasSales, hasNom].filter(Boolean).length
-    if (count >= 2) return 'combined'
+    const isSales = rewardType === 'sales_tiered'
+    const isNom = rewardType === 'nomination_tiered'
+    if (hasAtt && (isSales || isNom)) return 'combined'
     if (hasAtt) return 'attendance'
-    if (hasSales) return 'sales'
-    if (hasNom) return 'nomination'
-    // 条件なし = manual扱い（固定額ボーナス）
+    if (isSales) return 'sales'
+    if (isNom) return 'nomination'
     return 'combined'
   }
 
   const handleSave = async () => {
     if (!formName.trim()) { toast.error('名前を入力してください'); return }
-    if (!useAttendanceCondition && !useSalesCondition && !useNominationCondition && rewardType === 'fixed' && !rewardAmount) {
-      toast.error('条件または報酬額を設定してください'); return
+    if (rewardType === 'fixed' && !rewardAmount) {
+      toast.error('報酬額を設定してください'); return
     }
 
     const record = {
@@ -261,14 +208,6 @@ function BonusSettingsContent() {
       if (c.attendance.min_hours_per_day != null) attParts.push(`1日${c.attendance.min_hours_per_day}h以上`)
       if (c.attendance.min_total_hours != null) attParts.push(`合計${c.attendance.min_total_hours}h以上`)
       parts.push(`出勤(${attParts.join(',')})`)
-    }
-
-    if (c.sales) {
-      parts.push(`売上${Math.round(c.sales.min_amount / 10000)}万以上`)
-    }
-
-    if (c.nomination) {
-      parts.push(`指名${c.nomination.min_count}本以上`)
     }
 
     // 報酬
@@ -378,13 +317,8 @@ function BonusSettingsContent() {
               <input value={formName} onChange={e => setFormName(e.target.value)} style={inputStyle} placeholder="例: 皆勤賞+売上達成ボーナス" />
             </div>
 
-            {/* ===== 条件セクション ===== */}
+            {/* ===== 出勤条件セクション ===== */}
             <div style={{ marginBottom: '20px' }}>
-              <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#333', marginBottom: '12px', borderBottom: '2px solid #eee', paddingBottom: '8px' }}>
-                条件（AND条件: すべて満たした場合に支給）
-              </div>
-
-              {/* 出勤条件 */}
               <ConditionSection
                 title="出勤条件"
                 color="#4CAF50"
@@ -400,41 +334,6 @@ function BonusSettingsContent() {
                   minHoursPerDay={minHoursPerDay} setMinHoursPerDay={setMinHoursPerDay}
                   minTotalHours={minTotalHours} setMinTotalHours={setMinTotalHours}
                 />
-              </ConditionSection>
-
-              {/* 売上条件 */}
-              <ConditionSection
-                title="売上条件"
-                color="#2196F3"
-                enabled={useSalesCondition}
-                onToggle={setUseSalesCondition}
-              >
-                <div style={{ display: 'flex', gap: '12px' }}>
-                  <div style={{ flex: 1 }}>
-                    <label style={labelStyle}>売上対象</label>
-                    <select value={salesTarget} onChange={e => setSalesTarget(e.target.value as 'item_based' | 'receipt_based')} style={inputStyle}>
-                      <option value="item_based">推し小計（商品ベース）</option>
-                      <option value="receipt_based">伝票小計（レシートベース）</option>
-                    </select>
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <label style={labelStyle}>最低売上額</label>
-                    <input type="number" value={salesMinAmount} onChange={e => setSalesMinAmount(e.target.value)} style={inputStyle} placeholder="1000000" />
-                  </div>
-                </div>
-              </ConditionSection>
-
-              {/* 指名条件 */}
-              <ConditionSection
-                title="指名条件"
-                color="#FF9800"
-                enabled={useNominationCondition}
-                onToggle={setUseNominationCondition}
-              >
-                <div style={{ width: '50%' }}>
-                  <label style={labelStyle}>最低指名本数</label>
-                  <input type="number" value={nominationMinCount} onChange={e => setNominationMinCount(e.target.value)} style={inputStyle} placeholder="10" />
-                </div>
               </ConditionSection>
             </div>
 

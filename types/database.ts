@@ -1135,17 +1135,6 @@ export interface BonusAttendanceCondition {
   min_total_hours: number | null     // 月の最低合計勤務時間
 }
 
-// 売上条件
-export interface BonusSalesCondition {
-  sales_target: 'item_based' | 'receipt_based'
-  min_amount: number              // 最低売上額
-}
-
-// 指名条件
-export interface BonusNominationCondition {
-  min_count: number               // 最低指名本数
-}
-
 // 報酬ティア
 export interface BonusRewardTier {
   min: number
@@ -1161,11 +1150,9 @@ export interface BonusReward {
   sales_target?: 'item_based' | 'receipt_based'  // sales_tiered用
 }
 
-// 複合条件（全てAND）
+// 賞与条件: 出勤条件（任意）+ 報酬設定
 export interface BonusConditions {
-  attendance?: BonusAttendanceCondition | null   // null=この条件なし
-  sales?: BonusSalesCondition | null             // null=この条件なし
-  nomination?: BonusNominationCondition | null   // null=この条件なし
+  attendance?: BonusAttendanceCondition | null   // null=出勤条件なし
   reward: BonusReward
 }
 

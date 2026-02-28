@@ -804,8 +804,8 @@ async function calculatePayslipForCast(
     // 指名数を取得（nomination条件 or nomination_tiered報酬用）
     let totalNominations = 0
     const needsNomination = (bonusTypes || []).some(bt => {
-      const c = bt.conditions as { nomination?: unknown; reward?: { type?: string } }
-      return c.nomination || c.reward?.type === 'nomination_tiered'
+      const c = bt.conditions as { reward?: { type?: string } }
+      return c.reward?.type === 'nomination_tiered'
     })
     if (needsNomination) {
       const monthStart = format(startOfMonth(month), "yyyy-MM-dd'T'00:00:00")
@@ -847,8 +847,6 @@ async function calculatePayslipForCast(
 
       const c = bt.conditions as {
         attendance?: { eligible_status_ids?: string[]; disqualify_status_ids?: string[]; require_all_shifts?: boolean; min_days?: number | null; min_hours_per_day?: number | null; min_total_hours?: number | null } | null
-        sales?: { sales_target?: string; min_amount?: number } | null
-        nomination?: { min_count?: number } | null
         reward?: { type?: string; amount?: number; tiers?: Array<{ min: number; max: number | null; amount: number }>; sales_target?: string }
       }
 
@@ -888,23 +886,6 @@ async function calculatePayslipForCast(
         }
 
         detailParts.push(`出勤${bonusWorkDays}日${hasDisqualify ? '/NG有' : ''}`)
-      }
-
-      // --- 売上条件チェック ---
-      if (c.sales) {
-        const sales = c.sales.sales_target === 'receipt_based' ? totalSalesReceiptBased : totalSalesItemBased
-        if (c.sales.min_amount && sales < c.sales.min_amount) {
-          allConditionsMet = false
-        }
-        detailParts.push(`売上${Math.round(sales / 10000)}万`)
-      }
-
-      // --- 指名条件チェック ---
-      if (c.nomination) {
-        if (c.nomination.min_count && totalNominations < c.nomination.min_count) {
-          allConditionsMet = false
-        }
-        detailParts.push(`指名${totalNominations}本`)
       }
 
       // --- 報酬計算 ---
