@@ -2308,9 +2308,10 @@ function CompensationSettingsPageContent() {
     }
   }
 
-  // 全キャストに設定を一括適用
+  // キャスト選択式一括適用
   const [showBulkApplyModal, setShowBulkApplyModal] = useState(false)
   const [applyingToAll, setApplyingToAll] = useState(false)
+  const [selectedCastIds, setSelectedCastIds] = useState<number[]>([])
   const applySettingsToAllCasts = async (mode: 'all' | 'deductions') => {
     if (!settingsState) {
       toast.error('設定がありません')
@@ -2322,16 +2323,16 @@ function CompensationSettingsPageContent() {
       return
     }
 
-    const modeText = mode === 'all' ? '報酬設定全体' : '控除設定'
-    const confirmed = window.confirm(
-      `現在の${modeText}を全キャスト（${casts.length}名）に適用します。既存の設定は上書きされます。よろしいですか？`
-    )
-    if (!confirmed) return
+    if (selectedCastIds.length === 0) {
+      toast.error('適用先のキャストを選択してください')
+      return
+    }
 
+    const targetCasts = casts.filter(c => selectedCastIds.includes(c.id))
     setApplyingToAll(true)
     try {
       let successCount = 0
-      for (const cast of casts) {
+      for (const cast of targetCasts) {
         // 既存の設定を確認
         const { data: existing } = await supabase
           .from('compensation_settings')
@@ -2388,6 +2389,7 @@ function CompensationSettingsPageContent() {
         }
         successCount++
       }
+      const modeText = mode === 'all' ? '報酬設定全体' : '控除設定'
       toast.success(`${successCount}名のキャストに${modeText}を適用しました`)
     } catch (error) {
       console.error('一括適用エラー:', error)
@@ -2622,7 +2624,7 @@ function CompensationSettingsPageContent() {
               <div style={{ ...styles.mainHeader, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h2 style={styles.mainTitle}>{selectedCast.name} の報酬設定</h2>
                 <button
-                  onClick={() => setShowBulkApplyModal(true)}
+                  onClick={() => { setSelectedCastIds([]); setShowBulkApplyModal(true) }}
                   style={{
                     padding: '8px 16px',
                     fontSize: '13px',
@@ -2634,7 +2636,7 @@ function CompensationSettingsPageContent() {
                     cursor: 'pointer',
                   }}
                 >
-                  全キャストに一括適用
+                  他キャストに適用
                 </button>
               </div>
 
@@ -3550,11 +3552,11 @@ function CompensationSettingsPageContent() {
                   </p>
                 )}
 
-                {/* 全キャストに一括適用ボタン */}
+                {/* 他キャストに適用ボタン */}
                 {storeDeductionTypes.length > 0 && (
                   <button
-                    onClick={() => applySettingsToAllCasts('deductions')}
-                    disabled={applyingToAll || enabledDeductionIds.length === 0}
+                    onClick={() => { setSelectedCastIds([]); setShowBulkApplyModal(true) }}
+                    disabled={enabledDeductionIds.length === 0}
                     style={{
                       marginTop: '12px',
                       padding: '10px 16px',
@@ -3566,10 +3568,9 @@ function CompensationSettingsPageContent() {
                       borderRadius: '6px',
                       cursor: enabledDeductionIds.length > 0 ? 'pointer' : 'not-allowed',
                       width: '100%',
-                      opacity: applyingToAll ? 0.7 : 1,
                     }}
                   >
-                    {applyingToAll ? '適用中...' : `控除設定を全キャストに適用`}
+                    控除・賞与設定を他キャストに適用
                   </button>
                 )}
               </div>
@@ -4491,79 +4492,87 @@ function CompensationSettingsPageContent() {
         </div>
       )}
 
-      {/* 全キャスト一括適用モーダル */}
+      {/* キャスト選択式一括適用モーダル */}
       {showBulkApplyModal && (
         <div style={styles.modalOverlay} onClick={() => setShowBulkApplyModal(false)}>
-          <div style={{ ...styles.modal, maxWidth: '500px' }} onClick={(e) => e.stopPropagation()}>
-            <h3 style={styles.modalTitle}>全キャストに一括適用</h3>
+          <div style={{ ...styles.modal, maxWidth: '550px' }} onClick={(e) => e.stopPropagation()}>
+            <h3 style={styles.modalTitle}>設定を一括適用</h3>
 
-            <div style={{ marginBottom: '20px', padding: '16px', backgroundColor: '#fef3c7', borderRadius: '8px', border: '1px solid #f59e0b' }}>
+            <div style={{ marginBottom: '16px', padding: '12px 16px', backgroundColor: '#fef3c7', borderRadius: '8px', border: '1px solid #f59e0b' }}>
               <p style={{ fontSize: '14px', color: '#92400e', margin: 0, fontWeight: '500' }}>
-                現在表示中の「{selectedCast?.name}」の設定を全キャスト（{casts.length}名）にコピーします。
-              </p>
-              <p style={{ fontSize: '13px', color: '#78350f', margin: '8px 0 0 0' }}>
-                ※ 既存の設定は上書きされます
+                「{selectedCast?.name}」の設定をコピーします
               </p>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '20px' }}>
-              {/* 報酬設定全体 */}
-              <div style={{ padding: '16px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                <div style={{ fontWeight: '600', color: '#1e293b', marginBottom: '8px' }}>報酬設定全体</div>
-                <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 12px 0' }}>
-                  支給方法、報酬形態（歩合率、スライド率など）、控除設定をすべてコピー
-                </p>
+            {/* キャスト選択 */}
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <label style={{ fontSize: '14px', fontWeight: '600', color: '#333' }}>適用先キャスト</label>
                 <button
-                  onClick={async () => {
-                    await applySettingsToAllCasts('all')
-                    setShowBulkApplyModal(false)
+                  onClick={() => {
+                    const otherCastIds = casts.filter(c => c.id !== selectedCast?.id).map(c => c.id)
+                    setSelectedCastIds(selectedCastIds.length === otherCastIds.length ? [] : otherCastIds)
                   }}
-                  disabled={applyingToAll}
-                  style={{
-                    padding: '10px 16px',
-                    fontSize: '14px',
-                    fontWeight: '500',
-                    backgroundColor: '#f59e0b',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                    width: '100%',
-                    opacity: applyingToAll ? 0.7 : 1,
-                  }}
+                  style={{ fontSize: '12px', color: '#3b82f6', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
                 >
-                  {applyingToAll ? '適用中...' : '報酬設定全体を一括適用'}
+                  {selectedCastIds.length === casts.filter(c => c.id !== selectedCast?.id).length ? '全解除' : '全選択'}
                 </button>
               </div>
+              <div style={{ maxHeight: '200px', overflow: 'auto', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '4px' }}>
+                {casts.filter(c => c.id !== selectedCast?.id).map(cast => (
+                  <label key={cast.id} style={{
+                    display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', cursor: 'pointer',
+                    borderRadius: '6px', backgroundColor: selectedCastIds.includes(cast.id) ? '#eff6ff' : 'transparent',
+                  }}>
+                    <input
+                      type="checkbox"
+                      checked={selectedCastIds.includes(cast.id)}
+                      onChange={() => setSelectedCastIds(prev =>
+                        prev.includes(cast.id) ? prev.filter(id => id !== cast.id) : [...prev, cast.id]
+                      )}
+                    />
+                    <span style={{ fontSize: '14px', color: '#1e293b' }}>{cast.name}</span>
+                  </label>
+                ))}
+              </div>
+              <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                {selectedCastIds.length}名選択中
+              </div>
+            </div>
 
-              {/* 控除設定のみ */}
-              <div style={{ padding: '16px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                <div style={{ fontWeight: '600', color: '#1e293b', marginBottom: '8px' }}>控除設定のみ</div>
-                <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 12px 0' }}>
-                  選択中の控除項目（{enabledDeductionIds.length}件）のみをコピー。報酬形態は変更しない
-                </p>
-                <button
-                  onClick={async () => {
-                    await applySettingsToAllCasts('deductions')
-                    setShowBulkApplyModal(false)
-                  }}
-                  disabled={applyingToAll || enabledDeductionIds.length === 0}
-                  style={{
-                    padding: '10px 16px',
-                    fontSize: '14px',
-                    fontWeight: '500',
-                    backgroundColor: enabledDeductionIds.length > 0 ? '#8b5cf6' : '#e2e8f0',
-                    color: enabledDeductionIds.length > 0 ? '#fff' : '#94a3b8',
-                    border: 'none',
-                    borderRadius: '6px',
-                    cursor: enabledDeductionIds.length > 0 ? 'pointer' : 'not-allowed',
-                    width: '100%',
-                    opacity: applyingToAll ? 0.7 : 1,
-                  }}
-                >
-                  {applyingToAll ? '適用中...' : '控除設定のみ一括適用'}
-                </button>
-              </div>
+            {/* 適用ボタン */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
+              <button
+                onClick={async () => {
+                  await applySettingsToAllCasts('all')
+                  setShowBulkApplyModal(false)
+                }}
+                disabled={applyingToAll || selectedCastIds.length === 0}
+                style={{
+                  padding: '10px 16px', fontSize: '14px', fontWeight: '500', border: 'none', borderRadius: '6px', cursor: selectedCastIds.length > 0 ? 'pointer' : 'not-allowed', width: '100%',
+                  backgroundColor: selectedCastIds.length > 0 ? '#f59e0b' : '#e2e8f0',
+                  color: selectedCastIds.length > 0 ? '#fff' : '#94a3b8',
+                  opacity: applyingToAll ? 0.7 : 1,
+                }}
+              >
+                {applyingToAll ? '適用中...' : `報酬設定全体を適用（${selectedCastIds.length}名）`}
+              </button>
+              <button
+                onClick={async () => {
+                  await applySettingsToAllCasts('deductions')
+                  setShowBulkApplyModal(false)
+                }}
+                disabled={applyingToAll || selectedCastIds.length === 0 || enabledDeductionIds.length === 0}
+                style={{
+                  padding: '10px 16px', fontSize: '14px', fontWeight: '500', border: 'none', borderRadius: '6px', width: '100%',
+                  cursor: selectedCastIds.length > 0 && enabledDeductionIds.length > 0 ? 'pointer' : 'not-allowed',
+                  backgroundColor: selectedCastIds.length > 0 && enabledDeductionIds.length > 0 ? '#8b5cf6' : '#e2e8f0',
+                  color: selectedCastIds.length > 0 && enabledDeductionIds.length > 0 ? '#fff' : '#94a3b8',
+                  opacity: applyingToAll ? 0.7 : 1,
+                }}
+              >
+                {applyingToAll ? '適用中...' : `控除・賞与設定のみ適用（${selectedCastIds.length}名）`}
+              </button>
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
