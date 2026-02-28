@@ -44,7 +44,6 @@ const mobileRestrictedPaths = [
   '/cast-back-rates',       // バック設定
   '/deduction-settings',    // 控除設定
   '/bonus-settings',        // 賞与設定
-  '/bonus-manage',          // 手動賞与管理
 ]
 
 // モバイルで制限するグループ名
@@ -108,7 +107,6 @@ const menuGroups: MenuGroup[] = [
       { name: 'バック設定', path: '/cast-back-rates', icon: '💵' },
       { name: '控除設定', path: '/deduction-settings', icon: '➖' },
       { name: '賞与設定', path: '/bonus-settings', icon: '🎁' },
-      { name: '手動賞与管理', path: '/bonus-manage', icon: '✏️' },
     ]
   },
   {

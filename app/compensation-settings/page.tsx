@@ -533,6 +533,17 @@ function CompensationSettingsPageContent() {
   // キャストの控除設定（選択された控除ID）
   const [enabledDeductionIds, setEnabledDeductionIds] = useState<number[]>([])
 
+  // 賞与項目（bonus_typesテーブルから取得）
+  const [storeBonusTypes, setStoreBonusTypes] = useState<{
+    id: number
+    name: string
+    bonus_category: string
+    is_active: boolean
+  }[]>([])
+
+  // キャストの賞与設定（選択された賞与ID）
+  const [enabledBonusIds, setEnabledBonusIds] = useState<number[]>([])
+
   // 商品マスタ・カテゴリ・バック率
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
@@ -754,6 +765,22 @@ function CompensationSettingsPageContent() {
       setStoreDeductionTypes(typesWithRules)
     } catch (error) {
       console.error('控除項目読み込みエラー:', error)
+    }
+  }, [storeId])
+
+  // 賞与項目を読み込み
+  const loadBonusTypes = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('bonus_types')
+        .select('id, name, bonus_category, is_active')
+        .eq('store_id', storeId)
+        .eq('is_active', true)
+        .order('display_order')
+      if (error) throw error
+      setStoreBonusTypes(data || [])
+    } catch (error) {
+      console.error('賞与項目読み込みエラー:', error)
     }
   }, [storeId])
 
@@ -1084,6 +1111,7 @@ function CompensationSettingsPageContent() {
         setSettingsState(state)
         setIsLocked(data.is_locked ?? false)
         setEnabledDeductionIds(data.enabled_deduction_ids || [])
+        setEnabledBonusIds(data.enabled_bonus_ids || [])
 
         // 指定年月のレコードが存在する場合のみexistingIdを設定
         // 別の月から設定を継承した場合は、保存時に新規作成される
@@ -1098,6 +1126,7 @@ function CompensationSettingsPageContent() {
         setSettingsState(getDefaultSettingsState())
         setExistingId(undefined)
         setEnabledDeductionIds([])
+        setEnabledBonusIds([])
       }
     } catch (error) {
       console.error('設定読み込みエラー:', error)
@@ -1116,8 +1145,9 @@ function CompensationSettingsPageContent() {
       loadWageStatuses()
       loadSampleReceipt()
       loadDeductionTypes()
+      loadBonusTypes()
     }
-  }, [loadCasts, loadPayDay, loadSalesSettings, loadSystemSettings, loadProducts, loadWageStatuses, loadSampleReceipt, loadDeductionTypes, storeLoading, storeId])
+  }, [loadCasts, loadPayDay, loadSalesSettings, loadSystemSettings, loadProducts, loadWageStatuses, loadSampleReceipt, loadDeductionTypes, loadBonusTypes, storeLoading, storeId])
 
   useEffect(() => {
     if (selectedCastId) {
@@ -2147,6 +2177,7 @@ function CompensationSettingsPageContent() {
         target_year: selectedYear,
         target_month: selectedMonth,
         enabled_deduction_ids: enabledDeductionIds,
+            enabled_bonus_ids: enabledBonusIds,
       }
 
       if (existingId) {
@@ -2319,6 +2350,7 @@ function CompensationSettingsPageContent() {
             target_year: selectedYear,
             target_month: selectedMonth,
             enabled_deduction_ids: enabledDeductionIds,
+            enabled_bonus_ids: enabledBonusIds,
           }
 
           if (existing) {
@@ -2337,7 +2369,7 @@ function CompensationSettingsPageContent() {
           if (existing) {
             await supabase
               .from('compensation_settings')
-              .update({ enabled_deduction_ids: enabledDeductionIds })
+              .update({ enabled_deduction_ids: enabledDeductionIds, enabled_bonus_ids: enabledBonusIds })
               .eq('id', existing.id)
           } else {
             // 新規作成
@@ -2349,6 +2381,7 @@ function CompensationSettingsPageContent() {
                 target_year: selectedYear,
                 target_month: selectedMonth,
                 enabled_deduction_ids: enabledDeductionIds,
+            enabled_bonus_ids: enabledBonusIds,
                 is_active: true
               })
           }
@@ -3538,6 +3571,55 @@ function CompensationSettingsPageContent() {
                   >
                     {applyingToAll ? '適用中...' : `控除設定を全キャストに適用`}
                   </button>
+                )}
+              </div>
+
+              {/* 賞与設定 */}
+              <div style={styles.section}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                  <h3 style={{ ...styles.sectionTitle, marginBottom: 0 }}>賞与項目</h3>
+                  <a href="/bonus-settings" style={{ fontSize: '12px', color: '#3b82f6', textDecoration: 'none' }}>
+                    賞与設定へ →
+                  </a>
+                </div>
+
+                {storeBonusTypes.length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {storeBonusTypes.map((item) => {
+                      const isEnabled = enabledBonusIds.includes(item.id)
+                      const catColors: Record<string, string> = { sales: '#2196F3', attendance: '#4CAF50', nomination: '#FF9800', manual: '#9C27B0' }
+                      const catLabels: Record<string, string> = { sales: '売上', attendance: '皆勤', nomination: '指名', manual: '手動' }
+                      return (
+                        <label key={item.id} style={{
+                          display: 'flex', alignItems: 'center', gap: '10px',
+                          padding: '10px 12px', backgroundColor: isEnabled ? '#f0fdf4' : '#f8fafc',
+                          borderRadius: '8px', cursor: 'pointer',
+                          border: isEnabled ? '1px solid #22c55e' : '1px solid #e2e8f0',
+                        }}>
+                          <input type="checkbox" checked={isEnabled}
+                            onChange={(e) => {
+                              if (e.target.checked) setEnabledBonusIds(prev => [...prev, item.id])
+                              else setEnabledBonusIds(prev => prev.filter(id => id !== item.id))
+                            }}
+                            style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                          />
+                          <span style={{
+                            fontSize: '11px', padding: '2px 6px', borderRadius: '4px',
+                            backgroundColor: (catColors[item.bonus_category] || '#999') + '20',
+                            color: catColors[item.bonus_category] || '#999', fontWeight: 'bold',
+                          }}>
+                            {catLabels[item.bonus_category] || item.bonus_category}
+                          </span>
+                          <span style={{ fontWeight: '500', color: '#1e293b' }}>{item.name}</span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <p style={styles.noDeductions}>
+                    賞与項目はありません。
+                    <a href="/bonus-settings" style={{ color: '#3b82f6', marginLeft: '8px' }}>設定する</a>
+                  </p>
                 )}
               </div>
 
