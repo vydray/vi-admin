@@ -47,7 +47,7 @@ function BonusSettingsContent() {
   const [minTotalHours, setMinTotalHours] = useState('')
 
   // 報酬設定
-  const [rewardType, setRewardType] = useState<'fixed' | 'sales_tiered' | 'nomination_tiered'>('fixed')
+  const [rewardType, setRewardType] = useState<'fixed' | 'attendance_tiered' | 'sales_tiered' | 'nomination_tiered'>('fixed')
   const [rewardAmount, setRewardAmount] = useState('')
   const [rewardTiers, setRewardTiers] = useState<BonusRewardTier[]>([{ min: 0, max: null, amount: 0 }])
   const [rewardSalesTarget, setRewardSalesTarget] = useState<'item_based' | 'receipt_based'>('item_based')
@@ -130,6 +130,8 @@ function BonusSettingsContent() {
 
     if (rewardType === 'fixed') {
       conditions.reward = { type: 'fixed', amount: Number(rewardAmount) || 0 }
+    } else if (rewardType === 'attendance_tiered') {
+      conditions.reward = { type: 'attendance_tiered', tiers: rewardTiers }
     } else if (rewardType === 'sales_tiered') {
       conditions.reward = { type: 'sales_tiered', tiers: rewardTiers, sales_target: rewardSalesTarget }
     } else if (rewardType === 'nomination_tiered') {
@@ -141,7 +143,7 @@ function BonusSettingsContent() {
 
   // bonus_category を報酬タイプと出勤条件から自動判定
   const determineBonusCategory = (): string => {
-    const hasAtt = useAttendanceCondition
+    const hasAtt = useAttendanceCondition || rewardType === 'attendance_tiered'
     const isSales = rewardType === 'sales_tiered'
     const isNom = rewardType === 'nomination_tiered'
     if (hasAtt && (isSales || isNom)) return 'combined'
@@ -214,6 +216,8 @@ function BonusSettingsContent() {
     if (c.reward) {
       if (c.reward.type === 'fixed' && c.reward.amount) {
         parts.push(`→ ¥${c.reward.amount.toLocaleString()}`)
+      } else if (c.reward.type === 'attendance_tiered' && c.reward.tiers?.length) {
+        parts.push(`→ 出勤段階(${c.reward.tiers.length}段階)`)
       } else if (c.reward.type === 'sales_tiered' && c.reward.tiers?.length) {
         parts.push(`→ 売上段階(${c.reward.tiers.length}段階)`)
       } else if (c.reward.type === 'nomination_tiered' && c.reward.tiers?.length) {
@@ -347,9 +351,10 @@ function BonusSettingsContent() {
                 <label style={labelStyle}>報酬タイプ</label>
                 <div style={{ display: 'flex', gap: '8px' }}>
                   {[
-                    { value: 'fixed' as const, label: '固定額', desc: '条件を満たしたら固定額を支給' },
-                    { value: 'sales_tiered' as const, label: '売上段階', desc: '売上額に応じて段階的に金額変動' },
-                    { value: 'nomination_tiered' as const, label: '指名段階', desc: '指名本数に応じて段階的に金額変動' },
+                    { value: 'fixed' as const, label: '固定額' },
+                    { value: 'attendance_tiered' as const, label: '出勤段階' },
+                    { value: 'sales_tiered' as const, label: '売上段階' },
+                    { value: 'nomination_tiered' as const, label: '指名段階' },
                   ].map(opt => (
                     <button key={opt.value} onClick={() => setRewardType(opt.value)}
                       style={{
@@ -371,6 +376,10 @@ function BonusSettingsContent() {
                     <span style={{ fontSize: '13px', color: '#666', whiteSpace: 'nowrap' }}>円</span>
                   </div>
                 </div>
+              )}
+
+              {rewardType === 'attendance_tiered' && (
+                <TierEditor tiers={rewardTiers} setTiers={setRewardTiers} unitLabel="日" divisor={1} />
               )}
 
               {rewardType === 'sales_tiered' && (

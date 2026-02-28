@@ -1144,7 +1144,7 @@ export interface BonusRewardTier {
 
 // 報酬設定
 export interface BonusReward {
-  type: 'fixed' | 'sales_tiered' | 'nomination_tiered'
+  type: 'fixed' | 'attendance_tiered' | 'sales_tiered' | 'nomination_tiered'
   amount?: number                    // fixed型
   tiers?: BonusRewardTier[]          // tiered型
   sales_target?: 'item_based' | 'receipt_based'  // sales_tiered用

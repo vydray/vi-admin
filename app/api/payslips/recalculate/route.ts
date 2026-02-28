@@ -852,6 +852,7 @@ async function calculatePayslipForCast(
 
       let allConditionsMet = true
       const detailParts: string[] = []
+      let bonusWorkDays = 0
 
       // --- 出勤条件チェック ---
       if (c.attendance) {
@@ -859,9 +860,7 @@ async function calculatePayslipForCast(
         const eligibleIds = new Set(att.eligible_status_ids || [])
         const disqualifyIds = new Set(att.disqualify_status_ids || [])
 
-        // このルール固有の出勤日数を集計
-        const bonusWorkDays = (attendanceData || []).filter(a => a.status_id && eligibleIds.has(a.status_id)).length
-        // NGステータスが1回でもあれば皆勤賞対象外
+        bonusWorkDays = (attendanceData || []).filter(a => a.status_id && eligibleIds.has(a.status_id)).length
         const hasDisqualify = (attendanceData || []).some(a => a.status_id && disqualifyIds.has(a.status_id))
 
         if (hasDisqualify) {
@@ -873,14 +872,12 @@ async function calculatePayslipForCast(
         if (att.min_days != null && bonusWorkDays < att.min_days) {
           allConditionsMet = false
         }
-        // 1日の最低勤務時間チェック
         if (att.min_hours_per_day != null) {
           const hasShortDay = (dailyStats || []).some((d: { work_hours?: number }) =>
             (d.work_hours || 0) > 0 && (d.work_hours || 0) < att.min_hours_per_day!
           )
           if (hasShortDay) allConditionsMet = false
         }
-        // 月間最低合計勤務時間チェック
         if (att.min_total_hours != null && totalWorkHours < att.min_total_hours) {
           allConditionsMet = false
         }
@@ -894,6 +891,11 @@ async function calculatePayslipForCast(
 
         if (c.reward.type === 'fixed') {
           bonusAmount = c.reward.amount || 0
+        } else if (c.reward.type === 'attendance_tiered' && c.reward.tiers) {
+          // 出勤条件なしの場合は全出勤日数を使う
+          const days = bonusWorkDays || (attendanceData || []).length
+          const tier = [...c.reward.tiers].sort((a, b) => b.min - a.min).find(t => days >= t.min)
+          if (tier) bonusAmount = tier.amount
         } else if (c.reward.type === 'sales_tiered' && c.reward.tiers) {
           const sales = c.reward.sales_target === 'receipt_based' ? totalSalesReceiptBased : totalSalesItemBased
           const tier = [...c.reward.tiers].sort((a, b) => b.min - a.min).find(t => sales >= t.min)
