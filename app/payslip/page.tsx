@@ -182,6 +182,13 @@ interface SavedPayslip {
     percentage?: number
     amount: number
   }>
+  bonus_total: number
+  bonus_details: Array<{
+    name: string
+    type: string
+    amount: number
+    detail: string
+  }> | null
   finalized_at: string | null
   created_at: string
   updated_at: string
@@ -2095,6 +2102,28 @@ function PayslipPageContent() {
               <div style={styles.grossLabel}>総支給額</div>
               <div style={styles.grossValue}>{currencyFormatter.format(summary.grossEarnings)}</div>
             </div>
+
+            {/* 賞与内訳 */}
+            {savedPayslip?.bonus_details && savedPayslip.bonus_details.length > 0 && (
+              <div style={{ marginTop: '20px' }}>
+                <h2 style={{ ...styles.sectionTitle, marginBottom: '12px' }}>賞与内訳</h2>
+                <div style={styles.deductionList}>
+                  {savedPayslip.bonus_details.map((b, i) => (
+                    <div key={i} style={styles.deductionItem}>
+                      <div style={styles.deductionName}>
+                        {b.name}
+                        {b.detail && <span style={styles.deductionDetail}>（{b.detail}）</span>}
+                      </div>
+                      <div style={{ ...styles.deductionAmount, color: '#2e7d32' }}>+{currencyFormatter.format(b.amount)}</div>
+                    </div>
+                  ))}
+                  <div style={styles.deductionTotal}>
+                    <div style={styles.deductionName}>賞与合計</div>
+                    <div style={{ ...styles.deductionAmount, color: '#2e7d32' }}>+{currencyFormatter.format(savedPayslip.bonus_total || 0)}</div>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* 控除内訳 */}
             <div style={{ marginTop: '20px' }}>

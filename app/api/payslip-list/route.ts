@@ -38,6 +38,7 @@ interface PayslipSummary {
   product_back: number
   fixed_amount: number
   per_attendance_income: number
+  bonus_total: number
   gross_total: number
   daily_payment: number
   withholding_tax: number
@@ -211,7 +212,18 @@ export async function POST(request: NextRequest) {
       .in('cast_id', castIds)
       .eq('is_active', true)
 
-    // 9. 時給ステータスを取得
+    // 9. 保存済みpayslipから賞与を取得
+    const { data: savedPayslips } = await supabase
+      .from('payslips')
+      .select('cast_id, bonus_total')
+      .eq('store_id', storeId)
+      .eq('year_month', year_month)
+    const savedBonusMap = new Map<number, number>()
+    for (const p of (savedPayslips || [])) {
+      savedBonusMap.set(p.cast_id, p.bonus_total || 0)
+    }
+
+    // 10. 時給ステータスを取得
     const { data: wageStatuses } = await supabase
       .from('wage_statuses')
       .select('id, hourly_wage')
@@ -334,7 +346,9 @@ export async function POST(request: NextRequest) {
       const perAttendanceIncome = selected?.perAttendanceIncome ?? 0
       const hourlyIncome = selected?.hourlyIncome ?? 0
       const productBack = selected?.productBack ?? totalProductBack
-      const grossTotal = selected?.grossTotal ?? totalProductBack
+      // 賞与（保存済みのpayslipから取得）
+      const bonusTotal = savedBonusMap.get(cast.id) || 0
+      const grossTotal = (selected?.grossTotal ?? totalProductBack) + bonusTotal
 
       // 控除計算
       // compensation_settingsが存在しない場合は控除なし（未設定キャストに不要な控除を適用しない）
@@ -412,6 +426,7 @@ export async function POST(request: NextRequest) {
         product_back: productBack,
         fixed_amount: fixedAmount,
         per_attendance_income: perAttendanceIncome,
+        bonus_total: bonusTotal,
         gross_total: grossTotal,
         daily_payment: dailyPayment,
         withholding_tax: withholdingTax,

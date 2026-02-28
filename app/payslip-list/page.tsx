@@ -19,6 +19,7 @@ interface PayslipSummary {
   product_back: number
   fixed_amount: number
   per_attendance_income: number
+  bonus_total: number
   gross_total: number
   total_deduction: number
   net_payment: number
@@ -203,6 +204,12 @@ function PayslipListContent() {
                 <span style="color: #333;">${formatCurrency(p.per_attendance_income)}</span>
               </div>
               ` : ''}
+              ${p.bonus_total > 0 ? `
+              <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
+                <span style="color: #2e7d32;">賞与</span>
+                <span style="color: #2e7d32;">${formatCurrency(p.bonus_total)}</span>
+              </div>
+              ` : ''}
               <div style="border-top: 1px solid #e5e5e5; margin: 4px 0; padding-top: 4px; display: flex; justify-content: space-between;">
                 <span style="font-weight: 500; color: #333;">総支給額</span>
                 <span style="font-weight: 500; color: #333;">${formatCurrency(p.gross_total)}</span>
@@ -276,6 +283,7 @@ function PayslipListContent() {
         '商品バック',
         '固定給',
         '出勤報酬',
+        '賞与',
         '総支給額',
         '日払い',
         '源泉徴収',
@@ -294,6 +302,7 @@ function PayslipListContent() {
         p.product_back,
         p.fixed_amount,
         p.per_attendance_income,
+        p.bonus_total,
         p.gross_total,
         p.daily_payment,
         p.withholding_tax,
@@ -332,6 +341,7 @@ function PayslipListContent() {
     product_back: acc.product_back + p.product_back,
     fixed_amount: acc.fixed_amount + p.fixed_amount,
     per_attendance_income: acc.per_attendance_income + p.per_attendance_income,
+    bonus_total: acc.bonus_total + p.bonus_total,
     gross_total: acc.gross_total + p.gross_total,
     daily_payment: acc.daily_payment + p.daily_payment,
     withholding_tax: acc.withholding_tax + p.withholding_tax,
@@ -340,7 +350,7 @@ function PayslipListContent() {
     net_payment: acc.net_payment + p.net_payment,
   }), {
     work_days: 0, total_hours: 0, hourly_income: 0, sales_back: 0, product_back: 0,
-    fixed_amount: 0, per_attendance_income: 0, gross_total: 0, daily_payment: 0, withholding_tax: 0,
+    fixed_amount: 0, per_attendance_income: 0, bonus_total: 0, gross_total: 0, daily_payment: 0, withholding_tax: 0,
     other_deductions: 0, total_deduction: 0, net_payment: 0,
   })
 
@@ -435,6 +445,7 @@ function PayslipListContent() {
                   <th style={thStyleNum}>商品バック</th>
                   <th style={thStyleNum}>固定給</th>
                   <th style={thStyleNum}>出勤報酬</th>
+                  <th style={thStyleNum}>賞与</th>
                   <th style={{ ...thStyleNum, backgroundColor: '#e0f2fe' }}>総支給額</th>
                   <th style={thStyleNum}>日払い</th>
                   <th style={thStyleNum}>源泉徴収</th>
@@ -455,6 +466,7 @@ function PayslipListContent() {
                     <td style={tdStyleNum}>{formatCurrency(p.product_back)}</td>
                     <td style={tdStyleNum}>{formatCurrency(p.fixed_amount)}</td>
                     <td style={tdStyleNum}>{formatCurrency(p.per_attendance_income)}</td>
+                    <td style={tdStyleNum}>{formatCurrency(p.bonus_total)}</td>
                     <td style={{ ...tdStyleNum, backgroundColor: '#f0f9ff', fontWeight: '600' }}>
                       {formatCurrency(p.gross_total)}
                     </td>
@@ -480,6 +492,7 @@ function PayslipListContent() {
                   <td style={tdStyleNum}>{formatCurrency(totals.product_back)}</td>
                   <td style={tdStyleNum}>{formatCurrency(totals.fixed_amount)}</td>
                   <td style={tdStyleNum}>{formatCurrency(totals.per_attendance_income)}</td>
+                  <td style={tdStyleNum}>{formatCurrency(totals.bonus_total)}</td>
                   <td style={{ ...tdStyleNum, backgroundColor: '#bae6fd' }}>
                     {formatCurrency(totals.gross_total)}
                   </td>

@@ -170,6 +170,22 @@ async function calculatePayslipForCast(
       .eq('store_id', storeId)
       .eq('is_active', true)
 
+    // 賞与設定を取得
+    const { data: bonusTypes } = await supabaseAdmin
+      .from('bonus_types')
+      .select('*')
+      .eq('store_id', storeId)
+      .eq('is_active', true)
+      .order('display_order')
+
+    // 手動賞与を取得
+    const { data: castBonuses } = await supabaseAdmin
+      .from('cast_bonuses')
+      .select('*')
+      .eq('store_id', storeId)
+      .eq('cast_id', cast.id)
+      .eq('year_month', yearMonth)
+
     // 遅刻罰金ルールを取得
     const lateDeductionIds = (deductionTypes || [])
       .filter(d => d.type === 'penalty_late')
@@ -204,7 +220,7 @@ async function calculatePayslipForCast(
     // 1. 指定年月の設定を探す
     let { data: compensationSettings } = await supabaseAdmin
       .from('compensation_settings')
-      .select('enabled_deduction_ids, compensation_types, payment_selection_method, selected_compensation_type_id, store_id, target_year, target_month, status_id, hourly_wage_override')
+      .select('enabled_deduction_ids, enabled_bonus_ids, compensation_types, payment_selection_method, selected_compensation_type_id, store_id, target_year, target_month, status_id, hourly_wage_override')
       .eq('cast_id', cast.id)
       .eq('store_id', storeId)
       .eq('target_year', targetYear)
@@ -216,7 +232,7 @@ async function calculatePayslipForCast(
     if (!compensationSettings) {
       const { data: recentSettings } = await supabaseAdmin
         .from('compensation_settings')
-        .select('enabled_deduction_ids, compensation_types, payment_selection_method, selected_compensation_type_id, store_id, target_year, target_month, status_id, hourly_wage_override')
+        .select('enabled_deduction_ids, enabled_bonus_ids, compensation_types, payment_selection_method, selected_compensation_type_id, store_id, target_year, target_month, status_id, hourly_wage_override')
         .eq('cast_id', cast.id)
         .eq('store_id', storeId)
         .eq('is_active', true)
@@ -233,7 +249,7 @@ async function calculatePayslipForCast(
     if (!compensationSettings) {
       const { data: defaultSettings } = await supabaseAdmin
         .from('compensation_settings')
-        .select('enabled_deduction_ids, compensation_types, payment_selection_method, selected_compensation_type_id, store_id, target_year, target_month, status_id, hourly_wage_override')
+        .select('enabled_deduction_ids, enabled_bonus_ids, compensation_types, payment_selection_method, selected_compensation_type_id, store_id, target_year, target_month, status_id, hourly_wage_override')
         .eq('cast_id', cast.id)
         .eq('store_id', storeId)
         .is('target_year', null)
@@ -775,11 +791,156 @@ async function calculatePayslipForCast(
     let fixedAmount = selectedResult?.fixedAmount ?? 0
     salesBack = selectedResult?.salesBack ?? 0
     const productBack = selectedResult?.productBack ?? totalProductBack
-    const grossEarnings = selectedResult?.grossEarnings ?? (totalProductBack + fixedAmount)
+    let grossEarnings = selectedResult?.grossEarnings ?? (totalProductBack + fixedAmount)
 
     if (activeCompType) {
       console.log(`[${cast.name}] 採用報酬形態: ${activeCompType.name}, 時給使用: ${useWageData}, 売上バック: ${salesBack}, 固定額: ${fixedAmount}, 総報酬: ${grossEarnings}`)
     }
+
+    // ===== 賞与計算 =====
+    const enabledBonusIds = compensationSettings?.enabled_bonus_ids ?? null
+    const bonusDetails: Array<{ name: string; type: string; amount: number; detail: string }> = []
+
+    // 指名数を取得（nomination bonus用）
+    let totalNominations = 0
+    if ((bonusTypes || []).some(bt => bt.bonus_category === 'nomination')) {
+      const monthStart = format(startOfMonth(month), "yyyy-MM-dd'T'00:00:00")
+      const monthEnd = format(endOfMonth(month), "yyyy-MM-dd'T'23:59:59")
+      const { data: nominationOrders } = await supabaseAdmin
+        .from('orders')
+        .select('guest_count')
+        .eq('store_id', storeId)
+        .eq('staff_name', cast.name)
+        .gte('accounting_datetime', monthStart)
+        .lte('accounting_datetime', monthEnd)
+      totalNominations = (nominationOrders || []).reduce((sum, o) => sum + (o.guest_count || 0), 0)
+    }
+
+    // シフト数を取得（attendance bonus用）
+    let totalShifts = 0
+    if ((bonusTypes || []).some(bt => bt.bonus_category === 'attendance')) {
+      const { count } = await supabaseAdmin
+        .from('shifts')
+        .select('id', { count: 'exact', head: true })
+        .eq('store_id', storeId)
+        .eq('cast_id', cast.id)
+        .gte('date', startDate)
+        .lte('date', endDate)
+      totalShifts = count || 0
+    }
+
+    // 出勤日数・遅刻回数・欠勤回数を集計
+    const workDayCount = (attendanceData || []).filter(a => a.status_id && workDayStatusIds.has(a.status_id)).length
+    const lateCount = (attendanceData || []).filter(a => (a.late_minutes || 0) > 0).length
+    // 欠勤 = シフトが入っていた日で出勤がない日の数
+    const attendedDates = new Set((attendanceData || []).map(a => a.date))
+
+    for (const bt of (bonusTypes || [])) {
+      // enabled_bonus_ids フィルタ
+      if (enabledBonusIds !== null && !enabledBonusIds.includes(bt.id)) continue
+
+      if (bt.bonus_category === 'sales') {
+        const c = bt.conditions as { calculation_type?: string; sales_target?: string; tiers?: Array<{ min_sales: number; max_sales: number | null; amount: number }>; target_amount?: number; bonus_amount?: number; achievement_tiers?: Array<{ min_rate: number; max_rate: number | null; amount: number }> }
+        const sales = c.sales_target === 'receipt_based' ? totalSalesReceiptBased : totalSalesItemBased
+        let bonusAmount = 0
+        let detail = ''
+
+        if (c.calculation_type === 'threshold' && c.tiers) {
+          const tier = [...c.tiers].reverse().find(t => sales >= t.min_sales)
+          if (tier) {
+            bonusAmount = tier.amount
+            detail = `売上${Math.round(sales / 10000)}万 → ¥${tier.amount.toLocaleString()}`
+          }
+        } else if (c.calculation_type === 'fixed' && c.target_amount && c.bonus_amount) {
+          if (sales >= c.target_amount) {
+            bonusAmount = c.bonus_amount
+            detail = `売上${Math.round(sales / 10000)}万 ≥ 目標${Math.round(c.target_amount / 10000)}万`
+          }
+        } else if (c.calculation_type === 'achievement' && c.target_amount && c.achievement_tiers) {
+          const rate = c.target_amount > 0 ? (sales / c.target_amount) * 100 : 0
+          const tier = [...c.achievement_tiers].reverse().find(t => rate >= t.min_rate)
+          if (tier) {
+            bonusAmount = tier.amount
+            detail = `達成率${rate.toFixed(0)}% → ¥${tier.amount.toLocaleString()}`
+          }
+        }
+
+        if (bonusAmount > 0) {
+          bonusDetails.push({ name: bt.name, type: 'sales', amount: bonusAmount, detail })
+        }
+
+      } else if (bt.bonus_category === 'attendance') {
+        const c = bt.conditions as { amount?: number; require_all_shifts?: boolean; min_days?: number | null; max_late_count?: number | null; max_absent_count?: number | null }
+        let eligible = true
+        const reasons: string[] = []
+
+        if (c.require_all_shifts && totalShifts > 0 && workDayCount < totalShifts) {
+          eligible = false
+        }
+        if (c.min_days != null && workDayCount < c.min_days) {
+          eligible = false
+        }
+        if (c.max_late_count != null && lateCount > c.max_late_count) {
+          eligible = false
+        }
+        // 欠勤数チェック
+        if (c.max_absent_count != null) {
+          // シフト日のうち出勤していない日数を欠勤とする
+          let absentCount = 0
+          if (totalShifts > 0) {
+            const { data: shiftDates } = await supabaseAdmin
+              .from('shifts')
+              .select('date')
+              .eq('store_id', storeId)
+              .eq('cast_id', cast.id)
+              .gte('date', startDate)
+              .lte('date', endDate)
+            absentCount = (shiftDates || []).filter(s => !attendedDates.has(s.date)).length
+          }
+          if (absentCount > c.max_absent_count) {
+            eligible = false
+          }
+        }
+
+        if (eligible && (c.amount || 0) > 0) {
+          reasons.push(`出勤${workDayCount}日`)
+          if (lateCount === 0) reasons.push('遅刻0回')
+          else reasons.push(`遅刻${lateCount}回`)
+          bonusDetails.push({ name: bt.name, type: 'attendance', amount: c.amount || 0, detail: reasons.join(' / ') })
+        }
+
+      } else if (bt.bonus_category === 'nomination') {
+        const c = bt.conditions as { calculation_type?: string; tiers?: Array<{ min_count: number; max_count: number | null; amount: number }>; target_count?: number; bonus_amount?: number }
+        let bonusAmount = 0
+        let detail = ''
+
+        if (c.calculation_type === 'threshold' && c.tiers) {
+          const tier = [...c.tiers].reverse().find(t => totalNominations >= t.min_count)
+          if (tier) {
+            bonusAmount = tier.amount
+            detail = `指名${totalNominations}本 → ¥${tier.amount.toLocaleString()}`
+          }
+        } else if (c.calculation_type === 'fixed' && c.target_count && c.bonus_amount) {
+          if (totalNominations >= c.target_count) {
+            bonusAmount = c.bonus_amount
+            detail = `指名${totalNominations}本 ≥ 目標${c.target_count}本`
+          }
+        }
+
+        if (bonusAmount > 0) {
+          bonusDetails.push({ name: bt.name, type: 'nomination', amount: bonusAmount, detail })
+        }
+      }
+      // manual は cast_bonuses から取得
+    }
+
+    // 手動賞与を追加
+    for (const cb of (castBonuses || [])) {
+      bonusDetails.push({ name: cb.name || '手動賞与', type: 'manual', amount: cb.amount, detail: cb.note || '' })
+    }
+
+    const bonusTotal = bonusDetails.reduce((sum, b) => sum + b.amount, 0)
+    grossEarnings += bonusTotal
 
     // ===== 控除計算 =====
     const deductions: Array<{ name: string; type: string; count?: number; percentage?: number; amount: number }> = []
@@ -949,7 +1110,9 @@ async function calculatePayslipForCast(
       net_payment: netEarnings,
       daily_details: dailyDetails,
       product_back_details: productBackDetails,
-      deduction_details: deductions
+      deduction_details: deductions,
+      bonus_total: bonusTotal,
+      bonus_details: bonusDetails
     }
 
     const { error } = await supabaseAdmin

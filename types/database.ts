@@ -576,6 +576,8 @@ export interface CompensationSettings {
   // 控除設定
   deduction_enabled: boolean
   deduction_items: DeductionItem[] | null
+  enabled_deduction_ids: number[] | null  // 適用する控除項目ID（null=全適用, []=なし）
+  enabled_bonus_ids: number[] | null      // 適用する賞与ID（null=全適用, []=なし）
 
   // 商品別バック設定（レガシー、後方互換用）
   use_product_back: boolean  // 商品別バック率を使用するか（cast_back_ratesテーブル参照）
@@ -1115,4 +1117,103 @@ export interface PayslipItem {
   order_id: string | null
   created_at: string
   updated_at: string
+}
+
+// ============================================================================
+// 賞与システム
+// ============================================================================
+
+export type BonusCategory = 'sales' | 'attendance' | 'nomination' | 'manual'
+
+// 売上ボーナスの計算タイプ
+export type SalesBonusCalculationType = 'threshold' | 'fixed' | 'achievement'
+
+// 指名ボーナスの計算タイプ
+export type NominationBonusCalculationType = 'threshold' | 'fixed'
+
+// 売上ボーナスのティア
+export interface SalesBonusTier {
+  min_sales: number
+  max_sales: number | null
+  amount: number
+}
+
+// 達成率ティア
+export interface AchievementTier {
+  min_rate: number
+  max_rate: number | null
+  amount: number
+}
+
+// 指名ボーナスのティア
+export interface NominationBonusTier {
+  min_count: number
+  max_count: number | null
+  amount: number
+}
+
+// 売上ボーナス条件
+export interface SalesBonusConditions {
+  calculation_type: SalesBonusCalculationType
+  sales_target: 'item_based' | 'receipt_based'
+  // threshold型
+  tiers?: SalesBonusTier[]
+  // fixed型
+  target_amount?: number
+  bonus_amount?: number
+  // achievement型
+  achievement_tiers?: AchievementTier[]
+}
+
+// 皆勤賞条件
+export interface AttendanceBonusConditions {
+  amount: number
+  require_all_shifts: boolean
+  min_days: number | null
+  max_late_count: number | null
+  max_absent_count: number | null
+}
+
+// 指名ボーナス条件
+export interface NominationBonusConditions {
+  calculation_type: NominationBonusCalculationType
+  // threshold型
+  tiers?: NominationBonusTier[]
+  // fixed型
+  target_count?: number
+  bonus_amount?: number
+}
+
+// 賞与ルール定義
+export interface BonusType {
+  id: number
+  store_id: number
+  name: string
+  bonus_category: BonusCategory
+  conditions: SalesBonusConditions | AttendanceBonusConditions | NominationBonusConditions | Record<string, never>
+  is_active: boolean
+  display_order: number
+  created_at: string
+  updated_at: string
+}
+
+// 手動賞与（キャスト個別）
+export interface CastBonus {
+  id: number
+  store_id: number
+  cast_id: number
+  bonus_type_id: number | null
+  year_month: string
+  amount: number
+  name: string | null
+  note: string | null
+  created_at: string
+}
+
+// 賞与明細（payslips.bonus_details内のアイテム）
+export interface BonusDetailItem {
+  name: string
+  type: BonusCategory
+  amount: number
+  detail: string
 }
