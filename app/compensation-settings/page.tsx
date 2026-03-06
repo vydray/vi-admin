@@ -2308,6 +2308,79 @@ function CompensationSettingsPageContent() {
     }
   }
 
+  // 全キャスト一括前月コピー
+  const [bulkCopying, setBulkCopying] = useState(false)
+  const copyFromPreviousMonthAll = async () => {
+    const prevYear = selectedMonth === 1 ? selectedYear - 1 : selectedYear
+    const prevMonth = selectedMonth === 1 ? 12 : selectedMonth - 1
+
+    if (!confirm(`全キャストの${prevYear}年${prevMonth}月の設定を${selectedYear}年${selectedMonth}月にコピーしますか？\n※既に当月の設定があるキャストは上書きされます`)) return
+
+    setBulkCopying(true)
+    try {
+      // 前月の全キャスト設定を一括取得
+      const { data: prevAllSettings, error } = await supabase
+        .from('compensation_settings')
+        .select('*')
+        .eq('store_id', storeId)
+        .eq('target_year', prevYear)
+        .eq('target_month', prevMonth)
+        .eq('is_active', true)
+
+      if (error) throw error
+      if (!prevAllSettings || prevAllSettings.length === 0) {
+        toast.error(`${prevYear}年${prevMonth}月の設定が見つかりません`)
+        return
+      }
+
+      // 当月の既存設定を一括取得
+      const { data: currentAllSettings } = await supabase
+        .from('compensation_settings')
+        .select('id, cast_id')
+        .eq('store_id', storeId)
+        .eq('target_year', selectedYear)
+        .eq('target_month', selectedMonth)
+        .eq('is_active', true)
+
+      const existingMap = new Map((currentAllSettings || []).map(s => [s.cast_id, s.id]))
+
+      let successCount = 0
+      let skipCount = 0
+
+      for (const prev of prevAllSettings) {
+        try {
+          const state = dbToState(prev)
+          const saveData = {
+            ...stateToDb(state, prev.cast_id, storeId),
+            target_year: selectedYear,
+            target_month: selectedMonth,
+            enabled_deduction_ids: prev.enabled_deduction_ids || [],
+          }
+
+          const existId = existingMap.get(prev.cast_id)
+          if (existId) {
+            await supabase.from('compensation_settings').update(saveData).eq('id', existId)
+          } else {
+            await supabase.from('compensation_settings').insert(saveData)
+          }
+          successCount++
+        } catch {
+          skipCount++
+        }
+      }
+
+      toast.success(`${successCount}人の設定をコピーしました${skipCount > 0 ? `（${skipCount}人失敗）` : ''}`)
+      if (selectedCastId) {
+        await loadSettings(selectedCastId, selectedYear, selectedMonth)
+      }
+    } catch (error) {
+      console.error('一括コピーエラー:', error)
+      toast.error('一括コピーに失敗しました')
+    } finally {
+      setBulkCopying(false)
+    }
+  }
+
   // キャスト選択式一括適用
   const [showBulkApplyModal, setShowBulkApplyModal] = useState(false)
   const [applyingToAll, setApplyingToAll] = useState(false)
@@ -2608,6 +2681,23 @@ function CompensationSettingsPageContent() {
               }}
             >
               {copyingFromPrevMonth ? 'コピー中...' : '前月からコピー'}
+            </button>
+            <button
+              onClick={copyFromPreviousMonthAll}
+              disabled={bulkCopying}
+              style={{
+                marginLeft: '8px',
+                padding: '6px 12px',
+                backgroundColor: '#d946ef',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: bulkCopying ? 'not-allowed' : 'pointer',
+                fontSize: '12px',
+                opacity: bulkCopying ? 0.5 : 1,
+              }}
+            >
+              {bulkCopying ? 'コピー中...' : '全員一括コピー'}
             </button>
             {isLocked && (
               <span style={styles.lockedBadge}>ロック中</span>
