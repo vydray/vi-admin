@@ -1470,6 +1470,37 @@ function PayslipPageContent() {
     }
   }, [savedPayslip])
 
+  // 選択中のキャスト1人を再計算
+  const recalculateOne = useCallback(async () => {
+    if (!selectedCastId) return
+    const yearMonth = format(selectedMonth, 'yyyy-MM')
+    setRecalculating(true)
+    try {
+      const res = await fetch('/api/payslips/recalculate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          store_id: storeId,
+          year_month: yearMonth,
+          cast_id: selectedCastId
+        })
+      })
+      const result = await res.json()
+      if (result.success) {
+        alert('再計算が完了しました')
+        await loadPayslip(selectedCastId, selectedMonth)
+      } else {
+        alert('再計算に失敗しました')
+        console.error('再計算失敗:', result.error)
+      }
+    } catch (err) {
+      console.error('再計算エラー:', err)
+      alert('再計算に失敗しました')
+    } finally {
+      setRecalculating(false)
+    }
+  }, [storeId, selectedCastId, selectedMonth, loadPayslip])
+
   // 全キャスト再計算
   const recalculateAll = useCallback(async () => {
     const yearMonth = format(selectedMonth, 'yyyy-MM')
@@ -1902,6 +1933,24 @@ function PayslipPageContent() {
                 10分ごとに自動保存
               </span>
             )}
+            {/* 個別再計算ボタン */}
+            <button
+              onClick={recalculateOne}
+              disabled={recalculating || !selectedCastId}
+              style={{
+                padding: '8px 16px',
+                backgroundColor: '#10b981',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '8px',
+                fontSize: '14px',
+                fontWeight: '500',
+                cursor: recalculating || !selectedCastId ? 'not-allowed' : 'pointer',
+                opacity: recalculating || !selectedCastId ? 0.5 : 1
+              }}
+            >
+              {recalculating ? '計算中...' : 'この子を再計算'}
+            </button>
             {/* 全キャスト再計算ボタン */}
             <button
               onClick={recalculateAll}
