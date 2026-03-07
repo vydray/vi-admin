@@ -1949,7 +1949,7 @@ function PayslipPageContent() {
                 opacity: recalculating || !selectedCastId ? 0.5 : 1
               }}
             >
-              {recalculating ? '計算中...' : 'この子を再計算'}
+              {recalculating ? '計算中...' : '再計算'}
             </button>
             {/* 全キャスト再計算ボタン */}
             <button
