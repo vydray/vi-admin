@@ -30,6 +30,7 @@ const mobileRestrictedPaths = [
   '/base-settings',         // BASE連携
   '/stores',                // 店舗管理（管理者専用）
   '/line-settings',         // LINE設定（管理者専用）
+  '/line-broadcast',        // LINE一斉送信（管理者専用）
   '/settings/ai',           // AI統合設定（管理者専用）
   // Twitter
   '/twitter-posts',         // 予約投稿
@@ -125,6 +126,7 @@ const menuGroups: MenuGroup[] = [
     items: [
       { name: '店舗管理', path: '/stores', icon: '🏢' },
       { name: 'LINE設定', path: '/line-settings', icon: '💬' },
+      { name: 'LINE一斉送信', path: '/line-broadcast', icon: '📨' },
       { name: 'AI統合設定', path: '/settings/ai', icon: '🤖' },
     ]
   },

@@ -16,6 +16,7 @@ const mobileRestrictedPaths = [
   '/base-settings',         // BASE連携
   '/stores',                // 店舗管理（管理者専用）
   '/line-settings',         // LINE設定（管理者専用）
+  '/line-broadcast',        // LINE一斉送信（管理者専用）
   '/settings/ai',           // AI統合設定（管理者専用）
   // Twitter
   '/twitter-posts',         // 予約投稿
