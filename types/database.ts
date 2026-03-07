@@ -577,7 +577,7 @@ export interface CompensationSettings {
   deduction_enabled: boolean
   deduction_items: DeductionItem[] | null
   enabled_deduction_ids: number[] | null  // 適用する控除項目ID（null=全適用, []=なし）
-  enabled_bonus_ids: number[] | null      // 適用する賞与ID（null=全適用, []=なし）
+  enabled_bonus_ids: number[] | null      // 適用する賞与ID（null=なし, []=なし, [1,2]=指定IDのみ）
 
   // 商品別バック設定（レガシー、後方互換用）
   use_product_back: boolean  // 商品別バック率を使用するか（cast_back_ratesテーブル参照）

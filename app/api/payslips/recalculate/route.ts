@@ -842,8 +842,8 @@ async function calculatePayslipForCast(
     const attendedDates = new Set((attendanceData || []).map(a => a.date))
 
     for (const bt of (bonusTypes || [])) {
-      // enabled_bonus_ids フィルタ
-      if (enabledBonusIds !== null && !enabledBonusIds.includes(bt.id)) continue
+      // enabled_bonus_ids フィルタ（null or 空配列 = 賞与なし）
+      if (!enabledBonusIds || !enabledBonusIds.includes(bt.id)) continue
 
       const c = bt.conditions as {
         attendance?: { eligible_status_ids?: string[]; disqualify_status_ids?: string[]; require_all_shifts?: boolean; min_days?: number | null; min_hours_per_day?: number | null; min_total_hours?: number | null } | null
