@@ -105,6 +105,59 @@ export default function RecalculationCompareModal({ isOpen, onClose, storeId, ye
   const changedCount = comparisons.filter(hasChange).length
   const displayComparisons = showOnlyChanged ? comparisons.filter(hasChange) : comparisons
 
+  // CSVダウンロード
+  const downloadCsv = () => {
+    const fromLabel = batches.find(b => b.batch_id === fromBatch)
+      ? formatTimestamp(batches.find(b => b.batch_id === fromBatch)!.created_at)
+      : '不明'
+    const toLabel = toBatch === 'current'
+      ? '現在値'
+      : batches.find(b => b.batch_id === toBatch)
+        ? formatTimestamp(batches.find(b => b.batch_id === toBatch)!.created_at)
+        : '不明'
+
+    // ヘッダー行: キャスト名, 各項目のFrom/To/差分
+    const headerCols = ['キャスト']
+    for (const f of FIELDS) {
+      headerCols.push(`${f.label}(前)`, `${f.label}(後)`, `${f.label}(差分)`)
+    }
+
+    const rows = displayComparisons.map(c => {
+      const cols: (string | number)[] = [c.cast_name]
+      for (const f of FIELDS) {
+        const from = c.from_values[f.key] ?? 0
+        const to = c.to_values[f.key] ?? 0
+        cols.push(from, to, to - from)
+      }
+      return cols
+    })
+
+    // 合計行
+    const totalCols: (string | number)[] = [`合計(${displayComparisons.length}名)`]
+    for (const f of FIELDS) {
+      const totalFrom = displayComparisons.reduce((s, c) => s + (c.from_values[f.key] ?? 0), 0)
+      const totalTo = displayComparisons.reduce((s, c) => s + (c.to_values[f.key] ?? 0), 0)
+      totalCols.push(totalFrom, totalTo, totalTo - totalFrom)
+    }
+    rows.push(totalCols)
+
+    // BOM付きCSV生成
+    const csvContent = '\uFEFF' + [
+      `再計算差分,${yearMonth},From: ${fromLabel},To: ${toLabel}`,
+      '',
+      headerCols.join(','),
+      ...rows.map(r => r.join(',')),
+    ].join('\n')
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `再計算差分_${yearMonth}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <div
       style={{
@@ -177,21 +230,35 @@ export default function RecalculationCompareModal({ isOpen, onClose, storeId, ye
           </div>
         </div>
 
-        {/* フィルター */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#374151', cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={showOnlyChanged}
-              onChange={e => setShowOnlyChanged(e.target.checked)}
-              style={{ cursor: 'pointer' }}
-            />
-            変更ありのみ表示
-          </label>
-          {!loading && (
-            <span style={{ fontSize: '12px', color: '#9ca3af' }}>
-              ({changedCount}名変更あり / 全{comparisons.length}名)
-            </span>
+        {/* フィルター + ダウンロード */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#374151', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={showOnlyChanged}
+                onChange={e => setShowOnlyChanged(e.target.checked)}
+                style={{ cursor: 'pointer' }}
+              />
+              変更ありのみ表示
+            </label>
+            {!loading && (
+              <span style={{ fontSize: '12px', color: '#9ca3af' }}>
+                ({changedCount}名変更あり / 全{comparisons.length}名)
+              </span>
+            )}
+          </div>
+          {displayComparisons.length > 0 && (
+            <button
+              onClick={downloadCsv}
+              style={{
+                padding: '5px 12px', fontSize: '12px', fontWeight: 600,
+                backgroundColor: '#2563eb', color: '#fff', border: 'none',
+                borderRadius: '6px', cursor: 'pointer',
+              }}
+            >
+              CSV
+            </button>
           )}
         </div>
 
