@@ -66,10 +66,10 @@ export async function GET(request: NextRequest) {
     if (fromBatch) {
       const { data } = await supabaseAdmin
         .from('payslip_recalculation_logs')
-        .select('cast_id, cast_name, after_values')
+        .select('cast_id, cast_name, before_values')
         .eq('batch_id', fromBatch)
       for (const row of data || []) {
-        fromValues[row.cast_id] = { cast_name: row.cast_name, values: row.after_values }
+        fromValues[row.cast_id] = { cast_name: row.cast_name, values: row.before_values }
       }
     }
 
