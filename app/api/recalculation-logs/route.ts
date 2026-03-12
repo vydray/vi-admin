@@ -143,14 +143,14 @@ export async function GET(request: NextRequest) {
     for (const castId of allCastIds) {
       const from = fromValues[castId]
       const to = toValues[castId]
-      if (!from && !to) continue
+      // Fromにログがないキャストは比較対象外（差分が意味をなさない）
+      if (!from || !to) continue
 
-      const emptyValues = { gross_total: 0, hourly_income: 0, sales_back: 0, product_back: 0, fixed_amount: 0, bonus_total: 0, total_deduction: 0, net_payment: 0 }
       comparisons.push({
         cast_id: castId,
-        cast_name: to?.cast_name || from?.cast_name || '',
-        from_values: from?.values || emptyValues,
-        to_values: to?.values || emptyValues,
+        cast_name: to.cast_name || from.cast_name,
+        from_values: from.values,
+        to_values: to.values,
       })
     }
 
