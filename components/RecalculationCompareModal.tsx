@@ -117,7 +117,7 @@ export default function RecalculationCompareModal({ isOpen, onClose, storeId, ye
       <div
         style={{
           backgroundColor: '#fff', borderRadius: '12px', padding: '24px',
-          maxWidth: '1100px', width: '95%', maxHeight: '85vh', overflow: 'auto',
+          maxWidth: '1100px', width: '95%', maxHeight: '85vh', display: 'flex', flexDirection: 'column' as const,
         }}
         onClick={e => e.stopPropagation()}
       >
@@ -206,15 +206,18 @@ export default function RecalculationCompareModal({ isOpen, onClose, storeId, ye
             変更のあるキャストはいません
           </div>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
-              <thead>
+          <div style={{ overflow: 'auto', flex: 1, minHeight: 0 }}>
+            <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: '12px' }}>
+              <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
                 <tr style={{ backgroundColor: '#f8fafc' }}>
-                  <th style={{ padding: '8px', textAlign: 'left', borderBottom: '2px solid #e5e7eb', whiteSpace: 'nowrap' }}>キャスト</th>
+                  <th style={{
+                    padding: '8px', textAlign: 'left', borderBottom: '2px solid #e5e7eb', whiteSpace: 'nowrap',
+                    position: 'sticky', left: 0, zIndex: 3, backgroundColor: '#f8fafc',
+                  }}>キャスト</th>
                   {FIELDS.map(f => (
                     <th key={f.key} style={{
                       padding: '8px', textAlign: 'right', borderBottom: '2px solid #e5e7eb', whiteSpace: 'nowrap',
-                      backgroundColor: f.key === 'net_payment' ? '#f0fdf4' : f.key === 'gross_total' ? '#f0f9ff' : undefined,
+                      backgroundColor: f.key === 'net_payment' ? '#f0fdf4' : f.key === 'gross_total' ? '#f0f9ff' : '#f8fafc',
                     }}>
                       {f.label}
                     </th>
@@ -229,7 +232,11 @@ export default function RecalculationCompareModal({ isOpen, onClose, storeId, ye
                       borderBottom: '1px solid #f3f4f6',
                       opacity: isChanged ? 1 : 0.5,
                     }}>
-                      <td style={{ padding: '8px', fontWeight: 500, whiteSpace: 'nowrap' }}>
+                      <td style={{
+                        padding: '8px', fontWeight: 500, whiteSpace: 'nowrap',
+                        position: 'sticky', left: 0, zIndex: 1,
+                        backgroundColor: isChanged ? '#fff' : '#fafafa',
+                      }}>
                         {c.cast_name}
                         {!c.has_log && (
                           <span style={{ fontSize: '10px', color: '#d1d5db', marginLeft: '4px' }}>※ログなし</span>
@@ -270,9 +277,12 @@ export default function RecalculationCompareModal({ isOpen, onClose, storeId, ye
                 })}
               </tbody>
               {/* 合計行 */}
-              <tfoot>
+              <tfoot style={{ position: 'sticky', bottom: 0, zIndex: 2 }}>
                 <tr style={{ backgroundColor: '#f1f5f9', fontWeight: 600, borderTop: '2px solid #e5e7eb' }}>
-                  <td style={{ padding: '8px' }}>合計 ({displayComparisons.length}名)</td>
+                  <td style={{
+                    padding: '8px',
+                    position: 'sticky', left: 0, zIndex: 3, backgroundColor: '#f1f5f9',
+                  }}>合計 ({displayComparisons.length}名)</td>
                   {FIELDS.map(f => {
                     const totalFrom = displayComparisons.reduce((s, c) => s + (c.from_values[f.key] ?? 0), 0)
                     const totalTo = displayComparisons.reduce((s, c) => s + (c.to_values[f.key] ?? 0), 0)
