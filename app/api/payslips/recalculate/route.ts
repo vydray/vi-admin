@@ -1114,33 +1114,27 @@ async function calculatePayslipForCast(
       return { success: false, error: 'Failed to save payslip' }
     }
 
-    // 再計算ログを記録（既存payslipがあり、差分がある場合のみ）
+    // 再計算ログを記録（既存payslipがある場合、差分の有無に関わらず全キャスト記録）
     if (existingPayslip) {
       try {
         const beforeValues: Record<string, number> = {}
         const afterValues: Record<string, number> = {}
-        let hasChange = false
 
         for (const field of TRACKED_FIELDS) {
-          const before = (existingPayslip as Record<string, unknown>)[field] as number ?? 0
-          const after = (payslipData as Record<string, unknown>)[field] as number ?? 0
-          beforeValues[field] = before
-          afterValues[field] = after
-          if (before !== after) hasChange = true
+          beforeValues[field] = (existingPayslip as Record<string, unknown>)[field] as number ?? 0
+          afterValues[field] = (payslipData as Record<string, unknown>)[field] as number ?? 0
         }
 
-        if (hasChange) {
-          await supabaseAdmin.from('payslip_recalculation_logs').insert({
-            batch_id: batchId,
-            store_id: storeId,
-            cast_id: cast.id,
-            cast_name: cast.name,
-            year_month: yearMonth,
-            triggered_by: triggeredBy,
-            before_values: beforeValues,
-            after_values: afterValues,
-          })
-        }
+        await supabaseAdmin.from('payslip_recalculation_logs').insert({
+          batch_id: batchId,
+          store_id: storeId,
+          cast_id: cast.id,
+          cast_name: cast.name,
+          year_month: yearMonth,
+          triggered_by: triggeredBy,
+          before_values: beforeValues,
+          after_values: afterValues,
+        })
       } catch (logErr) {
         console.error('Failed to insert recalculation log:', logErr)
       }
