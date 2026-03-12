@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import type { PayslipRecalculationLogValues } from '@/types/database'
+import { exportToPDF } from '@/lib/pdfExport'
 
 interface Batch {
   batch_id: string
@@ -57,6 +58,8 @@ export default function RecalculationCompareModal({ isOpen, onClose, storeId, ye
   const [loading, setLoading] = useState(false)
   const [loadingBatches, setLoadingBatches] = useState(false)
   const [showOnlyChanged, setShowOnlyChanged] = useState(false)
+  const [pdfLoading, setPdfLoading] = useState(false)
+  const tableRef = useRef<HTMLDivElement>(null)
 
   // バッチ一覧を取得
   useEffect(() => {
@@ -158,6 +161,22 @@ export default function RecalculationCompareModal({ isOpen, onClose, storeId, ye
     URL.revokeObjectURL(url)
   }
 
+  // PDFダウンロード
+  const downloadPdf = async () => {
+    if (!tableRef.current) return
+    setPdfLoading(true)
+    try {
+      await exportToPDF(tableRef.current, {
+        filename: `再計算差分_${yearMonth}.pdf`,
+        orientation: 'landscape',
+        format: 'a4',
+        margin: 8,
+      })
+    } finally {
+      setPdfLoading(false)
+    }
+  }
+
   return (
     <div
       style={{
@@ -249,16 +268,29 @@ export default function RecalculationCompareModal({ isOpen, onClose, storeId, ye
             )}
           </div>
           {displayComparisons.length > 0 && (
-            <button
-              onClick={downloadCsv}
-              style={{
-                padding: '5px 12px', fontSize: '12px', fontWeight: 600,
-                backgroundColor: '#2563eb', color: '#fff', border: 'none',
-                borderRadius: '6px', cursor: 'pointer',
-              }}
-            >
-              CSV
-            </button>
+            <div style={{ display: 'flex', gap: '6px' }}>
+              <button
+                onClick={downloadCsv}
+                style={{
+                  padding: '5px 12px', fontSize: '12px', fontWeight: 600,
+                  backgroundColor: '#2563eb', color: '#fff', border: 'none',
+                  borderRadius: '6px', cursor: 'pointer',
+                }}
+              >
+                CSV
+              </button>
+              <button
+                onClick={downloadPdf}
+                disabled={pdfLoading}
+                style={{
+                  padding: '5px 12px', fontSize: '12px', fontWeight: 600,
+                  backgroundColor: pdfLoading ? '#9ca3af' : '#dc2626', color: '#fff', border: 'none',
+                  borderRadius: '6px', cursor: pdfLoading ? 'wait' : 'pointer',
+                }}
+              >
+                {pdfLoading ? '生成中...' : 'PDF'}
+              </button>
+            </div>
           )}
         </div>
 
@@ -273,7 +305,7 @@ export default function RecalculationCompareModal({ isOpen, onClose, storeId, ye
             変更のあるキャストはいません
           </div>
         ) : (
-          <div style={{ overflow: 'auto', flex: 1, minHeight: 0 }}>
+          <div style={{ overflow: 'auto', flex: 1, minHeight: 0 }} ref={tableRef}>
             <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: '12px' }}>
               <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
                 <tr style={{ backgroundColor: '#f8fafc' }}>
