@@ -8,6 +8,7 @@ import html2canvas from 'html2canvas'
 import { useStore } from '@/contexts/StoreContext'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import ProtectedPage from '@/components/ProtectedPage'
+import RecalculationHistoryModal from '@/components/RecalculationHistoryModal'
 
 interface PayslipSummary {
   cast_id: number
@@ -43,6 +44,7 @@ function PayslipListContent() {
   const [selectedMonth, setSelectedMonth] = useState(subMonths(new Date(), 1))
   const [payslips, setPayslips] = useState<PayslipSummary[]>([])
   const [showExportModal, setShowExportModal] = useState(false)
+  const [historyCast, setHistoryCast] = useState<{ id: number; name: string } | null>(null)
   const printRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -453,6 +455,7 @@ function PayslipListContent() {
                   <th style={thStyleNum}>控除計</th>
                   <th style={{ ...thStyleNum, backgroundColor: '#dcfce7' }}>残り支給</th>
                   <th style={{ ...thStyleNum, backgroundColor: '#fef3c7' }}>支払総額</th>
+                  <th style={thStyle}></th>
                 </tr>
               </thead>
               <tbody>
@@ -479,6 +482,17 @@ function PayslipListContent() {
                     </td>
                     <td style={{ ...tdStyleNum, backgroundColor: '#fef9c3', fontWeight: '600' }}>
                       {formatCurrency(p.net_payment + p.daily_payment)}
+                    </td>
+                    <td style={{ ...tdStyle, textAlign: 'center' }}>
+                      <button
+                        onClick={() => setHistoryCast({ id: p.cast_id, name: p.cast_name })}
+                        style={{
+                          padding: '2px 8px', fontSize: '11px', backgroundColor: '#f59e0b',
+                          color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer',
+                        }}
+                      >
+                        履歴
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -546,6 +560,18 @@ function PayslipListContent() {
             </div>
           </div>
         </>
+      )}
+
+      {/* 再計算履歴モーダル */}
+      {historyCast && (
+        <RecalculationHistoryModal
+          isOpen={!!historyCast}
+          onClose={() => setHistoryCast(null)}
+          storeId={storeId}
+          castId={historyCast.id}
+          castName={historyCast.name}
+          yearMonth={format(selectedMonth, 'yyyy-MM')}
+        />
       )}
     </div>
   )

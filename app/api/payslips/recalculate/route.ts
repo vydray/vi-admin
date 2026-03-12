@@ -2,8 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns'
+import { randomUUID } from 'crypto'
 import { calculateCastSalesByPublishedMethod } from '@/lib/salesCalculation'
 import type { SalesSettings } from '@/types/database'
+
+const TRACKED_FIELDS = ['gross_total', 'hourly_income', 'sales_back', 'product_back', 'fixed_amount', 'bonus_total', 'total_deduction', 'net_payment'] as const
 
 // Service Role Key でRLSをバイパス
 const supabaseAdmin = createClient(
@@ -125,17 +128,19 @@ function calculateLatePenalty(lateMinutes: number, rule: LatePenaltyRule): numbe
 async function calculatePayslipForCast(
   storeId: number,
   cast: Cast,
-  month: Date
+  month: Date,
+  batchId: string,
+  triggeredBy: 'manual' | 'cron'
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const yearMonth = format(month, 'yyyy-MM')
     const startDate = format(startOfMonth(month), 'yyyy-MM-dd')
     const endDate = format(endOfMonth(month), 'yyyy-MM-dd')
 
-    // 確定済みかチェック
+    // 確定済みかチェック + ログ用に現在の値を取得
     const { data: existingPayslip } = await supabaseAdmin
       .from('payslips')
-      .select('id, status')
+      .select('id, status, gross_total, hourly_income, sales_back, product_back, fixed_amount, bonus_total, total_deduction, net_payment')
       .eq('cast_id', cast.id)
       .eq('store_id', storeId)
       .eq('year_month', yearMonth)
@@ -1109,6 +1114,38 @@ async function calculatePayslipForCast(
       return { success: false, error: 'Failed to save payslip' }
     }
 
+    // 再計算ログを記録（既存payslipがあり、差分がある場合のみ）
+    if (existingPayslip) {
+      try {
+        const beforeValues: Record<string, number> = {}
+        const afterValues: Record<string, number> = {}
+        let hasChange = false
+
+        for (const field of TRACKED_FIELDS) {
+          const before = (existingPayslip as Record<string, unknown>)[field] as number ?? 0
+          const after = (payslipData as Record<string, unknown>)[field] as number ?? 0
+          beforeValues[field] = before
+          afterValues[field] = after
+          if (before !== after) hasChange = true
+        }
+
+        if (hasChange) {
+          await supabaseAdmin.from('payslip_recalculation_logs').insert({
+            batch_id: batchId,
+            store_id: storeId,
+            cast_id: cast.id,
+            cast_name: cast.name,
+            year_month: yearMonth,
+            triggered_by: triggeredBy,
+            before_values: beforeValues,
+            after_values: afterValues,
+          })
+        }
+      } catch (logErr) {
+        console.error('Failed to insert recalculation log:', logErr)
+      }
+    }
+
     return { success: true }
   } catch (err) {
     console.error('Payslip calculation error:', err)
@@ -1196,6 +1233,9 @@ export async function POST(request: NextRequest) {
       month = new Date()
     }
 
+    const batchId = randomUUID()
+    const triggeredBy: 'manual' | 'cron' = isCron ? 'cron' : 'manual'
+
     let totalProcessed = 0
     let totalErrors = 0
 
@@ -1209,7 +1249,7 @@ export async function POST(request: NextRequest) {
         .single()
 
       if (cast) {
-        const result = await calculatePayslipForCast(targetStoreId, cast, month)
+        const result = await calculatePayslipForCast(targetStoreId, cast, month, batchId, triggeredBy)
         if (result.success) {
           totalProcessed++
         } else {
@@ -1228,7 +1268,7 @@ export async function POST(request: NextRequest) {
         .eq('is_active', true)
 
       for (const cast of casts || []) {
-        const result = await calculatePayslipForCast(targetStoreId, cast, month)
+        const result = await calculatePayslipForCast(targetStoreId, cast, month, batchId, triggeredBy)
         if (result.success) {
           totalProcessed++
         } else {
@@ -1250,7 +1290,7 @@ export async function POST(request: NextRequest) {
           .eq('is_active', true)
 
         for (const cast of casts || []) {
-          const result = await calculatePayslipForCast(store.id, cast, month)
+          const result = await calculatePayslipForCast(store.id, cast, month, batchId, triggeredBy)
           if (result.success) {
             totalProcessed++
           } else {

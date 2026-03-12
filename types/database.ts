@@ -1189,3 +1189,28 @@ export interface BonusDetailItem {
   amount: number
   detail: string
 }
+
+// 再計算ログ
+export interface PayslipRecalculationLogValues {
+  gross_total: number
+  hourly_income: number
+  sales_back: number
+  product_back: number
+  fixed_amount: number
+  bonus_total: number
+  total_deduction: number
+  net_payment: number
+}
+
+export interface PayslipRecalculationLog {
+  id: number
+  batch_id: string
+  store_id: number
+  cast_id: number
+  cast_name: string
+  year_month: string
+  triggered_by: 'manual' | 'cron'
+  before_values: PayslipRecalculationLogValues
+  after_values: PayslipRecalculationLogValues
+  created_at: string
+}

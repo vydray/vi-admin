@@ -10,6 +10,7 @@ import { calculateCastSalesByPublishedMethod, getDefaultSalesSettings, applyRoun
 import { exportToPDF } from '@/lib/pdfExport'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import ProtectedPage from '@/components/ProtectedPage'
+import RecalculationHistoryModal from '@/components/RecalculationHistoryModal'
 
 interface Cast {
   id: number
@@ -269,6 +270,7 @@ function PayslipPageContent() {
   const [exporting, setExporting] = useState(false)
   const [csvExporting, setCsvExporting] = useState(false)
   const [showExportModal, setShowExportModal] = useState(false)
+  const [showHistoryModal, setShowHistoryModal] = useState(false)
   const printRef = useRef<HTMLDivElement>(null)
   const [selectedDayDetail, setSelectedDayDetail] = useState<string | null>(null) // 日別詳細モーダル用
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set()) // 展開中の伝票ID
@@ -1930,7 +1932,7 @@ function PayslipPageContent() {
                 backgroundColor: '#f3f4f6',
                 color: '#6b7280'
               }}>
-                10分ごとに自動保存
+                毎日AM3時に自動計算
               </span>
             )}
             {/* 個別再計算ボタン */}
@@ -1968,6 +1970,24 @@ function PayslipPageContent() {
               }}
             >
               {recalculating ? '計算中...' : '全キャスト再計算'}
+            </button>
+            {/* 履歴ボタン */}
+            <button
+              onClick={() => setShowHistoryModal(true)}
+              disabled={!selectedCastId}
+              style={{
+                padding: '8px 16px',
+                backgroundColor: !selectedCastId ? '#94a3b8' : '#f59e0b',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '8px',
+                fontSize: '14px',
+                fontWeight: '500',
+                cursor: !selectedCastId ? 'not-allowed' : 'pointer',
+                opacity: !selectedCastId ? 0.5 : 1
+              }}
+            >
+              履歴
             </button>
             {/* エクスポートボタン */}
             <button
@@ -2804,6 +2824,18 @@ function PayslipPageContent() {
             </div>
           </div>
         </>
+      )}
+
+      {/* 再計算履歴モーダル */}
+      {selectedCastId && (
+        <RecalculationHistoryModal
+          isOpen={showHistoryModal}
+          onClose={() => setShowHistoryModal(false)}
+          storeId={storeId}
+          castId={selectedCastId}
+          castName={casts.find(c => c.id === selectedCastId)?.name || ''}
+          yearMonth={format(selectedMonth, 'yyyy-MM')}
+        />
       )}
 
       {/* 再計算進捗モーダル */}
