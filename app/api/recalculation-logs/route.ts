@@ -7,6 +7,15 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
+function getSession(sessionCookie: { value: string } | undefined) {
+  if (!sessionCookie) return null
+  try {
+    return JSON.parse(sessionCookie.value)
+  } catch {
+    return null
+  }
+}
+
 export async function GET(request: NextRequest) {
   // 認証チェック
   const cookieStore = await cookies()
@@ -182,4 +191,33 @@ export async function GET(request: NextRequest) {
   }
 
   return NextResponse.json({ logs: data })
+}
+
+// DELETE: バッチ削除（super_adminのみ）
+export async function DELETE(request: NextRequest) {
+  const cookieStore = await cookies()
+  const session = getSession(cookieStore.get('admin_session'))
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  if (session.role !== 'super_admin') {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
+  const { batch_id } = await request.json()
+  if (!batch_id) {
+    return NextResponse.json({ error: 'batch_id is required' }, { status: 400 })
+  }
+
+  const { error } = await supabaseAdmin
+    .from('payslip_recalculation_logs')
+    .delete()
+    .eq('batch_id', batch_id)
+
+  if (error) {
+    console.error('Batch delete error:', error)
+    return NextResponse.json({ error: 'Failed to delete batch' }, { status: 500 })
+  }
+
+  return NextResponse.json({ success: true })
 }

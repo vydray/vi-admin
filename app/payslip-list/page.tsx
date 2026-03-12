@@ -6,6 +6,7 @@ import { jsPDF } from 'jspdf'
 import { ja } from 'date-fns/locale'
 import html2canvas from 'html2canvas'
 import { useStore } from '@/contexts/StoreContext'
+import { useAuth } from '@/contexts/AuthContext'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import ProtectedPage from '@/components/ProtectedPage'
 import RecalculationHistoryModal from '@/components/RecalculationHistoryModal'
@@ -40,6 +41,7 @@ export default function PayslipListPage() {
 
 function PayslipListContent() {
   const { storeId, storeName } = useStore()
+  const { user } = useAuth()
   const [loading, setLoading] = useState(true)
   const [exporting, setExporting] = useState(false)
   const [selectedMonth, setSelectedMonth] = useState(subMonths(new Date(), 1))
@@ -600,6 +602,7 @@ function PayslipListContent() {
         onClose={() => setShowCompareModal(false)}
         storeId={storeId}
         yearMonth={format(selectedMonth, 'yyyy-MM')}
+        isSuperAdmin={user?.role === 'super_admin'}
       />
     </div>
   )

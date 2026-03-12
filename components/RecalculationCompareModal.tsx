@@ -24,6 +24,7 @@ interface Props {
   onClose: () => void
   storeId: number
   yearMonth: string
+  isSuperAdmin?: boolean
 }
 
 const FIELDS: { key: keyof PayslipRecalculationLogValues; label: string }[] = [
@@ -50,7 +51,7 @@ function formatTimestamp(ts: string) {
   return d.toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }
 
-export default function RecalculationCompareModal({ isOpen, onClose, storeId, yearMonth }: Props) {
+export default function RecalculationCompareModal({ isOpen, onClose, storeId, yearMonth, isSuperAdmin }: Props) {
   const [batches, setBatches] = useState<Batch[]>([])
   const [fromBatch, setFromBatch] = useState<string>('')
   const [toBatch, setToBatch] = useState<string>('current')
@@ -59,6 +60,7 @@ export default function RecalculationCompareModal({ isOpen, onClose, storeId, ye
   const [loadingBatches, setLoadingBatches] = useState(false)
   const [showOnlyChanged, setShowOnlyChanged] = useState(false)
   const [pdfLoading, setPdfLoading] = useState(false)
+  const [deleting, setDeleting] = useState<string | null>(null)
   const tableRef = useRef<HTMLDivElement>(null)
 
   // バッチ一覧を取得
@@ -177,6 +179,32 @@ export default function RecalculationCompareModal({ isOpen, onClose, storeId, ye
     }
   }
 
+  // バッチ削除（super_adminのみ）
+  const deleteBatch = async (batchId: string) => {
+    if (!confirm('このバッチのログを削除しますか？この操作は取り消せません。')) return
+    setDeleting(batchId)
+    try {
+      const res = await fetch('/api/recalculation-logs', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ batch_id: batchId }),
+      })
+      if (res.ok) {
+        // バッチ一覧を再取得
+        const newBatches = batches.filter(b => b.batch_id !== batchId)
+        setBatches(newBatches)
+        if (fromBatch === batchId) {
+          setFromBatch(newBatches[0]?.batch_id || '')
+        }
+        if (toBatch === batchId) {
+          setToBatch('current')
+        }
+      }
+    } finally {
+      setDeleting(null)
+    }
+  }
+
   return (
     <div
       style={{
@@ -226,6 +254,20 @@ export default function RecalculationCompareModal({ isOpen, onClose, storeId, ye
               ))}
             </select>
           </div>
+          {isSuperAdmin && fromBatch && (
+            <button
+              onClick={() => deleteBatch(fromBatch)}
+              disabled={deleting === fromBatch}
+              style={{
+                padding: '6px 10px', fontSize: '11px',
+                backgroundColor: 'transparent', color: '#dc2626', border: '1px solid #fca5a5',
+                borderRadius: '6px', cursor: deleting === fromBatch ? 'wait' : 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {deleting === fromBatch ? '削除中...' : '削除'}
+            </button>
+          )}
           <div style={{ fontSize: '14px', color: '#6b7280', paddingBottom: '6px' }}>→</div>
           <div>
             <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#6b7280', marginBottom: '4px' }}>
