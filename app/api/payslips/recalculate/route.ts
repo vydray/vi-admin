@@ -1157,6 +1157,7 @@ export async function POST(request: NextRequest) {
     let targetStoreId: number | null = null
     let targetYearMonth: string | null = null
     let targetCastId: number | null = null
+    let clientBatchId: string | null = null
     try {
       const body = await request.json()
 
@@ -1187,6 +1188,11 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ error: 'Invalid cast_id: must be a positive number' }, { status: 400 })
         }
         targetCastId = body.cast_id
+      }
+
+      // batch_id（フロントから共通batch_idを渡す場合）
+      if (body.batch_id && typeof body.batch_id === 'string') {
+        clientBatchId = body.batch_id
       }
     } catch {
       // bodyがない場合（Cronからの呼び出し）
@@ -1227,7 +1233,7 @@ export async function POST(request: NextRequest) {
       month = new Date()
     }
 
-    const batchId = randomUUID()
+    const batchId = clientBatchId || randomUUID()
     const triggeredBy: 'manual' | 'cron' = isCron ? 'cron' : 'manual'
 
     let totalProcessed = 0

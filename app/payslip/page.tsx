@@ -1527,6 +1527,9 @@ function PayslipPageContent() {
       let successCount = 0
       let errorCount = 0
 
+      // 全体再計算用の共通batch_idを生成
+      const batchId = crypto.randomUUID()
+
       // 各キャストについて順次計算
       for (let i = 0; i < activeCasts.length; i++) {
         const cast = activeCasts[i]
@@ -1539,7 +1542,8 @@ function PayslipPageContent() {
             body: JSON.stringify({
               store_id: storeId,
               year_month: yearMonth,
-              cast_id: cast.id
+              cast_id: cast.id,
+              batch_id: batchId
             })
           })
 
