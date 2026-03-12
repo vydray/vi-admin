@@ -9,6 +9,7 @@ import { useStore } from '@/contexts/StoreContext'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import ProtectedPage from '@/components/ProtectedPage'
 import RecalculationHistoryModal from '@/components/RecalculationHistoryModal'
+import RecalculationCompareModal from '@/components/RecalculationCompareModal'
 
 interface PayslipSummary {
   cast_id: number
@@ -45,6 +46,7 @@ function PayslipListContent() {
   const [payslips, setPayslips] = useState<PayslipSummary[]>([])
   const [showExportModal, setShowExportModal] = useState(false)
   const [historyCast, setHistoryCast] = useState<{ id: number; name: string } | null>(null)
+  const [showCompareModal, setShowCompareModal] = useState(false)
   const printRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -415,6 +417,24 @@ function PayslipListContent() {
           >
             {exporting ? '出力中...' : 'ダウンロード'}
           </button>
+
+          {/* 全体履歴ボタン */}
+          <button
+            onClick={() => setShowCompareModal(true)}
+            style={{
+              padding: '10px 20px',
+              backgroundColor: '#f59e0b',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              fontSize: '14px',
+              fontWeight: '500',
+              cursor: 'pointer',
+              marginLeft: '8px'
+            }}
+          >
+            全体履歴
+          </button>
         </div>
       </div>
 
@@ -573,6 +593,14 @@ function PayslipListContent() {
           yearMonth={format(selectedMonth, 'yyyy-MM')}
         />
       )}
+
+      {/* 全体比較モーダル */}
+      <RecalculationCompareModal
+        isOpen={showCompareModal}
+        onClose={() => setShowCompareModal(false)}
+        storeId={storeId}
+        yearMonth={format(selectedMonth, 'yyyy-MM')}
+      />
     </div>
   )
 }
