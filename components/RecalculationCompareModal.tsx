@@ -15,6 +15,7 @@ interface Comparison {
   cast_name: string
   from_values: PayslipRecalculationLogValues
   to_values: PayslipRecalculationLogValues
+  has_log: boolean
 }
 
 interface Props {
@@ -55,6 +56,7 @@ export default function RecalculationCompareModal({ isOpen, onClose, storeId, ye
   const [comparisons, setComparisons] = useState<Comparison[]>([])
   const [loading, setLoading] = useState(false)
   const [loadingBatches, setLoadingBatches] = useState(false)
+  const [showOnlyChanged, setShowOnlyChanged] = useState(false)
 
   // バッチ一覧を取得
   useEffect(() => {
@@ -64,7 +66,6 @@ export default function RecalculationCompareModal({ isOpen, onClose, storeId, ye
       .then(res => res.json())
       .then(data => {
         setBatches(data.batches || [])
-        // デフォルト: fromは最新バッチ, toは現在
         if (data.batches?.length > 0) {
           setFromBatch(data.batches[0].batch_id)
         } else {
@@ -97,10 +98,12 @@ export default function RecalculationCompareModal({ isOpen, onClose, storeId, ye
 
   if (!isOpen) return null
 
-  // 変更があるキャストのみ表示
-  const changedComparisons = comparisons.filter(c => {
-    return FIELDS.some(f => (c.from_values[f.key] ?? 0) !== (c.to_values[f.key] ?? 0))
-  })
+  // 変更があるキャスト判定
+  const hasChange = (c: Comparison) =>
+    FIELDS.some(f => (c.from_values[f.key] ?? 0) !== (c.to_values[f.key] ?? 0))
+
+  const changedCount = comparisons.filter(hasChange).length
+  const displayComparisons = showOnlyChanged ? comparisons.filter(hasChange) : comparisons
 
   return (
     <div
@@ -131,7 +134,7 @@ export default function RecalculationCompareModal({ isOpen, onClose, storeId, ye
         </div>
 
         {/* 時点選択 */}
-        <div style={{ display: 'flex', gap: '16px', marginBottom: '20px', flexWrap: 'wrap', alignItems: 'end' }}>
+        <div style={{ display: 'flex', gap: '16px', marginBottom: '12px', flexWrap: 'wrap', alignItems: 'end' }}>
           <div>
             <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#6b7280', marginBottom: '4px' }}>
               From（再計算前の状態）
@@ -174,11 +177,33 @@ export default function RecalculationCompareModal({ isOpen, onClose, storeId, ye
           </div>
         </div>
 
+        {/* フィルター */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#374151', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={showOnlyChanged}
+              onChange={e => setShowOnlyChanged(e.target.checked)}
+              style={{ cursor: 'pointer' }}
+            />
+            変更ありのみ表示
+          </label>
+          {!loading && (
+            <span style={{ fontSize: '12px', color: '#9ca3af' }}>
+              ({changedCount}名変更あり / 全{comparisons.length}名)
+            </span>
+          )}
+        </div>
+
         {loading ? (
           <div style={{ textAlign: 'center', padding: '32px', color: '#9ca3af' }}>読込中...</div>
-        ) : changedComparisons.length === 0 ? (
+        ) : comparisons.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '32px', color: '#9ca3af' }}>
-            {comparisons.length === 0 ? '比較データがありません' : '変更のあるキャストはいません'}
+            比較データがありません
+          </div>
+        ) : displayComparisons.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '32px', color: '#9ca3af' }}>
+            変更のあるキャストはいません
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
@@ -197,36 +222,60 @@ export default function RecalculationCompareModal({ isOpen, onClose, storeId, ye
                 </tr>
               </thead>
               <tbody>
-                {changedComparisons.map(c => (
-                  <tr key={c.cast_id} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                    <td style={{ padding: '8px', fontWeight: 500, whiteSpace: 'nowrap' }}>{c.cast_name}</td>
-                    {FIELDS.map(f => {
-                      const from = c.from_values[f.key] ?? 0
-                      const to = c.to_values[f.key] ?? 0
-                      const diff = to - from
-                      const isHighlight = f.key === 'net_payment' || f.key === 'gross_total'
-                      return (
-                        <td key={f.key} style={{
-                          padding: '8px', textAlign: 'right', whiteSpace: 'nowrap',
-                          backgroundColor: isHighlight ? (f.key === 'net_payment' ? '#f0fdf4' : '#f0f9ff') : undefined,
-                        }}>
-                          <div style={{ fontSize: '11px', color: '#9ca3af' }}>
-                            {fmt(from)} → {fmt(to)}
-                          </div>
-                          <DiffText diff={diff} />
-                        </td>
-                      )
-                    })}
-                  </tr>
-                ))}
+                {displayComparisons.map(c => {
+                  const isChanged = hasChange(c)
+                  return (
+                    <tr key={c.cast_id} style={{
+                      borderBottom: '1px solid #f3f4f6',
+                      opacity: isChanged ? 1 : 0.5,
+                    }}>
+                      <td style={{ padding: '8px', fontWeight: 500, whiteSpace: 'nowrap' }}>
+                        {c.cast_name}
+                        {!c.has_log && (
+                          <span style={{ fontSize: '10px', color: '#d1d5db', marginLeft: '4px' }}>※ログなし</span>
+                        )}
+                      </td>
+                      {FIELDS.map(f => {
+                        const from = c.from_values[f.key] ?? 0
+                        const to = c.to_values[f.key] ?? 0
+                        const diff = to - from
+                        const isHighlight = f.key === 'net_payment' || f.key === 'gross_total'
+                        const fieldChanged = diff !== 0
+                        return (
+                          <td key={f.key} style={{
+                            padding: '8px', textAlign: 'right', whiteSpace: 'nowrap',
+                            backgroundColor: fieldChanged
+                              ? '#fffbeb'  // 変更があるセルを黄色ハイライト
+                              : isHighlight
+                                ? (f.key === 'net_payment' ? '#f0fdf4' : '#f0f9ff')
+                                : undefined,
+                          }}>
+                            {fieldChanged ? (
+                              <>
+                                <div style={{ fontSize: '11px', color: '#9ca3af' }}>
+                                  {fmt(from)} → {fmt(to)}
+                                </div>
+                                <DiffText diff={diff} />
+                              </>
+                            ) : (
+                              <div style={{ fontSize: '11px', color: '#9ca3af' }}>
+                                {fmt(to)}
+                              </div>
+                            )}
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  )
+                })}
               </tbody>
               {/* 合計行 */}
               <tfoot>
                 <tr style={{ backgroundColor: '#f1f5f9', fontWeight: 600, borderTop: '2px solid #e5e7eb' }}>
-                  <td style={{ padding: '8px' }}>合計 ({changedComparisons.length}名)</td>
+                  <td style={{ padding: '8px' }}>合計 ({displayComparisons.length}名)</td>
                   {FIELDS.map(f => {
-                    const totalFrom = changedComparisons.reduce((s, c) => s + (c.from_values[f.key] ?? 0), 0)
-                    const totalTo = changedComparisons.reduce((s, c) => s + (c.to_values[f.key] ?? 0), 0)
+                    const totalFrom = displayComparisons.reduce((s, c) => s + (c.from_values[f.key] ?? 0), 0)
+                    const totalTo = displayComparisons.reduce((s, c) => s + (c.to_values[f.key] ?? 0), 0)
                     const totalDiff = totalTo - totalFrom
                     return (
                       <td key={f.key} style={{ padding: '8px', textAlign: 'right', whiteSpace: 'nowrap' }}>

@@ -131,26 +131,27 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 全キャストの差分を作成
+    // 全キャストの差分を作成（ログがないキャストもTo側の値で表示）
     const allCastIds = new Set([...Object.keys(fromValues).map(Number), ...Object.keys(toValues).map(Number)])
     const comparisons: {
       cast_id: number
       cast_name: string
       from_values: Record<string, number>
       to_values: Record<string, number>
+      has_log: boolean
     }[] = []
 
     for (const castId of allCastIds) {
       const from = fromValues[castId]
       const to = toValues[castId]
-      // Fromにログがないキャストは比較対象外（差分が意味をなさない）
-      if (!from || !to) continue
+      if (!to) continue // To側にpayslipがないキャストはスキップ
 
       comparisons.push({
         cast_id: castId,
-        cast_name: to.cast_name || from.cast_name,
-        from_values: from.values,
+        cast_name: to.cast_name || from?.cast_name || '',
+        from_values: from?.values || to.values, // ログがなければTo値をそのまま使う（差分0）
         to_values: to.values,
+        has_log: !!from,
       })
     }
 
