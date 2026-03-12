@@ -1511,9 +1511,29 @@ function PayslipPageContent() {
     setShowRecalcModal(true)
 
     try {
-      // アクティブなキャストリストを取得（在籍中のキャスト）
+      // payslipが存在する全キャスト（退店・体験含む）を再計算対象にする
+      const { data: payslipCasts } = await supabase
+        .from('payslips')
+        .select('cast_id, casts(id, name)')
+        .eq('store_id', storeId)
+        .eq('year_month', yearMonth)
+
+      // アクティブキャスト（在籍中）+ payslipがある非アクティブキャストをマージ
       const activeCasts = casts.filter(c => c.status === '在籍')
-      const total = activeCasts.length
+      const castMap = new Map<number, { id: number; name: string }>()
+      for (const c of activeCasts) {
+        castMap.set(c.id, { id: c.id, name: c.name })
+      }
+      // payslipがあるキャストも追加（重複除去）
+      for (const p of payslipCasts || []) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const castData = (p as any).casts as { id: number; name: string } | null
+        if (castData && !castMap.has(castData.id)) {
+          castMap.set(castData.id, { id: castData.id, name: castData.name })
+        }
+      }
+      const allTargetCasts = Array.from(castMap.values())
+      const total = allTargetCasts.length
 
       if (total === 0) {
         alert('再計算対象のキャストがいません')
@@ -1531,8 +1551,8 @@ function PayslipPageContent() {
       const batchId = crypto.randomUUID()
 
       // 各キャストについて順次計算
-      for (let i = 0; i < activeCasts.length; i++) {
-        const cast = activeCasts[i]
+      for (let i = 0; i < allTargetCasts.length; i++) {
+        const cast = allTargetCasts[i]
         setRecalcProgress({ current: i + 1, total, castName: cast.name })
 
         try {

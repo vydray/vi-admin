@@ -1261,13 +1261,28 @@ export async function POST(request: NextRequest) {
       }
     } else if (targetStoreId) {
       // 特定店舗の全キャスト計算（手動実行）
-      const { data: casts } = await supabaseAdmin
+      // アクティブキャスト + payslipが存在する非アクティブキャスト
+      const { data: activeCasts } = await supabaseAdmin
         .from('casts')
         .select('id, name')
         .eq('store_id', targetStoreId)
         .eq('is_active', true)
 
-      for (const cast of casts || []) {
+      const yearMonth = format(month, 'yyyy-MM')
+      const { data: payslipCasts } = await supabaseAdmin
+        .from('payslips')
+        .select('cast_id, casts(id, name)')
+        .eq('store_id', targetStoreId)
+        .eq('year_month', yearMonth)
+
+      const castMap = new Map<number, { id: number; name: string }>()
+      for (const c of activeCasts || []) castMap.set(c.id, c)
+      for (const p of payslipCasts || []) {
+        const c = (p as Record<string, unknown>).casts as { id: number; name: string } | null
+        if (c && !castMap.has(c.id)) castMap.set(c.id, c)
+      }
+
+      for (const cast of castMap.values()) {
         const result = await calculatePayslipForCast(targetStoreId, cast, month, batchId, triggeredBy)
         if (result.success) {
           totalProcessed++
@@ -1283,13 +1298,27 @@ export async function POST(request: NextRequest) {
         .select('id')
 
       for (const store of stores || []) {
-        const { data: casts } = await supabaseAdmin
+        const { data: activeCasts } = await supabaseAdmin
           .from('casts')
           .select('id, name')
           .eq('store_id', store.id)
           .eq('is_active', true)
 
-        for (const cast of casts || []) {
+        const yearMonth = format(month, 'yyyy-MM')
+        const { data: payslipCasts } = await supabaseAdmin
+          .from('payslips')
+          .select('cast_id, casts(id, name)')
+          .eq('store_id', store.id)
+          .eq('year_month', yearMonth)
+
+        const castMap = new Map<number, { id: number; name: string }>()
+        for (const c of activeCasts || []) castMap.set(c.id, c)
+        for (const p of payslipCasts || []) {
+          const c = (p as Record<string, unknown>).casts as { id: number; name: string } | null
+          if (c && !castMap.has(c.id)) castMap.set(c.id, c)
+        }
+
+        for (const cast of castMap.values()) {
           const result = await calculatePayslipForCast(store.id, cast, month, batchId, triggeredBy)
           if (result.success) {
             totalProcessed++
