@@ -1091,11 +1091,13 @@ function PayslipPageContent() {
         }
       })
 
-    // 源泉徴収（%計算）- 総支給額に対して計算
+    // 源泉徴収（%計算）- 賞与を含む総支給額に対して計算
+    const bonusForDeduction = savedPayslip?.bonus_total || 0
+    const grossWithBonus = summary.grossEarnings + bonusForDeduction
     const percentageDeductions = deductionTypes.filter(d => d.type === 'percentage' && d.percentage && (enabledIds === null || enabledIds.includes(d.id)))
     percentageDeductions.forEach(d => {
-      // 総支給額に対して源泉徴収を計算（他の控除を引く前）
-      const amount = Math.round(summary.grossEarnings * (d.percentage || 0) / 100)
+      // 賞与を含む総支給額に対して源泉徴収を計算（他の控除を引く前）
+      const amount = Math.round(grossWithBonus * (d.percentage || 0) / 100)
       if (amount > 0) {
         results.push({
           name: d.name,
@@ -1106,11 +1108,15 @@ function PayslipPageContent() {
     })
 
     return results
-  }, [deductionTypes, attendanceData, latePenaltyRules, workDayStatusIds, compensationSettings, summary.grossEarnings, calculateLatePenalty])
+  }, [deductionTypes, attendanceData, latePenaltyRules, workDayStatusIds, compensationSettings, summary.grossEarnings, savedPayslip, calculateLatePenalty])
+
+  // 賞与を含む総支給額
+  const bonusTotal = savedPayslip?.bonus_total || 0
+  const grossEarningsWithBonus = summary.grossEarnings + bonusTotal
 
   // 控除合計・差引支給額
   const totalDeduction = deductions.reduce((sum, d) => sum + d.amount, 0)
-  const netEarnings = summary.grossEarnings - totalDeduction
+  const netEarnings = grossEarningsWithBonus - totalDeduction
 
   // 報酬形態ごとの売上集計方法を取得（異なる場合のみ複数表示）
   const salesAggregationByType = useMemo(() => {
@@ -1415,7 +1421,7 @@ function PayslipPageContent() {
         sales_back: summary.salesBack,
         product_back: summary.totalProductBack,
         fixed_amount: summary.fixedAmount,
-        gross_total: summary.grossEarnings,
+        gross_total: grossEarningsWithBonus,
         total_deduction: totalDeduction,
         net_payment: netEarnings,
         daily_details: dailyDetailsData,
@@ -1766,7 +1772,7 @@ function PayslipPageContent() {
         summary.totalProductBack,
         summary.fixedAmount,
         summary.perAttendanceIncome,
-        summary.grossEarnings,
+        grossEarningsWithBonus,
         csvDailyPayment,
         csvWithholdingTax,
         csvOtherDeductions,
@@ -2193,7 +2199,7 @@ function PayslipPageContent() {
                 : '#1a365d'
             }}>
               <div style={styles.grossLabel}>総支給額</div>
-              <div style={styles.grossValue}>{currencyFormatter.format(summary.grossEarnings)}</div>
+              <div style={styles.grossValue}>{currencyFormatter.format(grossEarningsWithBonus)}</div>
             </div>
 
             {/* 賞与内訳 */}
