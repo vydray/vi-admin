@@ -260,29 +260,33 @@ export default function Home() {
         return
       }
 
-      // 報酬計算設定があるキャスト
+      // 報酬計算設定があるキャスト（月別設定 or 全期間共通設定）
       const { data: compSettings } = await supabase
         .from('compensation_settings')
-        .select('cast_id')
+        .select('cast_id, status_id, hourly_wage_override, target_year, target_month')
         .eq('store_id', storeId)
         .eq('is_active', true)
+        .or(`and(target_year.eq.${selectedYear},target_month.eq.${selectedMonth}),and(target_year.is.null,target_month.is.null)`)
 
-      const compCastIds = new Set((compSettings || []).map(s => s.cast_id))
-      const noCompensation = activeCasts.filter(c => !compCastIds.has(c.id))
+      // キャストごとに月別設定優先で判定
+      const compBycast = new Map<number, { hasSettings: boolean; hasWage: boolean }>()
+      for (const s of compSettings || []) {
+        const existing = compBycast.get(s.cast_id)
+        const isMonthly = s.target_year === selectedYear && s.target_month === selectedMonth
+        // 月別設定があればそちらを優先
+        if (!existing || isMonthly) {
+          compBycast.set(s.cast_id, {
+            hasSettings: true,
+            hasWage: s.status_id != null || (s.hourly_wage_override != null && s.hourly_wage_override > 0),
+          })
+        }
+      }
 
-      // 時給設定（compensation_settingsのstatus_idまたはhourly_wage_override）
-      const { data: wageSettings } = await supabase
-        .from('compensation_settings')
-        .select('cast_id, status_id, hourly_wage_override')
-        .eq('store_id', storeId)
-        .eq('is_active', true)
-
-      const wageCastIds = new Set(
-        (wageSettings || [])
-          .filter(s => s.status_id != null || (s.hourly_wage_override != null && s.hourly_wage_override > 0))
-          .map(s => s.cast_id)
-      )
-      const noWageStatus = activeCasts.filter(c => !wageCastIds.has(c.id))
+      const noCompensation = activeCasts.filter(c => !compBycast.has(c.id))
+      const noWageStatus = activeCasts.filter(c => {
+        const entry = compBycast.get(c.id)
+        return !entry || !entry.hasWage
+      })
 
       // バック対象商品があるか確認（カテゴリ・商品のback_rate_requiredフラグ）
       const { data: backRequiredProducts } = await supabase
