@@ -168,8 +168,15 @@ export default function RecalculationCompareModal({ isOpen, onClose, storeId, ye
     if (!tableRef.current) return
     setPdfLoading(true)
     try {
-      // スクロール制約を一時解除して全体をキャプチャ
-      const parent = tableRef.current.parentElement
+      // スクロール制約とモーダル幅制限を一時解除して全体をキャプチャ
+      const modalEl = tableRef.current.closest('[data-modal-content]') as HTMLElement | null
+      const origModalMaxWidth = modalEl?.style.maxWidth || ''
+      const origModalWidth = modalEl?.style.width || ''
+      if (modalEl) {
+        modalEl.style.maxWidth = 'none'
+        modalEl.style.width = '1400px'
+      }
+
       const origOverflow = tableRef.current.style.overflow
       const origMaxHeight = tableRef.current.style.maxHeight
       const origFlex = tableRef.current.style.flex
@@ -191,6 +198,10 @@ export default function RecalculationCompareModal({ isOpen, onClose, storeId, ye
       tableRef.current.style.maxHeight = origMaxHeight
       tableRef.current.style.flex = origFlex
       tableRef.current.style.minHeight = origMinHeight
+      if (modalEl) {
+        modalEl.style.maxWidth = origModalMaxWidth
+        modalEl.style.width = origModalWidth
+      }
     } finally {
       setPdfLoading(false)
     }
@@ -373,6 +384,7 @@ export default function RecalculationCompareModal({ isOpen, onClose, storeId, ye
       onClick={onClose}
     >
       <div
+        data-modal-content
         style={{
           backgroundColor: '#fff', borderRadius: '12px', padding: '24px',
           maxWidth: '1100px', width: '95%', maxHeight: '85vh', display: 'flex', flexDirection: 'column' as const,
