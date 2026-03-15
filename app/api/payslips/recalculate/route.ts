@@ -1238,6 +1238,7 @@ export async function POST(request: NextRequest) {
 
     let totalProcessed = 0
     let totalErrors = 0
+    const failedCasts: { id: number; name: string; error: string }[] = []
 
     if (targetCastId && targetStoreId) {
       // 単一キャスト計算（進捗表示用）
@@ -1254,7 +1255,8 @@ export async function POST(request: NextRequest) {
           totalProcessed++
         } else {
           totalErrors++
-          console.error(`Payslip error for cast ${cast.id}:`, result.error)
+          failedCasts.push({ id: cast.id, name: cast.name, error: result.error || 'Unknown error' })
+          console.error(`Payslip error for cast ${cast.id} (${cast.name}):`, result.error)
         }
       } else {
         return NextResponse.json({ error: 'Cast not found' }, { status: 404 })
@@ -1288,7 +1290,8 @@ export async function POST(request: NextRequest) {
           totalProcessed++
         } else {
           totalErrors++
-          console.error(`Payslip error for cast ${cast.id}:`, result.error)
+          failedCasts.push({ id: cast.id, name: cast.name, error: result.error || 'Unknown error' })
+          console.error(`Payslip error for cast ${cast.id} (${cast.name}):`, result.error)
         }
       }
     } else if (isCron) {
@@ -1336,6 +1339,7 @@ export async function POST(request: NextRequest) {
       success: true,
       processed: totalProcessed,
       errors: totalErrors,
+      failedCasts: failedCasts.length > 0 ? failedCasts : undefined,
       timestamp: new Date().toISOString()
     })
   } catch (error) {

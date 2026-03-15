@@ -1552,6 +1552,7 @@ function PayslipPageContent() {
 
       let successCount = 0
       let errorCount = 0
+      const failedCastNames: string[] = []
 
       // 全体再計算用の共通batch_idを生成
       const batchId = crypto.randomUUID()
@@ -1578,16 +1579,19 @@ function PayslipPageContent() {
             successCount++
           } else {
             errorCount++
+            failedCastNames.push(cast.name)
             console.error(`${cast.name}の計算失敗:`, result.error)
           }
         } catch (err) {
           errorCount++
+          failedCastNames.push(cast.name)
           console.error(`${cast.name}の計算エラー:`, err)
         }
       }
 
       // 完了メッセージ
-      alert(`再計算完了: 成功 ${successCount}件, 失敗 ${errorCount}件`)
+      const failedInfo = failedCastNames.length > 0 ? `\n失敗: ${failedCastNames.join('、')}` : ''
+      alert(`再計算完了: 成功 ${successCount}件, 失敗 ${errorCount}件${failedInfo}`)
 
       // 現在のキャストのデータを再読み込み
       if (selectedCastId) {
