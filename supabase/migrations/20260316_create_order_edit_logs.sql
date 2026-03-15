@@ -2,8 +2,8 @@
 CREATE TABLE order_edit_logs (
   id SERIAL PRIMARY KEY,
   store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
-  order_id INTEGER NOT NULL,
-  order_item_id INTEGER,
+  order_id UUID NOT NULL,
+  order_item_id UUID,
   action_type VARCHAR(20) NOT NULL,  -- 'edit_order' | 'edit_item' | 'delete_order' | 'delete_item' | 'add_item' | 'edit_payment'
   before_values JSONB,               -- 削除前/編集前の値（addではnull）
   after_values JSONB,                -- 編集後の値（deleteではnull）

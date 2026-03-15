@@ -1223,8 +1223,8 @@ export type OrderEditActionType = 'edit_order' | 'edit_item' | 'delete_order' | 
 export interface OrderEditLog {
   id: number
   store_id: number
-  order_id: number
-  order_item_id: number | null
+  order_id: string
+  order_item_id: string | null
   action_type: OrderEditActionType
   before_values: Record<string, unknown> | null
   after_values: Record<string, unknown> | null
