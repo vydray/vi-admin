@@ -247,9 +247,10 @@ export default function Home() {
       // アクティブキャスト一覧
       const { data: activeCasts } = await supabase
         .from('casts')
-        .select('id, name')
+        .select('id, name, status')
         .eq('store_id', storeId)
         .eq('is_active', true)
+        .neq('status', '退店')
 
       if (!activeCasts || activeCasts.length === 0) {
         setMissingSettings(null)
