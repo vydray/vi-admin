@@ -144,6 +144,13 @@ export default function Home() {
   const [showDailyReportModal, setShowDailyReportModal] = useState(false)
   const [selectedDayData, setSelectedDayData] = useState<DailySalesData | null>(null)
 
+  // 未設定アラート
+  const [missingSettings, setMissingSettings] = useState<{
+    noCompensation: { id: number; name: string }[]
+    noWageStatus: { id: number; name: string }[]
+    noBackRates: { id: number; name: string }[]
+  } | null>(null)
+
   // レジ金チェック
   const [cashCountData, setCashCountData] = useState<{
     bill_10000: number
@@ -217,8 +224,68 @@ export default function Home() {
   useEffect(() => {
     if (!storeLoading && storeId) {
       fetchDashboardData()
+      checkMissingSettings()
     }
   }, [storeId, selectedYear, selectedMonth, storeLoading])
+
+  const checkMissingSettings = async () => {
+    if (!storeId) return
+    try {
+      // アクティブキャスト一覧
+      const { data: activeCasts } = await supabase
+        .from('casts')
+        .select('id, name')
+        .eq('store_id', storeId)
+        .eq('is_active', true)
+
+      if (!activeCasts || activeCasts.length === 0) {
+        setMissingSettings(null)
+        return
+      }
+
+      // 報酬計算設定があるキャスト
+      const { data: compSettings } = await supabase
+        .from('compensation_settings')
+        .select('cast_id')
+        .eq('store_id', storeId)
+        .eq('is_active', true)
+
+      const compCastIds = new Set((compSettings || []).map(s => s.cast_id))
+      const noCompensation = activeCasts.filter(c => !compCastIds.has(c.id))
+
+      // 時給設定（compensation_settingsのstatus_idまたはhourly_wage_override）
+      const { data: wageSettings } = await supabase
+        .from('compensation_settings')
+        .select('cast_id, status_id, hourly_wage_override')
+        .eq('store_id', storeId)
+        .eq('is_active', true)
+
+      const wageCastIds = new Set(
+        (wageSettings || [])
+          .filter(s => s.status_id != null || (s.hourly_wage_override != null && s.hourly_wage_override > 0))
+          .map(s => s.cast_id)
+      )
+      const noWageStatus = activeCasts.filter(c => !wageCastIds.has(c.id))
+
+      // バック設定があるキャスト
+      const { data: backRates } = await supabase
+        .from('cast_back_rates')
+        .select('cast_id')
+        .eq('store_id', storeId)
+        .eq('is_active', true)
+
+      const backCastIds = new Set((backRates || []).map(r => r.cast_id))
+      const noBackRates = activeCasts.filter(c => !backCastIds.has(c.id))
+
+      if (noCompensation.length > 0 || noWageStatus.length > 0 || noBackRates.length > 0) {
+        setMissingSettings({ noCompensation, noWageStatus, noBackRates })
+      } else {
+        setMissingSettings(null)
+      }
+    } catch (err) {
+      console.error('未設定チェックエラー:', err)
+    }
+  }
 
   const exportToCSV = async (exportType: 'receipts' | 'monthly') => {
     setIsExporting(true)
@@ -869,6 +936,51 @@ export default function Home() {
           )}
         </div>
       </div>
+
+      {/* 未設定アラート */}
+      {missingSettings && (
+        <div style={{
+          margin: '0 0 20px',
+          padding: '16px 20px',
+          backgroundColor: '#fef3c7',
+          border: '1px solid #f59e0b',
+          borderRadius: '10px',
+        }}>
+          <div style={{ fontWeight: '700', fontSize: '15px', color: '#92400e', marginBottom: '12px' }}>
+            設定が未完了のキャストがいます
+          </div>
+          {missingSettings.noCompensation.length > 0 && (
+            <div style={{ marginBottom: '10px' }}>
+              <a href="/compensation-settings" style={{ fontWeight: '600', fontSize: '14px', color: '#b45309', textDecoration: 'underline', cursor: 'pointer' }}>
+                報酬計算設定
+              </a>
+              <span style={{ fontSize: '13px', color: '#92400e', marginLeft: '8px' }}>
+                未設定: {missingSettings.noCompensation.map(c => c.name).join('、')}
+              </span>
+            </div>
+          )}
+          {missingSettings.noWageStatus.length > 0 && (
+            <div style={{ marginBottom: '10px' }}>
+              <a href="/compensation-settings" style={{ fontWeight: '600', fontSize: '14px', color: '#b45309', textDecoration: 'underline', cursor: 'pointer' }}>
+                キャスト別時給設定
+              </a>
+              <span style={{ fontSize: '13px', color: '#92400e', marginLeft: '8px' }}>
+                未設定: {missingSettings.noWageStatus.map(c => c.name).join('、')}
+              </span>
+            </div>
+          )}
+          {missingSettings.noBackRates.length > 0 && (
+            <div>
+              <a href="/cast-back-rates" style={{ fontWeight: '600', fontSize: '14px', color: '#b45309', textDecoration: 'underline', cursor: 'pointer' }}>
+                バック設定
+              </a>
+              <span style={{ fontSize: '13px', color: '#92400e', marginLeft: '8px' }}>
+                未設定: {missingSettings.noBackRates.map(c => c.name).join('、')}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
 
       <div style={{
         ...styles.dateInfo,
