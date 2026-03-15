@@ -97,6 +97,7 @@ function CastBackRatesPageContent() {
   const [showCopyModal, setShowCopyModal] = useState(false)
   const [copyTargetCastIds, setCopyTargetCastIds] = useState<number[]>([])
   const [copying, setCopying] = useState(false)
+  const [copySearchText, setCopySearchText] = useState('')
 
   // 検索・フィルター
   const [searchText, setSearchText] = useState('')
@@ -207,6 +208,13 @@ function CastBackRatesPageContent() {
       return true
     })
   }, [casts, statusFilter, searchText])
+
+  // コピーモーダル用フィルター
+  const copyFilteredCasts = useMemo(() => {
+    return filteredCasts
+      .filter(c => c.id !== selectedCastId)
+      .filter(c => !copySearchText || c.name.includes(copySearchText))
+  }, [filteredCasts, selectedCastId, copySearchText])
 
   // 選択中のキャストのバック率一覧
   const castRates = useMemo(() => {
@@ -1585,12 +1593,34 @@ function CastBackRatesPageContent() {
               コピー先のキャストを選択してください（{castRates.length}件の設定をコピー）
             </p>
 
+            {/* 検索 */}
+            <input
+              type="text"
+              placeholder="キャスト名で検索..."
+              value={copySearchText}
+              onChange={(e) => setCopySearchText(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                borderRadius: '6px',
+                border: '1px solid #d1d5db',
+                fontSize: '14px',
+                marginBottom: '8px',
+                boxSizing: 'border-box',
+              }}
+            />
+
             {/* 全選択/解除 */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
               <button
                 onClick={() => {
-                  const allIds = filteredCasts.filter(c => c.id !== selectedCastId).map(c => c.id)
-                  setCopyTargetCastIds(copyTargetCastIds.length === allIds.length ? [] : allIds)
+                  const allIds = copyFilteredCasts.map(c => c.id)
+                  const allSelected = allIds.every(id => copyTargetCastIds.includes(id))
+                  if (allSelected) {
+                    setCopyTargetCastIds(prev => prev.filter(id => !allIds.includes(id)))
+                  } else {
+                    setCopyTargetCastIds(prev => [...new Set([...prev, ...allIds])])
+                  }
                 }}
                 style={{
                   padding: '4px 10px',
@@ -1601,7 +1631,7 @@ function CastBackRatesPageContent() {
                   cursor: 'pointer',
                 }}
               >
-                {copyTargetCastIds.length === filteredCasts.filter(c => c.id !== selectedCastId).length ? '全解除' : '全選択'}
+                {copyFilteredCasts.every(c => copyTargetCastIds.includes(c.id)) && copyFilteredCasts.length > 0 ? '全解除' : '全選択'}
               </button>
               <span style={{ fontSize: '13px', color: '#666' }}>
                 {copyTargetCastIds.length}名選択中
@@ -1610,7 +1640,7 @@ function CastBackRatesPageContent() {
 
             {/* キャスト一覧 */}
             <div style={{ flex: 1, overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: '8px', marginBottom: '16px' }}>
-              {filteredCasts.filter(c => c.id !== selectedCastId).map(cast => {
+              {copyFilteredCasts.map(cast => {
                 const isChecked = copyTargetCastIds.includes(cast.id)
                 const targetRateCount = backRates.filter(r => r.cast_id === cast.id).length
                 return (
