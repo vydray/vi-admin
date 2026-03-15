@@ -13,7 +13,7 @@ interface LogOrderEditParams {
 
 export async function logOrderEdit(params: LogOrderEditParams): Promise<void> {
   try {
-    await supabase.from('order_edit_logs').insert({
+    const { error } = await supabase.from('order_edit_logs').insert({
       store_id: params.storeId,
       order_id: params.orderId,
       order_item_id: params.orderItemId ?? null,
@@ -22,6 +22,9 @@ export async function logOrderEdit(params: LogOrderEditParams): Promise<void> {
       after_values: params.afterValues,
       modified_by: params.modifiedBy,
     })
+    if (error) {
+      console.error('Failed to log order edit:', error)
+    }
   } catch (error) {
     console.error('Failed to log order edit:', error)
   }
