@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
 import { useConfirm } from '@/contexts/ConfirmContext'
@@ -77,14 +78,18 @@ interface OrderWithPayment {
 
 export default function ReceiptsPage() {
   return (
-    <ProtectedPage permissionKey="receipts">
-      <ReceiptsPageContent />
-    </ProtectedPage>
+    <Suspense>
+      <ProtectedPage permissionKey="receipts">
+        <ReceiptsPageContent />
+      </ProtectedPage>
+    </Suspense>
   )
 }
 
 function ReceiptsPageContent() {
   const { storeId, isLoading: storeLoading } = useStore()
+  const searchParams = useSearchParams()
+  const autoOpenOrderId = searchParams.get('order')
   const { confirm } = useConfirm()
   const [receipts, setReceipts] = useState<ReceiptWithDetails[]>([])
   const [loading, setLoading] = useState(true)
@@ -357,6 +362,14 @@ function ReceiptsPageContent() {
       loadSystemSettings()
     }
   }, [loadReceipts, loadMasterData, loadSystemSettings, storeLoading, storeId])
+
+  // URLパラメータから伝票を自動で開く（ダッシュボードからの遷移用）
+  useEffect(() => {
+    if (autoOpenOrderId && !loading && !storeLoading && storeId) {
+      openReceiptById(Number(autoOpenOrderId))
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoOpenOrderId, loading, storeLoading, storeId])
 
   // 商品名で伝票を検索（デバウンス付き）- 現在表示中の月の伝票内で検索
   useEffect(() => {
