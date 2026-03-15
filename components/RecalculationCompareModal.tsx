@@ -163,7 +163,7 @@ export default function RecalculationCompareModal({ isOpen, onClose, storeId, ye
     URL.revokeObjectURL(url)
   }
 
-  // PDFダウンロード
+  // PDFダウンロード（テーブル形式）
   const downloadPdf = async () => {
     if (!tableRef.current) return
     setPdfLoading(true)
@@ -174,6 +174,113 @@ export default function RecalculationCompareModal({ isOpen, onClose, storeId, ye
         format: 'a4',
         margin: 8,
       })
+    } finally {
+      setPdfLoading(false)
+    }
+  }
+
+  // 差分カードPDFダウンロード
+  const downloadCardPdf = async () => {
+    setPdfLoading(true)
+    try {
+      const container = document.createElement('div')
+      container.style.cssText = 'position:absolute;left:-9999px;top:0;width:794px;background:#fff;padding:20px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;'
+      document.body.appendChild(container)
+
+      // タイトル
+      const title = document.createElement('div')
+      title.style.cssText = 'text-align:center;margin-bottom:20px;'
+      title.innerHTML = `<div style="font-size:18px;font-weight:700;color:#1e293b;">再計算差分 報酬明細</div><div style="font-size:13px;color:#64748b;margin-top:4px;">${yearMonth}</div>`
+      container.appendChild(title)
+
+      // カードグリッド
+      const grid = document.createElement('div')
+      grid.style.cssText = 'display:flex;flex-wrap:wrap;gap:16px;'
+      container.appendChild(grid)
+
+      const targets = showOnlyChanged ? comparisons.filter(hasChange) : comparisons.filter(c =>
+        FIELDS.some(f => (c.from_values[f.key] ?? 0) !== 0 || (c.to_values[f.key] ?? 0) !== 0)
+      )
+
+      for (const c of targets) {
+        const card = document.createElement('div')
+        card.style.cssText = 'width:370px;border:1px solid #e2e8f0;border-radius:8px;padding:16px;break-inside:avoid;'
+
+        // ヘッダー
+        let html = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #e2e8f0;">
+          <div style="font-size:11px;color:#64748b;">${storeId === 1 ? 'Memorable' : 'MistressMirage'}<br>${yearMonth} 報酬明細</div>
+          <div style="font-size:18px;font-weight:700;color:#1e293b;">${c.cast_name}</div>
+        </div>`
+
+        // 収入項目
+        const incomeFields: { key: keyof PayslipRecalculationLogValues; label: string }[] = [
+          { key: 'hourly_income', label: '時給収入' },
+          { key: 'sales_back', label: '売上バック' },
+          { key: 'product_back', label: '商品バック' },
+          { key: 'fixed_amount', label: '固定額' },
+          { key: 'bonus_total', label: '賞与' },
+        ]
+
+        for (const f of incomeFields) {
+          const from = c.from_values[f.key] ?? 0
+          const to = c.to_values[f.key] ?? 0
+          const diff = to - from
+          if (from === 0 && to === 0) continue
+          html += `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:13px;">
+            <span style="color:#374151;">${f.label}</span>
+            <span style="color:#1e293b;">${diff !== 0
+              ? `<span style="color:#9ca3af;text-decoration:line-through;">¥${fmt(from)}</span> → ¥${fmt(to)} <span style="color:${diff > 0 ? '#16a34a' : '#dc2626'};font-weight:600;">(${diff > 0 ? '+' : ''}${fmt(diff)})</span>`
+              : `¥${fmt(to)}`}</span>
+          </div>`
+        }
+
+        // 総支給額
+        const grossFrom = c.from_values.gross_total ?? 0
+        const grossTo = c.to_values.gross_total ?? 0
+        const grossDiff = grossTo - grossFrom
+        html += `<div style="display:flex;justify-content:space-between;padding:8px 0 4px;margin-top:4px;border-top:1px dashed #d1d5db;font-size:13px;font-weight:600;">
+          <span>総支給額</span>
+          <span>${grossDiff !== 0
+            ? `<span style="color:#9ca3af;text-decoration:line-through;">¥${fmt(grossFrom)}</span> → ¥${fmt(grossTo)} <span style="color:${grossDiff > 0 ? '#16a34a' : '#dc2626'};">(${grossDiff > 0 ? '+' : ''}${fmt(grossDiff)})</span>`
+            : `¥${fmt(grossTo)}`}</span>
+        </div>`
+
+        // 控除合計
+        const dedFrom = c.from_values.total_deduction ?? 0
+        const dedTo = c.to_values.total_deduction ?? 0
+        const dedDiff = dedTo - dedFrom
+        if (dedFrom !== 0 || dedTo !== 0) {
+          html += `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:13px;color:#dc2626;">
+            <span>控除合計</span>
+            <span>${dedDiff !== 0
+              ? `<span style="text-decoration:line-through;color:#f87171;">-¥${fmt(dedFrom)}</span> → -¥${fmt(dedTo)} <span style="font-weight:600;">(${dedDiff > 0 ? '+' : ''}${fmt(dedDiff)})</span>`
+              : `-¥${fmt(dedTo)}`}</span>
+          </div>`
+        }
+
+        // 残り支給
+        const netFrom = c.from_values.net_payment ?? 0
+        const netTo = c.to_values.net_payment ?? 0
+        const netDiff = netTo - netFrom
+        html += `<div style="display:flex;justify-content:space-between;padding:8px 0 0;margin-top:4px;border-top:1px dashed #d1d5db;font-size:15px;font-weight:700;">
+          <span>残り支給</span>
+          <span>${netDiff !== 0
+            ? `<span style="color:#9ca3af;font-weight:400;text-decoration:line-through;font-size:12px;">¥${fmt(netFrom)}</span> ¥${fmt(netTo)} <span style="color:${netDiff > 0 ? '#16a34a' : '#dc2626'};font-size:13px;">(${netDiff > 0 ? '+' : ''}${fmt(netDiff)})</span>`
+            : `¥${fmt(netTo)}`}</span>
+        </div>`
+
+        card.innerHTML = html
+        grid.appendChild(card)
+      }
+
+      await exportToPDF(container, {
+        filename: `再計算差分_明細_${yearMonth}.pdf`,
+        orientation: 'portrait',
+        format: 'a4',
+        margin: 10,
+      })
+
+      document.body.removeChild(container)
     } finally {
       setPdfLoading(false)
     }
@@ -331,6 +438,17 @@ export default function RecalculationCompareModal({ isOpen, onClose, storeId, ye
                 }}
               >
                 {pdfLoading ? '生成中...' : 'PDF'}
+              </button>
+              <button
+                onClick={downloadCardPdf}
+                disabled={pdfLoading}
+                style={{
+                  padding: '5px 12px', fontSize: '12px', fontWeight: 600,
+                  backgroundColor: pdfLoading ? '#9ca3af' : '#7c3aed', color: '#fff', border: 'none',
+                  borderRadius: '6px', cursor: pdfLoading ? 'wait' : 'pointer',
+                }}
+              >
+                {pdfLoading ? '生成中...' : '差分明細'}
               </button>
             </div>
           )}
