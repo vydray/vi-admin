@@ -176,13 +176,14 @@ export default function Home() {
     unknown_amount: number
   } | null>(null)
 
-  // ASK商品アラート
+  // ASK商品・ゲストキャストアラート
   const [askItems, setAskItems] = useState<{
     orderDate: string
     tableName: string
     productName: string
     unitPrice: number
     orderId: number
+    guestCastName: string | null
   }[]>([])
 
   // レジ金データと日払いデータを取得
@@ -298,30 +299,37 @@ export default function Home() {
 
       const { data: askOrders } = await supabase
         .from('order_items')
-        .select('id, order_id, product_name, unit_price, orders!inner(id, order_date, table_number, deleted_at, payments(id))')
+        .select('id, order_id, product_name, unit_price, cast_name, orders!inner(id, order_date, table_number, deleted_at, payments(id))')
         .eq('orders.store_id', storeId)
         .gte('orders.order_date', startDate)
         .lte('orders.order_date', endDate)
         .is('orders.deleted_at', null)
 
+      const guestPattern = /ゲスト|guest|体験/i
       const askResults = (askOrders || [])
         .filter(item => {
           // 会計済み（paymentsがある）
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const order = (item as any).orders
           if (!order?.payments || order.payments.length === 0) return false
-          // 価格0円 or ASK/ask商品（名前変更・バック率設定が必要）
-          return item.unit_price === 0 || /ask/i.test(item.product_name || '')
+          // 価格0円 or ASK/ask商品 or キャスト名がゲスト/guest/体験
+          const isAskOrZero = item.unit_price === 0 || /ask/i.test(item.product_name || '')
+          const castNames: string[] = Array.isArray(item.cast_name) ? item.cast_name : item.cast_name ? [item.cast_name] : []
+          const hasGuestCast = castNames.some(name => guestPattern.test(name))
+          return isAskOrZero || hasGuestCast
         })
         .map(item => {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const order = (item as any).orders
+          const castNames: string[] = Array.isArray(item.cast_name) ? item.cast_name : item.cast_name ? [item.cast_name] : []
+          const guestCast = castNames.find(name => guestPattern.test(name))
           return {
             orderDate: order.order_date,
             tableName: order.table_number || '',
             productName: item.product_name,
             unitPrice: item.unit_price,
             orderId: item.order_id,
+            guestCastName: guestCast || null,
           }
         })
 
@@ -1036,7 +1044,7 @@ export default function Home() {
           borderRadius: '10px',
         }}>
           <div style={{ fontWeight: '700', fontSize: '15px', color: '#991b1b', marginBottom: '12px' }}>
-            ASK商品・価格未設定の商品があります（{askItems.length}件）
+            確認が必要な伝票があります（{askItems.length}件）
           </div>
           <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
             {askItems.map((item, i) => (
@@ -1051,7 +1059,14 @@ export default function Home() {
               }}>
                 <span style={{ color: '#9ca3af', minWidth: '70px' }}>{item.orderDate}</span>
                 <span style={{ minWidth: '60px' }}>{item.tableName}</span>
-                <span style={{ flex: 1, fontWeight: '600' }}>{item.productName}</span>
+                <span style={{ flex: 1, fontWeight: '600' }}>
+                  {item.productName}
+                  {item.guestCastName && (
+                    <span style={{ marginLeft: '6px', padding: '1px 6px', backgroundColor: '#fecaca', borderRadius: '4px', fontSize: '11px' }}>
+                      {item.guestCastName}
+                    </span>
+                  )}
+                </span>
                 <span>¥{item.unitPrice.toLocaleString()}</span>
                 <a
                   href={`/receipts?order=${item.orderId}`}
