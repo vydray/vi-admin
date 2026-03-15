@@ -309,46 +309,35 @@ export default function Home() {
       } else {
         setMissingSettings(null)
       }
-      // ASK商品チェック（会計済み伝票で商品名にASK/askを含むか価格0円）
+      // ASK商品・ゲストキャストチェック（RPCでDB側フィルタ）
       const yearMonthStr = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}`
       const startDate = `${yearMonthStr}-01`
       const endDate = `${yearMonthStr}-31`
 
-      const { data: askOrders } = await supabase
-        .from('order_items')
-        .select('id, order_id, product_name, unit_price, cast_name, orders!inner(id, order_date, table_number, deleted_at, payments(id))')
-        .eq('orders.store_id', storeId)
-        .gte('orders.order_date', startDate)
-        .lte('orders.order_date', endDate)
-        .is('orders.deleted_at', null)
+      const { data: flaggedItems } = await supabase
+        .rpc('get_flagged_order_items', {
+          p_store_id: storeId,
+          p_start_date: startDate,
+          p_end_date: endDate,
+        })
 
       const guestPattern = /ゲスト|guest|体験/i
-      const askResults = (askOrders || [])
-        .filter(item => {
-          // 会計済み（paymentsがある）
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const order = (item as any).orders
-          if (!order?.payments || order.payments.length === 0) return false
-          // 価格0円 or ASK/ask商品 or キャスト名がゲスト/guest/体験
-          const isAskOrZero = item.unit_price === 0 || /ask/i.test(item.product_name || '')
-          const castNames: string[] = Array.isArray(item.cast_name) ? item.cast_name : item.cast_name ? [item.cast_name] : []
-          const hasGuestCast = castNames.some(name => guestPattern.test(name))
-          return isAskOrZero || hasGuestCast
-        })
-        .map(item => {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const order = (item as any).orders
-          const castNames: string[] = Array.isArray(item.cast_name) ? item.cast_name : item.cast_name ? [item.cast_name] : []
-          const guestCast = castNames.find(name => guestPattern.test(name))
-          return {
-            orderDate: order.order_date,
-            tableName: order.table_number || '',
-            productName: item.product_name,
-            unitPrice: item.unit_price,
-            orderId: item.order_id,
-            guestCastName: guestCast || null,
-          }
-        })
+      const askResults = (flaggedItems || []).map((item: {
+        item_id: number; order_id: number; product_name: string;
+        unit_price: number; cast_name: string[] | string | null;
+        order_date: string; table_number: string | null;
+      }) => {
+        const castNames: string[] = Array.isArray(item.cast_name) ? item.cast_name : item.cast_name ? [item.cast_name] : []
+        const guestCast = castNames.find(name => guestPattern.test(name))
+        return {
+          orderDate: item.order_date,
+          tableName: item.table_number || '',
+          productName: item.product_name,
+          unitPrice: item.unit_price,
+          orderId: item.order_id,
+          guestCastName: guestCast || null,
+        }
+      })
 
       setAskItems(askResults)
     } catch (err) {
