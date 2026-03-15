@@ -176,6 +176,15 @@ export default function Home() {
     unknown_amount: number
   } | null>(null)
 
+  // ASK商品アラート
+  const [askItems, setAskItems] = useState<{
+    orderDate: string
+    tableName: string
+    productName: string
+    unitPrice: number
+    orderId: number
+  }[]>([])
+
   // レジ金データと日払いデータを取得
   const fetchCashCount = async (date: string) => {
     setCashCountLoading(true)
@@ -282,6 +291,43 @@ export default function Home() {
       } else {
         setMissingSettings(null)
       }
+      // ASK商品チェック（会計済み伝票で商品名にASK/askを含むか価格0円）
+      const yearMonthStr = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}`
+      const startDate = `${yearMonthStr}-01`
+      const endDate = `${yearMonthStr}-31`
+
+      const { data: askOrders } = await supabase
+        .from('order_items')
+        .select('id, order_id, product_name, unit_price, orders!inner(id, order_date, table_number, deleted_at, payments(id))')
+        .eq('orders.store_id', storeId)
+        .gte('orders.order_date', startDate)
+        .lte('orders.order_date', endDate)
+        .is('orders.deleted_at', null)
+
+      const askResults = (askOrders || [])
+        .filter(item => {
+          // 会計済み（paymentsがある）
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const order = (item as any).orders
+          if (!order?.payments || order.payments.length === 0) return false
+          // ASK商品名 or 価格0円
+          const nameMatch = /ask/i.test(item.product_name || '')
+          const zeroPrice = item.unit_price === 0
+          return nameMatch || zeroPrice
+        })
+        .map(item => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const order = (item as any).orders
+          return {
+            orderDate: order.order_date,
+            tableName: order.table_number || '',
+            productName: item.product_name,
+            unitPrice: item.unit_price,
+            orderId: item.order_id,
+          }
+        })
+
+      setAskItems(askResults)
     } catch (err) {
       console.error('未設定チェックエラー:', err)
     }
@@ -979,6 +1025,45 @@ export default function Home() {
               </span>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ASK商品アラート */}
+      {askItems.length > 0 && (
+        <div style={{
+          margin: '0 0 20px',
+          padding: '16px 20px',
+          backgroundColor: '#fef2f2',
+          border: '1px solid #ef4444',
+          borderRadius: '10px',
+        }}>
+          <div style={{ fontWeight: '700', fontSize: '15px', color: '#991b1b', marginBottom: '12px' }}>
+            ASK商品・価格未設定の商品があります（{askItems.length}件）
+          </div>
+          <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
+            {askItems.map((item, i) => (
+              <div key={i} style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                padding: '6px 0',
+                borderBottom: i < askItems.length - 1 ? '1px solid #fecaca' : 'none',
+                fontSize: '13px',
+                color: '#991b1b',
+              }}>
+                <span style={{ color: '#9ca3af', minWidth: '70px' }}>{item.orderDate}</span>
+                <span style={{ minWidth: '60px' }}>{item.tableName}</span>
+                <span style={{ flex: 1, fontWeight: '600' }}>{item.productName}</span>
+                <span>¥{item.unitPrice.toLocaleString()}</span>
+                <a
+                  href={`/receipts?order=${item.orderId}`}
+                  style={{ color: '#ef4444', textDecoration: 'underline', fontSize: '12px' }}
+                >
+                  伝票を確認
+                </a>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
