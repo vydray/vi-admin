@@ -176,6 +176,9 @@ export default function Home() {
     unknown_amount: number
   } | null>(null)
 
+  // BASE商品価格未設定アラート
+  const [unsetBaseProducts, setUnsetBaseProducts] = useState<{ id: number; name: string }[]>([])
+
   // ASK商品・ゲストキャストアラート
   const [askItems, setAskItems] = useState<{
     orderDate: string
@@ -340,6 +343,16 @@ export default function Home() {
       })
 
       setAskItems(askResults)
+
+      // BASE商品の店舗価格未設定チェック
+      const { data: baseProducts } = await supabase
+        .from('base_products')
+        .select('id, base_product_name')
+        .eq('store_id', storeId)
+        .eq('is_active', true)
+        .is('store_price', null)
+
+      setUnsetBaseProducts((baseProducts || []).map(p => ({ id: p.id, name: p.base_product_name })))
     } catch (err) {
       console.error('未設定チェックエラー:', err)
     }
@@ -1083,6 +1096,27 @@ export default function Home() {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* BASE商品価格未設定アラート */}
+      {unsetBaseProducts.length > 0 && (
+        <div style={{
+          margin: '0 0 20px',
+          padding: '16px 20px',
+          backgroundColor: '#fff7ed',
+          border: '1px solid #f97316',
+          borderRadius: '10px',
+        }}>
+          <div style={{ fontWeight: '700', fontSize: '15px', color: '#9a3412', marginBottom: '8px' }}>
+            BASE商品の店舗価格が未設定です（{unsetBaseProducts.length}件）
+          </div>
+          <div style={{ fontSize: '13px', color: '#9a3412', marginBottom: '8px' }}>
+            {unsetBaseProducts.map(p => p.name).join('、')}
+          </div>
+          <a href="/base-settings" style={{ fontSize: '13px', color: '#f97316', textDecoration: 'underline' }}>
+            BASE設定で価格を設定
+          </a>
         </div>
       )}
 
