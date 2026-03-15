@@ -282,6 +282,7 @@ function PayslipPageContent() {
     helpCastId?: number  // 卓内ヘルプの場合
     oshiCastId?: number  // ヘルプ商品の場合（推しキャストID）
   } | null>(null) // 商品別詳細モーダル用
+  const [specialDailySales, setSpecialDailySales] = useState<Map<string, number>>(new Map()) // 税込み＋サービス料の日別売上
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null) // 伝票詳細モーダル用
   const [orderDetail, setOrderDetail] = useState<{
     id: string
@@ -735,6 +736,101 @@ function PayslipPageContent() {
     calculateSummaryFromStats()
   }, [dailyStats, calculateSummaryFromStats])
 
+  // 税込み＋サービス料の特殊売上を計算（exclude_service_charge === true の場合のみ）
+  const hasServiceChargeType = useMemo(() => {
+    if (!compensationSettings?.compensation_types) return false
+    return compensationSettings.compensation_types.some(
+      t => t.is_enabled && t.sales_calculation_settings?.exclude_service_charge === true
+    )
+  }, [compensationSettings])
+
+  useEffect(() => {
+    if (!hasServiceChargeType || !selectedCastId || !storeId) {
+      setSpecialDailySales(new Map())
+      return
+    }
+
+    const selectedCast = casts.find(c => c.id === selectedCastId)
+    if (!selectedCast) return
+
+    const loadSpecialSales = async () => {
+      const monthStart = format(startOfMonth(selectedMonth), 'yyyy-MM-dd')
+      const monthEnd = format(endOfMonth(selectedMonth), 'yyyy-MM-dd')
+
+      // サービス料率を取得
+      let serviceFeeRate = 0.2
+      const { data: sysSettings } = await supabase
+        .from('system_settings')
+        .select('setting_key, setting_value')
+        .eq('store_id', storeId)
+
+      if (sysSettings) {
+        const row = sysSettings.find((r: { setting_key: string }) => r.setting_key === 'service_fee_rate')
+        if (row) serviceFeeRate = parseFloat(row.setting_value) / 100
+      }
+
+      // キャストの伝票を取得（total_incl_tax含む）
+      const { data: orders, error } = await supabase
+        .from('orders')
+        .select(`
+          id,
+          staff_name,
+          order_date,
+          total_incl_tax,
+          order_items (
+            id,
+            product_name,
+            cast_name,
+            subtotal
+          )
+        `)
+        .eq('store_id', storeId)
+        .eq('staff_name', selectedCast.name)
+        .gte('order_date', monthStart)
+        .lte('order_date', monthEnd)
+
+      if (error) {
+        console.error('特殊売上取得エラー:', error)
+        return
+      }
+
+      // ヘルプ分配方法を取得
+      const enabledTypes = compensationSettings?.compensation_types?.filter(t => t.is_enabled) || []
+      const serviceChargeType = enabledTypes.find(
+        t => t.sales_calculation_settings?.exclude_service_charge === true
+      )
+      const helpDistMethod = serviceChargeType?.sales_calculation_settings?.help_distribution_method || 'all_to_nomination'
+
+      const allCastNames = casts.map(c => c.name)
+      const dailyMap = new Map<string, number>()
+
+      for (const order of (orders || [])) {
+        const orderDate = order.order_date
+        let orderSales = (order.total_incl_tax as number) || 0
+
+        // ヘルプキャストの商品を差し引く
+        const helpItems = (order.order_items || []).filter((item: { cast_name: string[] | null; subtotal: number }) => {
+          if (!item.cast_name || item.cast_name.length === 0) return false
+          return item.cast_name.some((cn: string) => cn !== selectedCast.name && allCastNames.includes(cn))
+        })
+
+        for (const helpItem of helpItems) {
+          const helpAmount = helpItem.subtotal * (1 + serviceFeeRate)
+          if (helpDistMethod === 'equal_per_person' || helpDistMethod === 'equal_all') {
+            orderSales -= Math.floor(helpAmount / 2)
+          }
+        }
+
+        const current = dailyMap.get(orderDate) || 0
+        dailyMap.set(orderDate, current + Math.floor(orderSales))
+      }
+
+      setSpecialDailySales(dailyMap)
+    }
+
+    loadSpecialSales()
+  }, [hasServiceChargeType, selectedCastId, selectedMonth, storeId, casts, compensationSettings])
+
   // 伝票詳細を取得
   useEffect(() => {
     if (!selectedOrderId) {
@@ -918,17 +1014,24 @@ function PayslipPageContent() {
 
     // 報酬形態のsales_aggregationに基づいて売上を選択
     const salesAggregation = activeCompensationType?.sales_aggregation || 'item_based'
+    const useServiceCharge = activeCompensationType?.sales_calculation_settings?.exclude_service_charge === true
 
-    // 売上はcast_daily_statsから計算（推し小計 or 伝票小計）
+    // 売上はcast_daily_statsから計算（推し小計 or 伝票小計）、税込み＋サービス料の場合はspecialDailySalesを使用
     let totalSales = 0
-    dailySalesData.forEach(day => {
-      // sales_aggregationに基づいて正しい売上を使用
-      if (salesAggregation === 'receipt_based') {
-        totalSales += day.totalSalesReceiptBased || day.totalSales || 0
-      } else {
-        totalSales += day.totalSalesItemBased || day.totalSales || 0
-      }
-    })
+    if (useServiceCharge && specialDailySales.size > 0) {
+      specialDailySales.forEach(value => {
+        totalSales += value
+      })
+    } else {
+      dailySalesData.forEach(day => {
+        // sales_aggregationに基づいて正しい売上を使用
+        if (salesAggregation === 'receipt_based') {
+          totalSales += day.totalSalesReceiptBased || day.totalSales || 0
+        } else {
+          totalSales += day.totalSalesItemBased || day.totalSales || 0
+        }
+      })
+    }
 
     // 商品バックはcast_daily_itemsから直接計算（推しバック + ヘルプバック）
     const totalSelfBack = castDailyItems.reduce((sum, item) => sum + (item.self_back_amount || 0), 0)
@@ -983,7 +1086,7 @@ function PayslipPageContent() {
       useWageData: !!useWageData,
       salesAggregation
     }
-  }, [dailyStats, dailySalesData, activeCompensationType, castDailyItems, helpDailyItems, actualHourlyWage])
+  }, [dailyStats, dailySalesData, activeCompensationType, castDailyItems, helpDailyItems, actualHourlyWage, specialDailySales])
 
   // 遅刻罰金を計算
   const calculateLatePenalty = useCallback((lateMinutes: number, rule: LatePenaltyRule): number => {
@@ -1125,11 +1228,12 @@ function PayslipPageContent() {
     const typeInfo = types.map(t => ({
       id: t.id,
       name: t.name,
-      aggregation: t.sales_aggregation
+      aggregation: t.sales_aggregation,
+      useServiceCharge: t.sales_calculation_settings?.exclude_service_charge === true
     }))
 
     // 全て同じ集計方法なら1つだけ返す
-    const uniqueAggregations = new Set(typeInfo.map(t => t.aggregation))
+    const uniqueAggregations = new Set(typeInfo.map(t => t.useServiceCharge ? 'service_charge' : t.aggregation))
     if (uniqueAggregations.size <= 1) {
       return typeInfo.slice(0, 1)
     }
@@ -1323,14 +1427,15 @@ function PayslipPageContent() {
         sales: sales?.totalSales || 0,
         salesItemBased: sales?.totalSalesItemBased || 0,
         salesReceiptBased: sales?.totalSalesReceiptBased || 0,
+        salesServiceCharge: specialDailySales.get(dateStr) || 0,
         productBack: dayProductBack,
         selfBack: daySelfBack,
         helpBack: dayHelpBack,
         dailyPayment: attendance?.daily_payment || 0,
         lateMinutes: attendance?.late_minutes || 0
       }
-    }).filter(d => d.workHours > 0 || d.dailyPayment > 0 || d.lateMinutes > 0 || d.sales > 0 || d.salesItemBased > 0 || d.salesReceiptBased > 0)
-  }, [selectedMonth, dailyStats, attendanceData, dailySalesData, castDailyItems, helpDailyItems, actualHourlyWage])
+    }).filter(d => d.workHours > 0 || d.dailyPayment > 0 || d.lateMinutes > 0 || d.sales > 0 || d.salesItemBased > 0 || d.salesReceiptBased > 0 || d.salesServiceCharge > 0)
+  }, [selectedMonth, dailyStats, attendanceData, dailySalesData, castDailyItems, helpDailyItems, actualHourlyWage, specialDailySales])
 
   const selectedCast = casts.find(c => c.id === selectedCastId)
 
@@ -2324,7 +2429,9 @@ function PayslipPageContent() {
                         {/* 報酬形態ごとに売上を表示 */}
                         {salesAggregationByType.length > 1 ? (
                           salesAggregationByType.map((type, idx) => {
-                            const salesValue = type.aggregation === 'item_based' ? day.salesItemBased : day.salesReceiptBased
+                            const salesValue = type.useServiceCharge
+                              ? day.salesServiceCharge
+                              : (type.aggregation === 'item_based' ? day.salesItemBased : day.salesReceiptBased)
                             return (
                               <td
                                 key={type.id}
@@ -2342,8 +2449,10 @@ function PayslipPageContent() {
                         ) : (
                           (() => {
                             // 単一列の場合も報酬形態の設定に応じた売上を表示
-                            const aggregation = salesAggregationByType[0]?.aggregation || 'item_based'
-                            const salesValue = aggregation === 'receipt_based' ? day.salesReceiptBased : day.salesItemBased
+                            const type = salesAggregationByType[0]
+                            const salesValue = type?.useServiceCharge
+                              ? day.salesServiceCharge
+                              : (type?.aggregation === 'receipt_based' ? day.salesReceiptBased : day.salesItemBased)
                             return (
                               <td style={{ ...styles.td, textAlign: 'right' }}>{salesValue > 0 ? currencyFormatter.format(salesValue) : '-'}</td>
                             )
@@ -2366,9 +2475,11 @@ function PayslipPageContent() {
                       {/* 報酬形態ごとに売上合計を表示 */}
                       {salesAggregationByType.length > 1 ? (
                         salesAggregationByType.map((type, idx) => {
-                          const totalSalesValue = type.aggregation === 'item_based'
-                            ? dailyDetails.reduce((sum, d) => sum + d.salesItemBased, 0)
-                            : dailyDetails.reduce((sum, d) => sum + d.salesReceiptBased, 0)
+                          const totalSalesValue = type.useServiceCharge
+                            ? dailyDetails.reduce((sum, d) => sum + d.salesServiceCharge, 0)
+                            : (type.aggregation === 'item_based'
+                              ? dailyDetails.reduce((sum, d) => sum + d.salesItemBased, 0)
+                              : dailyDetails.reduce((sum, d) => sum + d.salesReceiptBased, 0))
                           return (
                             <td
                               key={type.id}
@@ -2386,10 +2497,12 @@ function PayslipPageContent() {
                       ) : (
                         (() => {
                           // 単一列の場合も報酬形態の設定に応じた売上合計を表示
-                          const aggregation = salesAggregationByType[0]?.aggregation || 'item_based'
-                          const totalSalesValue = aggregation === 'receipt_based'
-                            ? dailyDetails.reduce((sum, d) => sum + d.salesReceiptBased, 0)
-                            : dailyDetails.reduce((sum, d) => sum + d.salesItemBased, 0)
+                          const type = salesAggregationByType[0]
+                          const totalSalesValue = type?.useServiceCharge
+                            ? dailyDetails.reduce((sum, d) => sum + d.salesServiceCharge, 0)
+                            : (type?.aggregation === 'receipt_based'
+                              ? dailyDetails.reduce((sum, d) => sum + d.salesReceiptBased, 0)
+                              : dailyDetails.reduce((sum, d) => sum + d.salesItemBased, 0))
                           return (
                             <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold' }}>{currencyFormatter.format(totalSalesValue)}</td>
                           )

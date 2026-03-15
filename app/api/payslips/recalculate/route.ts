@@ -444,6 +444,7 @@ async function calculatePayslipForCast(
         id,
         staff_name,
         order_date,
+        total_incl_tax,
         order_items (
           id,
           product_name,
@@ -725,9 +726,79 @@ async function calculatePayslipForCast(
       sales_aggregation?: 'item_based' | 'receipt_based'
       use_product_back?: boolean
       use_help_product_back?: boolean
+      sales_calculation_settings?: {
+        exclude_service_charge?: boolean
+        exclude_consumption_tax?: boolean
+        use_tax_excluded?: boolean
+        help_distribution_method?: string
+        multi_cast_distribution?: string
+        [key: string]: unknown
+      }
     }
     // is_enabled でフィルター（undefinedは有効として扱う - 後方互換性）
     const enabledTypes = compensationTypes.filter((t: CompType) => t.is_enabled !== false)
+
+    // サービス料率を取得（税込み＋サービス料の計算用）
+    let serviceFeeRate = 0.2 // デフォルト20%
+    const hasServiceChargeType = enabledTypes.some((t: CompType) => t.sales_calculation_settings?.exclude_service_charge === true)
+    if (hasServiceChargeType) {
+      const { data: sysSettings } = await supabaseAdmin
+        .from('system_settings')
+        .select('setting_key, setting_value')
+        .eq('store_id', storeId)
+      if (sysSettings) {
+        const row = sysSettings.find((r: { setting_key: string }) => r.setting_key === 'service_fee_rate')
+        if (row) serviceFeeRate = parseFloat(row.setting_value) / 100
+      }
+    }
+
+    // 税込み＋サービス料の特殊売上計算（exclude_service_charge === true のとき）
+    const specialSalesMap = new Map<string, number>()
+    if (hasServiceChargeType) {
+      const allCastNames = castList.map(c => c.name)
+      for (const compType of enabledTypes) {
+        const scs = compType.sales_calculation_settings
+        if (scs?.exclude_service_charge !== true) continue
+
+        const helpDistMethod = scs.help_distribution_method || 'all_to_nomination'
+
+        // この推しの伝票を取得
+        const castOrders = (orders || []).filter(o => {
+          if (!o.staff_name) return false
+          return o.staff_name === cast.name
+        })
+
+        let specialTotal = 0
+        for (const order of castOrders) {
+          let orderSales = (order as Record<string, unknown>).total_incl_tax as number || 0
+
+          // 他キャスト名がついた商品を探す
+          const helpItemsInOrder = (order.order_items || []).filter((item: { cast_name: string[] | null; subtotal: number }) => {
+            if (!item.cast_name || item.cast_name.length === 0) return false
+            return item.cast_name.some(cn => cn !== cast.name && allCastNames.includes(cn))
+          })
+
+          for (const helpItem of helpItemsInOrder) {
+            // subtotal（税込み）にサービス料率をかける
+            const helpAmount = helpItem.subtotal * (1 + serviceFeeRate)
+
+            if (helpDistMethod === 'equal_per_person') {
+              // 均等割: 推しとヘルプで半分ずつ → 半分を引く
+              orderSales -= Math.floor(helpAmount / 2)
+            } else if (helpDistMethod === 'equal_all') {
+              // 均等割（全員頭数割り）: 推しとヘルプで半分ずつ
+              orderSales -= Math.floor(helpAmount / 2)
+            }
+            // 'all_to_nomination': 全額推し → 引かない
+          }
+
+          specialTotal += Math.floor(orderSales)
+        }
+
+        specialSalesMap.set(compType.id, specialTotal)
+        console.log(`[${cast.name}] 税込み＋サービス料計算: compType=${compType.name}, specialTotal=${specialTotal}`)
+      }
+    }
 
     // 各報酬形態の報酬額を計算するヘルパー関数
     const calculateCompensationForType = (compType: CompType) => {
@@ -739,9 +810,13 @@ async function calculatePayslipForCast(
       const typePerAttendanceIncome = typePerAttendanceAmount * typeWorkDays
 
       // 報酬形態のsales_aggregationに基づいて売上を選択
-      const typeTotalSales = compType.sales_aggregation === 'receipt_based'
-        ? totalSalesReceiptBased
-        : totalSalesItemBased
+      // 税込み＋サービス料の特殊計算がある場合はそちらを優先
+      const specialSales = specialSalesMap.get(compType.id)
+      const typeTotalSales = specialSales !== undefined
+        ? specialSales
+        : (compType.sales_aggregation === 'receipt_based'
+          ? totalSalesReceiptBased
+          : totalSalesItemBased)
 
       // 売上バック計算
       let typeSalesBack = 0
