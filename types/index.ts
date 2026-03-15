@@ -84,6 +84,8 @@ export type {
   ExpenseWithCategory,
   PettyCashTransaction,
   PettyCashCheck,
+  OrderEditActionType,
+  OrderEditLog,
 } from './database'
 
 // UI Component types

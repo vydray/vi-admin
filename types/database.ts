@@ -1216,3 +1216,18 @@ export interface PayslipRecalculationLog {
   after_values: PayslipRecalculationLogValues
   created_at: string
 }
+
+// 伝票編集ログ
+export type OrderEditActionType = 'edit_order' | 'edit_item' | 'delete_order' | 'delete_item' | 'add_item' | 'edit_payment'
+
+export interface OrderEditLog {
+  id: number
+  store_id: number
+  order_id: number
+  order_item_id: number | null
+  action_type: OrderEditActionType
+  before_values: Record<string, unknown> | null
+  after_values: Record<string, unknown> | null
+  modified_by: string
+  created_at: string
+}

@@ -5,6 +5,8 @@ import { useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
 import { useConfirm } from '@/contexts/ConfirmContext'
+import { useAuth } from '@/contexts/AuthContext'
+import { logOrderEdit } from '@/lib/orderEditLog'
 import toast from 'react-hot-toast'
 import { format, startOfMonth, endOfMonth, addMonths, subMonths } from 'date-fns'
 import { ja } from 'date-fns/locale'
@@ -91,6 +93,7 @@ function ReceiptsPageContent() {
   const searchParams = useSearchParams()
   const autoOpenOrderId = searchParams.get('order')
   const { confirm } = useConfirm()
+  const { user } = useAuth()
   const [receipts, setReceipts] = useState<ReceiptWithDetails[]>([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'receipts' | 'event-promotions'>('receipts')
@@ -594,6 +597,27 @@ function ReceiptsPageContent() {
 
       if (orderError) throw orderError
 
+      logOrderEdit({
+        storeId: selectedReceipt.store_id,
+        orderId: selectedReceipt.id,
+        actionType: 'edit_order',
+        beforeValues: {
+          table_number: selectedReceipt.table_number,
+          guest_name: selectedReceipt.guest_name,
+          staff_name: selectedReceipt.staff_name,
+          order_date: selectedReceipt.order_date,
+          checkout_datetime: selectedReceipt.checkout_datetime,
+        },
+        afterValues: {
+          table_number: editFormData.table_number,
+          guest_name: editFormData.guest_name || null,
+          staff_name: staffNameValue,
+          order_date: editFormData.order_date ? new Date(editFormData.order_date).toISOString() : null,
+          checkout_datetime: editFormData.checkout_datetime ? new Date(editFormData.checkout_datetime).toISOString() : null,
+        },
+        modifiedBy: user?.username ?? 'unknown',
+      })
+
       toast.success('伝票の基本情報を更新しました')
       setIsEditModalOpen(false)
       loadReceipts()
@@ -613,6 +637,15 @@ function ReceiptsPageContent() {
         .eq('id', receiptId)
 
       if (error) throw error
+
+      logOrderEdit({
+        storeId: selectedReceipt?.store_id ?? storeId!,
+        orderId: receiptId,
+        actionType: 'delete_order',
+        beforeValues: { deleted_at: null },
+        afterValues: null,
+        modifiedBy: user?.username ?? 'unknown',
+      })
 
       toast.success('伝票を削除しました')
       setIsEditModalOpen(false)
@@ -870,6 +903,26 @@ function ReceiptsPageContent() {
 
           if (paymentError) throw paymentError
         }
+
+        logOrderEdit({
+          storeId: selectedReceipt.store_id,
+          orderId: selectedReceipt.id,
+          actionType: 'edit_payment',
+          beforeValues: {
+            total_incl_tax: selectedReceipt.total_incl_tax,
+            cash_amount: selectedReceipt.payment?.cash_amount ?? 0,
+            credit_card_amount: selectedReceipt.payment?.credit_card_amount ?? 0,
+            other_payment_amount: selectedReceipt.payment?.other_payment_amount ?? 0,
+          },
+          afterValues: {
+            total_incl_tax: finalTotal,
+            cash_amount: tempPaymentData.cash_amount,
+            credit_card_amount: tempPaymentData.credit_card_amount,
+            other_payment_amount: tempPaymentData.other_payment_amount,
+            change_amount: Math.max(0, change),
+          },
+          modifiedBy: user?.username ?? 'unknown',
+        })
 
         toast.success('会計処理が完了しました')
         setIsPaymentModalOpen(false)
@@ -1276,6 +1329,30 @@ function ReceiptsPageContent() {
 
       if (error) throw error
 
+      logOrderEdit({
+        storeId: selectedReceipt?.store_id ?? storeId!,
+        orderId: editingItem.order_id,
+        orderItemId: editingItem.id,
+        actionType: 'edit_item',
+        beforeValues: {
+          product_name: editingItem.product_name,
+          category: editingItem.category,
+          cast_name: editingItem.cast_name,
+          quantity: editingItem.quantity,
+          unit_price: editingItem.unit_price,
+          subtotal: editingItem.subtotal,
+        },
+        afterValues: {
+          product_name: editingItemData.product_name,
+          category: editingItemData.category || null,
+          cast_name: editingItemData.cast_names.length > 0 ? editingItemData.cast_names : null,
+          quantity: editingItemData.quantity,
+          unit_price: editingItemData.unit_price,
+          subtotal: editingItemData.unit_price * editingItemData.quantity,
+        },
+        modifiedBy: user?.username ?? 'unknown',
+      })
+
       toast.success('注文明細を更新しました')
       cancelEditItem()
 
@@ -1293,6 +1370,8 @@ function ReceiptsPageContent() {
   const deleteOrderItem = async (itemId: number) => {
     if (!await confirm('この注文明細を削除してもよろしいですか？')) return
 
+    const deletedItem = selectedReceipt?.order_items?.find(i => i.id === itemId)
+
     try {
       const { error } = await supabase
         .from('order_items')
@@ -1300,6 +1379,25 @@ function ReceiptsPageContent() {
         .eq('id', itemId)
 
       if (error) throw error
+
+      if (deletedItem) {
+        logOrderEdit({
+          storeId: selectedReceipt?.store_id ?? storeId!,
+          orderId: selectedReceipt!.id,
+          orderItemId: itemId,
+          actionType: 'delete_item',
+          beforeValues: {
+            product_name: deletedItem.product_name,
+            category: deletedItem.category,
+            cast_name: deletedItem.cast_name,
+            quantity: deletedItem.quantity,
+            unit_price: deletedItem.unit_price,
+            subtotal: deletedItem.subtotal,
+          },
+          afterValues: null,
+          modifiedBy: user?.username ?? 'unknown',
+        })
+      }
 
       toast.success('注文明細を削除しました')
 
@@ -1362,6 +1460,22 @@ function ReceiptsPageContent() {
         })
 
       if (error) throw error
+
+      logOrderEdit({
+        storeId: selectedReceipt.store_id,
+        orderId: selectedReceipt.id,
+        actionType: 'add_item',
+        beforeValues: null,
+        afterValues: {
+          product_name: newItemData.product_name,
+          category: newItemData.category || null,
+          cast_name: newItemData.cast_names.length > 0 ? newItemData.cast_names : null,
+          quantity: newItemData.quantity,
+          unit_price: newItemData.unit_price,
+          subtotal: newItemData.unit_price * newItemData.quantity,
+        },
+        modifiedBy: user?.username ?? 'unknown',
+      })
 
       toast.success('注文明細を追加しました')
       cancelAddItem()
