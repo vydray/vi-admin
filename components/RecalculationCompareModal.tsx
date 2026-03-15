@@ -168,119 +168,170 @@ export default function RecalculationCompareModal({ isOpen, onClose, storeId, ye
     if (!tableRef.current) return
     setPdfLoading(true)
     try {
+      // スクロール制約を一時解除して全体をキャプチャ
+      const parent = tableRef.current.parentElement
+      const origOverflow = tableRef.current.style.overflow
+      const origMaxHeight = tableRef.current.style.maxHeight
+      const origFlex = tableRef.current.style.flex
+      const origMinHeight = tableRef.current.style.minHeight
+      tableRef.current.style.overflow = 'visible'
+      tableRef.current.style.maxHeight = 'none'
+      tableRef.current.style.flex = 'none'
+      tableRef.current.style.minHeight = 'auto'
+
       await exportToPDF(tableRef.current, {
         filename: `再計算差分_${yearMonth}.pdf`,
         orientation: 'landscape',
         format: 'a4',
         margin: 8,
       })
+
+      // 元に戻す
+      tableRef.current.style.overflow = origOverflow
+      tableRef.current.style.maxHeight = origMaxHeight
+      tableRef.current.style.flex = origFlex
+      tableRef.current.style.minHeight = origMinHeight
     } finally {
       setPdfLoading(false)
     }
   }
 
+  // 差分カードHTML生成
+  const buildCardHtml = (c: Comparison): string => {
+    const incomeFields: { key: keyof PayslipRecalculationLogValues; label: string }[] = [
+      { key: 'hourly_income', label: '時給収入' },
+      { key: 'sales_back', label: '売上バック' },
+      { key: 'product_back', label: '商品バック' },
+      { key: 'fixed_amount', label: '固定額' },
+      { key: 'bonus_total', label: '賞与' },
+    ]
+    const storeName = storeId === 1 ? 'Memorable' : 'MistressMirage'
+
+    let html = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #e2e8f0;">
+      <div style="font-size:11px;color:#64748b;">${storeName}<br>${yearMonth} 報酬明細</div>
+      <div style="font-size:18px;font-weight:700;color:#1e293b;">${c.cast_name}</div>
+    </div>`
+
+    for (const f of incomeFields) {
+      const from = c.from_values[f.key] ?? 0
+      const to = c.to_values[f.key] ?? 0
+      const diff = to - from
+      if (from === 0 && to === 0) continue
+      html += `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:13px;">
+        <span style="color:#374151;">${f.label}</span>
+        <span style="color:#1e293b;">${diff !== 0
+          ? `<span style="color:#9ca3af;text-decoration:line-through;">¥${fmt(from)}</span> → ¥${fmt(to)} <span style="color:${diff > 0 ? '#16a34a' : '#dc2626'};font-weight:600;">(${diff > 0 ? '+' : ''}${fmt(diff)})</span>`
+          : `¥${fmt(to)}`}</span>
+      </div>`
+    }
+
+    const grossFrom = c.from_values.gross_total ?? 0
+    const grossTo = c.to_values.gross_total ?? 0
+    const grossDiff = grossTo - grossFrom
+    html += `<div style="display:flex;justify-content:space-between;padding:8px 0 4px;margin-top:4px;border-top:1px dashed #d1d5db;font-size:13px;font-weight:600;">
+      <span>総支給額</span>
+      <span>${grossDiff !== 0
+        ? `<span style="color:#9ca3af;text-decoration:line-through;">¥${fmt(grossFrom)}</span> → ¥${fmt(grossTo)} <span style="color:${grossDiff > 0 ? '#16a34a' : '#dc2626'};">(${grossDiff > 0 ? '+' : ''}${fmt(grossDiff)})</span>`
+        : `¥${fmt(grossTo)}`}</span>
+    </div>`
+
+    const dedFrom = c.from_values.total_deduction ?? 0
+    const dedTo = c.to_values.total_deduction ?? 0
+    const dedDiff = dedTo - dedFrom
+    if (dedFrom !== 0 || dedTo !== 0) {
+      html += `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:13px;color:#dc2626;">
+        <span>控除合計</span>
+        <span>${dedDiff !== 0
+          ? `<span style="text-decoration:line-through;color:#f87171;">-¥${fmt(dedFrom)}</span> → -¥${fmt(dedTo)} <span style="font-weight:600;">(${dedDiff > 0 ? '+' : ''}${fmt(dedDiff)})</span>`
+          : `-¥${fmt(dedTo)}`}</span>
+      </div>`
+    }
+
+    const netFrom = c.from_values.net_payment ?? 0
+    const netTo = c.to_values.net_payment ?? 0
+    const netDiff = netTo - netFrom
+    html += `<div style="display:flex;justify-content:space-between;padding:8px 0 0;margin-top:4px;border-top:1px dashed #d1d5db;font-size:15px;font-weight:700;">
+      <span>残り支給</span>
+      <span>${netDiff !== 0
+        ? `<span style="color:#9ca3af;font-weight:400;text-decoration:line-through;font-size:12px;">¥${fmt(netFrom)}</span> ¥${fmt(netTo)} <span style="color:${netDiff > 0 ? '#16a34a' : '#dc2626'};font-size:13px;">(${netDiff > 0 ? '+' : ''}${fmt(netDiff)})</span>`
+        : `¥${fmt(netTo)}`}</span>
+    </div>`
+
+    return html
+  }
+
   // 差分カードPDFダウンロード
   const downloadCardPdf = async () => {
+    const { jsPDF } = await import('jspdf')
+    const html2canvas = (await import('html2canvas')).default
+
     setPdfLoading(true)
     try {
-      const container = document.createElement('div')
-      container.style.cssText = 'position:absolute;left:-9999px;top:0;width:794px;background:#fff;padding:20px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;'
-      document.body.appendChild(container)
-
-      // タイトル
-      const title = document.createElement('div')
-      title.style.cssText = 'text-align:center;margin-bottom:20px;'
-      title.innerHTML = `<div style="font-size:18px;font-weight:700;color:#1e293b;">再計算差分 報酬明細</div><div style="font-size:13px;color:#64748b;margin-top:4px;">${yearMonth}</div>`
-      container.appendChild(title)
-
-      // カードグリッド
-      const grid = document.createElement('div')
-      grid.style.cssText = 'display:flex;flex-wrap:wrap;gap:16px;'
-      container.appendChild(grid)
-
-      const targets = showOnlyChanged ? comparisons.filter(hasChange) : comparisons.filter(c =>
-        FIELDS.some(f => (c.from_values[f.key] ?? 0) !== 0 || (c.to_values[f.key] ?? 0) !== 0)
-      )
-
-      for (const c of targets) {
-        const card = document.createElement('div')
-        card.style.cssText = 'width:370px;border:1px solid #e2e8f0;border-radius:8px;padding:16px;break-inside:avoid;'
-
-        // ヘッダー
-        let html = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #e2e8f0;">
-          <div style="font-size:11px;color:#64748b;">${storeId === 1 ? 'Memorable' : 'MistressMirage'}<br>${yearMonth} 報酬明細</div>
-          <div style="font-size:18px;font-weight:700;color:#1e293b;">${c.cast_name}</div>
-        </div>`
-
-        // 収入項目
-        const incomeFields: { key: keyof PayslipRecalculationLogValues; label: string }[] = [
-          { key: 'hourly_income', label: '時給収入' },
-          { key: 'sales_back', label: '売上バック' },
-          { key: 'product_back', label: '商品バック' },
-          { key: 'fixed_amount', label: '固定額' },
-          { key: 'bonus_total', label: '賞与' },
-        ]
-
-        for (const f of incomeFields) {
-          const from = c.from_values[f.key] ?? 0
-          const to = c.to_values[f.key] ?? 0
-          const diff = to - from
-          if (from === 0 && to === 0) continue
-          html += `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:13px;">
-            <span style="color:#374151;">${f.label}</span>
-            <span style="color:#1e293b;">${diff !== 0
-              ? `<span style="color:#9ca3af;text-decoration:line-through;">¥${fmt(from)}</span> → ¥${fmt(to)} <span style="color:${diff > 0 ? '#16a34a' : '#dc2626'};font-weight:600;">(${diff > 0 ? '+' : ''}${fmt(diff)})</span>`
-              : `¥${fmt(to)}`}</span>
-          </div>`
-        }
-
-        // 総支給額
-        const grossFrom = c.from_values.gross_total ?? 0
-        const grossTo = c.to_values.gross_total ?? 0
-        const grossDiff = grossTo - grossFrom
-        html += `<div style="display:flex;justify-content:space-between;padding:8px 0 4px;margin-top:4px;border-top:1px dashed #d1d5db;font-size:13px;font-weight:600;">
-          <span>総支給額</span>
-          <span>${grossDiff !== 0
-            ? `<span style="color:#9ca3af;text-decoration:line-through;">¥${fmt(grossFrom)}</span> → ¥${fmt(grossTo)} <span style="color:${grossDiff > 0 ? '#16a34a' : '#dc2626'};">(${grossDiff > 0 ? '+' : ''}${fmt(grossDiff)})</span>`
-            : `¥${fmt(grossTo)}`}</span>
-        </div>`
-
-        // 控除合計
-        const dedFrom = c.from_values.total_deduction ?? 0
-        const dedTo = c.to_values.total_deduction ?? 0
-        const dedDiff = dedTo - dedFrom
-        if (dedFrom !== 0 || dedTo !== 0) {
-          html += `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:13px;color:#dc2626;">
-            <span>控除合計</span>
-            <span>${dedDiff !== 0
-              ? `<span style="text-decoration:line-through;color:#f87171;">-¥${fmt(dedFrom)}</span> → -¥${fmt(dedTo)} <span style="font-weight:600;">(${dedDiff > 0 ? '+' : ''}${fmt(dedDiff)})</span>`
-              : `-¥${fmt(dedTo)}`}</span>
-          </div>`
-        }
-
-        // 残り支給
-        const netFrom = c.from_values.net_payment ?? 0
-        const netTo = c.to_values.net_payment ?? 0
-        const netDiff = netTo - netFrom
-        html += `<div style="display:flex;justify-content:space-between;padding:8px 0 0;margin-top:4px;border-top:1px dashed #d1d5db;font-size:15px;font-weight:700;">
-          <span>残り支給</span>
-          <span>${netDiff !== 0
-            ? `<span style="color:#9ca3af;font-weight:400;text-decoration:line-through;font-size:12px;">¥${fmt(netFrom)}</span> ¥${fmt(netTo)} <span style="color:${netDiff > 0 ? '#16a34a' : '#dc2626'};font-size:13px;">(${netDiff > 0 ? '+' : ''}${fmt(netDiff)})</span>`
-            : `¥${fmt(netTo)}`}</span>
-        </div>`
-
-        card.innerHTML = html
-        grid.appendChild(card)
+      // 差分がある人だけ抽出
+      const targets = comparisons.filter(hasChange)
+      if (targets.length === 0) {
+        alert('差分のあるキャストがいません')
+        return
       }
 
-      await exportToPDF(container, {
-        filename: `再計算差分_明細_${yearMonth}.pdf`,
-        orientation: 'portrait',
-        format: 'a4',
-        margin: 10,
-      })
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+      const pageWidth = pdf.internal.pageSize.getWidth()
+      const pageHeight = pdf.internal.pageSize.getHeight()
+      const margin = 10
+      const cardWidth = (pageWidth - margin * 2 - 6) / 2 // 2列
+      const gapMm = 6
 
-      document.body.removeChild(container)
+      // 各カードを個別にレンダリングしてサイズを測定
+      const cardImages: { imgData: string; widthPx: number; heightPx: number }[] = []
+
+      for (const c of targets) {
+        const cardEl = document.createElement('div')
+        cardEl.style.cssText = `position:absolute;left:-9999px;top:0;width:370px;background:#fff;padding:16px;border:1px solid #e2e8f0;border-radius:8px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;`
+        cardEl.innerHTML = buildCardHtml(c)
+        document.body.appendChild(cardEl)
+
+        const canvas = await html2canvas(cardEl, { scale: 2, backgroundColor: '#ffffff', logging: false })
+        cardImages.push({
+          imgData: canvas.toDataURL('image/png'),
+          widthPx: canvas.width,
+          heightPx: canvas.height,
+        })
+        document.body.removeChild(cardEl)
+      }
+
+      // カードをページに配置（2列、ページ跨ぎなし）
+      let x = margin
+      let y = margin
+      let colIndex = 0
+      let isFirstPage = true
+
+      for (const card of cardImages) {
+        const cardHeightMm = (card.heightPx / card.widthPx) * cardWidth
+
+        // このカードが現在のページに収まるか
+        if (y + cardHeightMm > pageHeight - margin) {
+          // 収まらない → 新しいページ
+          pdf.addPage()
+          x = margin
+          y = margin
+          colIndex = 0
+        }
+
+        pdf.addImage(card.imgData, 'PNG', x, y, cardWidth, cardHeightMm)
+
+        colIndex++
+        if (colIndex >= 2) {
+          // 次の行へ
+          colIndex = 0
+          x = margin
+          y += cardHeightMm + gapMm
+        } else {
+          // 右列へ
+          x = margin + cardWidth + gapMm
+        }
+      }
+
+      pdf.save(`再計算差分_明細_${yearMonth}.pdf`)
     } finally {
       setPdfLoading(false)
     }
