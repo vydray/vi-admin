@@ -189,6 +189,49 @@ export default function Home() {
     guestCastName: string | null
   }[]>([])
 
+  // 伝票詳細モーダル
+  const [receiptModalOrderId, setReceiptModalOrderId] = useState<string | null>(null)
+  const [receiptModalData, setReceiptModalData] = useState<{
+    order_date: string
+    table_number: string
+    guest_name: string | null
+    staff_name: string[] | string | null
+    total_incl_tax: number
+    items: { product_name: string; cast_name: string[] | string | null; quantity: number; unit_price: number; subtotal: number }[]
+    payments: { method: string; amount: number }[]
+  } | null>(null)
+  const [receiptLoading, setReceiptLoading] = useState(false)
+
+  const openReceiptModal = async (orderId: string) => {
+    setReceiptModalOrderId(orderId)
+    setReceiptLoading(true)
+    try {
+      const { data: order } = await supabase
+        .from('orders')
+        .select('order_date, table_number, guest_name, staff_name, total_incl_tax, order_items(product_name, cast_name, quantity, unit_price, subtotal), payments(method, amount)')
+        .eq('id', orderId)
+        .single()
+
+      if (order) {
+        setReceiptModalData({
+          order_date: order.order_date,
+          table_number: order.table_number || '',
+          guest_name: order.guest_name,
+          staff_name: order.staff_name,
+          total_incl_tax: order.total_incl_tax,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          items: (order as any).order_items || [],
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          payments: (order as any).payments || [],
+        })
+      }
+    } catch (err) {
+      console.error('伝票取得エラー:', err)
+    } finally {
+      setReceiptLoading(false)
+    }
+  }
+
   // レジ金データと日払いデータを取得
   const fetchCashCount = async (date: string) => {
     setCashCountLoading(true)
@@ -1092,12 +1135,12 @@ export default function Home() {
                   )}
                 </span>
                 <span>¥{item.unitPrice.toLocaleString()}</span>
-                <a
-                  href={`/receipts?order=${item.orderId}`}
-                  style={{ color: '#ef4444', textDecoration: 'underline', fontSize: '12px' }}
+                <button
+                  onClick={() => openReceiptModal(item.orderId)}
+                  style={{ color: '#ef4444', textDecoration: 'underline', fontSize: '12px', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
                 >
                   伝票を確認
-                </a>
+                </button>
               </div>
             ))}
           </div>
@@ -1751,6 +1794,94 @@ export default function Home() {
             </div>
           </div>
         </>
+      )}
+
+      {/* 伝票詳細モーダル */}
+      {receiptModalOrderId && (
+        <div
+          style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9999,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+          onClick={() => { setReceiptModalOrderId(null); setReceiptModalData(null) }}
+        >
+          <div
+            style={{
+              backgroundColor: 'white', borderRadius: '12px', padding: '24px',
+              maxWidth: '600px', width: '90%', maxHeight: '80vh', overflowY: 'auto',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {receiptLoading ? (
+              <div style={{ textAlign: 'center', padding: '40px' }}>読み込み中...</div>
+            ) : receiptModalData ? (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                  <h3 style={{ margin: 0, fontSize: '18px' }}>伝票詳細</h3>
+                  <button
+                    onClick={() => { setReceiptModalOrderId(null); setReceiptModalData(null) }}
+                    style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: '#6b7280' }}
+                  >×</button>
+                </div>
+                <div style={{ display: 'flex', gap: '16px', marginBottom: '16px', fontSize: '14px', color: '#6b7280' }}>
+                  <span>営業日: {receiptModalData.order_date?.split('T')[0]}</span>
+                  <span>テーブル: {receiptModalData.table_number}</span>
+                  {receiptModalData.guest_name && <span>お客様: {receiptModalData.guest_name}</span>}
+                </div>
+                <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '16px' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
+                      <th style={{ textAlign: 'left', padding: '8px 4px', fontSize: '13px', color: '#6b7280' }}>商品名</th>
+                      <th style={{ textAlign: 'left', padding: '8px 4px', fontSize: '13px', color: '#6b7280' }}>キャスト</th>
+                      <th style={{ textAlign: 'right', padding: '8px 4px', fontSize: '13px', color: '#6b7280' }}>数量</th>
+                      <th style={{ textAlign: 'right', padding: '8px 4px', fontSize: '13px', color: '#6b7280' }}>単価</th>
+                      <th style={{ textAlign: 'right', padding: '8px 4px', fontSize: '13px', color: '#6b7280' }}>小計</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {receiptModalData.items.map((item, i) => {
+                      const castDisplay = Array.isArray(item.cast_name) ? item.cast_name.join(', ') : item.cast_name || ''
+                      const isAsk = /ask/i.test(item.product_name) || item.unit_price === 0
+                      const isGuest = /ゲスト|guest|体験/i.test(castDisplay)
+                      return (
+                        <tr key={i} style={{
+                          borderBottom: '1px solid #f3f4f6',
+                          backgroundColor: isAsk || isGuest ? '#fef2f2' : 'transparent',
+                        }}>
+                          <td style={{ padding: '8px 4px', fontSize: '14px' }}>{item.product_name}</td>
+                          <td style={{ padding: '8px 4px', fontSize: '13px', color: isGuest ? '#ef4444' : '#6b7280' }}>{castDisplay}</td>
+                          <td style={{ padding: '8px 4px', fontSize: '14px', textAlign: 'right' }}>{item.quantity}</td>
+                          <td style={{ padding: '8px 4px', fontSize: '14px', textAlign: 'right' }}>¥{item.unit_price.toLocaleString()}</td>
+                          <td style={{ padding: '8px 4px', fontSize: '14px', textAlign: 'right' }}>¥{item.subtotal.toLocaleString()}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderTop: '2px solid #1f2937' }}>
+                  <span style={{ fontSize: '16px', fontWeight: '700' }}>合計（税込）</span>
+                  <span style={{ fontSize: '18px', fontWeight: '700' }}>¥{receiptModalData.total_incl_tax.toLocaleString()}</span>
+                </div>
+                {receiptModalData.payments.length > 0 && (
+                  <div style={{ marginTop: '8px', fontSize: '13px', color: '#6b7280' }}>
+                    支払: {receiptModalData.payments.map(p => `${p.method} ¥${p.amount.toLocaleString()}`).join('、')}
+                  </div>
+                )}
+                <div style={{ marginTop: '16px', textAlign: 'right' }}>
+                  <a
+                    href={`/receipts?order=${receiptModalOrderId}`}
+                    style={{ fontSize: '13px', color: '#3b82f6', textDecoration: 'underline' }}
+                  >
+                    伝票管理で編集
+                  </a>
+                </div>
+              </>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>伝票が見つかりません</div>
+            )}
+          </div>
+        </div>
       )}
 
     </div>
