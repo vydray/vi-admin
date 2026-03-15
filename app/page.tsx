@@ -310,8 +310,8 @@ export default function Home() {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const order = (item as any).orders
           if (!order?.payments || order.payments.length === 0) return false
-          // 価格0円の商品（ASKで価格入力済みは正常なので除外）
-          return item.unit_price === 0
+          // 価格0円 or ASK/ask商品（名前変更・バック率設定が必要）
+          return item.unit_price === 0 || /ask/i.test(item.product_name || '')
         })
         .map(item => {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
