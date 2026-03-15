@@ -185,7 +185,7 @@ export default function Home() {
     tableName: string
     productName: string
     unitPrice: number
-    orderId: number
+    orderId: string
     guestCastName: string | null
   }[]>([])
 
@@ -318,16 +318,19 @@ export default function Home() {
       const startDate = `${yearMonthStr}-01`
       const endDate = `${yearMonthStr}-31`
 
-      const { data: flaggedItems } = await supabase
+      const { data: flaggedItems, error: flaggedError } = await supabase
         .rpc('get_flagged_order_items', {
           p_store_id: storeId,
           p_start_date: startDate,
           p_end_date: endDate,
         })
+      if (flaggedError) {
+        console.error('ASKチェックRPCエラー:', flaggedError)
+      }
 
       const guestPattern = /ゲスト|guest|体験/i
       const askResults = (flaggedItems || []).map((item: {
-        item_id: number; order_id: number; product_name: string;
+        item_id: string; order_id: string; product_name: string;
         unit_price: number; cast_name: string[] | string | null;
         order_date: string; table_number: string | null;
       }) => {
