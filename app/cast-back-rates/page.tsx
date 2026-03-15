@@ -121,7 +121,7 @@ function CastBackRatesPageContent() {
       // カテゴリ一覧
       const { data: categoriesData, error: categoriesError } = await supabase
         .from('product_categories')
-        .select('id, name, store_id')
+        .select('id, name, store_id, back_rate_required')
         .eq('store_id', storeId)
         .order('display_order')
 
