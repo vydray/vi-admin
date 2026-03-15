@@ -365,9 +365,32 @@ function ReceiptsPageContent() {
 
   // URLパラメータから伝票を自動で開く（ダッシュボードからの遷移用）
   useEffect(() => {
-    if (autoOpenOrderId && !loading && !storeLoading && storeId) {
-      openReceiptById(Number(autoOpenOrderId))
+    if (!autoOpenOrderId || loading || storeLoading || !storeId) return
+
+    // UUIDの場合はそのまま、数値の場合はNumberに変換
+    const orderId = /^\d+$/.test(autoOpenOrderId) ? Number(autoOpenOrderId) : autoOpenOrderId
+    // openReceiptByIdはnumber型だが、直接DBクエリするので文字列でも動く
+    // 直接loadReceiptDetailsを呼ぶ
+    const openByParam = async () => {
+      try {
+        const { data: receipt, error } = await supabase
+          .from('orders')
+          .select('*')
+          .eq('id', orderId)
+          .single()
+
+        if (error) throw error
+        if (!receipt) {
+          toast.error('伝票が見つかりません')
+          return
+        }
+        loadReceiptDetails(receipt)
+      } catch (error) {
+        console.error('Error opening receipt from URL:', error)
+        toast.error('伝票の読み込みに失敗しました')
+      }
     }
+    openByParam()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoOpenOrderId, loading, storeLoading, storeId])
 
