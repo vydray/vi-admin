@@ -953,12 +953,24 @@ function PayslipPageContent() {
     // workDays = 勤務時間 > 0 の日数
     const workDays = dailyStats.filter(d => (d.work_hours || 0) > 0).length
 
+    // 税込み＋サービス料の特殊売上合計
+    let totalSalesServiceCharge = 0
+    specialDailySales.forEach(value => {
+      totalSalesServiceCharge += value
+    })
+
     // 各報酬形態で総報酬額を計算（それぞれのsales_aggregationを使用）
-    return types.map(type => ({
-      type,
-      total: calculateTotalCompensation(type, totalWorkHours, totalWageAmount, totalSalesItemBased, totalSalesReceiptBased, totalProductBack, workDays)
-    }))
-  }, [compensationSettings, dailyStats, dailySalesData, castDailyItems, helpDailyItems, calculateTotalCompensation])
+    return types.map(type => {
+      // 税込み＋サービス料の場合はspecialDailySalesの値を使用
+      const useServiceChargeSales = type.sales_calculation_settings?.exclude_service_charge === true && totalSalesServiceCharge > 0
+      const itemBased = useServiceChargeSales ? totalSalesServiceCharge : totalSalesItemBased
+      const receiptBased = useServiceChargeSales ? totalSalesServiceCharge : totalSalesReceiptBased
+      return {
+        type,
+        total: calculateTotalCompensation(type, totalWorkHours, totalWageAmount, itemBased, receiptBased, totalProductBack, workDays)
+      }
+    })
+  }, [compensationSettings, dailyStats, dailySalesData, castDailyItems, helpDailyItems, calculateTotalCompensation, specialDailySales])
 
   // アクティブな報酬形態を取得
   const activeCompensationType = useMemo((): CompensationType | null => {
@@ -1316,6 +1328,12 @@ function PayslipPageContent() {
       totalSalesReceiptBased += day.totalSalesReceiptBased || day.totalSales || 0
     })
 
+    // 税込み＋サービス料の特殊売上合計
+    let totalSalesServiceCharge = 0
+    specialDailySales.forEach(value => {
+      totalSalesServiceCharge += value
+    })
+
     return allEnabledCompensationTypes.map(type => {
       const color = compensationTypeColors.get(type.id)
       const items: { label: string; amount: number }[] = []
@@ -1330,8 +1348,11 @@ function PayslipPageContent() {
 
       // 売上バック（報酬形態ごとに独自計算）
       if ((type.commission_rate && type.commission_rate > 0) || type.use_sliding_rate) {
-        const totalSales = type.sales_aggregation === 'receipt_based'
-          ? totalSalesReceiptBased : totalSalesItemBased
+        // 税込み＋サービス料の場合はspecialDailySalesを使用
+        const useServiceChargeSales = type.sales_calculation_settings?.exclude_service_charge === true && totalSalesServiceCharge > 0
+        const totalSales = useServiceChargeSales
+          ? totalSalesServiceCharge
+          : (type.sales_aggregation === 'receipt_based' ? totalSalesReceiptBased : totalSalesItemBased)
         let salesBack = 0
         if (type.use_sliding_rate && type.sliding_rates) {
           const rate = type.sliding_rates.find(
@@ -1376,7 +1397,7 @@ function PayslipPageContent() {
         total
       }
     })
-  }, [allEnabledCompensationTypes, compensationTypeColors, summary, dailySalesData])
+  }, [allEnabledCompensationTypes, compensationTypeColors, summary, dailySalesData, specialDailySales])
 
   // 日別明細データ
   const dailyDetails = useMemo(() => {
