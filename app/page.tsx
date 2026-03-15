@@ -298,12 +298,9 @@ export default function Home() {
       let noBackRates: { id: number; name: string }[] = []
       if (hasBackRequiredProducts) {
         const { data: backRates } = await supabase
-          .from('cast_back_rates')
-          .select('cast_id')
-          .eq('store_id', storeId)
-          .eq('is_active', true)
+          .rpc('get_distinct_back_rate_cast_ids', { p_store_id: storeId })
 
-        const backCastIds = new Set((backRates || []).map(r => r.cast_id))
+        const backCastIds = new Set((backRates || []).map((r: { cast_id: number }) => r.cast_id))
         noBackRates = activeCasts.filter(c => !backCastIds.has(c.id))
       }
 
