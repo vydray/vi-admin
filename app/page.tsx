@@ -325,7 +325,7 @@ export default function Home() {
           p_end_date: endDate,
         })
       if (flaggedError) {
-        console.error('ASKチェックRPCエラー:', flaggedError)
+        console.error('ASKチェックRPCエラー:', flaggedError.message, flaggedError.code, flaggedError.details, flaggedError.hint)
       }
 
       const guestPattern = /ゲスト|guest|体験/i
