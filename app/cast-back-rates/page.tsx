@@ -476,6 +476,26 @@ function CastBackRatesPageContent() {
     setShowBulkModal(true)
   }
 
+  // カテゴリのバック対象外チェック
+  const isCategoryBackRateDisabled = (categoryName: string) => {
+    const category = categories.find(c => c.name === categoryName)
+    return category?.back_rate_required === false
+  }
+
+  // カテゴリのバック対象トグル
+  const toggleCategoryBackRate = async (categoryName: string) => {
+    const category = categories.find(c => c.name === categoryName)
+    if (!category) return
+    const newValue = category.back_rate_required === false ? true : false
+    const { error } = await supabase
+      .from('product_categories')
+      .update({ back_rate_required: newValue })
+      .eq('id', category.id)
+    if (!error) {
+      await loadData()
+    }
+  }
+
   const handleBulkSave = async () => {
     if (!bulkCategory) return
     if (!bulkApplyToAll && !selectedCastId) return
@@ -958,9 +978,25 @@ function CastBackRatesPageContent() {
                 </div>
               ) : (
                 Object.entries(groupedProducts).map(([categoryName, items]) => (
-                  <div key={categoryName} style={styles.categorySection}>
+                  <div key={categoryName} style={{
+                    ...styles.categorySection,
+                    ...(isCategoryBackRateDisabled(categoryName) ? { opacity: 0.5 } : {}),
+                  }}>
                     <div style={styles.categoryHeader}>
-                      <h3 style={styles.categoryTitle}>{categoryName}</h3>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <h3 style={styles.categoryTitle}>{categoryName}</h3>
+                        {categoryName !== 'BASE' && (
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: '#64748b', cursor: 'pointer' }}>
+                            <input
+                              type="checkbox"
+                              checked={!isCategoryBackRateDisabled(categoryName)}
+                              onChange={() => toggleCategoryBackRate(categoryName)}
+                              style={{ width: '14px', height: '14px', cursor: 'pointer' }}
+                            />
+                            バック対象
+                          </label>
+                        )}
+                      </div>
                       <button
                         onClick={() => openBulkModal(categoryName)}
                         style={styles.bulkBtn}

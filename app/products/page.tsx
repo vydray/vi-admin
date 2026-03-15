@@ -43,6 +43,7 @@ function ProductsPageContent() {
   const [editPrice, setEditPrice] = useState('')
   const [editCategory, setEditCategory] = useState<number | null>(null)
   const [editNeedsCast, setEditNeedsCast] = useState(false)
+  const [editBackRateRequired, setEditBackRateRequired] = useState<boolean | null>(null)
 
   // CSV入力用
   const [showImportModal, setShowImportModal] = useState(false)
@@ -221,7 +222,8 @@ function ProductsPageContent() {
         name: editName.trim(),
         price: parseInt(editPrice),
         category_id: editCategory,
-        needs_cast: editNeedsCast
+        needs_cast: editNeedsCast,
+        back_rate_required: editBackRateRequired
       })
       .eq('id', editingProduct.id)
 
@@ -272,6 +274,7 @@ function ProductsPageContent() {
     setEditPrice(product.price.toString())
     setEditCategory(product.category_id)
     setEditNeedsCast(product.needs_cast || false)
+    setEditBackRateRequired(product.back_rate_required ?? null)
     setShowEditModal(true)
   }
 
@@ -1068,6 +1071,27 @@ function ProductsPageContent() {
                 />
                 <span style={{ fontSize: '14px', color: '#374151' }}>
                   キャスト指名が必要
+                </span>
+              </label>
+              <label style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                cursor: 'pointer',
+                marginTop: '8px'
+              }}>
+                <input
+                  type="checkbox"
+                  checked={editBackRateRequired === null ? true : editBackRateRequired}
+                  onChange={(e) => setEditBackRateRequired(e.target.checked ? null : false)}
+                  style={{
+                    width: isMobile ? '22px' : '18px',
+                    height: isMobile ? '22px' : '18px',
+                    cursor: 'pointer'
+                  }}
+                />
+                <span style={{ fontSize: '14px', color: '#374151' }}>
+                  バック対象（未チェック＝バック不要）
                 </span>
               </label>
             </div>

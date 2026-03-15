@@ -148,6 +148,17 @@ function CategoriesPageContent() {
     }
   }
 
+  const toggleBackRateRequired = async (categoryId: number, currentValue: boolean) => {
+    const { error } = await supabase
+      .from('product_categories')
+      .update({ back_rate_required: !currentValue })
+      .eq('id', categoryId)
+
+    if (!error) {
+      await loadCategories()
+    }
+  }
+
   const openEditModal = (category: Category) => {
     setEditingCategory(category)
     setEditName(category.name)
@@ -492,6 +503,28 @@ function CategoriesPageContent() {
                       }}
                     />
                     推しファースト
+                  </label>
+                  <label
+                    onClick={(e) => e.stopPropagation()}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      fontSize: '13px',
+                      color: '#64748b'
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={category.back_rate_required !== false}
+                      onChange={() => toggleBackRateRequired(category.id, category.back_rate_required !== false)}
+                      style={{
+                        width: '16px',
+                        height: '16px',
+                        cursor: 'pointer'
+                      }}
+                    />
+                    バック対象
                   </label>
                   <button
                     onClick={(e) => {

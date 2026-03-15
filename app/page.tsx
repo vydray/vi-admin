@@ -277,15 +277,35 @@ export default function Home() {
       )
       const noWageStatus = activeCasts.filter(c => !wageCastIds.has(c.id))
 
-      // バック設定があるキャスト
-      const { data: backRates } = await supabase
-        .from('cast_back_rates')
-        .select('cast_id')
+      // バック対象商品があるか確認（カテゴリ・商品のback_rate_requiredフラグ）
+      const { data: backRequiredProducts } = await supabase
+        .from('products')
+        .select('id, back_rate_required, product_categories!inner(back_rate_required)')
         .eq('store_id', storeId)
         .eq('is_active', true)
 
-      const backCastIds = new Set((backRates || []).map(r => r.cast_id))
-      const noBackRates = activeCasts.filter(c => !backCastIds.has(c.id))
+      const hasBackRequiredProducts = (backRequiredProducts || []).some(p => {
+        // 商品のフラグがfalse → 対象外
+        if (p.back_rate_required === false) return false
+        // 商品のフラグがnull → カテゴリに従う
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const cat = (p as any).product_categories
+        if (p.back_rate_required === null && cat?.back_rate_required === false) return false
+        return true
+      })
+
+      // バック設定があるキャスト（バック対象商品がある場合のみチェック）
+      let noBackRates: { id: number; name: string }[] = []
+      if (hasBackRequiredProducts) {
+        const { data: backRates } = await supabase
+          .from('cast_back_rates')
+          .select('cast_id')
+          .eq('store_id', storeId)
+          .eq('is_active', true)
+
+        const backCastIds = new Set((backRates || []).map(r => r.cast_id))
+        noBackRates = activeCasts.filter(c => !backCastIds.has(c.id))
+      }
 
       if (noCompensation.length > 0 || noWageStatus.length > 0 || noBackRates.length > 0) {
         setMissingSettings({ noCompensation, noWageStatus, noBackRates })

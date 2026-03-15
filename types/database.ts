@@ -136,6 +136,7 @@ export interface Product {
   needs_cast?: boolean
   tax_rate?: number
   discount_rate?: number
+  back_rate_required?: boolean | null
   created_at?: string
 }
 
@@ -145,6 +146,7 @@ export interface Category {
   store_id: number
   display_order?: number
   show_oshi_first?: boolean
+  back_rate_required?: boolean
   created_at?: string
 }
 
