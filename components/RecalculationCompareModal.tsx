@@ -186,6 +186,27 @@ export default function RecalculationCompareModal({ isOpen, onClose, storeId, ye
       tableRef.current.style.flex = 'none'
       tableRef.current.style.minHeight = 'auto'
 
+      // sticky要素を一時解除（thead/tfoot/sticky td）
+      const stickyEls = tableRef.current.querySelectorAll('[style*="sticky"]')
+      const origPositions: { el: HTMLElement; pos: string }[] = []
+      stickyEls.forEach(el => {
+        const htmlEl = el as HTMLElement
+        if (htmlEl.style.position === 'sticky') {
+          origPositions.push({ el: htmlEl, pos: htmlEl.style.position })
+          htmlEl.style.position = 'static'
+        }
+      })
+      // thead/tfoot内のstickyも解除
+      const stickyRows = tableRef.current.querySelectorAll('thead, tfoot, th, td')
+      stickyRows.forEach(el => {
+        const htmlEl = el as HTMLElement
+        const computed = window.getComputedStyle(htmlEl)
+        if (computed.position === 'sticky') {
+          origPositions.push({ el: htmlEl, pos: htmlEl.style.position })
+          htmlEl.style.position = 'static'
+        }
+      })
+
       await exportToPDF(tableRef.current, {
         filename: `再計算差分_${yearMonth}.pdf`,
         orientation: 'landscape',
@@ -194,6 +215,7 @@ export default function RecalculationCompareModal({ isOpen, onClose, storeId, ye
       })
 
       // 元に戻す
+      origPositions.forEach(({ el, pos }) => { el.style.position = pos })
       tableRef.current.style.overflow = origOverflow
       tableRef.current.style.maxHeight = origMaxHeight
       tableRef.current.style.flex = origFlex
