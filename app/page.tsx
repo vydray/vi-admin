@@ -316,7 +316,8 @@ export default function Home() {
       // ASK商品・ゲストキャストチェック（RPCでDB側フィルタ）
       const yearMonthStr = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}`
       const startDate = `${yearMonthStr}-01`
-      const endDate = `${yearMonthStr}-31`
+      const lastDay = new Date(selectedYear, selectedMonth, 0).getDate()
+      const endDate = `${yearMonthStr}-${String(lastDay).padStart(2, '0')}`
 
       const { data: flaggedItems, error: flaggedError } = await supabase
         .rpc('get_flagged_order_items', {
