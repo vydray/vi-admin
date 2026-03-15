@@ -93,6 +93,11 @@ function CastBackRatesPageContent() {
     onConfirm: () => void
   } | null>(null)
 
+  // コピーモーダル
+  const [showCopyModal, setShowCopyModal] = useState(false)
+  const [copyTargetCastIds, setCopyTargetCastIds] = useState<number[]>([])
+  const [copying, setCopying] = useState(false)
+
   // 検索・フィルター
   const [searchText, setSearchText] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('在籍')
@@ -660,6 +665,96 @@ function CastBackRatesPageContent() {
     setShowConfirmModal(true)
   }
 
+  // バック率設定を他のキャストにコピー
+  const handleCopyToOtherCasts = async () => {
+    if (!selectedCastId || copyTargetCastIds.length === 0) return
+    if (castRates.length === 0) {
+      toast.error('コピー元の設定がありません')
+      return
+    }
+
+    setCopying(true)
+    const BATCH_SIZE = 500
+    let totalCopied = 0
+    let errorCount = 0
+
+    try {
+      for (const targetCastId of copyTargetCastIds) {
+        // コピー先の既存設定を論理削除
+        const { data: existingRates } = await supabase
+          .from('cast_back_rates')
+          .select('id')
+          .eq('cast_id', targetCastId)
+          .eq('store_id', storeId)
+          .eq('is_active', true)
+
+        // コピー元のデータをコピー先用に変換
+        const newRecords = castRates.map(r => ({
+          cast_id: targetCastId,
+          store_id: storeId,
+          category: r.category,
+          product_name: r.product_name,
+          back_type: r.back_type,
+          back_ratio: r.back_ratio,
+          back_fixed_amount: r.back_fixed_amount,
+          self_back_ratio: r.self_back_ratio,
+          help_back_ratio: r.help_back_ratio,
+          use_sliding_back: r.use_sliding_back,
+          back_sales_aggregation: r.back_sales_aggregation,
+          sliding_back_rates: r.sliding_back_rates,
+          is_active: true,
+        }))
+
+        // バッチ挿入
+        const insertedIds: number[] = []
+        for (let i = 0; i < newRecords.length; i += BATCH_SIZE) {
+          const batch = newRecords.slice(i, i + BATCH_SIZE)
+          const { data: insertedData, error: insertError } = await supabase
+            .from('cast_back_rates')
+            .insert(batch)
+            .select('id')
+
+          if (insertError) {
+            console.error(`Copy batch insert error:`, insertError)
+            errorCount++
+            continue
+          }
+          if (insertedData) {
+            insertedIds.push(...insertedData.map(r => r.id))
+          }
+        }
+
+        // 挿入成功したら旧レコードを論理削除
+        if (insertedIds.length > 0 && existingRates && existingRates.length > 0) {
+          const oldIds = existingRates.map(r => r.id).filter(id => !insertedIds.includes(id))
+          if (oldIds.length > 0) {
+            await supabase
+              .from('cast_back_rates')
+              .update({ is_active: false })
+              .in('id', oldIds)
+          }
+        }
+
+        totalCopied++
+      }
+
+      if (errorCount > 0) {
+        toast.error(`${errorCount}件のキャストでエラーが発生しました`)
+      } else {
+        toast.success(`${totalCopied}名のキャストにコピーしました（各${castRates.length}件）`)
+      }
+
+      setShowCopyModal(false)
+      setCopyTargetCastIds([])
+      await loadData()
+    } catch (err) {
+      console.error('コピーエラー:', err)
+      toast.error('コピーに失敗しました')
+    } finally {
+      setCopying(false)
+    }
+  }
+
   // カテゴリ一括削除
   const handleBulkDelete = async () => {
     if (!bulkCategory) return
@@ -811,15 +906,37 @@ function CastBackRatesPageContent() {
               <div style={styles.mainHeader}>
                 <div style={styles.mainHeaderContent}>
                   <h2 style={styles.mainTitle}>{selectedCast.name} のバック率設定</h2>
-                  {castRates.length > 0 && (
-                    <button
-                      onClick={handleDeleteAllRates}
-                      style={styles.deleteAllBtn}
-                      disabled={saving}
-                    >
-                      {saving ? '削除中...' : `全削除（${castRates.length}件）`}
-                    </button>
-                  )}
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    {castRates.length > 0 && (
+                      <button
+                        onClick={() => {
+                          setCopyTargetCastIds([])
+                          setShowCopyModal(true)
+                        }}
+                        style={{
+                          padding: '6px 14px',
+                          borderRadius: '6px',
+                          border: 'none',
+                          backgroundColor: '#3b82f6',
+                          color: 'white',
+                          fontSize: '13px',
+                          fontWeight: '600',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        他のキャストにコピー
+                      </button>
+                    )}
+                    {castRates.length > 0 && (
+                      <button
+                        onClick={handleDeleteAllRates}
+                        style={styles.deleteAllBtn}
+                        disabled={saving}
+                      >
+                        {saving ? '削除中...' : `全削除（${castRates.length}件）`}
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -1453,6 +1570,107 @@ function CastBackRatesPageContent() {
                 style={{ backgroundColor: '#e74c3c', borderColor: '#e74c3c' }}
               >
                 削除する
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* コピーモーダル */}
+      {showCopyModal && selectedCast && (
+        <div style={styles.modalOverlay} onClick={() => setShowCopyModal(false)}>
+          <div style={{ ...styles.confirmModal, maxWidth: '500px', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }} onClick={(e) => e.stopPropagation()}>
+            <h3 style={styles.confirmTitle}>{selectedCast.name} のバック率設定をコピー</h3>
+            <p style={{ fontSize: '14px', color: '#666', margin: '0 0 12px' }}>
+              コピー先のキャストを選択してください（{castRates.length}件の設定をコピー）
+            </p>
+
+            {/* 全選択/解除 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+              <button
+                onClick={() => {
+                  const allIds = filteredCasts.filter(c => c.id !== selectedCastId).map(c => c.id)
+                  setCopyTargetCastIds(copyTargetCastIds.length === allIds.length ? [] : allIds)
+                }}
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: '4px',
+                  border: '1px solid #d1d5db',
+                  backgroundColor: '#f9fafb',
+                  fontSize: '12px',
+                  cursor: 'pointer',
+                }}
+              >
+                {copyTargetCastIds.length === filteredCasts.filter(c => c.id !== selectedCastId).length ? '全解除' : '全選択'}
+              </button>
+              <span style={{ fontSize: '13px', color: '#666' }}>
+                {copyTargetCastIds.length}名選択中
+              </span>
+            </div>
+
+            {/* キャスト一覧 */}
+            <div style={{ flex: 1, overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: '8px', marginBottom: '16px' }}>
+              {filteredCasts.filter(c => c.id !== selectedCastId).map(cast => {
+                const isChecked = copyTargetCastIds.includes(cast.id)
+                const targetRateCount = backRates.filter(r => r.cast_id === cast.id).length
+                return (
+                  <label
+                    key={cast.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      padding: '10px 12px',
+                      borderBottom: '1px solid #f3f4f6',
+                      cursor: 'pointer',
+                      backgroundColor: isChecked ? '#eff6ff' : 'white',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => {
+                        setCopyTargetCastIds(prev =>
+                          isChecked ? prev.filter(id => id !== cast.id) : [...prev, cast.id]
+                        )
+                      }}
+                      style={{ marginRight: '10px' }}
+                    />
+                    <span style={{ flex: 1, fontSize: '14px' }}>{cast.name}</span>
+                    <span style={{ fontSize: '12px', color: '#9ca3af' }}>
+                      {cast.status}
+                    </span>
+                    {targetRateCount > 0 && (
+                      <span style={{ fontSize: '11px', color: '#f59e0b', marginLeft: '8px' }}>
+                        既存{targetRateCount}件
+                      </span>
+                    )}
+                  </label>
+                )
+              })}
+            </div>
+
+            {copyTargetCastIds.length > 0 && (
+              <p style={{ fontSize: '12px', color: '#ef4444', margin: '0 0 12px' }}>
+                ※ コピー先の既存設定は上書きされます
+              </p>
+            )}
+
+            <div style={styles.confirmActions}>
+              <Button
+                onClick={() => setShowCopyModal(false)}
+                variant="outline"
+                size="medium"
+                disabled={copying}
+              >
+                キャンセル
+              </Button>
+              <Button
+                onClick={handleCopyToOtherCasts}
+                variant="primary"
+                size="medium"
+                disabled={copying || copyTargetCastIds.length === 0}
+              >
+                {copying ? 'コピー中...' : `${copyTargetCastIds.length}名にコピー`}
               </Button>
             </div>
           </div>
