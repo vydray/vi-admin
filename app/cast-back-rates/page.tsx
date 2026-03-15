@@ -210,11 +210,13 @@ function CastBackRatesPageContent() {
   }, [casts, statusFilter, searchText])
 
   // コピーモーダル用フィルター
+  // コピーモーダル用：退店以外の全キャスト（サイドバーフィルタに依存しない）
   const copyFilteredCasts = useMemo(() => {
-    return filteredCasts
+    return casts
       .filter(c => c.id !== selectedCastId)
+      .filter(c => c.status !== '退店')
       .filter(c => !copySearchText || c.name.includes(copySearchText))
-  }, [filteredCasts, selectedCastId, copySearchText])
+  }, [casts, selectedCastId, copySearchText])
 
   // 選択中のキャストのバック率一覧
   const castRates = useMemo(() => {
