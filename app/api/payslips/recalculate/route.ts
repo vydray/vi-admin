@@ -795,6 +795,13 @@ async function calculatePayslipForCast(
           specialTotal += Math.floor(orderSales)
         }
 
+        // BASE売上を加算（cast_daily_itemsのBASEカテゴリ）
+        for (const item of (dailyItems || [])) {
+          if (item.category === 'BASE') {
+            specialTotal += (item.subtotal || 0)
+          }
+        }
+
         specialSalesMap.set(compType.id, specialTotal)
         console.log(`[${cast.name}] 税込み＋サービス料計算: compType=${compType.name}, specialTotal=${specialTotal}`)
       }
