@@ -231,6 +231,93 @@ export async function POST(request: NextRequest) {
 
     const wageStatusMap = new Map((wageStatuses || []).map(ws => [ws.id, ws.hourly_wage]))
 
+    // 11. 税込＋サービス料モード用の特殊売上を事前計算
+    // exclude_service_chargeフラグを持つキャストだけ対象
+    const specialSalesMap = new Map<number, number>()
+    {
+      const specialCasts: { id: number; name: string; helpDistMethod: string }[] = []
+      for (const cast of casts) {
+        const castCompSettings = (allCompSettings || []).filter(cs => cs.cast_id === cast.id)
+        // フォールバックで該当設定を探す
+        const targetYear = targetMonth.getFullYear()
+        const targetMonthNum = targetMonth.getMonth() + 1
+        let cs = castCompSettings.find(c => c.target_year === targetYear && c.target_month === targetMonthNum)
+        if (!cs) cs = castCompSettings.filter(c => c.target_year !== null).sort((a, b) => {
+          if (a.target_year !== b.target_year) return (b.target_year || 0) - (a.target_year || 0)
+          return (b.target_month || 0) - (a.target_month || 0)
+        })[0]
+        if (!cs) cs = castCompSettings.find(c => c.target_year === null && c.target_month === null)
+        if (!cs) continue
+
+        const types = (cs.compensation_types as Array<Record<string, unknown>>) || []
+        const serviceChargeType = types.find(t => t.is_enabled !== false &&
+          (t.sales_calculation_settings as Record<string, unknown>)?.exclude_service_charge === true
+        )
+        if (serviceChargeType) {
+          const helpDist = ((serviceChargeType.sales_calculation_settings as Record<string, unknown>)?.help_distribution_method as string) || 'all_to_nomination'
+          specialCasts.push({ id: cast.id, name: cast.name, helpDistMethod: helpDist })
+        }
+      }
+
+      if (specialCasts.length > 0) {
+        // サービス料率
+        let serviceFeeRate = 0.2
+        const { data: sysSettings } = await supabase
+          .from('system_settings')
+          .select('setting_key, setting_value')
+          .eq('store_id', storeId)
+        if (sysSettings) {
+          const row = sysSettings.find((r: { setting_key: string }) => r.setting_key === 'service_fee_rate')
+          if (row) serviceFeeRate = parseFloat(row.setting_value) / 100
+        }
+
+        const allCastNames = casts.map(c => c.name)
+
+        for (const sc of specialCasts) {
+          // 伝票取得
+          const { data: orders } = await supabase
+            .from('orders')
+            .select('id, staff_name, order_date, total_incl_tax, order_items(cast_name, subtotal)')
+            .eq('store_id', storeId)
+            .eq('staff_name', sc.name)
+            .gte('order_date', startDate)
+            .lte('order_date', endDate)
+
+          let total = 0
+          for (const order of (orders || [])) {
+            let orderSales = (order.total_incl_tax as number) || 0
+            const helpItems = ((order.order_items || []) as { cast_name: string[] | null; subtotal: number }[]).filter(item => {
+              if (!item.cast_name || item.cast_name.length === 0) return false
+              return item.cast_name.some(cn => cn !== sc.name && allCastNames.includes(cn))
+            })
+            for (const helpItem of helpItems) {
+              const helpAmount = helpItem.subtotal * (1 + serviceFeeRate)
+              if (sc.helpDistMethod === 'equal_per_person' || sc.helpDistMethod === 'equal_all') {
+                orderSales -= Math.floor(helpAmount / 2)
+              }
+            }
+            total += Math.floor(orderSales)
+          }
+
+          // BASE売上加算（allDailyItemsにcategory等がないので別途取得）
+          const { data: baseDailyItems } = await supabase
+            .from('cast_daily_items')
+            .select('subtotal, category, order_id, table_number')
+            .eq('store_id', storeId)
+            .eq('cast_id', sc.id)
+            .gte('date', startDate)
+            .lte('date', endDate)
+          for (const item of (baseDailyItems || [])) {
+            if (item.category === 'BASE' || (!item.order_id && !item.table_number)) {
+              total += item.subtotal || 0
+            }
+          }
+
+          specialSalesMap.set(sc.id, total)
+        }
+      }
+    }
+
     // キャストごとに計算
     const payslips: PayslipSummary[] = []
 
@@ -297,12 +384,29 @@ export async function POST(request: NextRequest) {
 
       const enabledTypes = compensationTypes.filter(t => t.is_enabled !== false)
 
+      // 税込＋サービス料モードの売上（このキャストにフラグがあれば計算）
+      const hasServiceChargeType = enabledTypes.some(
+        t => (t as Record<string, unknown>).sales_calculation_settings &&
+          ((t as Record<string, unknown>).sales_calculation_settings as Record<string, unknown>)?.exclude_service_charge === true
+      )
+      let specialSalesTotal = 0
+      if (hasServiceChargeType) {
+        // specialSalesMap から取得（後で一括計算）
+        specialSalesTotal = specialSalesMap.get(cast.id) || 0
+      }
+
       // 各報酬形態の報酬額を計算
       const calculateForType = (compType: typeof enabledTypes[0]) => {
+        const compTypeAny = compType as Record<string, unknown>
+        const salesCalcSettings = compTypeAny.sales_calculation_settings as Record<string, unknown> | undefined
+        const useServiceCharge = salesCalcSettings?.exclude_service_charge === true && specialSalesTotal > 0
+
         const typeIsItemBased = compType.sales_aggregation !== 'receipt_based'
-        const typeTotalSales = castStats.reduce((sum, s) => {
-          return sum + (typeIsItemBased ? (s.total_sales_item_based || 0) : (s.total_sales_receipt_based || 0))
-        }, 0)
+        const typeTotalSales = useServiceCharge
+          ? specialSalesTotal
+          : castStats.reduce((sum, s) => {
+              return sum + (typeIsItemBased ? (s.total_sales_item_based || 0) : (s.total_sales_receipt_based || 0))
+            }, 0)
 
         let typeSalesBack = 0
         if (compType.use_sliding_rate && compType.sliding_rates) {
