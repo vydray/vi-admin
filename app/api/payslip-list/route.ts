@@ -299,20 +299,6 @@ export async function POST(request: NextRequest) {
             total += Math.floor(orderSales)
           }
 
-          // BASE売上加算（allDailyItemsにcategory等がないので別途取得）
-          const { data: baseDailyItems } = await supabase
-            .from('cast_daily_items')
-            .select('subtotal, category, order_id, table_number')
-            .eq('store_id', storeId)
-            .eq('cast_id', sc.id)
-            .gte('date', startDate)
-            .lte('date', endDate)
-          for (const item of (baseDailyItems || [])) {
-            if (item.category === 'BASE' || (!item.order_id && !item.table_number)) {
-              total += item.subtotal || 0
-            }
-          }
-
           specialSalesMap.set(sc.id, total)
         }
       }
