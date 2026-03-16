@@ -3396,7 +3396,7 @@ function PayslipPageContent() {
                                         <div style={{ fontSize: '12px', color: '#e74c3c', fontWeight: '600', marginBottom: '4px' }}>ヘルプ差引（均等割）</div>
                                         {specialOrder.helpDeductions.map((d, idx) => (
                                           <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', fontSize: '12px' }}>
-                                            <span style={{ color: '#6c757d' }}>{d.castName}（税抜 {currencyFormatter.format(d.subtotal)} × 1.2 ÷ 2）</span>
+                                            <span style={{ color: '#6c757d' }}>{d.castName}（商品計 {currencyFormatter.format(d.subtotal)} +サ料 → 半額差引）</span>
                                             <span style={{ color: '#e74c3c', fontWeight: '500' }}>-{currencyFormatter.format(d.amount)}</span>
                                           </div>
                                         ))}
