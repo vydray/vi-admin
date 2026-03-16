@@ -117,6 +117,18 @@ interface OrderGroup {
   oshiCastName?: string
 }
 
+// 税込み＋サービス料モード用の伝票データ
+interface SpecialOrderData {
+  id: string
+  tableNumber: string | null
+  guestName: string | null
+  subtotalInclTax: number
+  serviceCharge: number
+  totalInclTax: number
+  adjustedTotal: number
+  items: { productName: string; category: string | null; quantity: number; unitPrice: number; subtotal: number }[]
+}
+
 interface OrderItemWithTax {
   id: number
   order_id: string
@@ -284,6 +296,7 @@ function PayslipPageContent() {
   } | null>(null) // 商品別詳細モーダル用
   const [specialDailySales, setSpecialDailySales] = useState<Map<string, number>>(new Map()) // 税込み＋サービス料の日別売上
   const [specialOrderSales, setSpecialOrderSales] = useState<Map<string, number>>(new Map()) // 税込み＋サービス料の伝票別売上（order_id → 金額）
+  const [specialOrdersByDate, setSpecialOrdersByDate] = useState<Map<string, SpecialOrderData[]>>(new Map())
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null) // 伝票詳細モーダル用
   const [orderDetail, setOrderDetail] = useState<{
     id: string
@@ -749,6 +762,7 @@ function PayslipPageContent() {
     if (!hasServiceChargeType || !selectedCastId || !storeId) {
       setSpecialDailySales(new Map())
       setSpecialOrderSales(new Map())
+      setSpecialOrdersByDate(new Map())
       return
     }
 
@@ -771,18 +785,25 @@ function PayslipPageContent() {
         if (row) serviceFeeRate = parseFloat(row.setting_value) / 100
       }
 
-      // キャストの伝票を取得（total_incl_tax含む）
+      // キャストの伝票を取得（税込＋サービス料含む）
       const { data: orders, error } = await supabase
         .from('orders')
         .select(`
           id,
           staff_name,
           order_date,
+          table_number,
+          guest_name,
+          subtotal_incl_tax,
+          service_charge,
           total_incl_tax,
           order_items (
             id,
             product_name,
+            category,
             cast_name,
+            quantity,
+            unit_price,
             subtotal
           )
         `)
@@ -806,6 +827,7 @@ function PayslipPageContent() {
       const allCastNames = casts.map(c => c.name)
       const dailyMap = new Map<string, number>()
       const orderMap = new Map<string, number>() // 伝票別売上
+      const dateOrdersMap = new Map<string, SpecialOrderData[]>() // 日付別伝票データ
 
       for (const order of (orders || [])) {
         const orderDate = order.order_date?.substring(0, 10) // yyyy-MM-dd に正規化
@@ -828,14 +850,45 @@ function PayslipPageContent() {
         const current = dailyMap.get(orderDate) || 0
         dailyMap.set(orderDate, current + adjustedSales)
         orderMap.set(order.id, adjustedSales)
+
+        // モーダル表示用の伝票データを保存
+        const orderData: SpecialOrderData = {
+          id: order.id,
+          tableNumber: (order as Record<string, unknown>).table_number as string | null,
+          guestName: (order as Record<string, unknown>).guest_name as string | null,
+          subtotalInclTax: ((order as Record<string, unknown>).subtotal_incl_tax as number) || 0,
+          serviceCharge: ((order as Record<string, unknown>).service_charge as number) || 0,
+          totalInclTax: (order.total_incl_tax as number) || 0,
+          adjustedTotal: adjustedSales,
+          items: (order.order_items || []).map((item: { product_name: string; category: string | null; quantity: number; unit_price: number; subtotal: number }) => ({
+            productName: item.product_name,
+            category: item.category,
+            quantity: item.quantity,
+            unitPrice: item.unit_price,
+            subtotal: item.subtotal
+          }))
+        }
+        if (!dateOrdersMap.has(orderDate)) {
+          dateOrdersMap.set(orderDate, [])
+        }
+        dateOrdersMap.get(orderDate)!.push(orderData)
       }
+
+      // BASE売上を加算（ECサイト注文はordersテーブルにないため別途追加）
+      castDailyItems
+        .filter(item => item.category === 'BASE' || (!item.order_id && !item.table_number))
+        .forEach(item => {
+          const current = dailyMap.get(item.date) || 0
+          dailyMap.set(item.date, current + (item.subtotal || 0))
+        })
 
       setSpecialDailySales(dailyMap)
       setSpecialOrderSales(orderMap)
+      setSpecialOrdersByDate(dateOrdersMap)
     }
 
     loadSpecialSales()
-  }, [hasServiceChargeType, selectedCastId, selectedMonth, storeId, casts, compensationSettings])
+  }, [hasServiceChargeType, selectedCastId, selectedMonth, storeId, casts, compensationSettings, castDailyItems])
 
   // 伝票詳細を取得
   useEffect(() => {
@@ -3175,7 +3228,8 @@ function PayslipPageContent() {
           })
         }
 
-        if (!dayData && !dayDetail && dayItems.length === 0) return null
+        const daySpecialOrders = isServiceChargeMode ? (specialOrdersByDate.get(selectedDayDetail) || []) : []
+        if (!dayData && !dayDetail && dayItems.length === 0 && daySpecialOrders.length === 0) return null
 
         return (
           <>
@@ -3221,8 +3275,97 @@ function PayslipPageContent() {
                   </div>
                 </div>
 
-                {/* 売上一覧（伝票ごと） */}
-                {allOrders.length > 0 && (
+                {/* 税込＋サービス料モードの伝票一覧 */}
+                {isServiceChargeMode && daySpecialOrders.length > 0 && (
+                  <div style={styles.modalSection}>
+                    <div style={styles.modalSectionTitle}>伝票一覧 ({daySpecialOrders.length}件)</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                      {daySpecialOrders.map(specialOrder => {
+                        const isExpanded = expandedOrders.has(specialOrder.id)
+                        return (
+                          <div key={specialOrder.id}>
+                            <div
+                              onClick={() => toggleOrder(specialOrder.id)}
+                              style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                padding: '12px',
+                                backgroundColor: isExpanded ? '#f0f7ff' : 'transparent',
+                                cursor: 'pointer',
+                                borderBottom: '1px solid #e9ecef'
+                              }}
+                            >
+                              <div>
+                                <div style={{ fontWeight: '500' }}>
+                                  {specialOrder.tableNumber || '-'}番 / {specialOrder.guestName || '無記名'}
+                                </div>
+                                <div style={{ fontSize: '11px', color: '#6c757d' }}>
+                                  #{specialOrder.id.slice(0, 6)}
+                                </div>
+                              </div>
+                              <div style={{ textAlign: 'right' }}>
+                                <div style={{ fontWeight: '600' }}>
+                                  {currencyFormatter.format(specialOrder.adjustedTotal)}
+                                  <span style={{ marginLeft: '8px', color: '#6c757d' }}>{isExpanded ? '▲' : '▼'}</span>
+                                </div>
+                              </div>
+                            </div>
+                            {isExpanded && (
+                              <div style={{ backgroundColor: '#f8f9fa', padding: '8px 12px' }}>
+                                {specialOrder.items.map((item, idx) => (
+                                  <div key={idx} style={{
+                                    padding: '10px 0',
+                                    borderBottom: idx < specialOrder.items.length - 1 ? '1px solid #e9ecef' : 'none'
+                                  }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span style={{
+                                          fontSize: '10px',
+                                          padding: '2px 6px',
+                                          borderRadius: '4px',
+                                          backgroundColor: '#e9ecef',
+                                          color: '#495057'
+                                        }}>
+                                          {item.category || '-'}
+                                        </span>
+                                        <span style={{ fontWeight: '500' }}>{item.productName}</span>
+                                      </div>
+                                      <div style={{ textAlign: 'right' }}>
+                                        <div style={{ fontWeight: '600' }}>{currencyFormatter.format(item.subtotal)}</div>
+                                        <div style={{ fontSize: '11px', color: '#6c757d' }}>
+                                          {currencyFormatter.format(item.unitPrice)} × {item.quantity}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                                {/* 小計・サービス料・合計 */}
+                                <div style={{ borderTop: '2px solid #dee2e6', marginTop: '8px', paddingTop: '8px' }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
+                                    <span style={{ color: '#6c757d', fontSize: '13px' }}>税込小計</span>
+                                    <span style={{ fontWeight: '500' }}>{currencyFormatter.format(specialOrder.subtotalInclTax)}</span>
+                                  </div>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
+                                    <span style={{ color: '#6c757d', fontSize: '13px' }}>サービス料</span>
+                                    <span style={{ fontWeight: '500' }}>{currencyFormatter.format(specialOrder.serviceCharge)}</span>
+                                  </div>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontWeight: '700' }}>
+                                    <span>合計</span>
+                                    <span>{currencyFormatter.format(specialOrder.totalInclTax)}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* 売上一覧（伝票ごと）- 通常モード */}
+                {!isServiceChargeMode && allOrders.length > 0 && (
                   <div style={styles.modalSection}>
                     <div style={styles.modalSectionTitle}>伝票一覧 ({allOrders.length}件)</div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
