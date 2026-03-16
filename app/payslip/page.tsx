@@ -1353,6 +1353,17 @@ function PayslipPageContent() {
         const totalSales = useServiceChargeSales
           ? totalSalesServiceCharge
           : (type.sales_aggregation === 'receipt_based' ? totalSalesReceiptBased : totalSalesItemBased)
+        console.log('[DEBUG compensationTypeBreakdowns]', {
+          typeName: type.name,
+          excludeServiceCharge: type.sales_calculation_settings?.exclude_service_charge,
+          specialDailySalesSize: specialDailySales.size,
+          totalSalesServiceCharge,
+          useServiceChargeSales,
+          totalSales,
+          useSliding: type.use_sliding_rate,
+          slidingRates: type.sliding_rates,
+          commissionRate: type.commission_rate
+        })
         let salesBack = 0
         if (type.use_sliding_rate && type.sliding_rates) {
           const rate = type.sliding_rates.find(
