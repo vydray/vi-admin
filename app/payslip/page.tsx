@@ -3163,9 +3163,13 @@ function PayslipPageContent() {
         }
 
         // 伝票ごとにグループ化（推し売上 - 伝票内の全アイテムを表示）
+        // フリー卓のアイテム（is_self=false かつ help_cast_id=自分）は除外（ヘルプ側で表示）
+        const selfDayItems = dayItems.filter(item =>
+          !(item.is_self === false && item.help_cast_id === selectedCast?.id)
+        )
         const selfOrderGroups = new Map<string, OrderGroup>()
 
-        dayItems.forEach(item => {
+        selfDayItems.forEach(item => {
           // BASE売上の場合はorderIdを"BASE"にする
           const isBase = item.category === 'BASE' || (!item.order_id && !item.table_number)
           const orderId = isBase ? 'BASE-self' : (item.order_id || 'no-order') + '-self'
@@ -3228,7 +3232,7 @@ function PayslipPageContent() {
         const totalSelfSales = selfOrders.reduce((sum, g) => sum + g.totalSales, 0)
 
         // 商品バック合計（推しバック + ヘルプバック）
-        const totalSelfBack = dayItems.reduce((sum, item) => sum + (item.self_back_amount || 0), 0)
+        const totalSelfBack = selfDayItems.reduce((sum, item) => sum + (item.self_back_amount || 0), 0)
         const totalHelpBack = dayHelpItems.reduce((sum, item) => sum + (item.help_back_amount || 0), 0)
         const totalProductBack = totalSelfBack + totalHelpBack
 
