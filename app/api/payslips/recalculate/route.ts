@@ -407,8 +407,10 @@ async function calculatePayslipForCast(
           baseAmount = item.subtotal || 0
           break
         case 'distributed_amount':
-          // 分配額基準: self_sales × rate
-          baseAmount = item.self_sales || 0
+          // 分配額基準: self_sales × rate（フリー卓でself_sales=0の場合はsubtotal/2）
+          baseAmount = (item.self_sales || 0) > 0
+            ? item.self_sales
+            : Math.floor((item.subtotal || 0) / 2)
           break
         case 'sales_based':
         default:
