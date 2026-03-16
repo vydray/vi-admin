@@ -283,6 +283,7 @@ function PayslipPageContent() {
     oshiCastId?: number  // ヘルプ商品の場合（推しキャストID）
   } | null>(null) // 商品別詳細モーダル用
   const [specialDailySales, setSpecialDailySales] = useState<Map<string, number>>(new Map()) // 税込み＋サービス料の日別売上
+  const [specialOrderSales, setSpecialOrderSales] = useState<Map<string, number>>(new Map()) // 税込み＋サービス料の伝票別売上（order_id → 金額）
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null) // 伝票詳細モーダル用
   const [orderDetail, setOrderDetail] = useState<{
     id: string
@@ -747,6 +748,7 @@ function PayslipPageContent() {
   useEffect(() => {
     if (!hasServiceChargeType || !selectedCastId || !storeId) {
       setSpecialDailySales(new Map())
+      setSpecialOrderSales(new Map())
       return
     }
 
@@ -803,6 +805,7 @@ function PayslipPageContent() {
 
       const allCastNames = casts.map(c => c.name)
       const dailyMap = new Map<string, number>()
+      const orderMap = new Map<string, number>() // 伝票別売上
 
       for (const order of (orders || [])) {
         const orderDate = order.order_date?.substring(0, 10) // yyyy-MM-dd に正規化
@@ -821,11 +824,14 @@ function PayslipPageContent() {
           }
         }
 
+        const adjustedSales = Math.floor(orderSales)
         const current = dailyMap.get(orderDate) || 0
-        dailyMap.set(orderDate, current + Math.floor(orderSales))
+        dailyMap.set(orderDate, current + adjustedSales)
+        orderMap.set(order.id, adjustedSales)
       }
 
       setSpecialDailySales(dailyMap)
+      setSpecialOrderSales(orderMap)
     }
 
     loadSpecialSales()
@@ -3071,6 +3077,7 @@ function PayslipPageContent() {
         // 売上集計方法（報酬形態の設定に基づく）
         const salesAggregation = activeCompensationType?.sales_aggregation || 'item_based'
         const isItemBased = salesAggregation === 'item_based'
+        const isServiceChargeMode = activeCompensationType?.sales_calculation_settings?.exclude_service_charge === true && specialOrderSales.size > 0
 
         // cast_daily_itemsから当日のデータを取得して伝票ごとにグループ化
         // 推し小計モードの場合はneeds_cast=trueの商品のみ表示
@@ -3194,8 +3201,8 @@ function PayslipPageContent() {
                 <div style={{ ...styles.modalSummary, backgroundColor: '#f8f9fa', borderRadius: '8px', padding: '16px', marginBottom: '16px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
                     <div>
-                      <div style={{ fontSize: '12px', color: '#6c757d', marginBottom: '4px' }}>推し売上合計</div>
-                      <div style={{ fontSize: '24px', fontWeight: '700' }}>{currencyFormatter.format(totalSelfSales)}</div>
+                      <div style={{ fontSize: '12px', color: '#6c757d', marginBottom: '4px' }}>{isServiceChargeMode ? '売上合計（税込＋サービス料）' : '推し売上合計'}</div>
+                      <div style={{ fontSize: '24px', fontWeight: '700' }}>{currencyFormatter.format(isServiceChargeMode ? (specialDailySales.get(selectedDayDetail) || 0) : totalSelfSales)}</div>
                     </div>
                     <div style={{ display: 'flex', gap: '20px' }}>
                       {totalSelfBack > 0 && (
@@ -3257,7 +3264,17 @@ function PayslipPageContent() {
                               <div style={{ textAlign: 'right' }}>
                                 {order.type === 'self' ? (
                                   <div style={{ fontWeight: '600' }}>
-                                    {currencyFormatter.format(order.totalSales)}
+                                    {(() => {
+                                      // 税込み＋サービス料モードの場合、伝票のtotal_incl_taxベースの金額を表示
+                                      if (isServiceChargeMode) {
+                                        const rawOrderId = order.orderId.replace(/-self$/, '')
+                                        const specialSales = specialOrderSales.get(rawOrderId)
+                                        if (specialSales !== undefined) {
+                                          return currencyFormatter.format(specialSales)
+                                        }
+                                      }
+                                      return currencyFormatter.format(order.totalSales)
+                                    })()}
                                     <span style={{ marginLeft: '8px', color: '#6c757d' }}>{isExpanded ? '▲' : '▼'}</span>
                                   </div>
                                 ) : (
