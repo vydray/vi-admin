@@ -126,6 +126,7 @@ interface SpecialOrderData {
   serviceCharge: number
   totalInclTax: number
   adjustedTotal: number
+  helpDeductions: { castName: string; amount: number; subtotal: number }[]
   items: { productName: string; category: string | null; quantity: number; unitPrice: number; subtotal: number; castName: string[] | null }[]
 }
 
@@ -839,12 +840,25 @@ function PayslipPageContent() {
           return item.cast_name.some((cn: string) => cn !== selectedCast.name && allCastNames.includes(cn))
         })
 
+        // ヘルプ差引をキャスト別に集計
+        const helpDeductionMap = new Map<string, { subtotal: number; deduction: number }>()
         for (const helpItem of helpItems) {
           const helpAmount = helpItem.subtotal * (1 + serviceFeeRate)
+          const helpCastName = helpItem.cast_name?.find((cn: string) => cn !== selectedCast.name && allCastNames.includes(cn)) || '不明'
+          const existing = helpDeductionMap.get(helpCastName) || { subtotal: 0, deduction: 0 }
+          existing.subtotal += helpItem.subtotal
           if (helpDistMethod === 'equal_per_person' || helpDistMethod === 'equal_all') {
-            orderSales -= Math.floor(helpAmount / 2)
+            const deduction = Math.floor(helpAmount / 2)
+            existing.deduction += deduction
+            orderSales -= deduction
           }
+          helpDeductionMap.set(helpCastName, existing)
         }
+        const helpDeductions = Array.from(helpDeductionMap.entries()).map(([name, data]) => ({
+          castName: name,
+          subtotal: data.subtotal,
+          amount: data.deduction
+        }))
 
         const adjustedSales = Math.floor(orderSales)
         const current = dailyMap.get(orderDate) || 0
@@ -860,6 +874,7 @@ function PayslipPageContent() {
           serviceCharge: ((order as Record<string, unknown>).service_charge as number) || 0,
           totalInclTax: (order.total_incl_tax as number) || 0,
           adjustedTotal: adjustedSales,
+          helpDeductions,
           items: (order.order_items || []).map((item: { product_name: string; category: string | null; quantity: number; unit_price: number; subtotal: number; cast_name: string[] | null }) => ({
             productName: item.product_name,
             category: item.category,
@@ -3375,6 +3390,23 @@ function PayslipPageContent() {
                                     <span>合計</span>
                                     <span>{currencyFormatter.format(specialOrder.totalInclTax)}</span>
                                   </div>
+                                  {specialOrder.helpDeductions.length > 0 && (
+                                    <>
+                                      <div style={{ borderTop: '1px dashed #dee2e6', marginTop: '8px', paddingTop: '8px' }}>
+                                        <div style={{ fontSize: '12px', color: '#e74c3c', fontWeight: '600', marginBottom: '4px' }}>ヘルプ差引（均等割）</div>
+                                        {specialOrder.helpDeductions.map((d, idx) => (
+                                          <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', fontSize: '12px' }}>
+                                            <span style={{ color: '#6c757d' }}>{d.castName}（税抜 {currencyFormatter.format(d.subtotal)} × 1.2 ÷ 2）</span>
+                                            <span style={{ color: '#e74c3c', fontWeight: '500' }}>-{currencyFormatter.format(d.amount)}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0 0', fontWeight: '700', fontSize: '14px', borderTop: '1px solid #dee2e6', marginTop: '6px' }}>
+                                        <span>差引後</span>
+                                        <span>{currencyFormatter.format(specialOrder.adjustedTotal)}</span>
+                                      </div>
+                                    </>
+                                  )}
                                 </div>
                               </div>
                             )}
