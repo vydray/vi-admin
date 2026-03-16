@@ -2433,15 +2433,15 @@ function PayslipPageContent() {
                         key={day.date}
                         style={{
                           ...(i % 2 === 0 ? styles.tableRowEven : styles.tableRow),
-                          cursor: (day.sales > 0 || day.productBack > 0) ? 'pointer' : 'default'
+                          cursor: (day.sales > 0 || day.productBack > 0 || day.salesServiceCharge > 0) ? 'pointer' : 'default'
                         }}
                         onClick={() => {
-                          if (day.sales > 0 || day.productBack > 0) {
+                          if (day.sales > 0 || day.productBack > 0 || day.salesServiceCharge > 0) {
                             setSelectedDayDetail(day.date)
                           }
                         }}
                         onMouseEnter={(e) => {
-                          if (day.sales > 0 || day.productBack > 0) {
+                          if (day.sales > 0 || day.productBack > 0 || day.salesServiceCharge > 0) {
                             e.currentTarget.style.backgroundColor = '#f0f7ff'
                           }
                         }}
