@@ -126,7 +126,7 @@ interface SpecialOrderData {
   serviceCharge: number
   totalInclTax: number
   adjustedTotal: number
-  items: { productName: string; category: string | null; quantity: number; unitPrice: number; subtotal: number }[]
+  items: { productName: string; category: string | null; quantity: number; unitPrice: number; subtotal: number; castName: string[] | null }[]
 }
 
 interface OrderItemWithTax {
@@ -860,12 +860,13 @@ function PayslipPageContent() {
           serviceCharge: ((order as Record<string, unknown>).service_charge as number) || 0,
           totalInclTax: (order.total_incl_tax as number) || 0,
           adjustedTotal: adjustedSales,
-          items: (order.order_items || []).map((item: { product_name: string; category: string | null; quantity: number; unit_price: number; subtotal: number }) => ({
+          items: (order.order_items || []).map((item: { product_name: string; category: string | null; quantity: number; unit_price: number; subtotal: number; cast_name: string[] | null }) => ({
             productName: item.product_name,
             category: item.category,
             quantity: item.quantity,
             unitPrice: item.unit_price,
-            subtotal: item.subtotal
+            subtotal: item.subtotal,
+            castName: item.cast_name
           }))
         }
         if (!dateOrdersMap.has(orderDate)) {
@@ -3276,9 +3277,9 @@ function PayslipPageContent() {
                 </div>
 
                 {/* 税込＋サービス料モードの伝票一覧 */}
-                {isServiceChargeMode && daySpecialOrders.length > 0 && (
+                {isServiceChargeMode && (daySpecialOrders.length > 0 || dayItems.some(item => item.category === 'BASE' || (!item.order_id && !item.table_number))) && (
                   <div style={styles.modalSection}>
-                    <div style={styles.modalSectionTitle}>伝票一覧 ({daySpecialOrders.length}件)</div>
+                    <div style={styles.modalSectionTitle}>伝票一覧 ({daySpecialOrders.length + (dayItems.some(item => item.category === 'BASE' || (!item.order_id && !item.table_number)) ? 1 : 0)}件)</div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                       {daySpecialOrders.map(specialOrder => {
                         const isExpanded = expandedOrders.has(specialOrder.id)
@@ -3313,23 +3314,42 @@ function PayslipPageContent() {
                             </div>
                             {isExpanded && (
                               <div style={{ backgroundColor: '#f8f9fa', padding: '8px 12px' }}>
-                                {specialOrder.items.map((item, idx) => (
+                                {specialOrder.items.map((item, idx) => {
+                                  // キャスト名の表示（推し/ヘルプ判定）
+                                  const castNames = item.castName || []
+                                  const isOshi = castNames.includes(selectedCast?.name || '')
+                                  const castLabel = castNames.length > 0
+                                    ? (isOshi ? `推し: ${selectedCast?.name}` : `ヘルプ: ${castNames.join(', ')}`)
+                                    : null
+                                  return (
                                   <div key={idx} style={{
                                     padding: '10px 0',
                                     borderBottom: idx < specialOrder.items.length - 1 ? '1px solid #e9ecef' : 'none'
                                   }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        <span style={{
-                                          fontSize: '10px',
-                                          padding: '2px 6px',
-                                          borderRadius: '4px',
-                                          backgroundColor: '#e9ecef',
-                                          color: '#495057'
-                                        }}>
-                                          {item.category || '-'}
-                                        </span>
-                                        <span style={{ fontWeight: '500' }}>{item.productName}</span>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                      <div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                          <span style={{
+                                            fontSize: '10px',
+                                            padding: '2px 6px',
+                                            borderRadius: '4px',
+                                            backgroundColor: '#e9ecef',
+                                            color: '#495057'
+                                          }}>
+                                            {item.category || '-'}
+                                          </span>
+                                          <span style={{ fontWeight: '500' }}>{item.productName}</span>
+                                        </div>
+                                        {castLabel && (
+                                          <div style={{
+                                            fontSize: '11px',
+                                            color: isOshi ? '#e65100' : '#2e7d32',
+                                            marginTop: '2px',
+                                            paddingLeft: '4px'
+                                          }}>
+                                            {castLabel}
+                                          </div>
+                                        )}
                                       </div>
                                       <div style={{ textAlign: 'right' }}>
                                         <div style={{ fontWeight: '600' }}>{currencyFormatter.format(item.subtotal)}</div>
@@ -3339,7 +3359,8 @@ function PayslipPageContent() {
                                       </div>
                                     </div>
                                   </div>
-                                ))}
+                                  )
+                                })}
                                 {/* 小計・サービス料・合計 */}
                                 <div style={{ borderTop: '2px solid #dee2e6', marginTop: '8px', paddingTop: '8px' }}>
                                   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
@@ -3360,6 +3381,72 @@ function PayslipPageContent() {
                           </div>
                         )
                       })}
+                      {/* BASE商品セクション */}
+                      {(() => {
+                        const baseItems = dayItems.filter(item => item.category === 'BASE' || (!item.order_id && !item.table_number))
+                        if (baseItems.length === 0) return null
+                        const baseTotal = baseItems.reduce((sum, item) => sum + (item.subtotal || 0), 0)
+                        const isExpanded = expandedOrders.has('BASE-special')
+                        return (
+                          <div>
+                            <div
+                              onClick={() => toggleOrder('BASE-special')}
+                              style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                padding: '12px',
+                                backgroundColor: isExpanded ? '#f0f7ff' : 'transparent',
+                                cursor: 'pointer',
+                                borderBottom: '1px solid #e9ecef'
+                              }}
+                            >
+                              <div>
+                                <div style={{ fontWeight: '500' }}>BASE（EC売上）</div>
+                              </div>
+                              <div style={{ textAlign: 'right' }}>
+                                <div style={{ fontWeight: '600' }}>
+                                  {currencyFormatter.format(baseTotal)}
+                                  <span style={{ marginLeft: '8px', color: '#6c757d' }}>{isExpanded ? '▲' : '▼'}</span>
+                                </div>
+                              </div>
+                            </div>
+                            {isExpanded && (
+                              <div style={{ backgroundColor: '#f8f9fa', padding: '8px 12px' }}>
+                                {baseItems.map((item, idx) => (
+                                  <div key={idx} style={{
+                                    padding: '10px 0',
+                                    borderBottom: idx < baseItems.length - 1 ? '1px solid #e9ecef' : 'none'
+                                  }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                      <div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                          <span style={{
+                                            fontSize: '10px',
+                                            padding: '2px 6px',
+                                            borderRadius: '4px',
+                                            backgroundColor: '#fff3e0',
+                                            color: '#e65100'
+                                          }}>
+                                            BASE
+                                          </span>
+                                          <span style={{ fontWeight: '500' }}>{item.product_name}</span>
+                                        </div>
+                                      </div>
+                                      <div style={{ textAlign: 'right' }}>
+                                        <div style={{ fontWeight: '600' }}>{currencyFormatter.format(item.subtotal || 0)}</div>
+                                        <div style={{ fontSize: '11px', color: '#6c757d' }}>
+                                          {currencyFormatter.format(item.quantity > 0 ? Math.round((item.subtotal || 0) / item.quantity) : (item.subtotal || 0))} × {item.quantity || 1}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })()}
                     </div>
                   </div>
                 )}
