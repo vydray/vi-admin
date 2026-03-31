@@ -79,7 +79,7 @@ async function processStore(storeId: number, results: any) {
 
   for (const cast of casts || []) {
     try {
-      await processCast(cast.id, storeId, results)
+      await processCast(cast.id, cast.name, storeId, results)
       results.processed++
     } catch (error) {
       console.error(`Cast ${cast.id} processing error:`, error)
@@ -91,7 +91,7 @@ async function processStore(storeId: number, results: any) {
 /**
  * キャスト個別の処理
  */
-async function processCast(castId: number, storeId: number, results: any) {
+async function processCast(castId: number, castName: string, storeId: number, results: any) {
   // ステータス進捗を取得または初期化
   let { data: progress, error: progressError } = await supabase
     .from('cast_status_progress')
@@ -149,11 +149,11 @@ async function processCast(castId: number, storeId: number, results: any) {
   const today = new Date()
   const currentMonth = today.toISOString().slice(0, 7) // YYYY-MM
 
-  // 月間出勤日数
+  // 月間出勤日数（attendanceテーブルはcast_nameベース）
   const { count: monthlyDays } = await supabase
     .from('attendance')
     .select('*', { count: 'exact', head: true })
-    .eq('cast_id', castId)
+    .eq('cast_name', castName)
     .eq('store_id', storeId)
     .gte('date', `${currentMonth}-01`)
     .lt('date', getNextMonthStart(currentMonth))
@@ -163,7 +163,7 @@ async function processCast(castId: number, storeId: number, results: any) {
   const { count: cumulativeDays } = await supabase
     .from('attendance')
     .select('*', { count: 'exact', head: true })
-    .eq('cast_id', castId)
+    .eq('cast_name', castName)
     .eq('store_id', storeId)
     .gte('date', progress.status_start_date)
     .not('status_id', 'is', null)

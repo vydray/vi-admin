@@ -61,6 +61,7 @@ interface CompensationSettingsWage {
 interface WageStatus {
   id: number
   hourly_wage: number
+  priority: number
 }
 
 interface SpecialWageDay {
@@ -967,12 +968,112 @@ export async function recalculateForDate(storeId: number, date: string): Promise
 
     const { data: wageStatuses } = await supabaseAdmin
       .from('wage_statuses')
-      .select('id, hourly_wage')
+      .select('id, hourly_wage, priority')
       .eq('store_id', storeId)
       .eq('is_active', true)
 
     const wageStatusMap = new Map<number, WageStatus>()
     wageStatuses?.forEach((s: WageStatus) => wageStatusMap.set(s.id, s))
+
+    // 累計出勤日数ベースの時給判定用データを取得
+    const { data: allProgress } = await supabaseAdmin
+      .from('cast_status_progress')
+      .select('cast_id, current_status_id, status_start_date')
+      .eq('store_id', storeId)
+
+    const progressMap = new Map<number, { current_status_id: number | null, status_start_date: string }>()
+    allProgress?.forEach((p: { cast_id: number; current_status_id: number | null; status_start_date: string }) => progressMap.set(p.cast_id, p))
+
+    // 昇格条件（累計出勤日数）を取得
+    const { data: promotionConditions } = await supabaseAdmin
+      .from('wage_status_conditions')
+      .select('status_id, value')
+      .eq('condition_direction', 'promotion')
+      .eq('condition_type', 'cumulative_attendance_days')
+      .eq('operator', '>=')
+
+    // status_id → 昇格閾値
+    const promotionThresholdMap = new Map<number, number>()
+    promotionConditions?.forEach((c: { status_id: number; value: number }) => promotionThresholdMap.set(c.status_id, c.value))
+
+    // 次のステータス（昇格先）・前のステータス（降格先）マップ
+    const statusByPriority = (wageStatuses || [])
+      .map((s: WageStatus) => ({ ...s }))
+      .sort((a: WageStatus, b: WageStatus) => a.priority - b.priority)
+    const nextStatusMap = new Map<number, number>()
+    const prevStatusMap = new Map<number, number>()
+    for (let i = 0; i < statusByPriority.length; i++) {
+      if (i < statusByPriority.length - 1) nextStatusMap.set(statusByPriority[i].id, statusByPriority[i + 1].id)
+      if (i > 0) prevStatusMap.set(statusByPriority[i].id, statusByPriority[i - 1].id)
+    }
+
+    // 見習い（昇格条件あり）のキャストの累計出勤日数を取得
+    const castsNeedingCumulativeCheck = new Map<number, string>() // cast_id → start_date
+    for (const [castId, compSettings] of compSettingsMap) {
+      const statusId = compSettings.status_id
+      if (!statusId || compSettings.hourly_wage_override) continue
+      if (promotionThresholdMap.has(statusId)) {
+        const progress = progressMap.get(castId)
+        if (progress?.status_start_date && progress.status_start_date <= date) {
+          castsNeedingCumulativeCheck.set(castId, progress.status_start_date)
+        }
+      }
+    }
+
+    // 昇格済みキャストで、対象日がstatus_start_dateより前のキャストを特定
+    const castsBeforePromotion = new Set<number>()
+    for (const [castId, compSettings] of compSettingsMap) {
+      const statusId = compSettings.status_id
+      if (!statusId || compSettings.hourly_wage_override) continue
+      const progress = progressMap.get(castId)
+      if (progress && progress.status_start_date > date && !promotionThresholdMap.has(statusId)) {
+        castsBeforePromotion.add(castId)
+      }
+    }
+
+    // 累計出勤日数を一括取得（attendanceテーブルはcast_nameベース）
+    const cumulativeCountMap = new Map<number, number>()
+    if (castsNeedingCumulativeCheck.size > 0) {
+      // cast_id → cast_name の変換
+      const castIdToName = new Map<number, string>()
+      castMap.forEach((cast, name) => castIdToName.set(cast.id, name))
+
+      const castNames = [...castsNeedingCumulativeCheck.keys()]
+        .map(id => castIdToName.get(id))
+        .filter((n): n is string => !!n)
+      const minStartDate = [...castsNeedingCumulativeCheck.values()].sort()[0]
+
+      // Supabaseデフォルト上限(1000行)を超える可能性があるため、ページネーションで取得
+      let attendanceForCumulative: { cast_name: string; date: string }[] = []
+      {
+        let offset = 0
+        const pageSize = 1000
+        while (true) {
+          const { data: page } = await supabaseAdmin
+            .from('attendance')
+            .select('cast_name, date')
+            .eq('store_id', storeId)
+            .in('cast_name', castNames)
+            .gte('date', minStartDate)
+            .lte('date', date)
+            .not('status_id', 'is', null)
+            .range(offset, offset + pageSize - 1)
+          if (!page || page.length === 0) break
+          attendanceForCumulative = attendanceForCumulative.concat(page)
+          if (page.length < pageSize) break
+          offset += pageSize
+        }
+      }
+
+      for (const [castId, startDate] of castsNeedingCumulativeCheck) {
+        const castName = castIdToName.get(castId)
+        if (!castName) continue
+        const count = attendanceForCumulative?.filter(
+          (a: { cast_name: string; date: string }) => a.cast_name === castName && a.date >= startDate && a.date <= date
+        ).length || 0
+        cumulativeCountMap.set(castId, count)
+      }
+    }
 
     const { data: specialDay } = await supabaseAdmin
       .from('special_wage_days')
@@ -1145,13 +1246,12 @@ export async function recalculateForDate(storeId: number, date: string): Promise
       const costumeId = attendance?.costume_id || null
       const wageStatusId = compSettings?.status_id || null
 
-      let baseHourlyWage = 0
-      if (compSettings?.hourly_wage_override) {
-        baseHourlyWage = compSettings.hourly_wage_override
-      } else if (wageStatusId) {
-        const wageStatus = wageStatusMap.get(wageStatusId)
-        baseHourlyWage = wageStatus?.hourly_wage || 0
-      }
+      // 累計出勤日数ベースの時給判定
+      const baseHourlyWage = resolveHourlyWage(
+        castId, wageStatusId, compSettings, wageStatusMap,
+        promotionThresholdMap, nextStatusMap, prevStatusMap,
+        cumulativeCountMap, castsBeforePromotion, progressMap
+      )
 
       const costumeBonus = costumeId ? (costumeMap.get(costumeId) || 0) : 0
       const totalHourlyWage = baseHourlyWage + specialDayBonus + costumeBonus
@@ -1195,13 +1295,12 @@ export async function recalculateForDate(storeId: number, date: string): Promise
         const costumeId = attendance.costume_id || null
         const wageStatusId = compSettings?.status_id || null
 
-        let baseHourlyWage = 0
-        if (compSettings?.hourly_wage_override) {
-          baseHourlyWage = compSettings.hourly_wage_override
-        } else if (wageStatusId) {
-          const wageStatus = wageStatusMap.get(wageStatusId)
-          baseHourlyWage = wageStatus?.hourly_wage || 0
-        }
+        // 累計出勤日数ベースの時給判定
+        const baseHourlyWage = resolveHourlyWage(
+          cast.id, wageStatusId, compSettings, wageStatusMap,
+          promotionThresholdMap, nextStatusMap, prevStatusMap,
+          cumulativeCountMap, castsBeforePromotion, progressMap
+        )
 
         const costumeBonus = costumeId ? (costumeMap.get(costumeId) || 0) : 0
         const totalHourlyWage = baseHourlyWage + specialDayBonus + costumeBonus
@@ -1371,4 +1470,52 @@ export async function recalculateForDate(storeId: number, date: string): Promise
     console.error('Recalculate error:', error)
     return { success: false, castsProcessed: 0, error: String(error) }
   }
+}
+
+/**
+ * 累計出勤日数ベースの時給判定
+ * - 見習いステータス（昇格条件あり）: 累計出勤日数が閾値を超えたら昇格先の時給を使用
+ * - 昇格済みステータス: status_start_dateより前の日付なら前のステータスの時給を使用
+ */
+function resolveHourlyWage(
+  castId: number,
+  wageStatusId: number | null,
+  compSettings: CompensationSettingsWage | undefined,
+  wageStatusMap: Map<number, WageStatus>,
+  promotionThresholdMap: Map<number, number>,
+  nextStatusMap: Map<number, number>,
+  prevStatusMap: Map<number, number>,
+  cumulativeCountMap: Map<number, number>,
+  castsBeforePromotion: Set<number>,
+  progressMap: Map<number, { current_status_id: number | null; status_start_date: string }>
+): number {
+  if (compSettings?.hourly_wage_override) {
+    return compSettings.hourly_wage_override
+  }
+
+  if (!wageStatusId) return 0
+
+  // 見習いステータス（昇格条件あり）の場合
+  const promotionThreshold = promotionThresholdMap.get(wageStatusId)
+  if (promotionThreshold !== undefined) {
+    const cumulativeDays = cumulativeCountMap.get(castId) || 0
+    // 閾値を超えたら昇格先の時給（例: 16日目以降は1400円）
+    if (cumulativeDays > promotionThreshold) {
+      const nextStatusId = nextStatusMap.get(wageStatusId)
+      if (nextStatusId) {
+        return wageStatusMap.get(nextStatusId)?.hourly_wage || 0
+      }
+    }
+    return wageStatusMap.get(wageStatusId)?.hourly_wage || 0
+  }
+
+  // 昇格済みだが対象日が昇格前の場合、前のステータスの時給を使用
+  if (castsBeforePromotion.has(castId)) {
+    const prevStatusId = prevStatusMap.get(wageStatusId)
+    if (prevStatusId) {
+      return wageStatusMap.get(prevStatusId)?.hourly_wage || 0
+    }
+  }
+
+  return wageStatusMap.get(wageStatusId)?.hourly_wage || 0
 }
