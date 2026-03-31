@@ -685,6 +685,81 @@ function AttendancePageContent() {
     }, 500)
   }
 
+  // 勤怠ステータス集計表の印刷
+  const handlePrintStatusSummary = () => {
+    // 使われているステータスのみ抽出（order_index順）
+    const usedStatusIds = new Set(attendances.map(a => a.status_id).filter(Boolean))
+    const usedStatuses = attendanceStatuses
+      .filter(s => usedStatusIds.has(s.id))
+      .sort((a, b) => a.order_index - b.order_index)
+
+    // キャストごとのステータス集計
+    const castRows = casts.map(cast => {
+      const castAttendances = attendances.filter(a => a.cast_name === cast.name)
+      const counts: Record<string, number> = {}
+      for (const s of usedStatuses) {
+        counts[s.id] = castAttendances.filter(a => a.status_id === s.id).length
+      }
+      const total = castAttendances.filter(a => {
+        const status = attendanceStatuses.find(s => s.id === a.status_id)
+        return status?.is_work_day ?? status?.is_active ?? false
+      }).length
+      return { name: cast.name, counts, total }
+    })
+
+    const monthStr = format(selectedMonth, 'yyyy年M月', { locale: ja })
+    const printWindow = window.open('', '_blank')
+    if (!printWindow) return
+
+    printWindow.document.write(`
+      <html>
+      <head>
+        <title>勤怠ステータス集計 ${monthStr}</title>
+        <style>
+          @page { size: A4 landscape; margin: 15mm; }
+          body { font-family: 'Hiragino Kaku Gothic Pro', 'Yu Gothic', sans-serif; margin: 0; padding: 20px; }
+          h1 { font-size: 18px; margin-bottom: 4px; }
+          .meta { font-size: 13px; color: #666; margin-bottom: 16px; }
+          table { width: 100%; border-collapse: collapse; }
+          th { background: #f0f0f0; font-size: 12px; padding: 8px 6px; border: 1px solid #333; text-align: center; white-space: nowrap; }
+          td { font-size: 13px; padding: 6px 8px; border: 1px solid #333; text-align: center; }
+          td.name { text-align: left; font-weight: 500; white-space: nowrap; }
+          td.total { font-weight: 700; background: #f8f8f8; }
+          .zero { color: #ccc; }
+        </style>
+      </head>
+      <body>
+        <h1>勤怠ステータス集計</h1>
+        <div class="meta">${monthStr} ｜ ${storeName}</div>
+        <table>
+          <thead>
+            <tr>
+              <th>名前</th>
+              ${usedStatuses.map(s => `<th>${s.name}</th>`).join('')}
+              <th>出勤日数</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${castRows.map(row => `
+              <tr>
+                <td class="name">${row.name}</td>
+                ${usedStatuses.map(s => {
+                  const count = row.counts[s.id] || 0
+                  return `<td class="${count === 0 ? 'zero' : ''}">${count}</td>`
+                }).join('')}
+                <td class="total">${row.total}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </body>
+      </html>
+    `)
+    printWindow.document.close()
+    printWindow.onload = () => { printWindow.print() }
+    setTimeout(() => { if (!printWindow.closed) printWindow.print() }, 500)
+  }
+
   if (storeLoading || loading || mobileLoading) {
     return <LoadingSpinner />
   }
@@ -728,6 +803,12 @@ function AttendancePageContent() {
                 variant="secondary"
               >
                 今日の出勤表
+              </Button>
+              <Button
+                onClick={handlePrintStatusSummary}
+                variant="secondary"
+              >
+                ステータス集計
               </Button>
               <Button
                 onClick={handleRecalculate}
