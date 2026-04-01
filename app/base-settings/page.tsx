@@ -603,6 +603,10 @@ function BaseSettingsPageContent() {
   // 注文の営業日を手動設定
   const handleSaveOrderBusinessDate = async (orderId: number, businessDate: string) => {
     try {
+      // 変更前の営業日を取得（旧日の再計算用）
+      const order = orders.find(o => o.id === orderId)
+      const oldBusinessDate = order?.business_date
+
       const { error } = await supabase
         .from('base_orders')
         .update({
@@ -614,6 +618,15 @@ function BaseSettingsPageContent() {
         .eq('store_id', storeId)
 
       if (error) throw error
+
+      // 旧日の売上を再計算（cast_daily_items/statsから古いデータを消すため）
+      if (oldBusinessDate && oldBusinessDate !== businessDate) {
+        await fetch('/api/cast-stats/recalculate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ store_id: storeId, date: oldBusinessDate }),
+        })
+      }
 
       toast.success('営業日を変更しました')
       setEditingDateOrderId(null)
