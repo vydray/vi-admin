@@ -229,10 +229,10 @@ export async function POST(request: NextRequest) {
           const productName = item.title || ''
           const variationName = item.variation || ''
 
-          // 手動編集済みの注文はcast_idを上書きしない
+          // 手動編集済みの注文はcast_id・business_dateを上書きしない
           const key = `${orderSummary.unique_key}|${productName}|${variationName}`
           if (manuallyEditedKeys.has(key)) {
-            // cast_id以外のフィールドのみ更新
+            // cast_id・business_date以外のフィールドのみ更新
             const { error: updateError } = await supabase
               .from('base_orders')
               .update({
@@ -240,7 +240,6 @@ export async function POST(request: NextRequest) {
                 base_price: item.price,
                 actual_price: actualPrice,
                 quantity: item.amount,
-                business_date: businessDate,
               })
               .eq('store_id', store_id)
               .eq('base_order_id', orderSummary.unique_key)
