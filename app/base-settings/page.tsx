@@ -91,6 +91,8 @@ function BaseSettingsPageContent() {
   const [ordersMonth, setOrdersMonth] = useState(new Date())
   const [editingOrderId, setEditingOrderId] = useState<number | null>(null)
   const [editCastId, setEditCastId] = useState<number | null>(null)
+  const [editingDateOrderId, setEditingDateOrderId] = useState<number | null>(null)
+  const [editBusinessDate, setEditBusinessDate] = useState<string>('')
 
   // 締め時間設定
   const [cutoffHour, setCutoffHour] = useState(6)
@@ -595,6 +597,30 @@ function BaseSettingsPageContent() {
     } catch (err) {
       console.error('キャスト設定エラー:', err)
       toast.error('キャストの設定に失敗しました')
+    }
+  }
+
+  // 注文の営業日を手動設定
+  const handleSaveOrderBusinessDate = async (orderId: number, businessDate: string) => {
+    try {
+      const { error } = await supabase
+        .from('base_orders')
+        .update({
+          business_date: businessDate,
+          manually_edited: true,
+          is_processed: false,
+        })
+        .eq('id', orderId)
+        .eq('store_id', storeId)
+
+      if (error) throw error
+
+      toast.success('営業日を変更しました')
+      setEditingDateOrderId(null)
+      loadOrders()
+    } catch (err) {
+      console.error('営業日設定エラー:', err)
+      toast.error('営業日の設定に失敗しました')
     }
   }
 
@@ -1221,9 +1247,37 @@ function BaseSettingsPageContent() {
                         {new Date(order.order_datetime).toLocaleString('ja-JP')}
                       </td>
                       <td style={styles.td}>
-                        <span style={styles.businessDate}>
-                          {order.business_date || '-'}
-                        </span>
+                        {editingDateOrderId === order.id ? (
+                          <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                            <input
+                              type="date"
+                              value={editBusinessDate}
+                              onChange={(e) => setEditBusinessDate(e.target.value)}
+                              style={{ padding: '4px 6px', borderRadius: '4px', border: '1px solid #d1d5db', fontSize: '12px', width: '140px' }}
+                            />
+                            <button
+                              onClick={() => handleSaveOrderBusinessDate(order.id, editBusinessDate)}
+                              style={{ padding: '2px 8px', fontSize: '11px', backgroundColor: '#3b82f6', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                            >保存</button>
+                            <button
+                              onClick={() => setEditingDateOrderId(null)}
+                              style={{ padding: '2px 8px', fontSize: '11px', backgroundColor: '#e5e7eb', color: '#374151', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                            >取消</button>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                            <span style={styles.businessDate}>
+                              {order.business_date || '-'}
+                            </span>
+                            <button
+                              onClick={() => {
+                                setEditingDateOrderId(order.id)
+                                setEditBusinessDate(order.business_date || '')
+                              }}
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#3b82f6', fontSize: '11px', textDecoration: 'underline', whiteSpace: 'nowrap' }}
+                            >変更</button>
+                          </div>
+                        )}
                       </td>
                       <td style={styles.td}>{order.product_name}</td>
                       <td style={styles.td}>
