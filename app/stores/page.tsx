@@ -169,10 +169,21 @@ function StoresPageContent() {
 
     setSaving(true)
     try {
+      // store_codeを自動生成（STORE + 連番）
+      const { data: maxStore } = await supabase
+        .from('stores')
+        .select('id')
+        .order('id', { ascending: false })
+        .limit(1)
+        .single()
+      const nextId = (maxStore?.id || 0) + 1
+      const storeCode = `STORE${String(nextId).padStart(3, '0')}`
+
       const { data: storeData, error: storeError } = await supabase
         .from('stores')
         .insert({
           store_name: newStore.store_name.trim(),
+          store_code: storeCode,
           is_active: true
         })
         .select()
