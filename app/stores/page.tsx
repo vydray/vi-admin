@@ -224,6 +224,34 @@ function StoresPageContent() {
           store_name: newStore.store_name.trim()
         })
 
+      // 既存店舗からanthropicのAPIキーをコピー
+      const { data: existingKey } = await supabase
+        .from('system_settings')
+        .select('setting_value')
+        .eq('setting_key', 'anthropic_api_key')
+        .neq('setting_value', '')
+        .limit(1)
+        .single()
+
+      if (existingKey?.setting_value) {
+        await supabase
+          .from('system_settings')
+          .upsert({
+            store_id: newStoreId,
+            setting_key: 'anthropic_api_key',
+            setting_value: existingKey.setting_value
+          }, { onConflict: 'store_id,setting_key' })
+      }
+
+      // AI登録はデフォルト無効で作成
+      await supabase
+        .from('system_settings')
+        .upsert({
+          store_id: newStoreId,
+          setting_key: 'ai_cast_registration_enabled',
+          setting_value: 'false'
+        }, { onConflict: 'store_id,setting_key' })
+
       toast.success('店舗を作成しました')
       setNewStore({ store_name: '', pos_username: '', pos_password: '', admin_username: '', admin_password: '' })
       setShowAddForm(false)
