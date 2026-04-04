@@ -239,18 +239,36 @@ export async function fetchOrderDetail(
 export async function fetchItems(
   accessToken: string
 ): Promise<{ items: BaseItem[] }> {
-  const response = await fetch(`${BASE_API_URL}/1/items`, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
-  })
+  const allItems: BaseItem[] = []
+  let offset = 0
+  const LIMIT = 100 // BASE APIの最大値
 
-  if (!response.ok) {
-    const error = await response.text()
-    throw new Error(`Fetch items failed: ${error}`)
+  while (true) {
+    const params = new URLSearchParams({
+      limit: LIMIT.toString(),
+      offset: offset.toString(),
+    })
+
+    const response = await fetch(`${BASE_API_URL}/1/items?${params.toString()}`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    })
+
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(`Fetch items failed: ${error}`)
+    }
+
+    const data = await response.json()
+    const items = data.items || []
+    allItems.push(...items)
+
+    if (items.length < LIMIT) break
+    offset += LIMIT
   }
 
-  return response.json()
+  return { items: allItems }
 }
 
 /**
