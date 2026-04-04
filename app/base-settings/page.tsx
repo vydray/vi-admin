@@ -121,17 +121,16 @@ function BaseSettingsPageContent() {
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
-      // BASE商品一覧
-      const { data: productsData, error: productsError } = await supabase
-        .from('base_products')
-        .select('*')
-        .eq('store_id', storeId)
-        .eq('is_active', true)
-        .order('created_at', { ascending: false })
+      // base_products, base_variations, base_settings はAPI Route経由（anon keyで直接アクセスしない）
+      const baseRes = await fetch('/api/base-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'load_data', store_id: storeId }),
+      })
+      if (!baseRes.ok) throw new Error('Failed to load base data')
+      const baseData = await baseRes.json()
 
-      if (productsError) throw productsError
-
-      // キャスト一覧（POS表示ONのみ）- 先に取得してバリエーションのフィルタに使用
+      // キャスト一覧（POS表示ONのみ）- casts はRLS authenticatedで安全
       const { data: castsData, error: castsError } = await supabase
         .from('casts')
         .select('id, name, is_active, show_in_pos')
@@ -144,32 +143,20 @@ function BaseSettingsPageContent() {
       if (castsError) throw castsError
       const activeCastIds = (castsData || []).map(c => c.id)
 
-      // バリエーション取得（POS ONのキャストのみ）
-      const productIds = (productsData || []).map(p => p.id)
-      let variationsData: BaseVariation[] = []
-
-      if (productIds.length > 0) {
-        const { data: vars, error: varsError } = await supabase
-          .from('base_variations')
-          .select('*')
-          .in('base_product_id', productIds)
-          .eq('is_active', true)
-          .order('variation_name')
-
-        if (varsError) throw varsError
-        // POS ONのキャストのみフィルタ
-        variationsData = (vars || []).filter(v => v.cast_id === null || activeCastIds.includes(v.cast_id))
-      }
+      // POS ONのキャストのみフィルタ
+      const variationsData: BaseVariation[] = (baseData.variations || []).filter(
+        (v: BaseVariation) => v.cast_id === null || activeCastIds.includes(v.cast_id)
+      )
 
       // 商品とバリエーションを結合
-      const productsWithVariations: BaseProductWithVariations[] = (productsData || []).map(p => ({
+      const productsWithVariations: BaseProductWithVariations[] = (baseData.products || []).map((p: BaseProductWithVariations) => ({
         ...p,
         variations: variationsData.filter(v => v.base_product_id === p.id)
       }))
 
       setBaseProducts(productsWithVariations)
 
-      // ローカル商品一覧
+      // ローカル商品一覧（products はRLS authenticatedで安全）
       const { data: localData, error: localError } = await supabase
         .from('products')
         .select('id, name, price, category_id, store_id')
@@ -180,7 +167,7 @@ function BaseSettingsPageContent() {
       if (localError) throw localError
       setLocalProducts(localData || [])
 
-      // 締め時間設定を取得
+      // 締め時間設定を取得（sales_settings はRLS authenticatedで安全）
       const { data: salesSettingsData } = await supabase
         .from('sales_settings')
         .select('base_cutoff_hour, base_cutoff_enabled, include_base_in_item_sales, include_base_in_receipt_sales')
@@ -194,18 +181,12 @@ function BaseSettingsPageContent() {
         setIncludeInReceiptSales(salesSettingsData.include_base_in_receipt_sales ?? true)
       }
 
-      // BASE API設定を取得
-      const { data: baseSettingsData } = await supabase
-        .from('base_settings')
-        .select('client_id, client_secret, access_token, token_expires_at')
-        .eq('store_id', storeId)
-        .maybeSingle()
-
-      if (baseSettingsData) {
-        setClientId(baseSettingsData.client_id || '')
-        setClientSecret(baseSettingsData.client_secret || '')
-        setIsConnected(!!baseSettingsData.access_token)
-        setTokenExpiresAt(baseSettingsData.token_expires_at)
+      // BASE API設定
+      if (baseData.settings) {
+        setClientId(baseData.settings.client_id || '')
+        setClientSecret(baseData.settings.client_secret || '')
+        setIsConnected(!!baseData.settings.access_token)
+        setTokenExpiresAt(baseData.settings.token_expires_at)
       }
 
       setCasts(castsData || [])
@@ -228,34 +209,23 @@ function BaseSettingsPageContent() {
   const handleSaveStorePrice = async (productName: string, storePrice: number | null) => {
     setSavingStorePrice(productName)
     try {
-      // base_productsに該当商品があるか確認
       const existingProduct = baseProducts.find(bp => bp.base_product_name === productName)
+      const baseItem = baseApiItems.find(item => item.title === productName)
 
-      if (existingProduct) {
-        // 既存商品を更新
-        const { error } = await supabase
-          .from('base_products')
-          .update({ store_price: storePrice })
-          .eq('id', existingProduct.id)
-
-        if (error) throw error
-      } else {
-        // 新規作成（BASE APIから取得した商品情報を使用）
-        const baseItem = baseApiItems.find(item => item.title === productName)
-        const { error } = await supabase
-          .from('base_products')
-          .insert({
-            store_id: storeId,
-            base_product_name: productName,
-            local_product_name: productName,
-            base_price: baseItem?.price || 0,
-            base_item_id: baseItem?.item_id || null,
-            store_price: storePrice,
-            is_active: true,
-          })
-
-        if (error) throw error
-      }
+      const res = await fetch('/api/base-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'save_store_price',
+          store_id: storeId,
+          product_id: existingProduct?.id || undefined,
+          product_name: productName,
+          store_price: storePrice,
+          base_item_id: baseItem?.item_id || null,
+          base_price: baseItem?.price || 0,
+        }),
+      })
+      if (!res.ok) throw new Error('Save failed')
 
       toast.success('店舗価格を保存しました')
 
@@ -266,7 +236,6 @@ function BaseSettingsPageContent() {
         return newState
       })
 
-      // データ再読み込み
       loadData()
     } catch (err) {
       console.error('店舗価格保存エラー:', err)
@@ -289,18 +258,19 @@ function BaseSettingsPageContent() {
 
     setSaving(true)
     try {
-      const { error } = await supabase
-        .from('base_products')
-        .insert({
+      const res = await fetch('/api/base-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'add_product',
           store_id: storeId,
-          base_product_name: newProductName.trim(),
+          product_name: newProductName.trim(),
           local_product_name: matchingLocalProduct ? newProductName.trim() : null,
           base_price: newBasePrice,
           base_item_id: matchingBaseItem?.item_id || null,
-          is_active: true,
-        })
-
-      if (error) throw error
+        }),
+      })
+      if (!res.ok) throw new Error('Add failed')
 
       toast.success('商品を追加しました')
       setShowAddProductModal(false)
@@ -490,55 +460,43 @@ function BaseSettingsPageContent() {
 
     setImporting(true)
     try {
-      let successCount = 0
-      let errorCount = 0
-
-      for (const row of csvData) {
-        // キャスト名からcast_idを検索
+      // クライアント側でキャスト・商品マッチングしてからAPI Routeに送る
+      const rows = csvData.map(row => {
         const cast = casts.find(c => c.name === row.variationName)
-
-        // 商品名からproduct_idと実価格を検索
         const product = localProducts.find(p => p.name === row.productName)
-
-        // 注文日時と営業日を計算
         const orderDatetime = row.orderDatetime ? new Date(row.orderDatetime).toISOString() : new Date().toISOString()
         const businessDate = calculateBusinessDate(row.orderDatetime || new Date().toISOString())
 
-        const { error } = await supabase
-          .from('base_orders')
-          .upsert({
-            store_id: storeId,
-            base_order_id: row.orderId,
-            order_datetime: orderDatetime,
-            product_name: row.productName,
-            variation_name: row.variationName,
-            cast_id: cast?.id || null,
-            local_product_id: product?.id || null,
-            base_price: row.price,
-            actual_price: product?.price || null,
-            quantity: row.quantity,
-            business_date: businessDate,
-            is_processed: false,
-          }, {
-            onConflict: 'store_id,base_order_id,product_name,variation_name'
-          })
-
-        if (error) {
-          console.error('インポートエラー:', error)
-          errorCount++
-        } else {
-          successCount++
+        return {
+          base_order_id: row.orderId,
+          order_datetime: orderDatetime,
+          product_name: row.productName,
+          variation_name: row.variationName,
+          cast_id: cast?.id || null,
+          local_product_id: product?.id || null,
+          base_price: row.price,
+          actual_price: product?.price || null,
+          quantity: row.quantity,
+          business_date: businessDate,
         }
-      }
+      })
 
-      toast.success(`${successCount}件をインポートしました${errorCount > 0 ? `（${errorCount}件エラー）` : ''}`)
+      const res = await fetch('/api/base-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'import_csv', store_id: storeId, rows }),
+      })
+      if (!res.ok) throw new Error('Import failed')
+
+      const result = await res.json()
+      toast.success(`${result.successCount}件をインポートしました${result.errorCount > 0 ? `（${result.errorCount}件エラー）` : ''}`)
       setCsvData([])
       if (fileInputRef.current) {
         fileInputRef.current.value = ''
       }
     } catch (err) {
       console.error('インポートエラー:', err)
-      toast.error('インポートに失敗しました')
+      toast.error('��ンポートに失敗しました')
     } finally {
       setImporting(false)
     }
@@ -548,23 +506,20 @@ function BaseSettingsPageContent() {
   const loadOrders = useCallback(async () => {
     setOrdersLoading(true)
     try {
-      // 選択月の営業日範囲で取得
       const startDate = format(startOfMonth(ordersMonth), 'yyyy-MM-dd')
       const endDate = format(endOfMonth(ordersMonth), 'yyyy-MM-dd')
 
-      const { data, error } = await supabase
-        .from('base_orders')
-        .select('*')
-        .eq('store_id', storeId)
-        .gte('business_date', startDate)
-        .lte('business_date', endDate)
-        .order('order_datetime', { ascending: false })
-
-      if (error) throw error
-      setOrders(data || [])
+      const res = await fetch('/api/base-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'load_orders', store_id: storeId, start_date: startDate, end_date: endDate }),
+      })
+      if (!res.ok) throw new Error('Failed to load orders')
+      const data = await res.json()
+      setOrders(data.orders || [])
     } catch (err) {
       console.error('注文履歴読み込みエラー:', err)
-      toast.error('注文履歴の読み込みに失敗しました')
+      toast.error('���文履歴の読み込みに失敗しました')
     } finally {
       setOrdersLoading(false)
     }
@@ -579,17 +534,12 @@ function BaseSettingsPageContent() {
   // 注文のキャストを手動設定
   const handleSaveOrderCast = async (orderId: number, castId: number | null) => {
     try {
-      const { error } = await supabase
-        .from('base_orders')
-        .update({
-          cast_id: castId,
-          manually_edited: castId !== null,
-          is_processed: false,
-        })
-        .eq('id', orderId)
-        .eq('store_id', storeId)
-
-      if (error) throw error
+      const res = await fetch('/api/base-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'save_order_cast', store_id: storeId, order_id: orderId, cast_id: castId }),
+      })
+      if (!res.ok) throw new Error('Save failed')
 
       toast.success(castId ? 'キャストを設定しました' : 'キャスト設定を解除しました')
       setEditingOrderId(null)
@@ -607,17 +557,12 @@ function BaseSettingsPageContent() {
       const order = orders.find(o => o.id === orderId)
       const oldBusinessDate = order?.business_date
 
-      const { error } = await supabase
-        .from('base_orders')
-        .update({
-          business_date: businessDate,
-          manually_edited: true,
-          is_processed: false,
-        })
-        .eq('id', orderId)
-        .eq('store_id', storeId)
-
-      if (error) throw error
+      const res = await fetch('/api/base-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'save_order_business_date', store_id: storeId, order_id: orderId, business_date: businessDate }),
+      })
+      if (!res.ok) throw new Error('Save failed')
 
       // 旧日の売上を再計算（cast_daily_items/statsから古いデータを消すため）
       if (oldBusinessDate && oldBusinessDate !== businessDate) {
@@ -670,36 +615,17 @@ function BaseSettingsPageContent() {
 
     setSavingCredentials(true)
     try {
-      // まず既存のレコードがあるか確認
-      const { data: existing } = await supabase
-        .from('base_settings')
-        .select('id')
-        .eq('store_id', storeId)
-        .maybeSingle()
-
-      if (existing) {
-        // 更新
-        const { error } = await supabase
-          .from('base_settings')
-          .update({
-            client_id: clientId.trim(),
-            client_secret: clientSecret.trim(),
-          })
-          .eq('store_id', storeId)
-
-        if (error) throw error
-      } else {
-        // 新規作成
-        const { error } = await supabase
-          .from('base_settings')
-          .insert({
-            store_id: storeId,
-            client_id: clientId.trim(),
-            client_secret: clientSecret.trim(),
-          })
-
-        if (error) throw error
-      }
+      const res = await fetch('/api/base-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'save_credentials',
+          store_id: storeId,
+          client_id: clientId.trim(),
+          client_secret: clientSecret.trim(),
+        }),
+      })
+      if (!res.ok) throw new Error('Save failed')
 
       toast.success('API認証情報を保存しました')
     } catch (err) {
@@ -770,78 +696,32 @@ function BaseSettingsPageContent() {
       const items = data.items || []
       setBaseApiItems(items)
 
-      // Step 2: 自動マッピング処理
-      let addedProducts = 0
-      let addedVariations = 0
+      // Step 2: 自動マッピング処理（API Route経由）
+      setSyncProgress('商品をマッピング中...')
 
-      for (const item of items) {
-        // 既にマッピング済みかチェック
-        const existingProduct = baseProducts.find(bp => bp.base_product_name === item.title)
+      const syncRes = await fetch('/api/base-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'load_base_items_sync',
+          store_id: storeId,
+          items: items.map((item: { title: string; price: number; item_id: number }) => ({
+            title: item.title,
+            price: item.price,
+            item_id: item.item_id,
+          })),
+          existing_products: baseProducts.map(bp => ({
+            id: bp.id,
+            base_product_name: bp.base_product_name,
+            variations: bp.variations.map(v => ({ variation_name: v.variation_name })),
+          })),
+          casts: casts.map(c => ({ id: c.id, name: c.name })),
+        }),
+      })
 
-        if (!existingProduct) {
-          // 商品をマッピング追加
-          const { data: newProduct, error: productError } = await supabase
-            .from('base_products')
-            .insert({
-              store_id: storeId,
-              base_product_name: item.title,
-              local_product_name: item.title,
-              base_price: item.price,
-              base_item_id: item.item_id,
-              is_active: true,
-            })
-            .select('id')
-            .single()
-
-          if (productError) {
-            console.error('商品追加エラー:', productError)
-            continue
-          }
-
-          addedProducts++
-
-          // 全キャストをバリエーションとして追加
-          if (newProduct && casts.length > 0) {
-            const variationsToAdd = casts.map(cast => ({
-              base_product_id: newProduct.id,
-              store_id: storeId,
-              variation_name: cast.name,
-              cast_id: cast.id,
-              is_active: true,
-            }))
-
-            const { error: varsError } = await supabase
-              .from('base_variations')
-              .insert(variationsToAdd)
-
-            if (!varsError) {
-              addedVariations += variationsToAdd.length
-            }
-          }
-        } else {
-          // 既存商品に未登録のキャストを追加
-          const existingVariationNames = existingProduct.variations.map(v => v.variation_name)
-          const newCasts = casts.filter(c => !existingVariationNames.includes(c.name))
-
-          if (newCasts.length > 0) {
-            const variationsToAdd = newCasts.map(cast => ({
-              base_product_id: existingProduct.id,
-              store_id: storeId,
-              variation_name: cast.name,
-              cast_id: cast.id,
-              is_active: true,
-            }))
-
-            const { error: varsError } = await supabase
-              .from('base_variations')
-              .insert(variationsToAdd)
-
-            if (!varsError) {
-              addedVariations += variationsToAdd.length
-            }
-          }
-        }
-      }
+      if (!syncRes.ok) throw new Error('Sync failed')
+      const syncResult = await syncRes.json()
+      const { addedProducts, addedVariations } = syncResult
 
       setSyncProgress('完了処理中...')
 

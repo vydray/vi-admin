@@ -162,13 +162,10 @@ export default function TwitterPostsPage() {
 
     setLoading(true)
     try {
-      const { data: settings } = await supabase
-        .from('store_twitter_settings')
-        .select('twitter_username, connected_at')
-        .eq('store_id', storeId)
-        .single()
-
-      setTwitterSettings(settings)
+      // store_twitter_settings はAPI Route経由（anon keyで直接アクセスしない）
+      const settingsRes = await fetch(`/api/twitter-settings?store_id=${storeId}&fields=twitter_username,connected_at`)
+      const settingsJson = settingsRes.ok ? await settingsRes.json() : { settings: null }
+      setTwitterSettings(settingsJson.settings)
 
       const { data: postsData, error } = await supabase
         .from('scheduled_posts')

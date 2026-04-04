@@ -139,17 +139,20 @@ function CastBackRatesPageContent() {
       if (productsError) throw productsError
       setProducts(productsData || [])
 
-      // BASE商品一覧
-      const { data: baseProductsData, error: baseProductsError } = await supabase
-        .from('base_products')
-        .select('id, base_product_name, local_product_name, base_price')
-        .eq('store_id', storeId)
-        .eq('is_active', true)
-
-      if (baseProductsError) {
-        console.warn('BASE商品の取得に失敗:', baseProductsError)
+      // BASE商品一覧（API Route経由）
+      try {
+        const baseRes = await fetch(`/api/base/products?store_id=${storeId}`)
+        if (baseRes.ok) {
+          const baseJson = await baseRes.json()
+          setBaseProducts(baseJson.products || [])
+        } else {
+          console.warn('BASE商品の取得に失敗')
+          setBaseProducts([])
+        }
+      } catch {
+        console.warn('BASE商品の取得に失敗')
+        setBaseProducts([])
       }
-      setBaseProducts(baseProductsData || [])
 
       // バック率設定（ページネーションで全件取得）
       let allRates: CastBackRate[] = []

@@ -8,6 +8,8 @@ import { useAuth } from '@/contexts/AuthContext'
 import Button from '@/components/Button'
 import ProtectedPage from '@/components/ProtectedPage'
 
+// store_line_configs へのアクセスは API Route 経由（anon keyで直接アクセスしない）
+
 interface Store {
   id: number
   store_name: string
@@ -106,15 +108,20 @@ function LineSettingsPageContent() {
     setLoadingConfig(true)
     setIsEditing(false)
 
-    const { data, error } = await supabase
-      .from('store_line_configs')
-      .select('*')
-      .eq('store_id', storeId)
-      .single()
+    try {
+      const res = await fetch(`/api/line-settings?store_id=${storeId}`)
+      if (!res.ok) throw new Error('Failed to load config')
+      const json = await res.json()
 
-    if (error) {
-      if (error.code === 'PGRST116') {
-        // 設定が存在しない場合
+      if (json.config) {
+        setCurrentConfig(json.config)
+        setEditForm({
+          line_channel_id: json.config.line_channel_id || '',
+          line_channel_secret: json.config.line_channel_secret,
+          line_channel_access_token: json.config.line_channel_access_token,
+          liff_id: json.config.liff_id || ''
+        })
+      } else {
         setCurrentConfig(null)
         setEditForm({
           line_channel_id: '',
@@ -122,18 +129,10 @@ function LineSettingsPageContent() {
           line_channel_access_token: '',
           liff_id: ''
         })
-      } else {
-        console.error('Error loading config:', error)
-        toast.error('LINE設定の読み込みに失敗しました')
       }
-    } else {
-      setCurrentConfig(data)
-      setEditForm({
-        line_channel_id: data.line_channel_id || '',
-        line_channel_secret: data.line_channel_secret,
-        line_channel_access_token: data.line_channel_access_token,
-        liff_id: data.liff_id || ''
-      })
+    } catch (error) {
+      console.error('Error loading config:', error)
+      toast.error('LINE設定の読み込みに失敗しました')
     }
     setLoadingConfig(false)
   }
@@ -156,38 +155,27 @@ function LineSettingsPageContent() {
 
     setSaving(true)
     try {
-      if (currentConfig) {
-        // 更新
-        const { error } = await supabase
-          .from('store_line_configs')
-          .update({
-            line_channel_id: editForm.line_channel_id.trim(),
-            line_channel_secret: editForm.line_channel_secret.trim(),
-            line_channel_access_token: editForm.line_channel_access_token.trim(),
-            liff_id: editForm.liff_id.trim() || null,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', currentConfig.id)
+      const res = await fetch('/api/line-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          store_id: selectedStoreId,
+          store_name: selectedStore?.store_name || '',
+          id: currentConfig?.id || undefined,
+          line_channel_id: editForm.line_channel_id.trim(),
+          line_channel_secret: editForm.line_channel_secret.trim(),
+          line_channel_access_token: editForm.line_channel_access_token.trim(),
+          liff_id: editForm.liff_id.trim() || null,
+        }),
+      })
 
-        if (error) throw error
-        toast.success('LINE設定を更新しました')
-      } else {
-        // 新規作成
-        const { error } = await supabase
-          .from('store_line_configs')
-          .insert({
-            store_id: selectedStoreId,
-            store_name: selectedStore?.store_name || '',
-            line_channel_id: editForm.line_channel_id.trim(),
-            line_channel_secret: editForm.line_channel_secret.trim(),
-            line_channel_access_token: editForm.line_channel_access_token.trim(),
-            liff_id: editForm.liff_id.trim() || null,
-            is_active: true
-          })
-
-        if (error) throw error
-        toast.success('LINE設定を作成しました')
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error || 'Save failed')
       }
+
+      const result = await res.json()
+      toast.success(result.action === 'updated' ? 'LINE設定を更新しました' : 'LINE設定を作成しました')
 
       setIsEditing(false)
       await loadConfig(selectedStoreId)
@@ -203,12 +191,8 @@ function LineSettingsPageContent() {
 
     setSaving(true)
     try {
-      const { error } = await supabase
-        .from('store_line_configs')
-        .delete()
-        .eq('id', currentConfig.id)
-
-      if (error) throw error
+      const res = await fetch(`/api/line-settings?id=${currentConfig.id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error('Delete failed')
 
       toast.success('LINE設定を削除しました')
       setCurrentConfig(null)
@@ -229,12 +213,12 @@ function LineSettingsPageContent() {
     if (!currentConfig) return
 
     try {
-      const { error } = await supabase
-        .from('store_line_configs')
-        .update({ is_active: !currentConfig.is_active })
-        .eq('id', currentConfig.id)
-
-      if (error) throw error
+      const res = await fetch('/api/line-settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: currentConfig.id, is_active: !currentConfig.is_active }),
+      })
+      if (!res.ok) throw new Error('Toggle failed')
 
       toast.success(currentConfig.is_active ? 'LINE連携を無効化しました' : 'LINE連携を有効化しました')
       await loadConfig(selectedStoreId!)

@@ -494,8 +494,12 @@ function CastsPageContent() {
         supabase.from('payslips').delete().eq('cast_id', castId),
         supabase.from('compensation_settings').delete().eq('cast_id', castId),
         supabase.from('requests').delete().eq('cast_id', castId),
-        supabase.from('base_variations').delete().eq('cast_id', castId),
-        supabase.from('base_orders').delete().eq('cast_id', castId),
+        // base_variations, base_orders はAPI Route経由で削除
+        fetch('/api/base-settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'delete_cast_data', store_id: storeId, cast_id: castId }),
+        }),
         supabase.from('visitor_reservations').delete().eq('cast_id', castId),
       ])
 

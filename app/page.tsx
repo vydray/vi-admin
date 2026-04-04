@@ -356,15 +356,19 @@ export default function Home() {
 
       setAskItems(askResults)
 
-      // BASE商品の店舗価格未設定チェック
-      const { data: baseProducts } = await supabase
-        .from('base_products')
-        .select('id, base_product_name')
-        .eq('store_id', storeId)
-        .eq('is_active', true)
-        .is('store_price', null)
-
-      setUnsetBaseProducts((baseProducts || []).map(p => ({ id: p.id, name: p.base_product_name })))
+      // BASE商品の店舗価格未設定チェック（API Route経由）
+      try {
+        const bpRes = await fetch(`/api/base/products?store_id=${storeId}`)
+        if (bpRes.ok) {
+          const bpJson = await bpRes.json()
+          const unset = (bpJson.products || [])
+            .filter((p: { store_price: number | null }) => p.store_price === null)
+            .map((p: { id: number; base_product_name: string }) => ({ id: p.id, name: p.base_product_name }))
+          setUnsetBaseProducts(unset)
+        }
+      } catch {
+        console.error('BASE商品チェックエラー')
+      }
     } catch (err) {
       console.error('未設定チェックエラー:', err)
     }
@@ -634,13 +638,21 @@ export default function Home() {
         .lte('order_date', monthEnd + 'T23:59:59')
         .is('deleted_at', null)
 
-      // BASE売上を取得（お客様がBASEで実際に支払った金額=base_price）
-      const { data: baseOrdersData } = await supabase
-        .from('base_orders')
-        .select('base_price, quantity, business_date')
-        .eq('store_id', storeId)
-        .gte('business_date', monthStart)
-        .lte('business_date', monthEnd)
+      // BASE売上を取得（API Route経由）
+      let baseOrdersData: { base_price: number; quantity: number; business_date: string }[] | null = null
+      try {
+        const boRes = await fetch('/api/base-settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'load_orders', store_id: storeId, start_date: monthStart, end_date: monthEnd }),
+        })
+        if (boRes.ok) {
+          const boJson = await boRes.json()
+          baseOrdersData = boJson.orders || []
+        }
+      } catch {
+        console.warn('BASE売上の取得に失敗')
+      }
 
       // 日別データ用の追加クエリ
       // 出勤扱いステータスを取得

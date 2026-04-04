@@ -221,21 +221,23 @@ function CastSalesPageContent() {
     })
   }, [storeId])
 
-  // BASE売上を取得
+  // BASE売上を取得（API Route経由）
   const loadBaseOrders = useCallback(async (
     startDate: string,
     endDate: string
   ) => {
-    const { data, error } = await supabase
-      .from('base_orders')
-      .select('cast_id, actual_price, quantity, business_date')
-      .eq('store_id', storeId)
-      .gte('business_date', startDate)
-      .lte('business_date', endDate)
-      .not('cast_id', 'is', null)
-
-    if (error) {
-      console.warn('BASE売上の取得に失敗:', error)
+    try {
+      const res = await fetch('/api/base-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'load_orders', store_id: storeId, start_date: startDate, end_date: endDate }),
+      })
+      if (!res.ok) throw new Error('Failed')
+      const json = await res.json()
+      // cast_idがnullのものを除外
+      var data = (json.orders || []).filter((o: { cast_id: number | null }) => o.cast_id !== null)
+    } catch {
+      console.warn('BASE売上の取得に失敗')
       return new Map<number, { [date: string]: number }>()
     }
 

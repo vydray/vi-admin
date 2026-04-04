@@ -33,20 +33,14 @@ export default function TwitterSettingsPage() {
 
     setLoading(true)
     try {
-      const { data, error } = await supabase
-        .from('store_twitter_settings')
-        .select('*')
-        .eq('store_id', storeId)
-        .single()
+      const res = await fetch(`/api/twitter-settings?store_id=${storeId}`)
+      if (!res.ok) throw new Error('Failed to load settings')
+      const json = await res.json()
 
-      if (error && error.code !== 'PGRST116') {
-        throw error
-      }
-
-      if (data) {
-        setSettings(data)
-        setApiKey(data.api_key || '')
-        setApiSecret(data.api_secret || '')
+      if (json.settings) {
+        setSettings(json.settings)
+        setApiKey(json.settings.api_key || '')
+        setApiSecret(json.settings.api_secret || '')
       } else {
         setSettings(null)
         setApiKey('')
@@ -75,18 +69,12 @@ export default function TwitterSettingsPage() {
 
     setSaving(true)
     try {
-      const { error } = await supabase
-        .from('store_twitter_settings')
-        .upsert({
-          store_id: storeId,
-          api_key: apiKey.trim(),
-          api_secret: apiSecret.trim(),
-          updated_at: new Date().toISOString(),
-        }, {
-          onConflict: 'store_id'
-        })
-
-      if (error) throw error
+      const res = await fetch('/api/twitter-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'save_credentials', store_id: storeId, api_key: apiKey.trim(), api_secret: apiSecret.trim() }),
+      })
+      if (!res.ok) throw new Error('Save failed')
 
       toast.success('API認証情報を保存しました')
       await loadSettings()
@@ -118,19 +106,12 @@ export default function TwitterSettingsPage() {
 
     setSaving(true)
     try {
-      const { error } = await supabase
-        .from('store_twitter_settings')
-        .update({
-          access_token: null,
-          refresh_token: null,
-          twitter_user_id: null,
-          twitter_username: null,
-          connected_at: null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('store_id', storeId)
-
-      if (error) throw error
+      const res = await fetch('/api/twitter-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'disconnect', store_id: storeId }),
+      })
+      if (!res.ok) throw new Error('Disconnect failed')
 
       toast.success('連携を解除しました')
       await loadSettings()
