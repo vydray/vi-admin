@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase'
 export async function POST(request: NextRequest) {
   try {
     // 認証チェック
-    const sessionCookie = request.cookies.get('session')?.value
+    const sessionCookie = request.cookies.get('admin_session')?.value
     if (!sessionCookie) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
