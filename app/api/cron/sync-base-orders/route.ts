@@ -265,10 +265,46 @@ async function executeSyncBaseOrders() {
 
             for (const item of orderDetail.order_items || []) {
               const cast = casts?.find(c => c.name === item.variation)
-              const baseProduct = baseProducts?.find(p => p.base_product_name === item.title)
+              let baseProduct = baseProducts?.find(p => p.base_product_name === item.title)
 
-              // 店舗価格（税抜）を決定: store_priceがあればそれを使用、なければbase_priceを税抜換算
-              const actualPrice = baseProduct?.store_price ?? Math.floor(item.price / 1.1)
+              // 未登録商品を自動追加（store_priceはnull＝管理画面で設定するまで売上に反映しない）
+              if (!baseProduct && item.title) {
+                const { data: newProduct, error: insertError } = await supabase
+                  .from('base_products')
+                  .insert({
+                    store_id: setting.store_id,
+                    base_item_id: item.item_id,
+                    base_product_name: item.title,
+                    local_product_name: item.title,
+                    base_price: item.price,
+                    store_price: null,
+                    sync_variations: true,
+                    is_active: true,
+                  })
+                  .select('id, base_product_name, local_product_name, store_price')
+                  .single()
+
+                if (!insertError && newProduct) {
+                  baseProduct = newProduct
+                  baseProducts?.push(newProduct)
+                  console.log(`[BASE Sync] Store ${setting.store_id}: Auto-registered product "${item.title}" (store_price: 未設定)`)
+                } else if (insertError) {
+                  // 重複等で失敗した場合は既存を再取得
+                  const { data: existing } = await supabase
+                    .from('base_products')
+                    .select('id, base_product_name, local_product_name, store_price')
+                    .eq('store_id', setting.store_id)
+                    .eq('base_product_name', item.title)
+                    .single()
+                  if (existing) {
+                    baseProduct = existing
+                    baseProducts?.push(existing)
+                  }
+                }
+              }
+
+              // 店舗価格（税抜）を決定: store_priceがなければnull（売上に反映しない）
+              const actualPrice = baseProduct?.store_price ?? null
 
               // NULLではなく空文字を使用（一意インデックスがCOALESCEを使用しているため）
               const productName = item.title || ''
