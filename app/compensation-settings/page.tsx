@@ -2261,6 +2261,7 @@ function CompensationSettingsPageContent() {
         target_year: selectedYear,
         target_month: selectedMonth,
         enabled_deduction_ids: prevSettings.enabled_deduction_ids || [],
+        enabled_bonus_ids: prevSettings.enabled_bonus_ids || [],
       }
 
       if (existingId) {
@@ -2355,6 +2356,7 @@ function CompensationSettingsPageContent() {
             target_year: selectedYear,
             target_month: selectedMonth,
             enabled_deduction_ids: prev.enabled_deduction_ids || [],
+            enabled_bonus_ids: prev.enabled_bonus_ids || [],
           }
 
           const existId = existingMap.get(prev.cast_id)
