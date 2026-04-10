@@ -78,7 +78,7 @@ function CastsPageContent() {
     setLoading(true)
     const { data, error } = await supabase
       .from('casts')
-      .select('id, name, employee_name, birthday, status, attributes, experience_date, hire_date, resignation_date, residence_record, attendance_certificate, contract_documents, twitter, password, instagram, password2, show_in_pos, is_active, is_admin, is_manager, display_order, primary_cast_id')
+      .select('id, name, employee_name, birthday, status, attributes, experience_date, hire_date, resignation_date, residence_record, attendance_certificate, contract_documents, twitter, password, instagram, password2, show_in_pos, is_active, is_admin, is_manager, display_order, primary_cast_id, mbti, one_word')
       .eq('store_id', storeId)
       .order('display_order', { ascending: true, nullsFirst: false })
       .order('name')
@@ -340,6 +340,8 @@ function CastsPageContent() {
       line_msg_state: null,
       line_msg_registered_at: null,
       is_active: true,
+      mbti: null,
+      one_word: null,
     }
     setEditingCast(newCast)
     setShowTwitterPassword(false)
@@ -424,6 +426,8 @@ function CastsPageContent() {
           attendance_certificate: editingCast.attendance_certificate,
           contract_documents: editingCast.contract_documents,
           display_order: maxOrder + 1,
+          mbti: editingCast.mbti,
+          one_word: editingCast.one_word,
         })
 
       if (handleSupabaseError(error, { operation: 'キャストの作成' })) {
@@ -458,6 +462,8 @@ function CastsPageContent() {
           residence_record: editingCast.residence_record,
           attendance_certificate: editingCast.attendance_certificate,
           contract_documents: editingCast.contract_documents,
+          mbti: editingCast.mbti,
+          one_word: editingCast.one_word,
         })
         .eq('id', editingCast.id)
 
@@ -1114,6 +1120,30 @@ function CastsPageContent() {
                     </option>
                   ))}
                 </select>
+              </div>
+
+              <div>
+                <label style={labelStyle}>MBTI（HP用）</label>
+                <select
+                  value={editingCast.mbti || ''}
+                  onChange={(e) => handleFieldChange('mbti', e.target.value || null)}
+                  style={inputStyle}
+                >
+                  <option value="">選択してください</option>
+                  {['INTJ', 'INTP', 'ENTJ', 'ENTP', 'INFJ', 'INFP', 'ENFJ', 'ENFP', 'ISTJ', 'ISFJ', 'ESTJ', 'ESFJ', 'ISTP', 'ISFP', 'ESTP', 'ESFP'].map((type) => (
+                    <option key={type} value={type}>{type}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label style={labelStyle}>一言（HP用）</label>
+                <textarea
+                  value={editingCast.one_word || ''}
+                  onChange={(e) => handleFieldChange('one_word', e.target.value || null)}
+                  style={{ ...inputStyle, minHeight: '60px', resize: 'vertical' }}
+                  placeholder="ホームページに表示する一言コメント"
+                />
               </div>
 
               <div>
