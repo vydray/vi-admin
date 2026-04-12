@@ -1900,10 +1900,10 @@ function ExpensesPageContent() {
             <p style={{
               ...styles.balanceAmount,
               ...(isMobile ? { fontSize: '28px' } : {}),
-            }}>{formatCurrency(systemBalance)}</p>
+            }}>{formatCurrency(monthEndBalance)}</p>
             {recentChecks.length > 0 && (() => {
               const latest = recentChecks[0]
-              const dynamicDiff = latest.actual_balance - systemBalance
+              const dynamicDiff = latest.actual_balance - monthEndBalance
               return (
                 <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.3)', display: 'flex', gap: '20px', flexWrap: 'wrap', justifyContent: 'center' }}>
                   <div style={{ textAlign: 'center' }}>
