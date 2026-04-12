@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
 import { useConfirm } from '@/contexts/ConfirmContext'
@@ -9,7 +9,7 @@ import { ExpenseCategory, Expense, ExpenseWithCategory, PettyCashTransaction, Pe
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
 import toast from 'react-hot-toast'
-import { format, addMonths, subMonths } from 'date-fns'
+import { format, addMonths, subMonths, startOfMonth, endOfMonth } from 'date-fns'
 import { ja } from 'date-fns/locale'
 
 export default function ExpensesPage() {
@@ -206,22 +206,56 @@ function ExpensesPageContent() {
     return balance
   }, [storeId])
 
-  // 小口取引履歴
+  // 月末時点の残高を計算
+  const [monthEndBalance, setMonthEndBalance] = useState(0)
+  const calculateMonthEndBalance = useCallback(async () => {
+    const monthEnd = format(endOfMonth(selectedMonth), 'yyyy-MM-dd')
+    const { data: txData } = await supabase
+      .from('petty_cash_transactions')
+      .select('transaction_type, amount')
+      .eq('store_id', storeId)
+      .lte('transaction_date', monthEnd)
+
+    let balance = 0
+    for (const tx of txData || []) {
+      if (tx.transaction_type === 'deposit') balance += tx.amount
+      else if (tx.transaction_type === 'withdrawal') balance -= tx.amount
+      else balance += tx.amount
+    }
+
+    const { data: drData } = await supabase
+      .from('daily_reports')
+      .select('expense_amount')
+      .eq('store_id', storeId)
+      .gt('expense_amount', 0)
+      .lte('business_date', monthEnd)
+
+    for (const dr of drData || []) {
+      balance += dr.expense_amount
+    }
+
+    setMonthEndBalance(balance)
+  }, [storeId, selectedMonth])
+
+  // 小口取引履歴（選択月でフィルター）
   const loadTransactions = useCallback(async () => {
+    const monthStart = format(startOfMonth(selectedMonth), 'yyyy-MM-dd')
+    const monthEnd = format(endOfMonth(selectedMonth), 'yyyy-MM-dd')
     const { data, error } = await supabase
       .from('petty_cash_transactions')
       .select('*, expense:expenses(description, category:expense_categories(name))')
       .eq('store_id', storeId)
+      .gte('transaction_date', monthStart)
+      .lte('transaction_date', monthEnd)
       .order('transaction_date', { ascending: false })
       .order('created_at', { ascending: false })
-      .limit(50)
 
     if (error) {
       console.error('取引履歴取得エラー:', error)
       return []
     }
     return data || []
-  }, [storeId])
+  }, [storeId, selectedMonth])
 
   // 残高確認履歴
   const loadRecentChecks = useCallback(async () => {
@@ -239,13 +273,17 @@ function ExpensesPageContent() {
     return data || []
   }, [storeId])
 
-  // 業務日報から経費を取得
+  // 業務日報から経費を取得（選択月でフィルター）
   const loadDailyReportExpenses = useCallback(async () => {
+    const monthStart = format(startOfMonth(selectedMonth), 'yyyy-MM-dd')
+    const monthEnd = format(endOfMonth(selectedMonth), 'yyyy-MM-dd')
     const { data, error } = await supabase
       .from('daily_reports')
       .select('id, business_date, expense_amount')
       .eq('store_id', storeId)
       .gt('expense_amount', 0)
+      .gte('business_date', monthStart)
+      .lte('business_date', monthEnd)
       .order('business_date', { ascending: false })
 
     if (error) {
@@ -253,7 +291,7 @@ function ExpensesPageContent() {
       return []
     }
     return data || []
-  }, [storeId])
+  }, [storeId, selectedMonth])
 
   // データ読み込み
   const loadData = useCallback(async () => {
@@ -278,13 +316,16 @@ function ExpensesPageContent() {
       const dailyExpenseTotal = dailyExpenses.reduce((sum, d) => sum + d.expense_amount, 0)
       setSystemBalance(balance + dailyExpenseTotal)
 
+      // 月末残高を計算
+      await calculateMonthEndBalance()
+
     } catch (err) {
       console.error('データ読み込みエラー:', err)
       toast.error('データの読み込みに失敗しました')
     } finally {
       setLoading(false)
     }
-  }, [loadCategories, loadExpenses, calculateSystemBalance, loadTransactions, loadRecentChecks, loadDailyReportExpenses])
+  }, [loadCategories, loadExpenses, calculateSystemBalance, loadTransactions, loadRecentChecks, loadDailyReportExpenses, calculateMonthEndBalance])
 
   useEffect(() => {
     if (!storeLoading && storeId) {
@@ -779,35 +820,54 @@ function ExpensesPageContent() {
     }
   }
 
-  // 入出金履歴（petty_cash_transactions + daily_reports を統合）
-  const mergedTransactions = [
-    // petty_cash_transactions
-    ...transactions.map(tx => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const exp = (tx as any).expense
-      return {
-        id: `tx-${tx.id}`,
-        originalId: tx.id,
-        date: tx.transaction_date,
-        type: tx.transaction_type as 'deposit' | 'withdrawal' | 'adjustment',
-        amount: tx.amount,
-        description: tx.description || exp?.description || '',
-        category: exp?.category?.name || null as string | null,
-        source: 'petty_cash' as const,
+  // 入出金履歴（petty_cash_transactions + daily_reports を統合 + 残高付き）
+  const mergedTransactions = useMemo(() => {
+    const items = [
+      ...transactions.map(tx => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const exp = (tx as any).expense
+        return {
+          id: `tx-${tx.id}`,
+          originalId: tx.id,
+          date: tx.transaction_date,
+          type: tx.transaction_type as 'deposit' | 'withdrawal' | 'adjustment',
+          amount: tx.amount,
+          description: tx.description || exp?.description || '',
+          category: exp?.category?.name || null as string | null,
+          source: 'petty_cash' as const,
+          balance: 0,
+        }
+      }),
+      ...dailyReportExpenses.map(dr => ({
+        id: `dr-${dr.id}`,
+        originalId: null as number | null,
+        date: dr.business_date,
+        type: 'deposit' as const,
+        amount: dr.expense_amount,
+        description: '現金回収より入金',
+        category: null as string | null,
+        source: 'daily_report' as const,
+        balance: 0,
+      })),
+    ]
+
+    // 新しい順にソート
+    items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+
+    // 月末残高から新しい順に逆算して各行の残高を計算
+    let running = monthEndBalance
+    for (const tx of items) {
+      tx.balance = running
+      // この取引の前の残高に戻す
+      if (tx.type === 'deposit' || tx.type === 'adjustment') {
+        running -= tx.amount
+      } else {
+        running += tx.amount
       }
-    }),
-    // daily_reports の入金
-    ...dailyReportExpenses.map(dr => ({
-      id: `dr-${dr.id}`,
-      originalId: null as number | null,
-      date: dr.business_date,
-      type: 'deposit' as const,
-      amount: dr.expense_amount,
-      description: '現金回収より入金',
-      category: null as string | null,
-      source: 'daily_report' as const,
-    })),
-  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    }
+
+    return items
+  }, [transactions, dailyReportExpenses, monthEndBalance])
 
   // 月別集計
   const monthSummary = {
@@ -1810,6 +1870,24 @@ function ExpensesPageContent() {
       {/* 小口現金タブ */}
       {activeTab === 'petty-cash' && (
         <div style={styles.tabContent}>
+          {/* 月選択 */}
+          <div style={styles.monthSelector}>
+            <button
+              onClick={() => setSelectedMonth(subMonths(selectedMonth, 1))}
+              style={styles.monthButton}
+            >
+              ◀
+            </button>
+            <span style={styles.monthText}>
+              {format(selectedMonth, 'yyyy年M月', { locale: ja })}
+            </span>
+            <button
+              onClick={() => setSelectedMonth(addMonths(selectedMonth, 1))}
+              style={styles.monthButton}
+            >
+              ▶
+            </button>
+          </div>
           {/* 残高表示 */}
           <div style={{
             ...styles.balanceCard,
@@ -2170,14 +2248,19 @@ function ExpensesPageContent() {
                       ...styles.transactionRight,
                       ...(isMobile ? { width: '100%', justifyContent: 'space-between' } : {}),
                     }}>
-                      <span style={{
-                        ...styles.transactionAmount,
-                        color: tx.type === 'deposit' ? '#27ae60' :
-                               tx.type === 'withdrawal' ? '#e74c3c' : '#3498db'
-                      }}>
-                        {tx.type === 'deposit' ? '+' : '-'}
-                        {formatCurrency(tx.amount)}
-                      </span>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
+                        <span style={{
+                          ...styles.transactionAmount,
+                          color: tx.type === 'deposit' ? '#27ae60' :
+                                 tx.type === 'withdrawal' ? '#e74c3c' : '#3498db'
+                        }}>
+                          {tx.type === 'deposit' ? '+' : '-'}
+                          {formatCurrency(tx.amount)}
+                        </span>
+                        <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+                          残高 {formatCurrency(tx.balance)}
+                        </span>
+                      </div>
                       {tx.source === 'petty_cash' && tx.type === 'deposit' && tx.originalId && (
                         <div style={styles.transactionActions}>
                           <button
