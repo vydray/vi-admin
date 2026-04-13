@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { getSupabaseServerClient } from '@/lib/supabase'
 import { fetchOrders, fetchOrderDetail, refreshAccessToken } from '@/lib/baseApi'
+import { calculateBusinessDay } from '@/lib/businessDay'
 
 /**
  * セッション検証関数
@@ -207,15 +208,8 @@ export async function POST(request: NextRequest) {
         const orderDate = new Date(orderSummary.ordered * 1000)
         const orderDatetime = orderDate.toISOString()
 
-        // 営業日を計算
-        let businessDateObj = new Date(orderDate)
-        if (cutoffEnabled) {
-          const hour = orderDate.getHours()
-          if (hour < cutoffHour) {
-            businessDateObj.setDate(businessDateObj.getDate() - 1)
-          }
-        }
-        const businessDate = businessDateObj.toISOString().split('T')[0]
+        // 営業日を計算（JST基準）
+        const businessDate = calculateBusinessDay(orderDatetime, cutoffEnabled ? cutoffHour : 0)
 
         // 各商品アイテムを保存
         for (const item of orderDetail.order_items || []) {

@@ -10,6 +10,7 @@ import ProtectedPage from '@/components/ProtectedPage'
 import toast from 'react-hot-toast'
 import { format, startOfMonth, endOfMonth, addMonths, subMonths } from 'date-fns'
 import { ja } from 'date-fns/locale'
+import { calculateBusinessDay } from '@/lib/businessDay'
 
 interface CastBasic {
   id: number
@@ -431,24 +432,11 @@ function BaseSettingsPageContent() {
     }
   }
 
-  // 営業日を計算（締め時間を考慮）
+  // 営業日を計算（締め時間を考慮、JST基準）
   const calculateBusinessDate = (orderDatetime: string): string => {
     const date = new Date(orderDatetime)
-    if (isNaN(date.getTime())) {
-      return new Date().toISOString().split('T')[0]
-    }
-
-    if (!cutoffEnabled) {
-      return date.toISOString().split('T')[0]
-    }
-
-    // 締め時間より前なら前日の営業日
-    const hour = date.getHours()
-    if (hour < cutoffHour) {
-      date.setDate(date.getDate() - 1)
-    }
-
-    return date.toISOString().split('T')[0]
+    const iso = isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString()
+    return calculateBusinessDay(iso, cutoffEnabled ? cutoffHour : 0)
   }
 
   // CSVインポート実行
