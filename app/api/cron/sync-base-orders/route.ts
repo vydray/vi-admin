@@ -3,7 +3,6 @@ import { getSupabaseServerClient } from '@/lib/supabase'
 import { fetchOrders, fetchOrderDetail, refreshAccessToken } from '@/lib/baseApi'
 import { withCronLock } from '@/lib/cronLock'
 import { recalculateForDate } from '@/lib/recalculateSales'
-import { calculateBusinessDay } from '@/lib/businessDay'
 
 /**
  * BASE注文自動同期
@@ -254,9 +253,15 @@ async function executeSyncBaseOrders() {
             const orderDate = new Date(orderSummary.ordered * 1000)
             const orderDatetime = orderDate.toISOString()
 
-            // 営業日を計算（JST基準。cutoffEnabled=false なら cutoff=0 扱いで単純に日付変換）
-            const effectiveCutoff = cutoffEnabled ? cutoffHour : 0
-            const businessDate = calculateBusinessDay(orderDatetime, effectiveCutoff)
+            // 営業日を計算
+            let businessDateObj = new Date(orderDate)
+            if (cutoffEnabled) {
+              const hour = orderDate.getHours()
+              if (hour < cutoffHour) {
+                businessDateObj.setDate(businessDateObj.getDate() - 1)
+              }
+            }
+            const businessDate = businessDateObj.toISOString().split('T')[0]
 
             for (const item of orderDetail.order_items || []) {
               const cast = casts?.find(c => c.name === item.variation)
