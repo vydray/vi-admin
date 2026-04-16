@@ -90,8 +90,8 @@ export async function POST(request: NextRequest) {
     const startDate = format(startOfMonth(targetMonth), 'yyyy-MM-dd')
     const endDate = format(endOfMonth(targetMonth), 'yyyy-MM-dd')
 
-    // 1. アクティブなキャスト一覧
-    const { data: casts } = await supabase
+    // 1. アクティブなキャスト + payslipが存在する非アクティブキャスト
+    const { data: activeCasts } = await supabase
       .from('casts')
       .select('id, name')
       .eq('store_id', storeId)
@@ -99,7 +99,21 @@ export async function POST(request: NextRequest) {
       .order('display_order', { ascending: true, nullsFirst: false })
       .order('name')
 
-    if (!casts || casts.length === 0) {
+    const { data: payslipCasts } = await supabase
+      .from('payslips')
+      .select('cast_id, casts(id, name)')
+      .eq('store_id', storeId)
+      .eq('year_month', year_month)
+
+    const castMap = new Map<number, { id: number; name: string }>()
+    for (const c of activeCasts || []) castMap.set(c.id, c)
+    for (const p of payslipCasts || []) {
+      const c = (p as Record<string, unknown>).casts as { id: number; name: string } | null
+      if (c && !castMap.has(c.id)) castMap.set(c.id, c)
+    }
+    const casts = Array.from(castMap.values())
+
+    if (casts.length === 0) {
       return NextResponse.json({ success: true, payslips: [] })
     }
 

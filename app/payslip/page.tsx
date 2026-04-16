@@ -328,13 +328,12 @@ function PayslipPageContent() {
     })
   }, [])
 
-  // キャスト一覧を取得
+  // キャスト一覧を取得（退店キャストも含む）
   const loadCasts = useCallback(async () => {
     const { data, error } = await supabase
       .from('casts')
       .select('id, name, display_order, status')
       .eq('store_id', storeId)
-      .eq('is_active', true)
       .order('display_order', { ascending: true, nullsFirst: false })
       .order('name')
 
