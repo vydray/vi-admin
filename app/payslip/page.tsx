@@ -250,7 +250,7 @@ function PayslipPageContent() {
 
   // 検索・フィルター
   const [searchText, setSearchText] = useState('')
-  const [statusFilter, setStatusFilter] = useState<string>('在籍')
+  const [statusFilter, setStatusFilter] = useState<string>('')
 
   // フィルター済みキャスト一覧
   const filteredCasts = useMemo(() => {

@@ -419,7 +419,7 @@ function CompensationSettingsPageContent() {
   // キャスト選択ドロップダウン
   const [showCastDropdown, setShowCastDropdown] = useState(false)
   const [searchText, setSearchText] = useState('')
-  const [statusFilter, setStatusFilter] = useState<string>('在籍')
+  const [statusFilter, setStatusFilter] = useState<string>('')
   const dropdownRef = useRef<HTMLDivElement>(null)
 
   // ドロップダウン外クリックで閉じる
