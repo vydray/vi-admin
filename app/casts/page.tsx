@@ -278,10 +278,10 @@ function CastsPageContent() {
     if (handleSupabaseError(error, { operation: 'キャストの更新' })) {
       // Error handled
     } else {
-      // 成功したらリロード
-      loadCasts()
+      // 成功したら該当キャストの該当フィールドだけ更新（全件再取得しない）
+      setCasts(prev => prev.map(c => c.id === castId ? { ...c, [field]: value } : c))
     }
-  }, [loadCasts])
+  }, [])
 
   const openEditModal = useCallback((cast: CastListView) => {
     // CastListView から Cast に変換（削除されたフィールドにデフォルト値を設定）
