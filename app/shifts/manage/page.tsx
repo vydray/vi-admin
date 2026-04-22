@@ -846,7 +846,12 @@ function ShiftManageContent() {
 
   const getAttendanceCount = (date: Date) => {
     const dateStr = format(date, 'yyyy-MM-dd')
-    return shifts.filter(s => s.date === dateStr).length
+    const shiftCastIds = new Set(shifts.filter(s => s.date === dateStr).map(s => s.cast_id))
+    // 未承認申請で、確定シフトがまだ無い人もカウント
+    for (const r of shiftRequests) {
+      if (r.date === dateStr) shiftCastIds.add(r.cast_id)
+    }
+    return shiftCastIds.size
   }
 
   // 時間選択肢をメモ化
