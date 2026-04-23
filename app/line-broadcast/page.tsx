@@ -155,8 +155,9 @@ function LineBroadcastContent() {
                 失敗したキャスト:
               </div>
               {result.failed.map((f, i) => (
-                <div key={i} style={{ fontSize: '13px', color: '#991b1b' }}>
-                  {f.name}
+                <div key={i} style={{ fontSize: '13px', color: '#991b1b', marginBottom: '4px' }}>
+                  <span style={{ fontWeight: 600 }}>{f.name}</span>
+                  {f.error && <span style={{ color: '#7f1d1d', marginLeft: '8px', fontSize: '12px' }}>— {f.error}</span>}
                 </div>
               ))}
             </div>
