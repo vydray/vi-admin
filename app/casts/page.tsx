@@ -950,7 +950,8 @@ function CastsPageContent() {
                   style={{
                     borderBottom: '1px solid #eee',
                     cursor: (!searchQuery && !statusFilter && !attributeFilter && !documentFilter && !activeFilter && !posFilter && !adminFilter && !managerFilter && !sortField) ? 'grab' : 'pointer',
-                    backgroundColor: dragOverCastId === cast.id ? '#e0f2fe' : draggedCastId === cast.id ? '#f0f0f0' : 'transparent',
+                    backgroundColor: dragOverCastId === cast.id ? '#e0f2fe' : draggedCastId === cast.id ? '#f0f0f0' : cast.status === '退店' ? '#f3f4f6' : 'transparent',
+                    color: cast.status === '退店' ? '#9ca3af' : undefined,
                     transition: 'background-color 0.2s',
                     borderTop: dragOverCastId === cast.id ? '2px solid #3b82f6' : undefined,
                     userSelect: 'none'
