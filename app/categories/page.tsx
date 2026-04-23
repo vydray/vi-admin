@@ -10,6 +10,7 @@ import Button from '@/components/Button'
 import Modal from '@/components/Modal'
 import ProtectedPage from '@/components/ProtectedPage'
 import type { Category } from '@/types'
+import { parseCSVLine } from '@/lib/csv'
 
 export default function CategoriesPage() {
   return (
@@ -224,13 +225,12 @@ function CategoriesPageContent() {
         const line = dataLines[i]
 
         // CSVパース
-        const matches = line.match(/("(?:[^"]|"")*"|[^,]*)/g)
-        if (!matches || matches.length < 3) {
+        const cells = parseCSVLine(line)
+        if (cells.length < 3) {
           errors.push(`${lineNumber}行目: 列数が不足しています（3列必要）`)
           continue
         }
 
-        const cells = matches.map(cell => cell.replace(/^"|"$/g, '').replace(/""/g, '"').trim())
         const [name, displayOrderStr, showOshiFirstStr] = cells
 
         // カテゴリー名チェック

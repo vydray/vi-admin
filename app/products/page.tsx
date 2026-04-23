@@ -12,6 +12,7 @@ import Button from '@/components/Button'
 import Modal from '@/components/Modal'
 import ProtectedPage from '@/components/ProtectedPage'
 import type { Category, Product } from '@/types'
+import { parseCSVLine } from '@/lib/csv'
 
 export default function ProductsPage() {
   return (
@@ -366,13 +367,12 @@ function ProductsPageContent() {
         const line = dataLines[i]
 
         // CSVパース
-        const matches = line.match(/("(?:[^"]|"")*"|[^,]*)/g)
-        if (!matches || matches.length < 6) {
+        const cells = parseCSVLine(line)
+        if (cells.length < 6) {
           errors.push(`${lineNumber}行目: 列数が不足しています（6列必要）`)
           continue
         }
 
-        const cells = matches.map(cell => cell.replace(/^"|"$/g, '').replace(/""/g, '"').trim())
         const [name, priceStr, categoryName, displayOrderStr, isActiveStr, needsCastStr] = cells
 
         // 商品名チェック
