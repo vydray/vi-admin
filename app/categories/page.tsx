@@ -43,7 +43,7 @@ function CategoriesPageContent() {
     setLoading(true)
     const { data, error } = await supabase
       .from('product_categories')
-      .select('id, name, display_order, store_id, show_oshi_first')
+      .select('id, name, display_order, store_id, show_oshi_first, back_rate_required')
       .eq('store_id', storeId)
       .order('display_order')
 
