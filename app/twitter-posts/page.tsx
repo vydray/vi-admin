@@ -556,7 +556,23 @@ export default function TwitterPostsPage() {
     resetForm()
     if (date) {
       const d = new Date(date)
-      d.setHours(12, 0, 0, 0)
+      const clickedDayZero = d.getHours() === 0 && d.getMinutes() === 0
+      // 日付セルクリック（0時）は12時をデフォルトに
+      if (clickedDayZero) {
+        d.setHours(12, 0, 0, 0)
+      }
+      // 今日の日付セルをクリックして、デフォルト12時が既に過ぎていた場合は1時間後に
+      const now = new Date()
+      if (d.getTime() <= now.getTime()) {
+        if (clickedDayZero && d.toDateString() === now.toDateString()) {
+          const nextHour = new Date(now)
+          nextHour.setHours(now.getHours() + 1, 0, 0, 0)
+          d.setTime(nextHour.getTime())
+        } else {
+          toast.error('過去の時刻には予約できません')
+          return
+        }
+      }
       setScheduledAt(formatDateTimeLocal(d.toISOString()))
     }
     setShowForm(true)
