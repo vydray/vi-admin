@@ -16,6 +16,9 @@ interface TwitterSettings {
   twitter_user_id: string | null
   twitter_username: string | null
   connected_at: string | null
+  health_status?: 'healthy' | 'broken' | 'unknown' | null
+  last_health_check_at?: string | null
+  health_error_message?: string | null
 }
 
 export default function TwitterSettingsPage() {
@@ -97,6 +100,58 @@ export default function TwitterSettingsPage() {
   const handleStartOAuth = () => {
     setShowConnectModal(false)
     window.location.href = `/api/twitter/auth?storeId=${storeId}`
+  }
+
+  const [verifying, setVerifying] = useState(false)
+  const [testPosting, setTestPosting] = useState(false)
+
+  const handleVerify = async () => {
+    if (!storeId) return
+    setVerifying(true)
+    try {
+      const res = await fetch('/api/twitter/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ store_id: storeId }),
+      })
+      const data = await res.json()
+      if (data.ok) {
+        toast.success(`接続OK @${data.username}`)
+      } else {
+        toast.error(`接続NG (${data.status || '?'}): ${data.error || '不明なエラー'}`)
+      }
+      await loadSettings()
+    } catch (error) {
+      console.error(error)
+      toast.error('接続テストに失敗しました')
+    } finally {
+      setVerifying(false)
+    }
+  }
+
+  const handleTestPost = async () => {
+    if (!storeId) return
+    if (!confirm('テストツイートを実際に投稿します。よろしいですか？')) return
+    setTestPosting(true)
+    try {
+      const res = await fetch('/api/twitter/test-post', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ store_id: storeId }),
+      })
+      const data = await res.json()
+      if (data.ok) {
+        toast.success(`テスト投稿完了 (ID: ${data.tweetId})`)
+      } else {
+        toast.error(`投稿失敗 (${data.status || '?'}): ${data.error || '不明なエラー'}`)
+      }
+      await loadSettings()
+    } catch (error) {
+      console.error(error)
+      toast.error('テスト投稿に失敗しました')
+    } finally {
+      setTestPosting(false)
+    }
   }
 
   const handleDisconnect = async () => {
@@ -198,26 +253,61 @@ export default function TwitterSettingsPage() {
           <h2 style={styles.sectionTitle}>Twitter連携</h2>
 
           {isConnected ? (
-            <div style={styles.connectedBox}>
-              <div style={styles.connectedInfo}>
-                <div style={styles.connectedIcon}>&#x2713;</div>
-                <div>
-                  <p style={styles.connectedText}>連携済み</p>
-                  <p style={styles.connectedUsername}>@{settings?.twitter_username}</p>
-                  <p style={styles.connectedDate}>
-                    {settings?.connected_at &&
-                      `連携日時: ${new Date(settings.connected_at).toLocaleString('ja-JP')}`
-                    }
-                  </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div style={styles.connectedBox}>
+                <div style={styles.connectedInfo}>
+                  <div style={{
+                    ...styles.connectedIcon,
+                    backgroundColor: settings?.health_status === 'broken' ? '#dc2626' : settings?.health_status === 'unknown' ? '#9ca3af' : '#10b981',
+                  }}>
+                    {settings?.health_status === 'broken' ? '!' : '✓'}
+                  </div>
+                  <div>
+                    <p style={styles.connectedText}>
+                      {settings?.health_status === 'broken' ? '接続エラー' : settings?.health_status === 'unknown' ? '未確認' : '連携済み'}
+                    </p>
+                    <p style={styles.connectedUsername}>@{settings?.twitter_username}</p>
+                    <p style={styles.connectedDate}>
+                      {settings?.connected_at &&
+                        `連携日時: ${new Date(settings.connected_at).toLocaleString('ja-JP')}`
+                      }
+                    </p>
+                    {settings?.last_health_check_at && (
+                      <p style={styles.connectedDate}>
+                        {`最終確認: ${new Date(settings.last_health_check_at).toLocaleString('ja-JP')}`}
+                      </p>
+                    )}
+                    {settings?.health_status === 'broken' && settings?.health_error_message && (
+                      <p style={{ fontSize: '12px', color: '#dc2626', margin: '4px 0 0 0' }}>
+                        {settings.health_error_message}
+                      </p>
+                    )}
+                  </div>
                 </div>
+                <button
+                  onClick={handleDisconnect}
+                  disabled={saving}
+                  style={styles.disconnectButton}
+                >
+                  連携解除
+                </button>
               </div>
-              <button
-                onClick={handleDisconnect}
-                disabled={saving}
-                style={styles.disconnectButton}
-              >
-                連携解除
-              </button>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  onClick={handleVerify}
+                  disabled={verifying}
+                  style={{ ...styles.saveButton, backgroundColor: '#6366f1' }}
+                >
+                  {verifying ? '確認中...' : '接続テスト'}
+                </button>
+                <button
+                  onClick={handleTestPost}
+                  disabled={testPosting}
+                  style={{ ...styles.saveButton, backgroundColor: '#0ea5e9' }}
+                >
+                  {testPosting ? '投稿中...' : 'テスト投稿'}
+                </button>
+              </div>
             </div>
           ) : (
             <div style={styles.notConnectedBox}>

@@ -153,6 +153,13 @@ export default function Home() {
     noBackRates: { id: number; name: string }[]
   } | null>(null)
 
+  // Twitter アラート
+  const [twitterAlert, setTwitterAlert] = useState<{
+    broken: boolean
+    healthError: string | null
+    failedPostsCount: number
+  } | null>(null)
+
   // レジ金チェック
   const [cashCountData, setCashCountData] = useState<{
     bill_10000: number
@@ -241,8 +248,47 @@ export default function Home() {
     if (!storeLoading && storeId) {
       fetchDashboardData()
       checkMissingSettings()
+      checkTwitterStatus()
     }
   }, [storeId, selectedYear, selectedMonth, storeLoading])
+
+  const checkTwitterStatus = async () => {
+    if (!storeId) return
+    try {
+      const { data: tw } = await supabase
+        .from('store_twitter_settings')
+        .select('health_status, health_error_message, twitter_username')
+        .eq('store_id', storeId)
+        .maybeSingle()
+
+      if (!tw?.twitter_username) {
+        setTwitterAlert(null)
+        return
+      }
+
+      // 直近7日以内の失敗予約投稿数
+      const weekAgo = new Date()
+      weekAgo.setDate(weekAgo.getDate() - 7)
+      const { count } = await supabase
+        .from('scheduled_posts')
+        .select('id', { count: 'exact', head: true })
+        .eq('store_id', storeId)
+        .eq('status', 'failed')
+        .gte('updated_at', weekAgo.toISOString())
+
+      const broken = tw.health_status === 'broken'
+      const failedPostsCount = count ?? 0
+
+      if (broken || failedPostsCount > 0) {
+        setTwitterAlert({ broken, healthError: tw.health_error_message, failedPostsCount })
+      } else {
+        setTwitterAlert(null)
+      }
+    } catch (err) {
+      console.error('Twitter status check error:', err)
+      setTwitterAlert(null)
+    }
+  }
 
   const checkMissingSettings = async () => {
     if (!storeId) return
@@ -1071,6 +1117,41 @@ export default function Home() {
               </a>
               <span style={{ fontSize: '13px', color: '#92400e', marginLeft: '8px' }}>
                 未設定: {missingSettings.noBackRates.map(c => c.name).join('、')}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Twitter アラート */}
+      {twitterAlert && (
+        <div style={{
+          margin: '0 0 20px',
+          padding: '16px 20px',
+          backgroundColor: '#fef2f2',
+          border: '1px solid #ef4444',
+          borderRadius: '10px',
+        }}>
+          <div style={{ fontWeight: '700', fontSize: '15px', color: '#991b1b', marginBottom: '8px' }}>
+            Twitter連携に問題があります
+          </div>
+          {twitterAlert.broken && (
+            <div style={{ marginBottom: '6px' }}>
+              <a href="/twitter-settings" style={{ fontWeight: '600', fontSize: '14px', color: '#b91c1c', textDecoration: 'underline' }}>
+                Twitter設定
+              </a>
+              <span style={{ fontSize: '13px', color: '#991b1b', marginLeft: '8px' }}>
+                接続エラー{twitterAlert.healthError ? `: ${twitterAlert.healthError}` : ''}
+              </span>
+            </div>
+          )}
+          {twitterAlert.failedPostsCount > 0 && (
+            <div>
+              <a href="/twitter-posts" style={{ fontWeight: '600', fontSize: '14px', color: '#b91c1c', textDecoration: 'underline' }}>
+                予約投稿
+              </a>
+              <span style={{ fontSize: '13px', color: '#991b1b', marginLeft: '8px' }}>
+                直近7日で失敗した投稿が {twitterAlert.failedPostsCount} 件あります
               </span>
             </div>
           )}

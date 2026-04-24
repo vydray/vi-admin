@@ -179,9 +179,17 @@ async function executeTwitterPosts() {
         }
       } else {
         failCount++
-        // 認証エラーの場合はログ出力
-        if (errorMessage && (errorMessage.includes('401') || errorMessage.toLowerCase().includes('unauthorized'))) {
+        // 認証エラーの場合はhealth_statusも更新
+        if (errorMessage && (errorMessage.includes('401') || errorMessage.includes('403') || errorMessage.toLowerCase().includes('unauthorized'))) {
           console.error(`[Twitter Post Cron] Authentication error for post ${post.id} (store ${post.store_id}): Token may be expired`)
+          await supabase
+            .from('store_twitter_settings')
+            .update({
+              health_status: 'broken',
+              last_health_check_at: new Date().toISOString(),
+              health_error_message: errorMessage,
+            })
+            .eq('store_id', post.store_id)
         }
       }
 

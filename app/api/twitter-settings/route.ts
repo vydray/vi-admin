@@ -109,6 +109,9 @@ export async function POST(request: NextRequest) {
         twitter_user_id: null,
         twitter_username: null,
         connected_at: null,
+        health_status: 'unknown',
+        last_health_check_at: null,
+        health_error_message: null,
         updated_at: new Date().toISOString(),
       })
       .eq('store_id', store_id)
