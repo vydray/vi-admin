@@ -4,6 +4,7 @@ import { fetchOrders, fetchOrderDetail, refreshAccessToken } from '@/lib/baseApi
 import { withCronLock } from '@/lib/cronLock'
 import { recalculateForDate } from '@/lib/recalculateSales'
 import { calculateBusinessDay } from '@/lib/businessDay'
+import { notifyPendingForAllStores } from '@/lib/notifyBaseOrder'
 
 /**
  * BASE注文自動同期
@@ -208,9 +209,9 @@ async function executeSyncBaseOrders() {
           .select('id, name')
           .eq('store_id', setting.store_id)
 
-        // キャンセル以外の注文を処理（デジタルコンテンツはdispatchedにならないことがある）
+        // キャンセル/terminated以外の注文を処理（デジタルコンテンツはdispatchedにならないことがある）
         const activeOrders = allOrders.filter(
-          order => order.dispatch_status !== 'cancelled'
+          order => order.dispatch_status !== 'cancelled' && !order.terminated
         )
 
         // 手動編集済みのbase_ordersキーを取得（cast_idを上書きしないため）
@@ -256,6 +257,13 @@ async function executeSyncBaseOrders() {
 
             // 営業日を計算（JST基準）
             const businessDate = calculateBusinessDay(orderDatetime, cutoffEnabled ? cutoffHour : 0)
+
+            // LINE通知用の顧客名（姓 + 名、空欄時はnull）
+            const lastName = (orderDetail.last_name || '').trim()
+            const firstName = (orderDetail.first_name || '').trim()
+            const customerName = (lastName || firstName)
+              ? `${lastName} ${firstName}`.trim()
+              : null
 
             for (const item of orderDetail.order_items || []) {
               const cast = casts?.find(c => c.name === item.variation)
@@ -315,6 +323,7 @@ async function executeSyncBaseOrders() {
                     base_price: item.price,
                     actual_price: actualPrice,
                     quantity: item.amount,
+                    customer_name: customerName,
                   })
                   .eq('store_id', setting.store_id)
                   .eq('base_order_id', orderSummary.unique_key)
@@ -347,6 +356,7 @@ async function executeSyncBaseOrders() {
                   quantity: item.amount,
                   business_date: businessDate,
                   is_processed: false,
+                  customer_name: customerName,
                 }, {
                   onConflict: 'store_id,base_order_id,product_name,variation_name'
                 })
@@ -424,10 +434,22 @@ async function executeSyncBaseOrders() {
       }
     }
 
+    // フェイルセーフとして未通知の行があれば通知する（Fast cronが拾い漏れた場合の保険）
+    let notifyResult: Awaited<ReturnType<typeof notifyPendingForAllStores>> | { skipped: boolean; results: never[]; error: string } =
+      { skipped: false, results: [] }
+    try {
+      notifyResult = await notifyPendingForAllStores()
+    } catch (notifyErr) {
+      const msg = notifyErr instanceof Error ? notifyErr.message : String(notifyErr)
+      console.error('[BASE Sync] notifyPendingForAllStores failed:', msg)
+      notifyResult = { skipped: false, results: [], error: msg }
+    }
+
     return NextResponse.json({
       success: true,
       results,
       recalcResults,
+      notifyResult,
       syncedAt: new Date().toISOString(),
     })
   } catch (error) {

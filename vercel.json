@@ -31,7 +31,11 @@
     },
     {
       "path": "/api/cron/sync-base-orders",
-      "schedule": "*/5 * * * *"
+      "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/notify-base-orders",
+      "schedule": "* * * * *"
     },
     {
       "path": "/api/wage-status/auto-update",
