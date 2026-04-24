@@ -239,11 +239,19 @@ export default function TwitterPostsPage() {
   const weekDays = useMemo(() => getWeekDays(currentDate), [currentDate, getWeekDays])
   const monthDays = useMemo(() => getMonthDays(currentDate), [currentDate, getMonthDays])
 
+  // ローカル日付のキーを作る (YYYY-MM-DD)
+  const toLocalDateKey = (date: Date): string => {
+    const y = date.getFullYear()
+    const m = String(date.getMonth() + 1).padStart(2, '0')
+    const d = String(date.getDate()).padStart(2, '0')
+    return `${y}-${m}-${d}`
+  }
+
   // 投稿を日付でグループ化
   const postsByDate = useMemo(() => {
     const map: Record<string, ScheduledPost[]> = {}
     posts.forEach(post => {
-      const dateKey = new Date(post.scheduled_at).toISOString().split('T')[0]
+      const dateKey = toLocalDateKey(new Date(post.scheduled_at))
       if (!map[dateKey]) map[dateKey] = []
       map[dateKey].push(post)
     })
@@ -720,7 +728,7 @@ export default function TwitterPostsPage() {
     const map: Record<string, Record<number, ScheduledPost[]>> = {}
     posts.forEach(post => {
       const date = new Date(post.scheduled_at)
-      const dateKey = date.toISOString().split('T')[0]
+      const dateKey = toLocalDateKey(date)
       const hour = date.getHours()
       if (!map[dateKey]) map[dateKey] = {}
       if (!map[dateKey][hour]) map[dateKey][hour] = []
@@ -788,7 +796,7 @@ export default function TwitterPostsPage() {
   )
 
   const renderDayCell = (date: Date, isCompact = false) => {
-    const dateKey = date.toISOString().split('T')[0]
+    const dateKey = toLocalDateKey(date)
     const dayPosts = postsByDate[dateKey] || []
     const today = isToday(date)
     const inMonth = isCurrentMonth(date)
@@ -916,7 +924,7 @@ export default function TwitterPostsPage() {
                     <div key={hour} style={styles.hourRow}>
                       <div style={styles.timeLabel}>{hour}:00</div>
                       {weekDays.map(date => {
-                        const dateKey = date.toISOString().split('T')[0]
+                        const dateKey = toLocalDateKey(date)
                         const hourPosts = postsByDateAndHour[dateKey]?.[hour] || []
                         return (
                           <div
