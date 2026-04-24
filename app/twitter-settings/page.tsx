@@ -103,7 +103,6 @@ export default function TwitterSettingsPage() {
   }
 
   const [verifying, setVerifying] = useState(false)
-  const [testPosting, setTestPosting] = useState(false)
 
   const handleVerify = async () => {
     if (!storeId) return
@@ -126,31 +125,6 @@ export default function TwitterSettingsPage() {
       toast.error('接続テストに失敗しました')
     } finally {
       setVerifying(false)
-    }
-  }
-
-  const handleTestPost = async () => {
-    if (!storeId) return
-    if (!confirm('テストツイートを実際に投稿します。よろしいですか？')) return
-    setTestPosting(true)
-    try {
-      const res = await fetch('/api/twitter/test-post', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ store_id: storeId }),
-      })
-      const data = await res.json()
-      if (data.ok) {
-        toast.success(`テスト投稿完了 (ID: ${data.tweetId})`)
-      } else {
-        toast.error(`投稿失敗 (${data.status || '?'}): ${data.error || '不明なエラー'}`)
-      }
-      await loadSettings()
-    } catch (error) {
-      console.error(error)
-      toast.error('テスト投稿に失敗しました')
-    } finally {
-      setTestPosting(false)
     }
   }
 
@@ -292,20 +266,13 @@ export default function TwitterSettingsPage() {
                   連携解除
                 </button>
               </div>
-              <div style={{ display: 'flex', gap: '8px' }}>
+              <div>
                 <button
                   onClick={handleVerify}
                   disabled={verifying}
                   style={{ ...styles.saveButton, backgroundColor: '#6366f1' }}
                 >
                   {verifying ? '確認中...' : '接続テスト'}
-                </button>
-                <button
-                  onClick={handleTestPost}
-                  disabled={testPosting}
-                  style={{ ...styles.saveButton, backgroundColor: '#0ea5e9' }}
-                >
-                  {testPosting ? '投稿中...' : 'テスト投稿'}
                 </button>
               </div>
             </div>
