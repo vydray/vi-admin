@@ -816,6 +816,9 @@ export default function TwitterPostsPage() {
     const dayPosts = postsByDate[dateKey] || []
     const today = isToday(date)
     const inMonth = isCurrentMonth(date)
+    const startOfToday = new Date()
+    startOfToday.setHours(0, 0, 0, 0)
+    const isPastDay = date.getTime() < startOfToday.getTime()
 
     return (
       <div
@@ -825,6 +828,7 @@ export default function TwitterPostsPage() {
           ...(isCompact ? styles.dayCellCompact : {}),
           ...(today ? styles.dayCellToday : {}),
           ...(viewMode === 'month' && !inMonth ? styles.dayCellOtherMonth : {}),
+          ...(isPastDay ? { backgroundColor: '#f3f4f6', color: '#9ca3af', cursor: 'not-allowed' } : {}),
         }}
         onClick={() => handleCreateNew(date)}
       >
@@ -942,10 +946,16 @@ export default function TwitterPostsPage() {
                       {weekDays.map(date => {
                         const dateKey = toLocalDateKey(date)
                         const hourPosts = postsByDateAndHour[dateKey]?.[hour] || []
+                        const cellDate = new Date(date)
+                        cellDate.setHours(hour, 0, 0, 0)
+                        const isPastHour = cellDate.getTime() <= Date.now()
                         return (
                           <div
                             key={`${dateKey}-${hour}`}
-                            style={styles.hourCell}
+                            style={{
+                              ...styles.hourCell,
+                              ...(isPastHour ? { backgroundColor: '#f3f4f6', cursor: 'not-allowed' } : {}),
+                            }}
                             onClick={() => {
                               const d = new Date(date)
                               d.setHours(hour, 0, 0, 0)
