@@ -10,20 +10,11 @@ const supabase = createClient(
 
 // 型定義
 interface TwitterSettings {
-  api_key: string
-  api_secret: string
-  access_token: string
-  refresh_token: string
-}
-
-interface ScheduledPostWithSettings {
-  id: string
   store_id: number
-  content: string
-  image_url: string | null
-  scheduled_at: string
-  status: string
-  store_twitter_settings: TwitterSettings
+  api_key: string | null
+  api_secret: string | null
+  access_token: string | null
+  refresh_token: string | null
 }
 
 // Cron認証（Vercel Cron Jobs用）
@@ -66,15 +57,7 @@ async function executeTwitterPosts() {
     // 投稿時間が過ぎているpending投稿を取得
     const { data: pendingPosts, error: fetchError } = await supabase
       .from('scheduled_posts')
-      .select(`
-        *,
-        store_twitter_settings!inner (
-          api_key,
-          api_secret,
-          access_token,
-          refresh_token
-        )
-      `)
+      .select('*')
       .eq('status', 'pending')
       .lte('scheduled_at', now.toISOString())
       .order('scheduled_at', { ascending: true })
@@ -89,14 +72,30 @@ async function executeTwitterPosts() {
       return NextResponse.json({ message: 'No pending posts', processed: 0 })
     }
 
+    // 対象投稿のstore_idに紐づくTwitter設定を一括取得
+    const storeIds = Array.from(new Set(pendingPosts.map(p => p.store_id)))
+    const { data: settingsList, error: settingsError } = await supabase
+      .from('store_twitter_settings')
+      .select('store_id, api_key, api_secret, access_token, refresh_token')
+      .in('store_id', storeIds)
+
+    if (settingsError) {
+      console.error('Fetch twitter settings error:', settingsError)
+      return NextResponse.json({ error: 'Failed to fetch twitter settings' }, { status: 500 })
+    }
+
+    const settingsByStore = new Map<number, TwitterSettings>()
+    for (const s of (settingsList || []) as TwitterSettings[]) {
+      settingsByStore.set(s.store_id, s)
+    }
+
     let successCount = 0
     let failCount = 0
 
     for (const post of pendingPosts) {
-      const typedPost = post as ScheduledPostWithSettings
-      const settings = typedPost.store_twitter_settings
+      const settings = settingsByStore.get(post.store_id)
 
-      if (!settings?.access_token) {
+      if (!settings?.access_token || !settings.api_key || !settings.api_secret || !settings.refresh_token) {
         // 認証情報がない場合はスキップ
         await supabase
           .from('scheduled_posts')
