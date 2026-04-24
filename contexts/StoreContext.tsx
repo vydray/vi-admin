@@ -17,9 +17,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // ユーザーの権限に基づいて店舗IDを初期化
   useEffect(() => {
     if (!authLoading && user) {
-      if (user.store_id) {
-        // ユーザーのstore_idを使用（super_admin/store_admin両方）
-        setStoreIdState(user.store_id)
+      const canSwitch = user.role === 'super_admin'
+      let targetStoreId: number | null | undefined = user.store_id
+
+      // super_adminの場合、localStorageに保存された選択を優先
+      if (canSwitch && typeof window !== 'undefined') {
+        const stored = localStorage.getItem('vi-admin:selected-store-id')
+        const parsedId = stored ? parseInt(stored, 10) : NaN
+        if (!isNaN(parsedId) && parsedId > 0) {
+          targetStoreId = parsedId
+        }
+      }
+
+      if (targetStoreId) {
+        setStoreIdState(targetStoreId)
       }
       setStoreIdInitialized(true)
     }
@@ -77,6 +88,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const setStoreId = (id: number) => {
     if (canSwitchStore) {
       setStoreIdState(id)
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('vi-admin:selected-store-id', String(id))
+      }
     } else {
       console.warn('店舗管理者は店舗を切り替えることができません')
     }

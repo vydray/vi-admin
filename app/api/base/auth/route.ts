@@ -49,7 +49,8 @@ export async function GET(request: NextRequest) {
     cookieStore.set('base_oauth_state', state, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
+      // OAuth用途: BASEからのリダイレクト(クロスサイトのtop-level navigation)でcookieが送信される必要があるためlax
+      sameSite: 'lax',
       maxAge: 60 * 10, // 10分
       path: '/',
     })
