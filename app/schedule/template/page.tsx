@@ -970,23 +970,47 @@ export default function TemplateEditorPage() {
                     ) : (
                       <span style={{ color: '#94a3b8', fontSize: '12px' }}>{i + 1}</span>
                     )}
-                    {template.grid_settings.show_names && cast?.name && (
-                      <div
-                        style={{
-                          position: 'absolute',
-                          bottom: '4px',
-                          left: 0,
-                          right: 0,
-                          textAlign: 'center',
-                          color: '#fff',
-                          fontSize: '10px',
-                          fontWeight: 'bold',
-                          textShadow: '1px 1px 2px rgba(0,0,0,0.8)',
-                        }}
-                      >
-                        {cast.name}
-                      </div>
-                    )}
+                    {template.grid_settings.show_names && cast?.name && (() => {
+                      const ns = template.name_style
+                      const strokeEnabled = ns.stroke_enabled !== false
+                      const strokeColor = ns.stroke_color || '#000000'
+                      const strokeW = Math.max(1, Math.round((ns.stroke_width || 2) * 0.5))
+                      const shadows: string[] = []
+                      if (strokeEnabled && strokeW > 0) {
+                        for (let dx = -strokeW; dx <= strokeW; dx++) {
+                          for (let dy = -strokeW; dy <= strokeW; dy++) {
+                            if (dx === 0 && dy === 0) continue
+                            shadows.push(`${dx}px ${dy}px 0 ${strokeColor}`)
+                          }
+                        }
+                      }
+                      const numWeight = parseInt(ns.font_weight || '400', 10)
+                      const isBold = !isNaN(numWeight) && numWeight >= 600
+                      const actualFamily = isBold && ns.font_family === 'Zen Maru Gothic'
+                        ? 'Zen Maru Gothic Bold'
+                        : isBold && ns.font_family === 'Rounded Mplus 1c'
+                          ? 'Rounded Mplus 1c Bold'
+                          : ns.font_family || 'Rounded Mplus 1c'
+                      return (
+                        <div
+                          style={{
+                            position: 'absolute',
+                            bottom: `${Math.max(2, Math.round((ns.offset_y || 10) * 0.25))}px`,
+                            left: 0,
+                            right: 0,
+                            textAlign: 'center',
+                            color: ns.color || '#FFFFFF',
+                            fontSize: `${Math.max(9, Math.round((ns.font_size || 24) * 0.4))}px`,
+                            fontFamily: `"${actualFamily}"`,
+                            fontWeight: ns.font_weight || '700',
+                            textShadow: shadows.length > 0 ? shadows.join(', ') : 'none',
+                            lineHeight: 1,
+                          }}
+                        >
+                          {cast.name}
+                        </div>
+                      )
+                    })()}
                   </div>
                 )
               })}
@@ -1065,6 +1089,110 @@ export default function TemplateEditorPage() {
                 </label>
               </div>
             </div>
+
+            {/* 名前スタイル設定（show_names=ON時のみ） */}
+            {template.grid_settings.show_names && (
+              <div style={styles.section}>
+                <h3 style={styles.sectionTitle}>名前スタイル</h3>
+                <div style={styles.styleInputs}>
+                  <label style={styles.styleLabel}>
+                    フォント
+                    <select
+                      value={template.name_style.font_family || 'Rounded Mplus 1c'}
+                      onChange={(e) => {
+                        const newFont = e.target.value
+                        const availableWeights = FONT_OPTIONS.find(f => f.value === newFont)?.weights || ['400']
+                        const currentWeight = template.name_style.font_weight || '400'
+                        const newWeight = availableWeights.includes(currentWeight) ? currentWeight : availableWeights[0]
+                        updateNameStyle({ font_family: newFont, font_weight: newWeight })
+                      }}
+                      style={styles.select}
+                    >
+                      {FONT_OPTIONS.map((font) => (
+                        <option key={font.value} value={font.value} style={{ fontFamily: font.value }}>
+                          {font.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label style={styles.styleLabel}>
+                    太さ
+                    <select
+                      value={template.name_style.font_weight || '400'}
+                      onChange={(e) => updateNameStyle({ font_weight: e.target.value })}
+                      style={styles.select}
+                    >
+                      {getAvailableWeights(template.name_style.font_family || 'Rounded Mplus 1c').map((weight) => (
+                        <option key={weight.value} value={weight.value}>
+                          {weight.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label style={styles.styleLabel}>
+                    フォントサイズ (px)
+                    <input
+                      type="number"
+                      value={template.name_style.font_size || 24}
+                      onChange={(e) => updateNameStyle({ font_size: parseInt(e.target.value) || 24 })}
+                      style={styles.input}
+                    />
+                  </label>
+                  <label style={styles.styleLabel}>
+                    文字色
+                    <input
+                      type="color"
+                      value={template.name_style.color || '#FFFFFF'}
+                      onChange={(e) => updateNameStyle({ color: e.target.value })}
+                      style={styles.colorInput}
+                    />
+                  </label>
+                  <label style={styles.styleLabel}>
+                    縁取り
+                    <button
+                      onClick={() => updateNameStyle({ stroke_enabled: !template.name_style.stroke_enabled })}
+                      style={{
+                        ...styles.toggleButtonSmall,
+                        backgroundColor: template.name_style.stroke_enabled !== false ? '#22c55e' : '#94a3b8',
+                      }}
+                    >
+                      {template.name_style.stroke_enabled !== false ? 'ON' : 'OFF'}
+                    </button>
+                  </label>
+                  {template.name_style.stroke_enabled !== false && (
+                    <>
+                      <label style={styles.styleLabel}>
+                        縁取り色
+                        <input
+                          type="color"
+                          value={template.name_style.stroke_color || '#000000'}
+                          onChange={(e) => updateNameStyle({ stroke_color: e.target.value })}
+                          style={styles.colorInput}
+                        />
+                      </label>
+                      <label style={styles.styleLabel}>
+                        縁取り幅 (px)
+                        <input
+                          type="number"
+                          value={template.name_style.stroke_width || 2}
+                          onChange={(e) => updateNameStyle({ stroke_width: parseInt(e.target.value) || 0 })}
+                          style={styles.input}
+                        />
+                      </label>
+                    </>
+                  )}
+                  <label style={styles.styleLabel}>
+                    名前位置オフセット (px)
+                    <input
+                      type="number"
+                      value={template.name_style.offset_y || 10}
+                      onChange={(e) => updateNameStyle({ offset_y: parseInt(e.target.value) || 0 })}
+                      style={styles.input}
+                    />
+                  </label>
+                </div>
+              </div>
+            )}
 
             {/* プレースホルダー設定 */}
             <div style={styles.section}>
