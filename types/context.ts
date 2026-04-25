@@ -30,6 +30,7 @@ export type PermissionKey =
   | 'base_settings'      // BASE連携設定
   | 'schedule'           // 出勤表作成
   | 'twitter'            // Twitter管理
+  | 'orishan_report'     // オリシャン集計
 
 export type Permissions = Partial<Record<PermissionKey, boolean>>
 

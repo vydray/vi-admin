@@ -16,7 +16,7 @@ interface CastReport {
 
 export default function OrishanReportPage() {
   return (
-    <ProtectedPage permissionKey="cast_sales">
+    <ProtectedPage permissionKey="orishan_report">
       <OrishanReportContent />
     </ProtectedPage>
   )

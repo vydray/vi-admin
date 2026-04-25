@@ -23,6 +23,7 @@ export const PERMISSION_CONFIG: Record<PermissionKey, { label: string; category:
   base_settings: { label: 'BASE連携設定', category: 'その他' },
   schedule: { label: '出勤表作成', category: 'その他' },
   twitter: { label: 'Twitter管理', category: 'その他' },
+  orishan_report: { label: 'オリシャン集計', category: 'キャスト' },
 }
 
 // カテゴリ順
@@ -61,7 +62,7 @@ export function getPermissionKeyFromPath(path: string): PermissionKey | null {
     '/payslip': 'payslip',
     '/payslip-list': 'payslip_list',
     '/cast-sales': 'cast_sales',
-    '/orishan-report': 'cast_sales',
+    '/orishan-report': 'orishan_report',
     '/cast-back-rates': 'cast_back_rates',
     '/cast-wage-settings': 'cast_wage_settings',
     '/wage-settings': 'wage_settings',
