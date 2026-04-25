@@ -60,6 +60,7 @@ const mainItems: MenuItem[] = [
   { name: '経費管理', path: '/expenses', icon: '💸' },
   { name: '報酬明細一覧', path: '/payslip-list', icon: '📋' },
   { name: 'キャスト管理', path: '/casts', icon: '👥' },
+  { name: 'オリシャン集計', path: '/orishan-report', icon: '🍾' },
 ]
 
 // グループ化されたメニュー
@@ -94,7 +95,6 @@ const menuGroups: MenuGroup[] = [
     icon: '💰',
     items: [
       { name: '売上設定', path: '/sales-settings', icon: '📊' },
-      { name: 'オリシャン集計', path: '/orishan-report', icon: '🍾' },
     ]
   },
   {
