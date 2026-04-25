@@ -83,10 +83,10 @@ async function executeFastSyncAndNotify() {
 
       const allOrders = ordersResponse.orders || []
       const oneHourAgoEpoch = Math.floor((Date.now() - 60 * 60 * 1000) / 1000)
+      // 注: BASE APIのterminatedは「キャンセル」ではなく「取引完了」を表すフラグなのでフィルタしない
       const recentOrders = allOrders.filter(
         order =>
           order.dispatch_status !== 'cancelled' &&
-          !order.terminated &&
           order.ordered >= oneHourAgoEpoch
       )
 

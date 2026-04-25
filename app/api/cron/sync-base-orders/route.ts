@@ -209,9 +209,10 @@ async function executeSyncBaseOrders() {
           .select('id, name')
           .eq('store_id', setting.store_id)
 
-        // キャンセル/terminated以外の注文を処理（デジタルコンテンツはdispatchedにならないことがある）
+        // キャンセル以外の注文を処理（デジタルコンテンツはdispatchedにならないことがある）
+        // 注: BASE APIのterminatedは「キャンセル」ではなく「取引完了」を表すフラグなのでフィルタしない
         const activeOrders = allOrders.filter(
-          order => order.dispatch_status !== 'cancelled' && !order.terminated
+          order => order.dispatch_status !== 'cancelled'
         )
 
         // 手動編集済みのbase_ordersキーを取得（cast_idを上書きしないため）
