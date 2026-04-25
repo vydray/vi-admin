@@ -89,6 +89,14 @@ async function notifyPendingForStore(storeId: number): Promise<{ sent: number; e
   }
   const accessToken = lineConfig.line_channel_access_token as string
 
+  // 店舗名を取得(複数店舗兼任の管理者向けにメッセージに含める)
+  const { data: storeData } = await supabase
+    .from('stores')
+    .select('store_name')
+    .eq('id', storeId)
+    .maybeSingle()
+  const storeName = (storeData?.store_name as string) || `Store ${storeId}`
+
   // 未通知の base_order_id リストを取得(ここではあくまで処理対象ID列挙)
   const { data: pendingRows, error } = await supabase
     .from('base_orders')
@@ -176,11 +184,11 @@ async function notifyPendingForStore(storeId: number): Promise<{ sent: number; e
     for (const [lineUserId, recipientInfo] of recipientsByLineId) {
       let messageText: string
       if (recipientInfo.type === 'admin') {
-        messageText = buildAdminMessage(claimedRows, castById)
+        messageText = buildAdminMessage(claimedRows, castById, storeName)
       } else {
         const myRows = claimedRows.filter(r => r.cast_id === recipientInfo.cast.id)
         if (myRows.length === 0) continue
-        messageText = buildCastMessage(myRows)
+        messageText = buildCastMessage(myRows, storeName)
       }
 
       const { success, error } = await pushLineMessage(accessToken, lineUserId, messageText)
@@ -206,29 +214,45 @@ async function notifyPendingForStore(storeId: number): Promise<{ sent: number; e
   return { sent: totalSent, errors: totalErrors }
 }
 
-function buildAdminMessage(rows: OrderRow[], castById: Map<number, CastRow>): string {
-  const customerName = rows[0].customer_name || '名前なし'
-
-  const itemBlocks = rows.map(row => {
-    const cast = row.cast_id ? castById.get(row.cast_id) : undefined
-    const castLabel = cast ? cast.name : '⚠ 未マッチ'
-    const variationDisplay = row.variation_name || 'なし'
-    const priceDisplay = row.actual_price !== null
-      ? `¥${row.actual_price.toLocaleString()}`
-      : '¥--- (店舗価格未設定)'
-    return `${castLabel}（${variationDisplay}）\n${row.product_name} ${row.quantity}個 ${priceDisplay}`
-  })
-
-  return `【BASE注文】\nお客様: ${customerName} 様\n\n${itemBlocks.join('\n\n')}`
-}
-
-function buildCastMessage(rows: OrderRow[]): string {
+function buildAdminMessage(rows: OrderRow[], castById: Map<number, CastRow>, storeName: string): string {
   const customerName = rows[0].customer_name || '名前なし'
   const orderDatetime = formatJSTTime(rows[0].order_datetime)
 
-  const itemLines = rows.map(row => `${row.product_name} ${row.quantity}個`)
+  const itemBlocks = rows.map(row => {
+    const cast = row.cast_id ? castById.get(row.cast_id) : undefined
+    const castLabel = cast ? `✨ ${cast.name}` : '⚠️ 未マッチ'
+    const variationDisplay = row.variation_name || 'なし'
+    const priceDisplay = row.actual_price !== null
+      ? `💰 ¥${row.actual_price.toLocaleString()}`
+      : '💰 ¥--- ⚠️ 店舗価格未設定'
+    return `${castLabel}（${variationDisplay}）\n　📦 ${row.product_name} × ${row.quantity}\n　${priceDisplay}`
+  })
 
-  return `${itemLines.join('\n')}\nお客様: ${customerName} 様\n受注: ${orderDatetime}`
+  return [
+    `🛒【BASE注文】${storeName}`,
+    '━━━━━━━━━━━━━━',
+    `👤 お客様: ${customerName} 様`,
+    `⏰ 受注: ${orderDatetime}`,
+    '',
+    itemBlocks.join('\n\n'),
+    '━━━━━━━━━━━━━━',
+  ].join('\n')
+}
+
+function buildCastMessage(rows: OrderRow[], storeName: string): string {
+  const customerName = rows[0].customer_name || '名前なし'
+  const orderDatetime = formatJSTTime(rows[0].order_datetime)
+
+  const itemLines = rows.map(row => `📦 ${row.product_name} × ${row.quantity}`)
+
+  return [
+    `🎀 BASE注文 / ${storeName}`,
+    '━━━━━━━━━━━',
+    ...itemLines,
+    `👤 ${customerName} 様`,
+    `⏰ ${orderDatetime}`,
+    '━━━━━━━━━━━',
+  ].join('\n')
 }
 
 function formatJSTTime(isoString: string): string {
