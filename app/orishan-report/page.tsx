@@ -173,6 +173,7 @@ function OrishanReportContent() {
           <td class="name">${cast.castName}</td>
           ${cells}
           <td class="total">¥${cast.totalAmount.toLocaleString()}</td>
+          <td class="sign"></td>
         </tr>
       `
     }).join('')
@@ -197,8 +198,11 @@ function OrishanReportContent() {
           td { font-size: 13px; padding: 8px 6px; border: 1px solid #333; text-align: center; }
           td.name { font-weight: 600; text-align: left; }
           td.total { font-weight: 700; background: #fef9e7; }
+          td.sign { width: 60px; height: 36px; }
+          th.sign { width: 60px; }
           td.tier .amount { color: #555; font-size: 11px; }
           tfoot td { background: #fef3c7; font-weight: 700; }
+          tfoot td.sign { background: #fff; }
           .empty { text-align: center; padding: 40px; color: #888; font-size: 14px; }
         </style>
       </head>
@@ -214,6 +218,7 @@ function OrishanReportContent() {
                 <th>キャスト</th>
                 ${tierHeaders}
                 <th>合計</th>
+                <th class="sign">サイン</th>
               </tr>
             </thead>
             <tbody>
@@ -224,6 +229,7 @@ function OrishanReportContent() {
                 <td class="name">合計</td>
                 ${totalCells}
                 <td class="total">¥${columnTotals.grand.toLocaleString()}</td>
+                <td class="sign"></td>
               </tr>
             </tfoot>
           </table>
