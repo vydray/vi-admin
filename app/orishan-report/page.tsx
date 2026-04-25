@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import { format, addDays } from 'date-fns'
 import { ja } from 'date-fns/locale'
 import Button from '@/components/Button'
@@ -24,6 +25,7 @@ export default function OrishanReportPage() {
 
 function OrishanReportContent() {
   const { storeId, storeName, isLoading: storeLoading } = useStore()
+  const { isMobile } = useIsMobile()
   const [selectedDate, setSelectedDate] = useState<Date>(new Date())
   const [loading, setLoading] = useState(false)
   const [report, setReport] = useState<CastReport[]>([])
@@ -245,10 +247,18 @@ function OrishanReportContent() {
   }
 
   return (
-    <div style={{ padding: '20px' }}>
-      <h1 style={{ fontSize: '24px', marginBottom: '20px' }}>📊 オリシャンバック集計</h1>
+    <div style={{ padding: isMobile ? '60px 12px 20px' : '20px' }}>
+      <h1 style={{ fontSize: isMobile ? '20px' : '24px', marginBottom: isMobile ? '12px' : '20px' }}>
+        📊 オリシャンバック集計
+      </h1>
 
-      <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap' }}>
+      <div style={{
+        display: 'flex',
+        gap: isMobile ? '6px' : '8px',
+        alignItems: 'center',
+        marginBottom: isMobile ? '12px' : '20px',
+        flexWrap: 'wrap',
+      }}>
         <Button onClick={() => setSelectedDate(addDays(selectedDate, -1))} variant="outline" size="small">← 前日</Button>
         <input
           type="date"
@@ -257,7 +267,7 @@ function OrishanReportContent() {
             const v = e.target.value
             if (v) setSelectedDate(new Date(v + 'T00:00:00+09:00'))
           }}
-          style={{ padding: '8px', border: '1px solid #ddd', borderRadius: '6px', fontSize: '14px' }}
+          style={{ padding: '8px', border: '1px solid #ddd', borderRadius: '6px', fontSize: '14px', flex: isMobile ? '1 1 auto' : undefined }}
         />
         <Button onClick={() => setSelectedDate(addDays(selectedDate, 1))} variant="outline" size="small">翌日 →</Button>
         <Button onClick={() => setSelectedDate(new Date())} variant="outline" size="small">今日</Button>
@@ -265,7 +275,7 @@ function OrishanReportContent() {
         <Button onClick={handlePrint} variant="success" size="small" disabled={loading || tiers.length === 0}>🖨️ 印刷(A4)</Button>
       </div>
 
-      <div style={{ marginBottom: '12px', color: '#666', fontSize: '14px' }}>
+      <div style={{ marginBottom: '12px', color: '#666', fontSize: isMobile ? '13px' : '14px' }}>
         {format(selectedDate, 'yyyy年M月d日(E)', { locale: ja })} ｜ {storeName}
       </div>
 
@@ -279,7 +289,98 @@ function OrishanReportContent() {
         <div style={{ padding: '40px', textAlign: 'center', color: '#888', backgroundColor: '#f9f9f9', borderRadius: '8px' }}>
           該当日のオリシャン売上はありません
         </div>
+      ) : isMobile ? (
+        // モバイル: カード形式
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          {report.map(cast => (
+            <div key={cast.castName} style={{
+              backgroundColor: 'white',
+              borderRadius: '10px',
+              padding: '12px 14px',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+              border: '1px solid #f0e0a8',
+            }}>
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'baseline',
+                marginBottom: '8px',
+                paddingBottom: '8px',
+                borderBottom: '1px dashed #ddd',
+              }}>
+                <div style={{ fontWeight: 700, fontSize: '16px' }}>{cast.castName}</div>
+                <div style={{ fontWeight: 700, fontSize: '17px', color: '#92400e' }}>
+                  ¥{cast.totalAmount.toLocaleString()}
+                </div>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                {tiers.map(t => {
+                  const qty = cast.qtyByAmount.get(t) || 0
+                  if (qty === 0) return null
+                  return (
+                    <div key={t} style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      fontSize: '13px',
+                    }}>
+                      <span style={{ color: '#555' }}>
+                        {tierLabel(t)} ¥{t.toLocaleString()}
+                      </span>
+                      <span style={{ fontWeight: 600 }}>
+                        {qty}本 = ¥{(qty * t).toLocaleString()}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
+
+          {/* 合計カード */}
+          <div style={{
+            backgroundColor: '#fef3c7',
+            borderRadius: '10px',
+            padding: '12px 14px',
+            border: '2px solid #fbbf24',
+            marginTop: '4px',
+          }}>
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'baseline',
+              marginBottom: '8px',
+              paddingBottom: '8px',
+              borderBottom: '1px dashed #d97706',
+            }}>
+              <div style={{ fontWeight: 700, fontSize: '16px' }}>合計</div>
+              <div style={{ fontWeight: 700, fontSize: '18px', color: '#92400e' }}>
+                ¥{columnTotals.grand.toLocaleString()}
+              </div>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              {tiers.map(t => {
+                const qty = columnTotals.byTier.get(t) || 0
+                if (qty === 0) return null
+                return (
+                  <div key={t} style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    fontSize: '13px',
+                  }}>
+                    <span style={{ color: '#555' }}>
+                      {tierLabel(t)} ¥{t.toLocaleString()}
+                    </span>
+                    <span style={{ fontWeight: 600 }}>
+                      {qty}本 = ¥{(qty * t).toLocaleString()}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
       ) : (
+        // PC: テーブル形式
         <table style={{ width: '100%', borderCollapse: 'collapse', backgroundColor: 'white', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
           <thead>
             <tr style={{ backgroundColor: '#fef3c7' }}>
