@@ -61,6 +61,7 @@ export function getPermissionKeyFromPath(path: string): PermissionKey | null {
     '/payslip': 'payslip',
     '/payslip-list': 'payslip_list',
     '/cast-sales': 'cast_sales',
+    '/orishan-report': 'cast_sales',
     '/cast-back-rates': 'cast_back_rates',
     '/cast-wage-settings': 'cast_wage_settings',
     '/wage-settings': 'wage_settings',

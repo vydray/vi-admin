@@ -94,6 +94,7 @@ const menuGroups: MenuGroup[] = [
     icon: '💰',
     items: [
       { name: '売上設定', path: '/sales-settings', icon: '📊' },
+      { name: 'オリシャン集計', path: '/orishan-report', icon: '🍾' },
     ]
   },
   {
