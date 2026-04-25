@@ -74,6 +74,17 @@ function CastsPageContent() {
   const [stores, setStores] = useState<{id: number, name: string}[]>([])
   const [selectedStoreForLink, setSelectedStoreForLink] = useState<number | null>(null)
 
+  // 制服管理(店舗ごとに有効/無効、Mary Mareなど一部店舗で利用)
+  const [uniformsEnabled, setUniformsEnabled] = useState(false)
+  const [uniforms, setUniforms] = useState<{id: number, name: string, display_order: number}[]>([])
+  const [uniformAssignments, setUniformAssignments] = useState<Map<number, number>>(new Map())
+  const [uniformYearMonth, setUniformYearMonth] = useState<string>(() => {
+    // 現在のJST年月をデフォルトに
+    const now = new Date()
+    const jst = new Date(now.getTime() + (now.getTimezoneOffset() + 9 * 60) * 60 * 1000)
+    return `${jst.getFullYear()}-${String(jst.getMonth() + 1).padStart(2, '0')}`
+  })
+
   const loadCasts = useCallback(async () => {
     setLoading(true)
     const { data, error } = await supabase
@@ -134,12 +145,105 @@ function CastsPageContent() {
     }
   }, [storeId])
 
+  // 制服機能: 店舗ごとの有効状態と制服マスタを読み込む
+  const loadUniformConfig = useCallback(async () => {
+    const [{ data: settingData }, { data: uniformData }] = await Promise.all([
+      supabase
+        .from('store_uniform_settings')
+        .select('is_enabled')
+        .eq('store_id', storeId)
+        .maybeSingle(),
+      supabase
+        .from('uniforms')
+        .select('id, name, display_order')
+        .eq('store_id', storeId)
+        .eq('is_active', true)
+        .order('display_order'),
+    ])
+    setUniformsEnabled(settingData?.is_enabled === true)
+    setUniforms(uniformData || [])
+  }, [storeId])
+
+  // 選択月のキャスト×制服割当を読み込む
+  const loadUniformAssignments = useCallback(async () => {
+    if (!uniformsEnabled) {
+      setUniformAssignments(new Map())
+      return
+    }
+    const { data } = await supabase
+      .from('cast_uniform_assignments')
+      .select('cast_id, uniform_id, casts!inner(store_id)')
+      .eq('year_month', uniformYearMonth)
+      .eq('casts.store_id', storeId)
+
+    const map = new Map<number, number>()
+    for (const row of (data || []) as { cast_id: number; uniform_id: number }[]) {
+      map.set(row.cast_id, row.uniform_id)
+    }
+    setUniformAssignments(map)
+  }, [storeId, uniformsEnabled, uniformYearMonth])
+
+  // 制服の割当を変更(uniformId=nullで削除、それ以外でupsert)
+  const handleUniformChange = async (castId: number, uniformId: number | null) => {
+    // 楽観的更新
+    setUniformAssignments(prev => {
+      const next = new Map(prev)
+      if (uniformId === null) {
+        next.delete(castId)
+      } else {
+        next.set(castId, uniformId)
+      }
+      return next
+    })
+
+    if (uniformId === null) {
+      const { error } = await supabase
+        .from('cast_uniform_assignments')
+        .delete()
+        .eq('cast_id', castId)
+        .eq('year_month', uniformYearMonth)
+      if (error) {
+        toast.error('制服の解除に失敗しました')
+        loadUniformAssignments()
+      }
+    } else {
+      const { error } = await supabase
+        .from('cast_uniform_assignments')
+        .upsert({
+          cast_id: castId,
+          year_month: uniformYearMonth,
+          uniform_id: uniformId,
+          updated_at: new Date().toISOString(),
+        }, {
+          onConflict: 'cast_id,year_month',
+        })
+      if (error) {
+        toast.error('制服の保存に失敗しました')
+        loadUniformAssignments()
+      }
+    }
+  }
+
+  // 月切替ヘルパー
+  const shiftYearMonth = (delta: number) => {
+    const [y, m] = uniformYearMonth.split('-').map(Number)
+    const date = new Date(y, m - 1 + delta, 1)
+    setUniformYearMonth(`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`)
+  }
+
   useEffect(() => {
     if (!storeLoading && storeId) {
       loadCasts()
       loadPositions()
+      loadUniformConfig()
     }
-  }, [loadCasts, loadPositions, storeLoading, storeId])
+  }, [loadCasts, loadPositions, loadUniformConfig, storeLoading, storeId])
+
+  useEffect(() => {
+    if (!storeLoading && storeId && uniformsEnabled) {
+      loadUniformAssignments()
+    }
+  }, [loadUniformAssignments, storeLoading, storeId, uniformsEnabled, uniformYearMonth])
 
   const applyFilters = useCallback(() => {
     setSearchQuery(tempSearchQuery)
@@ -882,6 +986,34 @@ function CastsPageContent() {
         </div>
       </div>
 
+      {/* 制服機能バー(有効店舗のみ表示) */}
+      {uniformsEnabled && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          padding: '12px 16px',
+          backgroundColor: '#fef3c7',
+          borderRadius: '8px',
+          marginBottom: '16px',
+          border: '1px solid #fcd34d',
+        }}>
+          <span style={{ fontWeight: 600, color: '#92400e' }}>👗 制服管理</span>
+          <Button onClick={() => shiftYearMonth(-1)} variant="outline" size="small">
+            ← 前月
+          </Button>
+          <span style={{ fontSize: '16px', fontWeight: 600, minWidth: '120px', textAlign: 'center' }}>
+            {uniformYearMonth.split('-')[0]}年{Number(uniformYearMonth.split('-')[1])}月
+          </span>
+          <Button onClick={() => shiftYearMonth(1)} variant="outline" size="small">
+            次月 →
+          </Button>
+          <span style={{ marginLeft: 'auto', fontSize: '12px', color: '#78350f' }}>
+            設定可能な制服: {uniforms.map(u => u.name).join(' / ') || 'なし'}
+          </span>
+        </div>
+      )}
+
       {loading ? (
         <div>読み込み中...</div>
       ) : (
@@ -925,6 +1057,7 @@ function CastsPageContent() {
                 <th style={thStyleSticky}>シフトアプリ</th>
                 <th style={thStyleSticky}>管理者</th>
                 <th style={thStyleSticky}>マネージャー</th>
+                {uniformsEnabled && <th style={thStyleSticky}>制服</th>}
                 <th style={thStyleSticky}>操作</th>
               </tr>
             </thead>
@@ -1021,6 +1154,29 @@ function CastsPageContent() {
                   <td style={tdStyle}>{renderToggle(cast.id, 'is_active', cast.is_active)}</td>
                   <td style={tdStyle}>{renderToggle(cast.id, 'is_admin', cast.is_admin)}</td>
                   <td style={tdStyle}>{renderToggle(cast.id, 'is_manager', cast.is_manager)}</td>
+                  {uniformsEnabled && (
+                    <td style={tdStyle} onClick={(e) => e.stopPropagation()}>
+                      <select
+                        value={uniformAssignments.get(cast.id) ?? ''}
+                        onChange={(e) => {
+                          const val = e.target.value
+                          handleUniformChange(cast.id, val ? Number(val) : null)
+                        }}
+                        style={{
+                          padding: '4px 8px',
+                          borderRadius: '6px',
+                          border: '1px solid #d1d5db',
+                          fontSize: '13px',
+                          minWidth: '70px',
+                        }}
+                      >
+                        <option value="">未設定</option>
+                        {uniforms.map(u => (
+                          <option key={u.id} value={u.id}>{u.name}</option>
+                        ))}
+                      </select>
+                    </td>
+                  )}
                   <td style={tdStyle}>
                     <Button
                       onClick={(e) => {
