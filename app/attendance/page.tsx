@@ -600,6 +600,7 @@ function AttendancePageContent() {
   // 今日の出勤表を印刷
   const handlePrintToday = async () => {
     const today = format(new Date(), 'yyyy-MM-dd')
+    const yearMonth = format(new Date(), 'yyyy-MM')
     const { data: todayShifts } = await supabase
       .from('shifts')
       .select('cast_id, start_time, end_time')
@@ -607,13 +608,38 @@ function AttendancePageContent() {
       .eq('date', today)
       .order('start_time')
 
+    // 制服機能の有効状態と当月の割当を取得(対象店舗のみ列追加)
+    const [{ data: uniformSetting }, { data: assignments }] = await Promise.all([
+      supabase
+        .from('store_uniform_settings')
+        .select('is_enabled')
+        .eq('store_id', storeId)
+        .maybeSingle(),
+      supabase
+        .from('cast_uniform_assignments')
+        .select('cast_id, uniform_id, uniforms(name)')
+        .eq('year_month', yearMonth),
+    ])
+    const uniformsEnabled = uniformSetting?.is_enabled === true
+    const uniformByCastId = new Map<number, string>()
+    if (uniformsEnabled) {
+      for (const row of (assignments || []) as unknown as Array<{ cast_id: number; uniforms: { name: string } | { name: string }[] | null }>) {
+        const uniformObj = Array.isArray(row.uniforms) ? row.uniforms[0] : row.uniforms
+        if (uniformObj?.name) uniformByCastId.set(row.cast_id, uniformObj.name)
+      }
+    }
+
     const shiftRows = (todayShifts || []).map(s => {
       const cast = casts.find(c => c.id === s.cast_id)
-      return { name: cast?.name || '不明', startTime: s.start_time || '' }
+      return {
+        name: cast?.name || '不明',
+        startTime: s.start_time || '',
+        uniform: cast ? (uniformByCastId.get(cast.id) || '') : '',
+      }
     }).sort((a, b) => a.startTime.localeCompare(b.startTime))
 
     // 空行を追加（手書き用、3行だけ）
-    const emptyRows = Array.from({ length: 3 }, () => ({ name: '', startTime: '' }))
+    const emptyRows = Array.from({ length: 3 }, () => ({ name: '', startTime: '', uniform: '' }))
     const allRows = [...shiftRows, ...emptyRows]
 
     const printWindow = window.open('', '_blank')
@@ -632,12 +658,13 @@ function AttendancePageContent() {
           table { width: 100%; border-collapse: collapse; }
           th { background: #f0f0f0; font-size: 13px; padding: 8px 10px; border: 1px solid #333; text-align: center; }
           td { font-size: 14px; padding: 10px; border: 1px solid #333; height: 28px; }
-          .name { width: 14%; }
-          .scheduled { width: 12%; text-align: center; }
-          .time { width: 15%; }
-          .status { width: 18%; text-align: center; font-size: 12px; }
-          .late { width: 10%; text-align: center; }
-          .payment { width: 14%; }
+          .name { width: ${uniformsEnabled ? '12%' : '14%'}; }
+          .uniform { width: 8%; text-align: center; font-weight: 600; }
+          .scheduled { width: ${uniformsEnabled ? '10%' : '12%'}; text-align: center; }
+          .time { width: ${uniformsEnabled ? '13%' : '15%'}; }
+          .status { width: ${uniformsEnabled ? '16%' : '18%'}; text-align: center; font-size: 12px; }
+          .late { width: ${uniformsEnabled ? '9%' : '10%'}; text-align: center; }
+          .payment { width: ${uniformsEnabled ? '12%' : '14%'}; }
         </style>
       </head>
       <body>
@@ -647,6 +674,7 @@ function AttendancePageContent() {
           <thead>
             <tr>
               <th class="name">名前</th>
+              ${uniformsEnabled ? '<th class="uniform">制服</th>' : ''}
               <th class="scheduled">予定出勤</th>
               <th class="time">出勤時間</th>
               <th class="time">退勤時間</th>
@@ -659,6 +687,7 @@ function AttendancePageContent() {
             ${allRows.map(r => `
               <tr>
                 <td class="name">${r.name}</td>
+                ${uniformsEnabled ? `<td class="uniform">${r.uniform}</td>` : ''}
                 <td class="scheduled">${r.startTime ? r.startTime.slice(0, 5) : ''}</td>
                 <td class="time"></td>
                 <td class="time"></td>
