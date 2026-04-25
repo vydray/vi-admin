@@ -1030,6 +1030,7 @@ function CastsPageContent() {
                 <th style={thStyleNameSticky} onClick={() => handleSort('name')}>
                   名前 {sortField === 'name' && (sortDirection === 'asc' ? '↑' : '↓')}
                 </th>
+                {uniformsEnabled && <th style={thStyleSticky}>制服</th>}
                 <th style={thStyleClickableSticky} onClick={() => handleSort('birthday')}>
                   誕生日 {sortField === 'birthday' && (sortDirection === 'asc' ? '↑' : '↓')}
                 </th>
@@ -1057,7 +1058,6 @@ function CastsPageContent() {
                 <th style={thStyleSticky}>シフトアプリ</th>
                 <th style={thStyleSticky}>管理者</th>
                 <th style={thStyleSticky}>マネージャー</th>
-                {uniformsEnabled && <th style={thStyleSticky}>制服</th>}
                 <th style={thStyleSticky}>操作</th>
               </tr>
             </thead>
@@ -1128,6 +1128,29 @@ function CastsPageContent() {
                       </button>
                     </div>
                   </td>
+                  {uniformsEnabled && (
+                    <td style={tdStyle} onClick={(e) => e.stopPropagation()}>
+                      <select
+                        value={uniformAssignments.get(cast.id) ?? ''}
+                        onChange={(e) => {
+                          const val = e.target.value
+                          handleUniformChange(cast.id, val ? Number(val) : null)
+                        }}
+                        style={{
+                          padding: '4px 8px',
+                          borderRadius: '6px',
+                          border: '1px solid #d1d5db',
+                          fontSize: '13px',
+                          minWidth: '70px',
+                        }}
+                      >
+                        <option value="">未設定</option>
+                        {uniforms.map(u => (
+                          <option key={u.id} value={u.id}>{u.name}</option>
+                        ))}
+                      </select>
+                    </td>
+                  )}
                   <td style={tdStyle}>{cast.birthday || '-'}</td>
                   <td style={tdStyle}>
                     {cast.status ? (
@@ -1154,29 +1177,6 @@ function CastsPageContent() {
                   <td style={tdStyle}>{renderToggle(cast.id, 'is_active', cast.is_active)}</td>
                   <td style={tdStyle}>{renderToggle(cast.id, 'is_admin', cast.is_admin)}</td>
                   <td style={tdStyle}>{renderToggle(cast.id, 'is_manager', cast.is_manager)}</td>
-                  {uniformsEnabled && (
-                    <td style={tdStyle} onClick={(e) => e.stopPropagation()}>
-                      <select
-                        value={uniformAssignments.get(cast.id) ?? ''}
-                        onChange={(e) => {
-                          const val = e.target.value
-                          handleUniformChange(cast.id, val ? Number(val) : null)
-                        }}
-                        style={{
-                          padding: '4px 8px',
-                          borderRadius: '6px',
-                          border: '1px solid #d1d5db',
-                          fontSize: '13px',
-                          minWidth: '70px',
-                        }}
-                      >
-                        <option value="">未設定</option>
-                        {uniforms.map(u => (
-                          <option key={u.id} value={u.id}>{u.name}</option>
-                        ))}
-                      </select>
-                    </td>
-                  )}
                   <td style={tdStyle}>
                     <Button
                       onClick={(e) => {
