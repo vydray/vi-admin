@@ -1092,6 +1092,19 @@ function AttendancePageContent() {
                                 ¥{(attendance.daily_payment || 0).toLocaleString()}
                               </div>
                             )}
+                            {attendance.costume_id && !isMobile && (() => {
+                              const costume = costumes.find(c => c.id === attendance.costume_id)
+                              return costume ? (
+                                <div style={{
+                                  fontSize: '10px',
+                                  color: '#7c3aed',
+                                  fontWeight: '500',
+                                  marginTop: '2px'
+                                }}>
+                                  {costume.name}
+                                </div>
+                              ) : null
+                            })()}
                           </div>
                         )}
                       </td>
