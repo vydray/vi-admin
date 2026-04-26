@@ -99,11 +99,42 @@ export async function POST(request: NextRequest) {
       .order('display_order', { ascending: true, nullsFirst: false })
       .order('name')
 
+    // 保存済payslips(全フィールド)を取得 — finalized なら値を優先採用、未finalized は動的計算と一致するはず
     const { data: payslipCasts } = await supabase
       .from('payslips')
-      .select('cast_id, casts(id, name)')
+      .select('cast_id, status, work_days, total_hours, hourly_income, sales_back, product_back, fixed_amount, bonus_total, gross_total, total_deduction, net_payment, casts(id, name)')
       .eq('store_id', storeId)
       .eq('year_month', year_month)
+
+    // 保存済payslip Map (cast_id -> saved values)
+    const savedPayslipMap = new Map<number, {
+      status: string | null
+      work_days: number | null
+      total_hours: number | null
+      hourly_income: number
+      sales_back: number
+      product_back: number
+      fixed_amount: number
+      bonus_total: number
+      gross_total: number
+      total_deduction: number
+      net_payment: number
+    }>()
+    for (const p of payslipCasts || []) {
+      savedPayslipMap.set(p.cast_id, {
+        status: p.status ?? null,
+        work_days: p.work_days ?? null,
+        total_hours: p.total_hours ?? null,
+        hourly_income: p.hourly_income ?? 0,
+        sales_back: p.sales_back ?? 0,
+        product_back: p.product_back ?? 0,
+        fixed_amount: p.fixed_amount ?? 0,
+        bonus_total: p.bonus_total ?? 0,
+        gross_total: p.gross_total ?? 0,
+        total_deduction: p.total_deduction ?? 0,
+        net_payment: p.net_payment ?? 0,
+      })
+    }
 
     const castMap = new Map<number, { id: number; name: string }>()
     for (const c of activeCasts || []) castMap.set(c.id, c)
@@ -534,24 +565,48 @@ export async function POST(request: NextRequest) {
       // 出勤日数（報酬明細ページと同じ: 勤務時間 > 0 の日数）
       const workDays = castStats.filter(s => (s.work_hours || 0) > 0).length
 
-      payslips.push({
-        cast_id: cast.id,
-        cast_name: cast.name,
-        work_days: workDays,
-        total_hours: Math.round(totalWorkHours * 100) / 100,
-        hourly_income: hourlyIncome,
-        sales_back: salesBack,
-        product_back: productBack,
-        fixed_amount: fixedAmount,
-        per_attendance_income: perAttendanceIncome,
-        bonus_total: bonusTotal,
-        gross_total: grossTotal,
-        daily_payment: dailyPayment,
-        withholding_tax: withholdingTax,
-        other_deductions: otherDeductions,
-        total_deduction: totalDeduction,
-        net_payment: grossTotal - totalDeduction
-      })
+      // 保存済payslipがあれば、そちらを優先採用する(動的計算ドリフト防止)
+      // 保存済が無い(新規月など)場合のみ動的計算結果を使う
+      const saved = savedPayslipMap.get(cast.id)
+      if (saved) {
+        payslips.push({
+          cast_id: cast.id,
+          cast_name: cast.name,
+          work_days: saved.work_days ?? workDays,
+          total_hours: saved.total_hours ?? Math.round(totalWorkHours * 100) / 100,
+          hourly_income: saved.hourly_income,
+          sales_back: saved.sales_back,
+          product_back: saved.product_back,
+          fixed_amount: saved.fixed_amount,
+          per_attendance_income: perAttendanceIncome,
+          bonus_total: saved.bonus_total,
+          gross_total: saved.gross_total,
+          daily_payment: dailyPayment,
+          withholding_tax: withholdingTax,
+          other_deductions: otherDeductions,
+          total_deduction: saved.total_deduction,
+          net_payment: saved.net_payment,
+        })
+      } else {
+        payslips.push({
+          cast_id: cast.id,
+          cast_name: cast.name,
+          work_days: workDays,
+          total_hours: Math.round(totalWorkHours * 100) / 100,
+          hourly_income: hourlyIncome,
+          sales_back: salesBack,
+          product_back: productBack,
+          fixed_amount: fixedAmount,
+          per_attendance_income: perAttendanceIncome,
+          bonus_total: bonusTotal,
+          gross_total: grossTotal,
+          daily_payment: dailyPayment,
+          withholding_tax: withholdingTax,
+          other_deductions: otherDeductions,
+          total_deduction: totalDeduction,
+          net_payment: grossTotal - totalDeduction,
+        })
+      }
     }
 
     return NextResponse.json({

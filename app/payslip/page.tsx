@@ -1301,11 +1301,17 @@ function PayslipPageContent() {
 
   // 賞与を含む総支給額
   const bonusTotal = savedPayslip?.bonus_total || 0
-  const grossEarningsWithBonus = summary.grossEarnings + bonusTotal
+  const dynamicGrossEarningsWithBonus = summary.grossEarnings + bonusTotal
 
   // 控除合計・差引支給額
-  const totalDeduction = deductions.reduce((sum, d) => sum + d.amount, 0)
-  const netEarnings = grossEarningsWithBonus - totalDeduction
+  const dynamicTotalDeduction = deductions.reduce((sum, d) => sum + d.amount, 0)
+  const dynamicNetEarnings = dynamicGrossEarningsWithBonus - dynamicTotalDeduction
+
+  // 月次確定済みなら保存値を採用(動的計算ドリフト防止)
+  const isFinalized = savedPayslip?.status === 'finalized'
+  const grossEarningsWithBonus = isFinalized && savedPayslip ? savedPayslip.gross_total : dynamicGrossEarningsWithBonus
+  const totalDeduction = isFinalized && savedPayslip ? savedPayslip.total_deduction : dynamicTotalDeduction
+  const netEarnings = isFinalized && savedPayslip ? savedPayslip.net_payment : dynamicNetEarnings
 
   // 報酬形態ごとの売上集計方法を取得（異なる場合のみ複数表示）
   const salesAggregationByType = useMemo(() => {
