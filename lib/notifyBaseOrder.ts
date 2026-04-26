@@ -11,6 +11,7 @@ interface OrderRow {
   base_price: number
   actual_price: number | null
   customer_name: string | null
+  customer_note: string | null
   order_datetime: string
   cast_id: number | null
 }
@@ -143,7 +144,7 @@ async function notifyPendingForStore(storeId: number): Promise<{ sent: number; e
       .eq('store_id', storeId)
       .eq('base_order_id', baseOrderId)
       .is('notification_sent_at', null)
-      .select('id, base_order_id, product_name, variation_name, quantity, base_price, actual_price, customer_name, order_datetime, cast_id')
+      .select('id, base_order_id, product_name, variation_name, quantity, base_price, actual_price, customer_name, customer_note, order_datetime, cast_id')
 
     if (claimError) {
       console.error(`[Notify] Store ${storeId} claim失敗 ${baseOrderId}:`, claimError)
@@ -217,6 +218,7 @@ async function notifyPendingForStore(storeId: number): Promise<{ sent: number; e
 function buildAdminMessage(rows: OrderRow[], castById: Map<number, CastRow>, storeName: string): string {
   const customerName = rows[0].customer_name || '名前なし'
   const orderDatetime = formatJSTTime(rows[0].order_datetime)
+  const customerNote = rows[0].customer_note
 
   const itemBlocks = rows.map(row => {
     const cast = row.cast_id ? castById.get(row.cast_id) : undefined
@@ -228,31 +230,38 @@ function buildAdminMessage(rows: OrderRow[], castById: Map<number, CastRow>, sto
     return `${castLabel}（${variationDisplay}）\n　📦 ${row.product_name} × ${row.quantity}\n　${priceDisplay}`
   })
 
-  return [
+  const lines = [
     `🛒【BASE注文】${storeName}`,
     '━━━━━━━━━━━━━━',
     `👤 お客様: ${customerName} 様`,
     `⏰ 受注: ${orderDatetime}`,
-    '',
-    itemBlocks.join('\n\n'),
-    '━━━━━━━━━━━━━━',
-  ].join('\n')
+  ]
+  if (customerNote) {
+    lines.push(`💬 コメント: ${customerNote}`)
+  }
+  lines.push('', itemBlocks.join('\n\n'), '━━━━━━━━━━━━━━')
+  return lines.join('\n')
 }
 
 function buildCastMessage(rows: OrderRow[], storeName: string): string {
   const customerName = rows[0].customer_name || '名前なし'
   const orderDatetime = formatJSTTime(rows[0].order_datetime)
+  const customerNote = rows[0].customer_note
 
   const itemLines = rows.map(row => `📦 ${row.product_name} × ${row.quantity}`)
 
-  return [
+  const lines = [
     `🎀 BASE注文 / ${storeName}`,
     '━━━━━━━━━━━',
     ...itemLines,
     `👤 ${customerName} 様`,
     `⏰ ${orderDatetime}`,
-    '━━━━━━━━━━━',
-  ].join('\n')
+  ]
+  if (customerNote) {
+    lines.push(`💬 ${customerNote}`)
+  }
+  lines.push('━━━━━━━━━━━')
+  return lines.join('\n')
 }
 
 function formatJSTTime(isoString: string): string {

@@ -266,6 +266,9 @@ async function executeSyncBaseOrders() {
               ? `${lastName} ${firstName}`.trim()
               : null
 
+            // 顧客コメント(備考)
+            const customerNote = (orderDetail.remark || '').trim() || null
+
             for (const item of orderDetail.order_items || []) {
               const cast = casts?.find(c => c.name === item.variation)
               let baseProduct = baseProducts?.find(p => p.base_product_name === item.title)
@@ -325,6 +328,7 @@ async function executeSyncBaseOrders() {
                     actual_price: actualPrice,
                     quantity: item.amount,
                     customer_name: customerName,
+                    customer_note: customerNote,
                   })
                   .eq('store_id', setting.store_id)
                   .eq('base_order_id', orderSummary.unique_key)
@@ -358,6 +362,7 @@ async function executeSyncBaseOrders() {
                   business_date: businessDate,
                   is_processed: false,
                   customer_name: customerName,
+                  customer_note: customerNote,
                 }, {
                   onConflict: 'store_id,base_order_id,product_name,variation_name'
                 })

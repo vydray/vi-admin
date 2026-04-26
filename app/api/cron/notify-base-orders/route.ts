@@ -141,6 +141,7 @@ async function executeFastSyncAndNotify() {
           const customerName = (lastName || firstName)
             ? `${lastName} ${firstName}`.trim()
             : null
+          const customerNote = (orderDetail.remark || '').trim() || null
 
           for (const item of orderDetail.order_items || []) {
             const cast = casts?.find(c => c.name === item.variation)
@@ -170,6 +171,7 @@ async function executeFastSyncAndNotify() {
                 business_date: businessDate,
                 is_processed: false,
                 customer_name: customerName,
+                customer_note: customerNote,
               }, {
                 onConflict: 'store_id,base_order_id,product_name,variation_name'
               })

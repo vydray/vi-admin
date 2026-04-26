@@ -63,6 +63,7 @@ export interface BaseOrderDetail {
   last_name: string
   total: number
   order_items: BaseOrderItem[]
+  remark?: string | null // 顧客が注文時に入力するコメント(備考)
 }
 
 export interface BaseOrderItem {
