@@ -49,13 +49,56 @@ function PayslipListContent() {
   const [showExportModal, setShowExportModal] = useState(false)
   const [historyCast, setHistoryCast] = useState<{ id: number; name: string } | null>(null)
   const [showCompareModal, setShowCompareModal] = useState(false)
+  const [finalizing, setFinalizing] = useState(false)
+  const [finalizeStatus, setFinalizeStatus] = useState<{ total: number; finalized: number } | null>(null)
   const printRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (storeId) {
       loadPayslips()
+      loadFinalizeStatus()
     }
   }, [storeId, selectedMonth])
+
+  const loadFinalizeStatus = async () => {
+    try {
+      const yearMonth = format(selectedMonth, 'yyyy-MM')
+      const res = await fetch(`/api/payslips/finalize-status?store_id=${storeId}&year_month=${yearMonth}`)
+      if (res.ok) {
+        const data = await res.json()
+        setFinalizeStatus({ total: data.total ?? 0, finalized: data.finalized ?? 0 })
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  const handleBulkFinalize = async (unfinalize: boolean) => {
+    if (finalizing) return
+    const yearMonth = format(selectedMonth, 'yyyy-MM')
+    const action = unfinalize ? '確定解除' : '月次確定'
+    if (!confirm(`${format(selectedMonth, 'yyyy年M月', { locale: ja })} の全キャスト(${payslips.length}名)を一括${action}します。よろしいですか？${unfinalize ? '' : '\n確定後は再計算されなくなります。'}`)) return
+
+    setFinalizing(true)
+    try {
+      const res = await fetch('/api/payslips/finalize-bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ store_id: storeId, year_month: yearMonth, unfinalize })
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        alert(`${action}失敗: ${data.error || '不明なエラー'}`)
+        return
+      }
+      alert(`${data.affected}名分を${action}しました`)
+      await loadFinalizeStatus()
+    } catch (e) {
+      alert(`${action}失敗: ${e instanceof Error ? e.message : 'エラー'}`)
+    } finally {
+      setFinalizing(false)
+    }
+  }
 
   const loadPayslips = async () => {
     setLoading(true)
@@ -437,6 +480,33 @@ function PayslipListContent() {
           >
             全体履歴
           </button>
+
+          {/* 月次確定 / 解除ボタン */}
+          {(() => {
+            const total = finalizeStatus?.total ?? payslips.length
+            const finalized = finalizeStatus?.finalized ?? 0
+            const allFinalized = total > 0 && finalized >= total
+            return (
+              <button
+                onClick={() => handleBulkFinalize(allFinalized)}
+                disabled={finalizing || payslips.length === 0}
+                title={`確定済 ${finalized} / ${total}`}
+                style={{
+                  padding: '10px 20px',
+                  backgroundColor: finalizing || payslips.length === 0 ? '#94a3b8' : (allFinalized ? '#dc2626' : '#16a34a'),
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  cursor: finalizing || payslips.length === 0 ? 'not-allowed' : 'pointer',
+                  marginLeft: '8px',
+                }}
+              >
+                {finalizing ? '処理中...' : (allFinalized ? `全員確定解除 (${finalized}/${total})` : `全員月次確定 (${finalized}/${total})`)}
+              </button>
+            )
+          })()}
         </div>
       </div>
 
