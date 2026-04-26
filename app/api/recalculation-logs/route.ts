@@ -164,7 +164,26 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    comparisons.sort((a, b) => a.cast_name.localeCompare(b.cast_name, 'ja'))
+    // キャスト管理順(display_order)でソート。NULLSは末尾、同順位は id 順
+    const castIds = comparisons.map(c => c.cast_id)
+    const orderMap = new Map<number, { display_order: number | null; id: number }>()
+    if (castIds.length > 0) {
+      const { data: castOrders } = await supabaseAdmin
+        .from('casts')
+        .select('id, display_order')
+        .in('id', castIds)
+      for (const c of castOrders || []) {
+        orderMap.set(c.id, { display_order: c.display_order, id: c.id })
+      }
+    }
+    comparisons.sort((a, b) => {
+      const ao = orderMap.get(a.cast_id)
+      const bo = orderMap.get(b.cast_id)
+      const aOrder = ao?.display_order ?? Number.MAX_SAFE_INTEGER
+      const bOrder = bo?.display_order ?? Number.MAX_SAFE_INTEGER
+      if (aOrder !== bOrder) return aOrder - bOrder
+      return a.cast_id - b.cast_id
+    })
 
     return NextResponse.json({ comparisons })
   }
