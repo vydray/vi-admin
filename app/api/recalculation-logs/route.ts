@@ -150,16 +150,25 @@ export async function GET(request: NextRequest) {
       has_log: boolean
     }[] = []
 
+    // 値ゼロのテンプレート(From/To片方しか無いキャスト用)
+    const emptyValues: Record<string, number> = {
+      hourly_income: 0, sales_back: 0, product_back: 0,
+      fixed_amount: 0, bonus_total: 0, gross_total: 0,
+      total_deduction: 0, net_payment: 0,
+    }
+
     for (const castId of allCastIds) {
       const from = fromValues[castId]
       const to = toValues[castId]
-      if (!to) continue // To側にpayslipがないキャストはスキップ
+      if (!from && !to) continue
 
       comparisons.push({
         cast_id: castId,
-        cast_name: to.cast_name || from?.cast_name || '',
-        from_values: from?.values || to.values, // ログがなければTo値をそのまま使う（差分0）
-        to_values: to.values,
+        cast_name: from?.cast_name || to?.cast_name || '',
+        // Fromがある場合はFrom値、無ければTo値で埋める(差分0で表示)
+        from_values: from?.values || to?.values || emptyValues,
+        // Toがある場合はTo値、無ければゼロで埋める(Fromだけのキャストは消えた扱い)
+        to_values: to?.values || emptyValues,
         has_log: !!from,
       })
     }
