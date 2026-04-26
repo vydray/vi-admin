@@ -616,47 +616,26 @@ function AttendancePageContent() {
       .eq('date', today)
       .order('start_time')
 
-    // 制服機能の有効状態と当日の割当(attendance.costume_id)を取得
-    const { data: uniformSetting } = await supabase
-      .from('store_uniform_settings')
-      .select('is_enabled')
-      .eq('store_id', storeId)
-      .maybeSingle()
-    const uniformsEnabled = uniformSetting?.is_enabled === true
-
-    const uniformByCastName = new Map<string, string>()
-    if (uniformsEnabled) {
-      const { data: todayAttendances } = await supabase
-        .from('attendance')
-        .select('cast_name, costume_id')
+    // 制服機能の有効状態と店舗の制服マスタ一覧を取得(印刷では全選択肢を○マーク表示)
+    const [{ data: uniformSetting }, { data: storeUniforms }] = await Promise.all([
+      supabase
+        .from('store_uniform_settings')
+        .select('is_enabled')
         .eq('store_id', storeId)
-        .eq('date', today)
-        .not('costume_id', 'is', null)
+        .maybeSingle(),
+      supabase
+        .from('uniforms')
+        .select('id, name')
+        .eq('store_id', storeId)
+        .eq('is_active', true)
+        .order('display_order'),
+    ])
+    const uniformsEnabled = uniformSetting?.is_enabled === true && (storeUniforms || []).length > 0
 
-      const uniformIds = Array.from(new Set(
-        (todayAttendances || [])
-          .map(a => a.costume_id)
-          .filter((id): id is number => id !== null && id !== undefined)
-      ))
-
-      if (uniformIds.length > 0) {
-        const { data: uniformsData } = await supabase
-          .from('uniforms')
-          .select('id, name')
-          .in('id', uniformIds)
-
-        const nameById = new Map<number, string>()
-        for (const u of (uniformsData || []) as { id: number; name: string }[]) {
-          nameById.set(u.id, u.name)
-        }
-        for (const a of (todayAttendances || []) as { cast_name: string; costume_id: number | null }[]) {
-          if (a.costume_id) {
-            const n = nameById.get(a.costume_id)
-            if (n) uniformByCastName.set(a.cast_name, n)
-          }
-        }
-      }
-    }
+    // 全制服を「○ A赤 ○ A黒 ...」の形で印刷セルに敷き詰める。手書きで該当を塗りつぶす運用
+    const uniformOptionsHtml = uniformsEnabled
+      ? (storeUniforms || []).map(u => `<span class="opt">○ ${u.name}</span>`).join(' ')
+      : ''
 
     const shiftRows = (todayShifts || []).map(s => {
       const cast = casts.find(c => c.id === s.cast_id)
@@ -664,12 +643,11 @@ function AttendancePageContent() {
       return {
         name: castName,
         startTime: s.start_time || '',
-        uniform: uniformByCastName.get(castName) || '',
       }
     }).sort((a, b) => a.startTime.localeCompare(b.startTime))
 
     // 空行を追加（手書き用、3行だけ）
-    const emptyRows = Array.from({ length: 3 }, () => ({ name: '', startTime: '', uniform: '' }))
+    const emptyRows = Array.from({ length: 3 }, () => ({ name: '', startTime: '' }))
     const allRows = [...shiftRows, ...emptyRows]
 
     const printWindow = window.open('', '_blank')
@@ -688,12 +666,13 @@ function AttendancePageContent() {
           table { width: 100%; border-collapse: collapse; }
           th { background: #f0f0f0; font-size: 13px; padding: 8px 10px; border: 1px solid #333; text-align: center; }
           td { font-size: 14px; padding: 10px; border: 1px solid #333; height: 28px; }
-          .name { width: ${uniformsEnabled ? '12%' : '14%'}; }
-          .uniform { width: 8%; text-align: center; font-weight: 600; }
-          .scheduled { width: ${uniformsEnabled ? '10%' : '12%'}; text-align: center; }
-          .time { width: ${uniformsEnabled ? '13%' : '15%'}; }
-          .status { width: ${uniformsEnabled ? '16%' : '18%'}; text-align: center; font-size: 12px; }
-          .late { width: ${uniformsEnabled ? '9%' : '10%'}; text-align: center; }
+          .name { width: ${uniformsEnabled ? '11%' : '14%'}; }
+          .uniform { width: 22%; text-align: center; font-size: 12px; line-height: 1.6; }
+          .uniform .opt { display: inline-block; margin: 0 4px; white-space: nowrap; }
+          .scheduled { width: ${uniformsEnabled ? '9%' : '12%'}; text-align: center; }
+          .time { width: ${uniformsEnabled ? '12%' : '15%'}; }
+          .status { width: ${uniformsEnabled ? '14%' : '18%'}; text-align: center; font-size: 12px; }
+          .late { width: ${uniformsEnabled ? '8%' : '10%'}; text-align: center; }
           .payment { width: ${uniformsEnabled ? '12%' : '14%'}; }
         </style>
       </head>
@@ -717,7 +696,7 @@ function AttendancePageContent() {
             ${allRows.map(r => `
               <tr>
                 <td class="name">${r.name}</td>
-                ${uniformsEnabled ? `<td class="uniform">${r.uniform}</td>` : ''}
+                ${uniformsEnabled ? `<td class="uniform">${uniformOptionsHtml}</td>` : ''}
                 <td class="scheduled">${r.startTime ? r.startTime.slice(0, 5) : ''}</td>
                 <td class="time"></td>
                 <td class="time"></td>
