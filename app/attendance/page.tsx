@@ -600,7 +600,6 @@ function AttendancePageContent() {
   // 今日の出勤表を印刷
   const handlePrintToday = async () => {
     const today = format(new Date(), 'yyyy-MM-dd')
-    const yearMonth = format(new Date(), 'yyyy-MM')
     const { data: todayShifts } = await supabase
       .from('shifts')
       .select('cast_id, start_time, end_time')
@@ -608,26 +607,9 @@ function AttendancePageContent() {
       .eq('date', today)
       .order('start_time')
 
-    // 制服機能の有効状態と当月の割当を取得(対象店舗のみ列追加)
-    const [{ data: uniformSetting }, { data: assignments }] = await Promise.all([
-      supabase
-        .from('store_uniform_settings')
-        .select('is_enabled')
-        .eq('store_id', storeId)
-        .maybeSingle(),
-      supabase
-        .from('cast_uniform_assignments')
-        .select('cast_id, uniform_id, uniforms(name)')
-        .eq('year_month', yearMonth),
-    ])
-    const uniformsEnabled = uniformSetting?.is_enabled === true
+    // 制服列は一旦非表示(月単位は使わない、日毎管理に移行検討中)
+    const uniformsEnabled = false
     const uniformByCastId = new Map<number, string>()
-    if (uniformsEnabled) {
-      for (const row of (assignments || []) as unknown as Array<{ cast_id: number; uniforms: { name: string } | { name: string }[] | null }>) {
-        const uniformObj = Array.isArray(row.uniforms) ? row.uniforms[0] : row.uniforms
-        if (uniformObj?.name) uniformByCastId.set(row.cast_id, uniformObj.name)
-      }
-    }
 
     const shiftRows = (todayShifts || []).map(s => {
       const cast = casts.find(c => c.id === s.cast_id)

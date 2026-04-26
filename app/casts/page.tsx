@@ -74,8 +74,11 @@ function CastsPageContent() {
   const [stores, setStores] = useState<{id: number, name: string}[]>([])
   const [selectedStoreForLink, setSelectedStoreForLink] = useState<number | null>(null)
 
-  // 制服管理(店舗ごとに有効/無効、Mary Mareなど一部店舗で利用)
-  const [uniformsEnabled, setUniformsEnabled] = useState(false)
+  // 制服管理(月単位は一旦非表示、日毎管理に移行検討中のため、UI上は無効化)
+  // DBテーブル(cast_uniform_assignments等)は残しておき、復旧可能な状態を維持
+  const SHOW_UNIFORM_UI = false
+  const [uniformsEnabledRaw, setUniformsEnabled] = useState(false)
+  const uniformsEnabled = SHOW_UNIFORM_UI && uniformsEnabledRaw
   const [uniforms, setUniforms] = useState<{id: number, name: string, display_order: number}[]>([])
   const [uniformAssignments, setUniformAssignments] = useState<Map<number, number>>(new Map())
   const [uniformYearMonth, setUniformYearMonth] = useState<string>(() => {
