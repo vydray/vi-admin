@@ -58,6 +58,7 @@ export default function RecalculationCompareModal({ isOpen, onClose, storeId, ye
   const [comparisons, setComparisons] = useState<Comparison[]>([])
   const [loading, setLoading] = useState(false)
   const [loadingBatches, setLoadingBatches] = useState(false)
+  const [currentUpdatedAt, setCurrentUpdatedAt] = useState<string | null>(null)
   const [showOnlyChanged, setShowOnlyChanged] = useState(false)
   const [pdfLoading, setPdfLoading] = useState(false)
   const [deleting, setDeleting] = useState<string | null>(null)
@@ -71,6 +72,7 @@ export default function RecalculationCompareModal({ isOpen, onClose, storeId, ye
       .then(res => res.json())
       .then(data => {
         setBatches(data.batches || [])
+        setCurrentUpdatedAt(data.current_updated_at || null)
         if (data.batches?.length > 0) {
           setFromBatch(data.batches[0].batch_id)
         } else {
@@ -78,7 +80,7 @@ export default function RecalculationCompareModal({ isOpen, onClose, storeId, ye
         }
         setToBatch('current')
       })
-      .catch(() => setBatches([]))
+      .catch(() => { setBatches([]); setCurrentUpdatedAt(null) })
       .finally(() => setLoadingBatches(false))
   }, [isOpen, storeId, yearMonth])
 
@@ -473,7 +475,9 @@ export default function RecalculationCompareModal({ isOpen, onClose, storeId, ye
                 fontSize: '13px', minWidth: '280px',
               }}
             >
-              <option value="current">現在のpayslip(保存値)</option>
+              <option value="current">
+                {currentUpdatedAt ? `${formatTimestamp(currentUpdatedAt)} 時点の保存値` : '現在のpayslip(保存値)'}
+              </option>
               {batches.map(b => (
                 <option key={b.batch_id} value={b.batch_id}>
                   {formatTimestamp(b.created_at)} ({b.triggered_by === 'cron' ? '自動' : '手動'}, {b.cast_count}名)

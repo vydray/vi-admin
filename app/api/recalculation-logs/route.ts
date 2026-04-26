@@ -62,7 +62,20 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ batches: Array.from(batchMap.values()) })
+    // 現在のpayslip(保存値)の最終更新時刻を取得
+    const { data: latestPayslip } = await supabaseAdmin
+      .from('payslips')
+      .select('updated_at')
+      .eq('store_id', Number(storeId))
+      .eq('year_month', yearMonth)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    return NextResponse.json({
+      batches: Array.from(batchMap.values()),
+      current_updated_at: latestPayslip?.updated_at ?? null,
+    })
   }
 
   // 比較モード: 2つのバッチ間の差分を返す
