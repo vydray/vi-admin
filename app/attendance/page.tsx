@@ -125,15 +125,24 @@ function AttendancePageContent() {
   }, [storeId])
 
   const loadCostumes = useCallback(async () => {
-    const { data, error } = await supabase
-      .from('costumes')
-      .select('id, name')
-      .eq('store_id', storeId)
-      .eq('is_active', true)
-      .order('display_order')
-
-    if (!error && data) {
-      setCostumes(data)
+    // 制服マスタ(uniformsテーブル)を読み込む。store_uniform_settings.is_enabled=true店舗のみ衣装プルダウン表示
+    const [{ data: settingData }, { data: uniformsData }] = await Promise.all([
+      supabase
+        .from('store_uniform_settings')
+        .select('is_enabled')
+        .eq('store_id', storeId)
+        .maybeSingle(),
+      supabase
+        .from('uniforms')
+        .select('id, name')
+        .eq('store_id', storeId)
+        .eq('is_active', true)
+        .order('display_order'),
+    ])
+    if (settingData?.is_enabled === true) {
+      setCostumes(uniformsData || [])
+    } else {
+      setCostumes([])
     }
   }, [storeId])
 
@@ -607,16 +616,55 @@ function AttendancePageContent() {
       .eq('date', today)
       .order('start_time')
 
-    // 制服列は一旦非表示(月単位は使わない、日毎管理に移行検討中)
-    const uniformsEnabled = false
-    const uniformByCastId = new Map<number, string>()
+    // 制服機能の有効状態と当日の割当(attendance.costume_id)を取得
+    const { data: uniformSetting } = await supabase
+      .from('store_uniform_settings')
+      .select('is_enabled')
+      .eq('store_id', storeId)
+      .maybeSingle()
+    const uniformsEnabled = uniformSetting?.is_enabled === true
+
+    const uniformByCastName = new Map<string, string>()
+    if (uniformsEnabled) {
+      const { data: todayAttendances } = await supabase
+        .from('attendance')
+        .select('cast_name, costume_id')
+        .eq('store_id', storeId)
+        .eq('date', today)
+        .not('costume_id', 'is', null)
+
+      const uniformIds = Array.from(new Set(
+        (todayAttendances || [])
+          .map(a => a.costume_id)
+          .filter((id): id is number => id !== null && id !== undefined)
+      ))
+
+      if (uniformIds.length > 0) {
+        const { data: uniformsData } = await supabase
+          .from('uniforms')
+          .select('id, name')
+          .in('id', uniformIds)
+
+        const nameById = new Map<number, string>()
+        for (const u of (uniformsData || []) as { id: number; name: string }[]) {
+          nameById.set(u.id, u.name)
+        }
+        for (const a of (todayAttendances || []) as { cast_name: string; costume_id: number | null }[]) {
+          if (a.costume_id) {
+            const n = nameById.get(a.costume_id)
+            if (n) uniformByCastName.set(a.cast_name, n)
+          }
+        }
+      }
+    }
 
     const shiftRows = (todayShifts || []).map(s => {
       const cast = casts.find(c => c.id === s.cast_id)
+      const castName = cast?.name || '不明'
       return {
-        name: cast?.name || '不明',
+        name: castName,
         startTime: s.start_time || '',
-        uniform: cast ? (uniformByCastId.get(cast.id) || '') : '',
+        uniform: uniformByCastName.get(castName) || '',
       }
     }).sort((a, b) => a.startTime.localeCompare(b.startTime))
 
