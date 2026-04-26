@@ -90,16 +90,7 @@ export async function POST(request: NextRequest) {
     const startDate = format(startOfMonth(targetMonth), 'yyyy-MM-dd')
     const endDate = format(endOfMonth(targetMonth), 'yyyy-MM-dd')
 
-    // 1. アクティブなキャスト + payslipが存在する非アクティブキャスト
-    const { data: activeCasts } = await supabase
-      .from('casts')
-      .select('id, name')
-      .eq('store_id', storeId)
-      .eq('is_active', true)
-      .order('display_order', { ascending: true, nullsFirst: false })
-      .order('name')
-
-    // 保存済payslips(全フィールド)を取得 — finalized なら値を優先採用、未finalized は動的計算と一致するはず
+    // 保存済payslips(全フィールド)を取得 — 表示対象はpayslipレコードがあるキャストのみ
     const { data: payslipCasts } = await supabase
       .from('payslips')
       .select('cast_id, status, work_days, total_hours, hourly_income, sales_back, product_back, fixed_amount, bonus_total, gross_total, total_deduction, net_payment, casts(id, name)')
@@ -136,11 +127,12 @@ export async function POST(request: NextRequest) {
       })
     }
 
+    // 保存済payslipのあるキャストのみ表示対象とする
+    // (動的計算フォールバックは廃止 — 「保存値=表示値」の単純モデル)
     const castMap = new Map<number, { id: number; name: string }>()
-    for (const c of activeCasts || []) castMap.set(c.id, c)
     for (const p of payslipCasts || []) {
       const c = (p as Record<string, unknown>).casts as { id: number; name: string } | null
-      if (c && !castMap.has(c.id)) castMap.set(c.id, c)
+      if (c) castMap.set(c.id, c)
     }
     const casts = Array.from(castMap.values())
 
