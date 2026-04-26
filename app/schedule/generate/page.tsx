@@ -29,6 +29,8 @@ export default function GeneratePage() {
   const [orderedCastIds, setOrderedCastIds] = useState<number[]>([])
   const [loading, setLoading] = useState(false)
   const [generating, setGenerating] = useState(false)
+  const [genTotal, setGenTotal] = useState(0)
+  const [genCurrent, setGenCurrent] = useState(0)
   const [generatedImages, setGeneratedImages] = useState<string[]>([])
   const [currentPage, setCurrentPage] = useState(0)
   const [sortBy, setSortBy] = useState<'order' | 'time' | 'name' | 'manual'>('order')
@@ -227,6 +229,10 @@ export default function GeneratePage() {
     }
 
     setGenerating(true)
+    setGenTotal(0)
+    setGenCurrent(0)
+    setGeneratedImages([])
+
     try {
       const response = await fetch('/api/schedule/generate', {
         method: 'POST',
@@ -238,14 +244,65 @@ export default function GeneratePage() {
         }),
       })
 
-      const data = await response.json()
-      if (data.success) {
-        setGeneratedImages(data.images || [data.image])
-        setCurrentPage(0)
-        const pageCount = data.totalPages || 1
-        toast.success(pageCount > 1 ? `${pageCount}枚の画像を生成しました` : '画像を生成しました')
+      // 非ストリーム形式のエラーレスポンス（バリデーション系）
+      if (!response.ok || !response.body) {
+        let msg = '生成に失敗しました'
+        try {
+          const data = await response.json()
+          msg = data.error || msg
+        } catch { /* ignore */ }
+        toast.error(msg)
+        setGenerating(false)
+        return
+      }
+
+      // NDJSONストリームを読み込む
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      const collected: string[] = []
+      let total = 0
+      let pageCount = 0
+      let errorMessage: string | null = null
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
+
+        for (const line of lines) {
+          const trimmed = line.trim()
+          if (!trimmed) continue
+          try {
+            const msg = JSON.parse(trimmed)
+            if (msg.type === 'meta') {
+              total = msg.totalPages || 0
+              setGenTotal(total)
+            } else if (msg.type === 'page') {
+              collected[msg.index] = msg.image
+              pageCount = collected.filter(Boolean).length
+              setGenCurrent(pageCount)
+              setGeneratedImages([...collected])
+            } else if (msg.type === 'error') {
+              errorMessage = msg.message || '生成に失敗しました'
+            }
+          } catch {
+            // 不完全なJSONなら無視
+          }
+        }
+      }
+
+      if (errorMessage) {
+        toast.error(errorMessage)
+        setGeneratedImages([])
+      } else if (pageCount === 0) {
+        toast.error('生成に失敗しました')
       } else {
-        toast.error(data.error || '生成に失敗しました')
+        setCurrentPage(0)
+        toast.success(pageCount > 1 ? `${pageCount}枚の画像を生成しました` : '画像を生成しました')
       }
     } catch (error) {
       console.error('Generate error:', error)
@@ -575,6 +632,37 @@ export default function GeneratePage() {
           </div>
         </div>
       </div>
+
+      {/* 生成中モーダル */}
+      {generating && (
+        <div style={styles.modalOverlay}>
+          <div style={styles.modalBox}>
+            <div style={styles.spinner} />
+            <div style={styles.modalTitle}>画像を生成中</div>
+            <div style={styles.modalProgress}>
+              {genTotal > 0
+                ? `${genCurrent} / ${genTotal} ページ`
+                : '準備中...'}
+            </div>
+            <div style={styles.progressBarOuter}>
+              <div
+                style={{
+                  ...styles.progressBarInner,
+                  width: genTotal > 0 ? `${Math.round((genCurrent / genTotal) * 100)}%` : '0%',
+                }}
+              />
+            </div>
+            <div style={styles.modalPercent}>
+              {genTotal > 0 ? `${Math.round((genCurrent / genTotal) * 100)}%` : ''}
+            </div>
+          </div>
+          <style jsx global>{`
+            @keyframes generate-spinner-spin {
+              to { transform: rotate(360deg); }
+            }
+          `}</style>
+        </div>
+      )}
     </div>
   )
 }
@@ -859,5 +947,62 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   twitterMention: {
     color: '#1d9bf0',
+  },
+  modalOverlay: {
+    position: 'fixed',
+    inset: 0,
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1000,
+    backdropFilter: 'blur(2px)',
+  },
+  modalBox: {
+    backgroundColor: '#fff',
+    padding: '32px 40px',
+    borderRadius: '12px',
+    boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+    minWidth: '300px',
+    textAlign: 'center',
+  },
+  spinner: {
+    width: '40px',
+    height: '40px',
+    margin: '0 auto 16px',
+    border: '4px solid #e2e8f0',
+    borderTopColor: '#3b82f6',
+    borderRadius: '50%',
+    animation: 'generate-spinner-spin 0.9s linear infinite',
+  },
+  modalTitle: {
+    fontSize: '16px',
+    fontWeight: 600,
+    color: '#1e293b',
+    marginBottom: '4px',
+  },
+  modalProgress: {
+    fontSize: '13px',
+    color: '#64748b',
+    marginBottom: '12px',
+  },
+  progressBarOuter: {
+    width: '100%',
+    height: '8px',
+    backgroundColor: '#e2e8f0',
+    borderRadius: '4px',
+    overflow: 'hidden',
+  },
+  progressBarInner: {
+    height: '100%',
+    backgroundColor: '#3b82f6',
+    transition: 'width 0.3s ease',
+  },
+  modalPercent: {
+    marginTop: '8px',
+    fontSize: '20px',
+    fontWeight: 700,
+    color: '#3b82f6',
+    minHeight: '24px',
   },
 }
