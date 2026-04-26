@@ -473,7 +473,7 @@ export default function RecalculationCompareModal({ isOpen, onClose, storeId, ye
                 fontSize: '13px', minWidth: '280px',
               }}
             >
-              <option value="current">現在のpayslip値</option>
+              <option value="current">最新の計算結果(=現在のpayslip)</option>
               {batches.map(b => (
                 <option key={b.batch_id} value={b.batch_id}>
                   {formatTimestamp(b.created_at)} ({b.triggered_by === 'cron' ? '自動' : '手動'}, {b.cast_count}名)

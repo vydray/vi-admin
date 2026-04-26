@@ -9,7 +9,8 @@ const StoreContext = createContext<StoreContextType | undefined>(undefined)
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const { user, isLoading: authLoading } = useAuth()
-  const [storeId, setStoreIdState] = useState<number>(2)
+  // 0 は「未初期化」を意味する。利用側は isLoading=false かつ storeId>0 を待ってからAPI呼び出しすること
+  const [storeId, setStoreIdState] = useState<number>(0)
   const [stores, setStores] = useState<Store[]>([])
   const [storesLoaded, setStoresLoaded] = useState(false)
   const [storeIdInitialized, setStoreIdInitialized] = useState(false)
