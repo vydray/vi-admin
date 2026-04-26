@@ -429,7 +429,7 @@ export default function RecalculationCompareModal({ isOpen, onClose, storeId, ye
         <div style={{ display: 'flex', gap: '16px', marginBottom: '12px', flexWrap: 'wrap', alignItems: 'end' }}>
           <div>
             <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#6b7280', marginBottom: '4px' }}>
-              From（再計算前の状態）
+              From（比較元）
             </label>
             <select
               value={fromBatch}

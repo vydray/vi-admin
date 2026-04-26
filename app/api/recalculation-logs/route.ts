@@ -70,15 +70,16 @@ export async function GET(request: NextRequest) {
     const fromBatch = searchParams.get('from_batch')
     const toBatch = searchParams.get('to_batch') // null = 現在のpayslip値
 
-    // "from" のログを取得
+    // "from" のログを取得 — そのbatch直後の状態(after_values)を採用
+    // (同じbatchをFrom/Toに入れた時に差0になるよう、両方after_valuesに統一)
     let fromValues: Record<number, { cast_name: string; values: Record<string, number> }> = {}
     if (fromBatch) {
       const { data } = await supabaseAdmin
         .from('payslip_recalculation_logs')
-        .select('cast_id, cast_name, before_values')
+        .select('cast_id, cast_name, after_values')
         .eq('batch_id', fromBatch)
       for (const row of data || []) {
-        fromValues[row.cast_id] = { cast_name: row.cast_name, values: row.before_values }
+        fromValues[row.cast_id] = { cast_name: row.cast_name, values: row.after_values }
       }
     }
 
@@ -118,23 +119,21 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // fromが未指定の場合: 最新の全体バッチのbefore_valuesを使う
+    // fromが未指定の場合: 最新の全体バッチのafter_valuesを使う
     if (!fromBatch) {
-      // 最新バッチを取得
       const { data: latestLogs } = await supabaseAdmin
         .from('payslip_recalculation_logs')
-        .select('batch_id, cast_id, cast_name, before_values, created_at')
+        .select('batch_id, cast_id, cast_name, after_values, created_at')
         .eq('store_id', Number(storeId))
         .eq('year_month', yearMonth)
         .order('created_at', { ascending: false })
         .limit(50)
 
       if (latestLogs && latestLogs.length > 0) {
-        // 最新バッチのbefore_valuesを使う
         const latestBatchId = latestLogs[0].batch_id
         for (const row of latestLogs) {
           if (row.batch_id === latestBatchId) {
-            fromValues[row.cast_id] = { cast_name: row.cast_name, values: row.before_values }
+            fromValues[row.cast_id] = { cast_name: row.cast_name, values: row.after_values }
           }
         }
       }
