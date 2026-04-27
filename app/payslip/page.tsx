@@ -1533,22 +1533,42 @@ function PayslipPageContent() {
     if (savedPayslip?.status === 'finalized' && savedPayslip.daily_details && savedPayslip.daily_details.length > 0) {
       return savedPayslip.daily_details.map(d => {
         const dayObj = new Date(d.date)
+        const dateStr = d.date
+
+        // 古い保存(self_back/help_back無し)の場合はcast_daily_itemsから動的補完（合計はd.backでロック維持）
+        const dynSelfBack = castDailyItems
+          .filter(item => item.date === dateStr)
+          .reduce((sum, item) => sum + (item.self_back_amount || 0), 0)
+        const dynHelpBack = helpDailyItems
+          .filter(item => item.date === dateStr)
+          .reduce((sum, item) => sum + (item.help_back_amount || 0), 0)
+
+        // sales/work_time_range/late_minutes も同様に動的フォールバック
+        const dynAttendance = attendanceData.find(a => a.date === dateStr)
+        let dynWorkTimeRange = ''
+        if (dynAttendance?.check_in_datetime && dynAttendance?.check_out_datetime) {
+          const checkIn = new Date(dynAttendance.check_in_datetime)
+          const checkOut = new Date(dynAttendance.check_out_datetime)
+          dynWorkTimeRange = `${format(checkIn, 'HH:mm')}〜${format(checkOut, 'HH:mm')}`
+        }
+        const dynSales = dailySalesData.get(dateStr)
+
         return {
-          date: d.date,
+          date: dateStr,
           dayOfMonth: format(dayObj, 'd'),
           dayOfWeek: format(dayObj, 'E', { locale: ja }),
           workHours: d.hours,
-          workTimeRange: d.work_time_range ?? '',
+          workTimeRange: d.work_time_range ?? dynWorkTimeRange,
           wageAmount: d.hourly_income,
           sales: d.sales,
-          salesItemBased: d.sales_item_based ?? d.sales,
-          salesReceiptBased: d.sales_receipt_based ?? d.sales,
-          salesServiceCharge: d.sales_service_charge ?? 0,
+          salesItemBased: d.sales_item_based ?? dynSales?.totalSalesItemBased ?? d.sales,
+          salesReceiptBased: d.sales_receipt_based ?? dynSales?.totalSalesReceiptBased ?? d.sales,
+          salesServiceCharge: d.sales_service_charge ?? specialDailySales.get(dateStr) ?? 0,
           productBack: d.back,
-          selfBack: d.self_back ?? d.back,
-          helpBack: d.help_back ?? 0,
+          selfBack: d.self_back ?? dynSelfBack,
+          helpBack: d.help_back ?? dynHelpBack,
           dailyPayment: d.daily_payment,
-          lateMinutes: d.late_minutes ?? 0,
+          lateMinutes: d.late_minutes ?? dynAttendance?.late_minutes ?? 0,
         }
       })
     }
