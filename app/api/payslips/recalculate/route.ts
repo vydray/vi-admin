@@ -4,6 +4,7 @@ import { cookies } from 'next/headers'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns'
 import { randomUUID } from 'crypto'
 import { calculateCastSalesByPublishedMethod } from '@/lib/salesCalculation'
+import { isYearMonthLocked } from '@/lib/payslipLockDate'
 import type { SalesSettings } from '@/types/database'
 
 const TRACKED_FIELDS = ['gross_total', 'hourly_income', 'sales_back', 'product_back', 'fixed_amount', 'bonus_total', 'total_deduction', 'net_payment'] as const
@@ -144,17 +145,18 @@ async function calculatePayslipForCast(
     const startDate = format(startOfMonth(month), 'yyyy-MM-dd')
     const endDate = format(endOfMonth(month), 'yyyy-MM-dd')
 
-    // 確定済みかチェック + ログ用に現在の値を取得
+    // ログ用に現在の値を取得
     const { data: existingPayslip } = await supabaseAdmin
       .from('payslips')
-      .select('id, finalized_at, gross_total, hourly_income, sales_back, product_back, fixed_amount, bonus_total, total_deduction, net_payment')
+      .select('id, gross_total, hourly_income, sales_back, product_back, fixed_amount, bonus_total, total_deduction, net_payment')
       .eq('cast_id', cast.id)
       .eq('store_id', storeId)
       .eq('year_month', yearMonth)
       .single()
 
-    if (existingPayslip?.finalized_at) {
-      return { success: true } // 確定済みはスキップ
+    // cron は cutoff(翌月6日)以降スキップ。manual(手動再計算)は緊急修正用なので常に動く
+    if (triggeredBy === 'cron' && isYearMonthLocked(yearMonth)) {
+      return { success: true }
     }
 
     // 日別統計データを取得（推し小計・伝票小計の両方）

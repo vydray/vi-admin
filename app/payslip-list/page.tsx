@@ -10,6 +10,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import ProtectedPage from '@/components/ProtectedPage'
 import RecalculationHistoryModal from '@/components/RecalculationHistoryModal'
+import { isYearMonthLocked } from '@/lib/payslipLockDate'
 import RecalculationCompareModal from '@/components/RecalculationCompareModal'
 
 interface PayslipSummary {
@@ -50,56 +51,13 @@ function PayslipListContent() {
   const [showExportModal, setShowExportModal] = useState(false)
   const [historyCast, setHistoryCast] = useState<{ id: number; name: string } | null>(null)
   const [showCompareModal, setShowCompareModal] = useState(false)
-  const [finalizing, setFinalizing] = useState(false)
-  const [finalizeStatus, setFinalizeStatus] = useState<{ total: number; finalized: number } | null>(null)
   const printRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (storeId) {
       loadPayslips()
-      loadFinalizeStatus()
     }
   }, [storeId, selectedMonth])
-
-  const loadFinalizeStatus = async () => {
-    try {
-      const yearMonth = format(selectedMonth, 'yyyy-MM')
-      const res = await fetch(`/api/payslips/finalize-status?store_id=${storeId}&year_month=${yearMonth}`)
-      if (res.ok) {
-        const data = await res.json()
-        setFinalizeStatus({ total: data.total ?? 0, finalized: data.finalized ?? 0 })
-      }
-    } catch {
-      // ignore
-    }
-  }
-
-  const handleBulkFinalize = async (unfinalize: boolean) => {
-    if (finalizing) return
-    const yearMonth = format(selectedMonth, 'yyyy-MM')
-    const action = unfinalize ? '確定解除' : '月次確定'
-    if (!confirm(`${format(selectedMonth, 'yyyy年M月', { locale: ja })} の全キャスト(${payslips.length}名)を一括${action}します。よろしいですか？${unfinalize ? '' : '\n確定後は再計算されなくなります。'}`)) return
-
-    setFinalizing(true)
-    try {
-      const res = await fetch('/api/payslips/finalize-bulk', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ store_id: storeId, year_month: yearMonth, unfinalize })
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        alert(`${action}失敗: ${data.error || '不明なエラー'}`)
-        return
-      }
-      alert(`${data.affected}名分を${action}しました`)
-      await loadFinalizeStatus()
-    } catch (e) {
-      alert(`${action}失敗: ${e instanceof Error ? e.message : 'エラー'}`)
-    } finally {
-      setFinalizing(false)
-    }
-  }
 
   const loadPayslips = async () => {
     setLoading(true)
@@ -482,32 +440,6 @@ function PayslipListContent() {
             全体履歴
           </button>
 
-          {/* 月次確定 / 解除ボタン */}
-          {(() => {
-            const total = finalizeStatus?.total ?? payslips.length
-            const finalized = finalizeStatus?.finalized ?? 0
-            const allFinalized = total > 0 && finalized >= total
-            return (
-              <button
-                onClick={() => handleBulkFinalize(allFinalized)}
-                disabled={finalizing || payslips.length === 0}
-                title={`確定済 ${finalized} / ${total}`}
-                style={{
-                  padding: '10px 20px',
-                  backgroundColor: finalizing || payslips.length === 0 ? '#94a3b8' : (allFinalized ? '#dc2626' : '#16a34a'),
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '8px',
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  cursor: finalizing || payslips.length === 0 ? 'not-allowed' : 'pointer',
-                  marginLeft: '8px',
-                }}
-              >
-                {finalizing ? '処理中...' : (allFinalized ? `全員確定解除 (${finalized}/${total})` : `全員月次確定 (${finalized}/${total})`)}
-              </button>
-            )
-          })()}
         </div>
       </div>
 
@@ -552,11 +484,13 @@ function PayslipListContent() {
                 </tr>
               </thead>
               <tbody>
-                {payslips.map(p => (
+                {(() => {
+                  const monthLocked = isYearMonthLocked(format(selectedMonth, 'yyyy-MM'))
+                  return payslips.map(p => (
                   <tr key={p.cast_id} style={{ borderBottom: '1px solid #e2e8f0' }}>
                     <td style={tdStyle}>
-                      {p.finalized_at != null && (
-                        <span title="月次確定済み" style={{ color: '#16a34a', marginRight: '4px' }}>🔒</span>
+                      {monthLocked && (
+                        <span title="自動ロック中(翌月5日経過)" style={{ color: '#16a34a', marginRight: '4px' }}>🔒</span>
                       )}
                       {p.cast_name}
                     </td>
@@ -593,7 +527,7 @@ function PayslipListContent() {
                       </button>
                     </td>
                   </tr>
-                ))}
+                ))})()}
                 {/* 合計行 */}
                 <tr style={{ backgroundColor: '#f1f5f9', fontWeight: '600' }}>
                   <td style={tdStyle}>合計 ({payslips.length}名)</td>

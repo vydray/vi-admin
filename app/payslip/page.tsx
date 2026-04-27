@@ -7,6 +7,7 @@ import { ja } from 'date-fns/locale'
 import { useStore } from '@/contexts/StoreContext'
 import { SalesSettings, CompensationType, CastBackRate } from '@/types'
 import { calculateCastSalesByPublishedMethod, getDefaultSalesSettings, applyRoundingNew } from '@/lib/salesCalculation'
+import { isYearMonthLocked } from '@/lib/payslipLockDate'
 import { exportToPDF } from '@/lib/pdfExport'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import ProtectedPage from '@/components/ProtectedPage'
@@ -1320,7 +1321,8 @@ function PayslipPageContent() {
   const dynamicNetEarnings = dynamicGrossEarningsWithBonus - dynamicTotalDeduction
 
   // 月次確定済みなら保存値を採用(動的計算ドリフト防止)
-  const isFinalized = savedPayslip?.finalized_at != null
+  // ロック判定: 翌月6日(JST)以降は自動ロック扱い
+  const isFinalized = isYearMonthLocked(format(selectedMonth, 'yyyy-MM'))
   const grossEarningsWithBonus = isFinalized && savedPayslip ? savedPayslip.gross_total : dynamicGrossEarningsWithBonus
   const totalDeduction = isFinalized && savedPayslip ? savedPayslip.total_deduction : dynamicTotalDeduction
   const netEarnings = isFinalized && savedPayslip ? savedPayslip.net_payment : dynamicNetEarnings
@@ -1530,7 +1532,7 @@ function PayslipPageContent() {
   // 日別明細データ（月次確定済みなら保存値から復元、それ以外は動的計算）
   const dailyDetails = useMemo(() => {
     // 確定済みの場合は保存値から復元（ドリフト防止）
-    if (savedPayslip?.finalized_at != null && savedPayslip.daily_details && savedPayslip.daily_details.length > 0) {
+    if (isYearMonthLocked(format(selectedMonth, 'yyyy-MM')) && savedPayslip?.daily_details && savedPayslip.daily_details.length > 0) {
       return savedPayslip.daily_details.map(d => {
         const dayObj = new Date(d.date)
         const dateStr = d.date
@@ -1672,92 +1674,6 @@ function PayslipPageContent() {
 
     return Array.from(grouped.values()).sort((a, b) => b.back_amount - a.back_amount)
   }, [dailySalesData])
-
-  // 報酬明細を保存
-  // 月次確定: 再計算APIで全フィールドを保存→status='finalized'に切り替えるだけ
-  // (画面で再計算した値をそのまま保存する旧仕様は廃止。値の保存ロジックは再計算API側に一元化)
-  const savePayslip = useCallback(async (finalize: boolean = false) => {
-    if (!selectedCastId) return
-
-    setSaving(true)
-    try {
-      const yearMonth = format(selectedMonth, 'yyyy-MM')
-
-      // 1. 再計算APIで最新値を保存(status='draft')
-      const recalcRes = await fetch('/api/payslips/recalculate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          store_id: storeId,
-          year_month: yearMonth,
-          cast_id: selectedCastId
-        })
-      })
-      const recalcResult = await recalcRes.json()
-      if (!recalcResult.success) {
-        console.error('再計算失敗:', recalcResult.error)
-        alert('再計算に失敗しました')
-        return
-      }
-
-      // 2. finalize時のみstatusを'finalized'に切り替え
-      if (finalize) {
-        const { data, error } = await supabase
-          .from('payslips')
-          .update({
-            status: 'finalized',
-            finalized_at: new Date().toISOString(),
-          })
-          .eq('cast_id', selectedCastId)
-          .eq('store_id', storeId)
-          .eq('year_month', yearMonth)
-          .select()
-          .single()
-
-        if (error) {
-          console.error('月次確定エラー:', error)
-          alert('月次確定に失敗しました')
-          return
-        }
-        setSavedPayslip(data as SavedPayslip)
-      } else {
-        // draftのまま再計算結果を再ロード
-        await loadPayslip(selectedCastId, selectedMonth)
-      }
-
-      alert(finalize ? '月次確定しました' : '保存しました')
-    } finally {
-      setSaving(false)
-    }
-  }, [selectedCastId, selectedMonth, storeId, loadPayslip])
-
-  // 確定解除
-  const unfinalizePayslip = useCallback(async () => {
-    if (!savedPayslip) return
-
-    setSaving(true)
-    try {
-      const { data, error } = await supabase
-        .from('payslips')
-        .update({
-          status: 'draft',
-          finalized_at: null
-        })
-        .eq('id', savedPayslip.id)
-        .select()
-        .single()
-
-      if (error) {
-        console.error('確定解除エラー:', error)
-        alert('確定解除に失敗しました')
-      } else {
-        setSavedPayslip(data as SavedPayslip)
-        alert('確定解除しました')
-      }
-    } finally {
-      setSaving(false)
-    }
-  }, [savedPayslip])
 
   // 選択中のキャスト1人を再計算
   const recalculateOne = useCallback(async () => {
@@ -2233,10 +2149,10 @@ function PayslipPageContent() {
                 borderRadius: '20px',
                 fontSize: '12px',
                 fontWeight: '600',
-                backgroundColor: savedPayslip.finalized_at != null ? '#dcfce7' : '#dbeafe',
-                color: savedPayslip.finalized_at != null ? '#166534' : '#1d4ed8'
+                backgroundColor: isFinalized ? '#dcfce7' : '#dbeafe',
+                color: isFinalized ? '#166534' : '#1d4ed8'
               }}>
-                {savedPayslip.finalized_at != null ? '確定済み' : '未確定'}
+                {isFinalized ? '確定済み' : '未確定'}
               </span>
             ) : (
               <span style={{
@@ -2322,57 +2238,11 @@ function PayslipPageContent() {
             >
               {exporting || csvExporting ? '出力中...' : 'エクスポート'}
             </button>
-            {/* 月次確定 / 確定解除ボタン */}
-            {savedPayslip?.finalized_at != null ? (
-              <button
-                onClick={() => {
-                  if (confirm('確定解除すると再編集可能になります。よろしいですか？')) {
-                    unfinalizePayslip()
-                  }
-                }}
-                disabled={saving}
-                style={{
-                  padding: '8px 16px',
-                  backgroundColor: '#dc2626',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '8px',
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  cursor: 'pointer',
-                  opacity: saving ? 0.7 : 1
-                }}
-              >
-                確定解除
-              </button>
-            ) : (
-              <button
-                onClick={() => {
-                  if (confirm('月次確定すると編集できなくなります。よろしいですか？')) {
-                    savePayslip(true)
-                  }
-                }}
-                disabled={saving}
-                style={{
-                  padding: '8px 16px',
-                  backgroundColor: '#059669',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '8px',
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  cursor: 'pointer',
-                  opacity: saving ? 0.7 : 1
-                }}
-              >
-                月次確定
-              </button>
-            )}
           </div>
         </div>
 
-      {/* 月次確定注釈 */}
-      {savedPayslip?.finalized_at != null && (
+      {/* 自動ロック注釈 */}
+      {isFinalized && (
         <div style={{
           margin: '0 0 12px 0',
           padding: '10px 14px',
@@ -2383,7 +2253,7 @@ function PayslipPageContent() {
           color: '#713f12',
           lineHeight: '1.5',
         }}>
-          ※ この月は<strong>月次確定済み</strong>です。すべての金額・日別明細・控除内訳は確定時点の値で固定表示されています。
+          ※ この月は<strong>翌月5日を過ぎたため自動ロック中</strong>です。値は最後に再計算された時点で固定。修正が必要な場合は「再計算」ボタンを押してください。
         </div>
       )}
 
