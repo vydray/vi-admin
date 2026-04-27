@@ -2142,30 +2142,30 @@ function PayslipPageContent() {
             </button>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            {/* ステータス表示 */}
-            {savedPayslip ? (
-              <span style={{
+            {/* ステータス表示 (バッジ幅を揃えてボタン位置のシフトを防止) */}
+            <span
+              title={
+                isFinalized
+                  ? '翌月5日経過 — 自動ロック中。修正したい時は再計算ボタンを押してください'
+                  : savedPayslip
+                    ? '保存済み。毎日AM3時の自動計算で値が更新されます'
+                    : '未計算。毎日AM3時に自動計算されます'
+              }
+              style={{
+                display: 'inline-flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                minWidth: '80px',
                 padding: '6px 12px',
                 borderRadius: '20px',
                 fontSize: '12px',
                 fontWeight: '600',
-                backgroundColor: isFinalized ? '#dcfce7' : '#dbeafe',
-                color: isFinalized ? '#166534' : '#1d4ed8'
-              }}>
-                {isFinalized ? '確定済み' : '未確定'}
-              </span>
-            ) : (
-              <span style={{
-                padding: '6px 12px',
-                borderRadius: '20px',
-                fontSize: '12px',
-                fontWeight: '500',
-                backgroundColor: '#f3f4f6',
-                color: '#6b7280'
-              }}>
-                毎日AM3時に自動計算
-              </span>
-            )}
+                backgroundColor: isFinalized ? '#dcfce7' : (savedPayslip ? '#dbeafe' : '#f3f4f6'),
+                color: isFinalized ? '#166534' : (savedPayslip ? '#1d4ed8' : '#6b7280'),
+              }}
+            >
+              {isFinalized ? '確定済み' : (savedPayslip ? '未確定' : '未計算')}
+            </span>
             {/* 個別再計算ボタン */}
             <button
               onClick={recalculateOne}
