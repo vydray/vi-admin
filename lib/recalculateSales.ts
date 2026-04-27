@@ -1415,6 +1415,19 @@ export async function recalculateForDate(storeId: number, date: string): Promise
     }
 
     if (statsToUpsert.length > 0) {
+      // FK防御: costumes/wage_statusesに存在しないIDはnullに置換（attendance生データには影響しない）
+      for (const stat of statsToUpsert) {
+        if (stat.costume_id != null && !costumeMap.has(stat.costume_id)) {
+          stat.costume_id = null
+          stat.costume_bonus = 0
+          stat.total_hourly_wage = stat.base_hourly_wage + stat.special_day_bonus
+          stat.wage_amount = Math.round(stat.total_hourly_wage * stat.work_hours)
+        }
+        if (stat.wage_status_id != null && !wageStatusMap.has(stat.wage_status_id)) {
+          stat.wage_status_id = null
+        }
+      }
+
       const { error: upsertError } = await supabaseAdmin
         .from('cast_daily_stats')
         .upsert(statsToUpsert, {
