@@ -29,7 +29,7 @@ interface PayslipSummary {
   daily_payment: number
   withholding_tax: number
   other_deductions: number
-  status?: string | null
+  finalized_at?: string | null
 }
 
 export default function PayslipListPage() {
@@ -555,7 +555,7 @@ function PayslipListContent() {
                 {payslips.map(p => (
                   <tr key={p.cast_id} style={{ borderBottom: '1px solid #e2e8f0' }}>
                     <td style={tdStyle}>
-                      {p.status === 'finalized' && (
+                      {p.finalized_at != null && (
                         <span title="月次確定済み" style={{ color: '#16a34a', marginRight: '4px' }}>🔒</span>
                       )}
                       {p.cast_name}

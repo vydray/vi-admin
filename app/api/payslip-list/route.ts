@@ -45,7 +45,7 @@ interface PayslipSummary {
   other_deductions: number
   total_deduction: number
   net_payment: number
-  status?: string | null
+  finalized_at?: string | null
 }
 
 // 遅刻罰金計算
@@ -94,13 +94,13 @@ export async function POST(request: NextRequest) {
     // 保存済payslips(全フィールド)を取得 — 表示対象はpayslipレコードがあるキャストのみ
     const { data: payslipCasts } = await supabase
       .from('payslips')
-      .select('cast_id, status, work_days, total_hours, hourly_income, sales_back, product_back, fixed_amount, per_attendance_income, bonus_total, gross_total, daily_payment, withholding_tax, other_deductions, total_deduction, net_payment, casts(id, name, display_order)')
+      .select('cast_id, finalized_at, work_days, total_hours, hourly_income, sales_back, product_back, fixed_amount, per_attendance_income, bonus_total, gross_total, daily_payment, withholding_tax, other_deductions, total_deduction, net_payment, casts(id, name, display_order)')
       .eq('store_id', storeId)
       .eq('year_month', year_month)
 
     // 保存済payslip Map (cast_id -> saved values)
     const savedPayslipMap = new Map<number, {
-      status: string | null
+      finalized_at: string | null
       work_days: number | null
       total_hours: number | null
       hourly_income: number
@@ -118,7 +118,7 @@ export async function POST(request: NextRequest) {
     }>()
     for (const p of payslipCasts || []) {
       savedPayslipMap.set(p.cast_id, {
-        status: p.status ?? null,
+        finalized_at: p.finalized_at ?? null,
         work_days: p.work_days ?? null,
         total_hours: p.total_hours ?? null,
         hourly_income: p.hourly_income ?? 0,
@@ -587,7 +587,7 @@ export async function POST(request: NextRequest) {
           other_deductions: saved.other_deductions,
           total_deduction: saved.total_deduction,
           net_payment: saved.net_payment,
-          status: saved.status,
+          finalized_at: saved.finalized_at,
         })
       } else {
         payslips.push({

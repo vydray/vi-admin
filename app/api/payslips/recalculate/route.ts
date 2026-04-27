@@ -147,13 +147,13 @@ async function calculatePayslipForCast(
     // 確定済みかチェック + ログ用に現在の値を取得
     const { data: existingPayslip } = await supabaseAdmin
       .from('payslips')
-      .select('id, status, gross_total, hourly_income, sales_back, product_back, fixed_amount, bonus_total, total_deduction, net_payment')
+      .select('id, finalized_at, gross_total, hourly_income, sales_back, product_back, fixed_amount, bonus_total, total_deduction, net_payment')
       .eq('cast_id', cast.id)
       .eq('store_id', storeId)
       .eq('year_month', yearMonth)
       .single()
 
-    if (existingPayslip?.status === 'finalized') {
+    if (existingPayslip?.finalized_at) {
       return { success: true } // 確定済みはスキップ
     }
 

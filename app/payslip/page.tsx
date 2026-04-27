@@ -1320,7 +1320,7 @@ function PayslipPageContent() {
   const dynamicNetEarnings = dynamicGrossEarningsWithBonus - dynamicTotalDeduction
 
   // 月次確定済みなら保存値を採用(動的計算ドリフト防止)
-  const isFinalized = savedPayslip?.status === 'finalized'
+  const isFinalized = savedPayslip?.finalized_at != null
   const grossEarningsWithBonus = isFinalized && savedPayslip ? savedPayslip.gross_total : dynamicGrossEarningsWithBonus
   const totalDeduction = isFinalized && savedPayslip ? savedPayslip.total_deduction : dynamicTotalDeduction
   const netEarnings = isFinalized && savedPayslip ? savedPayslip.net_payment : dynamicNetEarnings
@@ -1530,7 +1530,7 @@ function PayslipPageContent() {
   // 日別明細データ（月次確定済みなら保存値から復元、それ以外は動的計算）
   const dailyDetails = useMemo(() => {
     // 確定済みの場合は保存値から復元（ドリフト防止）
-    if (savedPayslip?.status === 'finalized' && savedPayslip.daily_details && savedPayslip.daily_details.length > 0) {
+    if (savedPayslip?.finalized_at != null && savedPayslip.daily_details && savedPayslip.daily_details.length > 0) {
       return savedPayslip.daily_details.map(d => {
         const dayObj = new Date(d.date)
         const dateStr = d.date
@@ -2233,10 +2233,10 @@ function PayslipPageContent() {
                 borderRadius: '20px',
                 fontSize: '12px',
                 fontWeight: '600',
-                backgroundColor: savedPayslip.status === 'finalized' ? '#dcfce7' : '#dbeafe',
-                color: savedPayslip.status === 'finalized' ? '#166534' : '#1d4ed8'
+                backgroundColor: savedPayslip.finalized_at != null ? '#dcfce7' : '#dbeafe',
+                color: savedPayslip.finalized_at != null ? '#166534' : '#1d4ed8'
               }}>
-                {savedPayslip.status === 'finalized' ? '確定済み' : '自動保存済み'}
+                {savedPayslip.finalized_at != null ? '確定済み' : '未確定'}
               </span>
             ) : (
               <span style={{
@@ -2323,7 +2323,7 @@ function PayslipPageContent() {
               {exporting || csvExporting ? '出力中...' : 'エクスポート'}
             </button>
             {/* 月次確定 / 確定解除ボタン */}
-            {savedPayslip?.status === 'finalized' ? (
+            {savedPayslip?.finalized_at != null ? (
               <button
                 onClick={() => {
                   if (confirm('確定解除すると再編集可能になります。よろしいですか？')) {
@@ -2372,7 +2372,7 @@ function PayslipPageContent() {
         </div>
 
       {/* 月次確定注釈 */}
-      {savedPayslip?.status === 'finalized' && (
+      {savedPayslip?.finalized_at != null && (
         <div style={{
           margin: '0 0 12px 0',
           padding: '10px 14px',

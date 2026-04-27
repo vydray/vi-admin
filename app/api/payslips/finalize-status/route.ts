@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
 
   const { data, error } = await supabaseAdmin
     .from('payslips')
-    .select('status')
+    .select('finalized_at')
     .eq('store_id', Number(storeId))
     .eq('year_month', yearMonth)
 
@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
   }
 
   const total = data?.length ?? 0
-  const finalized = (data || []).filter(p => p.status === 'finalized').length
+  const finalized = (data || []).filter(p => p.finalized_at != null).length
 
   return NextResponse.json({ total, finalized })
 }
