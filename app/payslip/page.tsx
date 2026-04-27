@@ -1674,99 +1674,62 @@ function PayslipPageContent() {
   }, [dailySalesData])
 
   // 報酬明細を保存
+  // 月次確定: 再計算APIで全フィールドを保存→status='finalized'に切り替えるだけ
+  // (画面で再計算した値をそのまま保存する旧仕様は廃止。値の保存ロジックは再計算API側に一元化)
   const savePayslip = useCallback(async (finalize: boolean = false) => {
     if (!selectedCastId) return
 
     setSaving(true)
     try {
       const yearMonth = format(selectedMonth, 'yyyy-MM')
-      const workDays = dailyDetails.filter(d => d.workHours > 0).length
-      const averageHourlyWage = summary.useWageData && summary.totalWorkHours > 0
-        ? Math.round(summary.totalWageAmount / summary.totalWorkHours)
-        : 0
 
-      // 日別詳細データ
-      const dailyDetailsData = dailyDetails
-        .filter(d => d.workHours > 0)
-        .map(d => ({
-          date: d.date,
-          hours: summary.useWageData ? d.workHours : 0,
-          hourly_wage: summary.useWageData && d.workHours > 0 ? Math.round(d.wageAmount / d.workHours) : 0,
-          hourly_income: summary.useWageData ? d.wageAmount : 0,
-          sales: d.sales,
-          back: d.productBack,
-          daily_payment: d.dailyPayment,
-          work_time_range: d.workTimeRange,
-          sales_item_based: d.salesItemBased,
-          sales_receipt_based: d.salesReceiptBased,
-          sales_service_charge: d.salesServiceCharge,
-          self_back: d.selfBack,
-          help_back: d.helpBack,
-          late_minutes: d.lateMinutes,
-        }))
-
-      // 控除詳細データ
-      const deductionDetailsData = deductions.map(d => ({
-        name: d.name,
-        type: d.detail?.includes('%') ? 'percentage' : 'other',
-        count: d.count,
-        percentage: d.detail?.includes('%') ? parseFloat(d.detail) : undefined,
-        amount: d.amount
-      }))
-
-      // 控除内訳を控除カラム別に分解（保存値ベース描画のため）
-      const dailyPaymentForSave = deductions.find(d => d.name === '日払い')?.amount ?? 0
-      const withholdingTaxForSave = deductions.find(d => d.name === '源泉徴収')?.amount ?? 0
-      const otherDeductionsForSave = deductions
-        .filter(d => d.name !== '日払い' && d.name !== '源泉徴収')
-        .reduce((sum, d) => sum + d.amount, 0)
-
-      const payslipData = {
-        cast_id: selectedCastId,
-        store_id: storeId,
-        year_month: yearMonth,
-        status: finalize ? 'finalized' : 'draft',
-        work_days: workDays,
-        total_hours: summary.useWageData ? summary.totalWorkHours : 0,
-        average_hourly_wage: averageHourlyWage,
-        hourly_income: summary.useWageData ? summary.totalWageAmount : 0,
-        sales_back: summary.salesBack,
-        product_back: summary.totalProductBack,
-        fixed_amount: summary.fixedAmount,
-        per_attendance_income: summary.perAttendanceIncome,
-        gross_total: grossEarningsWithBonus,
-        daily_payment: dailyPaymentForSave,
-        withholding_tax: withholdingTaxForSave,
-        other_deductions: otherDeductionsForSave,
-        total_deduction: totalDeduction,
-        net_payment: netEarnings,
-        bonus_total: savedPayslip?.bonus_total ?? 0,
-        bonus_details: savedPayslip?.bonus_details ?? null,
-        daily_details: dailyDetailsData,
-        product_back_details: productBackDetailsData,
-        deduction_details: deductionDetailsData,
-        finalized_at: finalize ? new Date().toISOString() : null
-      }
-
-      const { data, error } = await supabase
-        .from('payslips')
-        .upsert(payslipData, {
-          onConflict: 'cast_id,store_id,year_month'
+      // 1. 再計算APIで最新値を保存(status='draft')
+      const recalcRes = await fetch('/api/payslips/recalculate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          store_id: storeId,
+          year_month: yearMonth,
+          cast_id: selectedCastId
         })
-        .select()
-        .single()
-
-      if (error) {
-        console.error('報酬明細保存エラー:', error)
-        alert('保存に失敗しました')
-      } else {
-        setSavedPayslip(data as SavedPayslip)
-        alert(finalize ? '月次確定しました' : '保存しました')
+      })
+      const recalcResult = await recalcRes.json()
+      if (!recalcResult.success) {
+        console.error('再計算失敗:', recalcResult.error)
+        alert('再計算に失敗しました')
+        return
       }
+
+      // 2. finalize時のみstatusを'finalized'に切り替え
+      if (finalize) {
+        const { data, error } = await supabase
+          .from('payslips')
+          .update({
+            status: 'finalized',
+            finalized_at: new Date().toISOString(),
+          })
+          .eq('cast_id', selectedCastId)
+          .eq('store_id', storeId)
+          .eq('year_month', yearMonth)
+          .select()
+          .single()
+
+        if (error) {
+          console.error('月次確定エラー:', error)
+          alert('月次確定に失敗しました')
+          return
+        }
+        setSavedPayslip(data as SavedPayslip)
+      } else {
+        // draftのまま再計算結果を再ロード
+        await loadPayslip(selectedCastId, selectedMonth)
+      }
+
+      alert(finalize ? '月次確定しました' : '保存しました')
     } finally {
       setSaving(false)
     }
-  }, [selectedCastId, selectedMonth, storeId, summary, dailyDetails, deductions, totalDeduction, netEarnings, productBackDetailsData])
+  }, [selectedCastId, selectedMonth, storeId, loadPayslip])
 
   // 確定解除
   const unfinalizePayslip = useCallback(async () => {
