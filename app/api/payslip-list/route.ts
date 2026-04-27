@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
     // 保存済payslips(全フィールド)を取得 — 表示対象はpayslipレコードがあるキャストのみ
     const { data: payslipCasts } = await supabase
       .from('payslips')
-      .select('cast_id, status, work_days, total_hours, hourly_income, sales_back, product_back, fixed_amount, per_attendance_income, bonus_total, gross_total, daily_payment, withholding_tax, other_deductions, total_deduction, net_payment, casts(id, name)')
+      .select('cast_id, status, work_days, total_hours, hourly_income, sales_back, product_back, fixed_amount, per_attendance_income, bonus_total, gross_total, daily_payment, withholding_tax, other_deductions, total_deduction, net_payment, casts(id, name, display_order)')
       .eq('store_id', storeId)
       .eq('year_month', year_month)
 
@@ -138,9 +138,9 @@ export async function POST(request: NextRequest) {
 
     // 保存済payslipのあるキャストのみ表示対象とする
     // (動的計算フォールバックは廃止 — 「保存値=表示値」の単純モデル)
-    const castMap = new Map<number, { id: number; name: string }>()
+    const castMap = new Map<number, { id: number; name: string; display_order: number | null }>()
     for (const p of payslipCasts || []) {
-      const c = (p as Record<string, unknown>).casts as { id: number; name: string } | null
+      const c = (p as Record<string, unknown>).casts as { id: number; name: string; display_order: number | null } | null
       if (c) castMap.set(c.id, c)
     }
     const casts = Array.from(castMap.values())
@@ -610,6 +610,15 @@ export async function POST(request: NextRequest) {
         })
       }
     }
+
+    payslips.sort((a, b) => {
+      const ao = castMap.get(a.cast_id)?.display_order
+      const bo = castMap.get(b.cast_id)?.display_order
+      const av = ao ?? Number.MAX_SAFE_INTEGER
+      const bv = bo ?? Number.MAX_SAFE_INTEGER
+      if (av !== bv) return av - bv
+      return a.cast_name.localeCompare(b.cast_name, 'ja')
+    })
 
     return NextResponse.json({
       success: true,
