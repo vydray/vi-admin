@@ -1131,7 +1131,8 @@ async function calculatePayslipForCast(
           hourly_income: stats?.wage_amount || 0,
           sales: sales?.totalSales || 0,
           back: sales?.productBack || 0,
-          daily_payment: attendance?.daily_payment || 0
+          daily_payment: attendance?.daily_payment || 0,
+          late_minutes: attendance?.late_minutes || 0,
         }
       })
       .filter(d => d.hours > 0)

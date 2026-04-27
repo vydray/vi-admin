@@ -183,6 +183,14 @@ interface SavedPayslip {
     sales: number
     back: number
     daily_payment: number
+    // 拡張フィールド（過去データには無い場合あり）
+    work_time_range?: string
+    sales_item_based?: number
+    sales_receipt_based?: number
+    sales_service_charge?: number
+    self_back?: number
+    help_back?: number
+    late_minutes?: number
   }>
   product_back_details: Array<{
     product_name: string
@@ -1332,6 +1340,22 @@ function PayslipPageContent() {
   const displayWithholdingTax = isFinalized && savedPayslip ? savedPayslip.withholding_tax : dynamicWithholdingTax
   const displayOtherDeductions = isFinalized && savedPayslip ? savedPayslip.other_deductions : (dynamicTotalDeduction - dynamicDailyPayment - dynamicWithholdingTax)
 
+  // 控除内訳: 確定時は保存値から復元（ドリフト防止）
+  const displayDeductions: DeductionResult[] = useMemo(() => {
+    if (isFinalized && savedPayslip?.deduction_details && savedPayslip.deduction_details.length > 0) {
+      return savedPayslip.deduction_details.map(d => {
+        let detail: string | undefined
+        if (d.type === 'percentage' && d.percentage != null) {
+          detail = `${d.percentage}%`
+        } else if (d.count != null && d.count > 0) {
+          detail = `${d.count}件`
+        }
+        return { name: d.name, amount: d.amount, count: d.count, detail }
+      })
+    }
+    return deductions
+  }, [isFinalized, savedPayslip, deductions])
+
   // 報酬形態ごとの売上集計方法を取得（異なる場合のみ複数表示）
   const salesAggregationByType = useMemo(() => {
     if (!compensationSettings?.compensation_types) return []
@@ -1499,8 +1523,32 @@ function PayslipPageContent() {
     })
   }, [allEnabledCompensationTypes, compensationTypeColors, summary, dailySalesData, specialDailySales])
 
-  // 日別明細データ
+  // 日別明細データ（月次確定済みなら保存値から復元、それ以外は動的計算）
   const dailyDetails = useMemo(() => {
+    // 確定済みの場合は保存値から復元（ドリフト防止）
+    if (savedPayslip?.status === 'finalized' && savedPayslip.daily_details && savedPayslip.daily_details.length > 0) {
+      return savedPayslip.daily_details.map(d => {
+        const dayObj = new Date(d.date)
+        return {
+          date: d.date,
+          dayOfMonth: format(dayObj, 'd'),
+          dayOfWeek: format(dayObj, 'E', { locale: ja }),
+          workHours: d.hours,
+          workTimeRange: d.work_time_range ?? '',
+          wageAmount: d.hourly_income,
+          sales: d.sales,
+          salesItemBased: d.sales_item_based ?? d.sales,
+          salesReceiptBased: d.sales_receipt_based ?? d.sales,
+          salesServiceCharge: d.sales_service_charge ?? 0,
+          productBack: d.back,
+          selfBack: d.self_back ?? d.back,
+          helpBack: d.help_back ?? 0,
+          dailyPayment: d.daily_payment,
+          lateMinutes: d.late_minutes ?? 0,
+        }
+      })
+    }
+
     const days = eachDayOfInterval({
       start: startOfMonth(selectedMonth),
       end: endOfMonth(selectedMonth)
@@ -1556,7 +1604,7 @@ function PayslipPageContent() {
         lateMinutes: attendance?.late_minutes || 0
       }
     }).filter(d => d.workHours > 0 || d.dailyPayment > 0 || d.lateMinutes > 0 || d.sales > 0 || d.salesItemBased > 0 || d.salesReceiptBased > 0 || d.salesServiceCharge > 0)
-  }, [selectedMonth, dailyStats, attendanceData, dailySalesData, castDailyItems, helpDailyItems, actualHourlyWage, specialDailySales])
+  }, [savedPayslip, selectedMonth, dailyStats, attendanceData, dailySalesData, castDailyItems, helpDailyItems, actualHourlyWage, specialDailySales])
 
   const selectedCast = casts.find(c => c.id === selectedCastId)
 
@@ -1623,7 +1671,14 @@ function PayslipPageContent() {
           hourly_income: summary.useWageData ? d.wageAmount : 0,
           sales: d.sales,
           back: d.productBack,
-          daily_payment: d.dailyPayment
+          daily_payment: d.dailyPayment,
+          work_time_range: d.workTimeRange,
+          sales_item_based: d.salesItemBased,
+          sales_receipt_based: d.salesReceiptBased,
+          sales_service_charge: d.salesServiceCharge,
+          self_back: d.selfBack,
+          help_back: d.helpBack,
+          late_minutes: d.lateMinutes,
         }))
 
       // 控除詳細データ
@@ -2328,7 +2383,7 @@ function PayslipPageContent() {
           color: '#713f12',
           lineHeight: '1.5',
         }}>
-          ※ この月は<strong>月次確定済み</strong>です。総支給/控除合計/差引支給は確定時の値で固定されています。日別明細・内訳項目は最新設定での再計算表示のため、合計額と一致しない場合があります。
+          ※ この月は<strong>月次確定済み</strong>です。すべての金額・日別明細・控除内訳は確定時点の値で固定表示されています。
         </div>
       )}
 
@@ -2473,9 +2528,9 @@ function PayslipPageContent() {
             {/* 控除内訳 */}
             <div style={{ marginTop: '20px' }}>
               <h2 style={{ ...styles.sectionTitle, marginBottom: '12px' }}>控除内訳</h2>
-              {deductions.length > 0 ? (
+              {displayDeductions.length > 0 ? (
                 <div style={styles.deductionList}>
-                  {deductions.map((d, i) => (
+                  {displayDeductions.map((d, i) => (
                     <div key={i} style={styles.deductionItem}>
                       <div style={styles.deductionName}>
                         {d.name}
