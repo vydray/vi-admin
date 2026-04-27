@@ -110,7 +110,7 @@ export async function GET(request: NextRequest) {
       // 現在のpayslip値を取得
       const { data } = await supabaseAdmin
         .from('payslips')
-        .select('cast_id, gross_total, hourly_income, sales_back, product_back, fixed_amount, bonus_total, total_deduction, net_payment, casts(name)')
+        .select('cast_id, gross_total, hourly_income, sales_back, product_back, fixed_amount, per_attendance_income, bonus_total, total_deduction, daily_payment, withholding_tax, other_deductions, net_payment, casts(name)')
         .eq('store_id', Number(storeId))
         .eq('year_month', yearMonth)
       for (const row of data || []) {
@@ -124,8 +124,12 @@ export async function GET(request: NextRequest) {
             sales_back: row.sales_back ?? 0,
             product_back: row.product_back ?? 0,
             fixed_amount: row.fixed_amount ?? 0,
+            per_attendance_income: row.per_attendance_income ?? 0,
             bonus_total: row.bonus_total ?? 0,
             total_deduction: row.total_deduction ?? 0,
+            daily_payment: row.daily_payment ?? 0,
+            withholding_tax: row.withholding_tax ?? 0,
+            other_deductions: row.other_deductions ?? 0,
             net_payment: row.net_payment ?? 0,
           }
         }
@@ -165,7 +169,8 @@ export async function GET(request: NextRequest) {
     // 値ゼロのテンプレート(From/To片方しか無いキャスト用)
     const emptyValues: Record<string, number> = {
       hourly_income: 0, sales_back: 0, product_back: 0,
-      fixed_amount: 0, bonus_total: 0, gross_total: 0,
+      fixed_amount: 0, per_attendance_income: 0, bonus_total: 0, gross_total: 0,
+      daily_payment: 0, withholding_tax: 0, other_deductions: 0,
       total_deduction: 0, net_payment: 0,
     }
 
