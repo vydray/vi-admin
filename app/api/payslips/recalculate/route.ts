@@ -1166,6 +1166,18 @@ async function calculatePayslipForCast(
     const workDays = dailyDetails.filter(d => d.hours > 0).length
     const averageHourlyWage = totalWorkHours > 0 ? Math.round(totalWageAmount / totalWorkHours) : 0
 
+    // 控除内訳から表示用カラムへの分解(報酬明細一覧でカラム別に表示するため固定保存)
+    const dailyPaymentAmount = deductions
+      .filter(d => d.type === 'daily_payment')
+      .reduce((sum, d) => sum + d.amount, 0)
+    const withholdingTaxAmount = deductions
+      .filter(d => d.type === 'percentage')
+      .reduce((sum, d) => sum + d.amount, 0)
+    const otherDeductionsAmount = totalDeduction - dailyPaymentAmount - withholdingTaxAmount
+
+    // 出勤報酬は採用された報酬形態の per_attendance_amount × 出勤日数
+    const perAttendanceIncomeAmount = selectedResult?.perAttendanceIncome ?? 0
+
     // payslipsテーブルに保存
     const payslipData = {
       cast_id: cast.id,
@@ -1179,7 +1191,11 @@ async function calculatePayslipForCast(
       sales_back: salesBack,
       product_back: productBack,
       fixed_amount: fixedAmount,
+      per_attendance_income: perAttendanceIncomeAmount,
       gross_total: grossEarnings,
+      daily_payment: dailyPaymentAmount,
+      withholding_tax: withholdingTaxAmount,
+      other_deductions: otherDeductionsAmount,
       total_deduction: totalDeduction,
       net_payment: netEarnings,
       daily_details: dailyDetails,

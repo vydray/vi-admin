@@ -168,7 +168,11 @@ interface SavedPayslip {
   sales_back: number
   product_back: number
   fixed_amount: number
+  per_attendance_income: number
   gross_total: number
+  daily_payment: number
+  withholding_tax: number
+  other_deductions: number
   total_deduction: number
   net_payment: number
   daily_details: Array<{
@@ -1313,6 +1317,21 @@ function PayslipPageContent() {
   const totalDeduction = isFinalized && savedPayslip ? savedPayslip.total_deduction : dynamicTotalDeduction
   const netEarnings = isFinalized && savedPayslip ? savedPayslip.net_payment : dynamicNetEarnings
 
+  // 内訳値も確定時は保存値で固定(報酬内訳5項目+出勤報酬)
+  const displayHourlyIncome = isFinalized && savedPayslip ? savedPayslip.hourly_income : summary.totalWageAmount
+  const displaySalesBack = isFinalized && savedPayslip ? savedPayslip.sales_back : summary.salesBack
+  const displayProductBack = isFinalized && savedPayslip ? savedPayslip.product_back : summary.totalProductBack
+  const displayFixedAmount = isFinalized && savedPayslip ? savedPayslip.fixed_amount : summary.fixedAmount
+  const displayPerAttendanceIncome = isFinalized && savedPayslip ? savedPayslip.per_attendance_income : summary.perAttendanceIncome
+  const displayWorkDays = isFinalized && savedPayslip ? savedPayslip.work_days : summary.workDays
+  const displayTotalWorkHours = isFinalized && savedPayslip ? savedPayslip.total_hours : summary.totalWorkHours
+  const displayAverageHourlyWage = isFinalized && savedPayslip ? savedPayslip.average_hourly_wage : (summary.totalWorkHours > 0 ? Math.round(summary.totalWageAmount / summary.totalWorkHours) : 0)
+  const dynamicDailyPayment = deductions.find(d => d.name === '日払い')?.amount ?? 0
+  const dynamicWithholdingTax = deductions.find(d => d.name === '源泉徴収')?.amount ?? 0
+  const displayDailyPayment = isFinalized && savedPayslip ? savedPayslip.daily_payment : dynamicDailyPayment
+  const displayWithholdingTax = isFinalized && savedPayslip ? savedPayslip.withholding_tax : dynamicWithholdingTax
+  const displayOtherDeductions = isFinalized && savedPayslip ? savedPayslip.other_deductions : (dynamicTotalDeduction - dynamicDailyPayment - dynamicWithholdingTax)
+
   // 報酬形態ごとの売上集計方法を取得（異なる場合のみ複数表示）
   const salesAggregationByType = useMemo(() => {
     if (!compensationSettings?.compensation_types) return []
@@ -2297,6 +2316,22 @@ function PayslipPageContent() {
           </div>
         </div>
 
+      {/* 月次確定注釈 */}
+      {savedPayslip?.status === 'finalized' && (
+        <div style={{
+          margin: '0 0 12px 0',
+          padding: '10px 14px',
+          backgroundColor: '#fef9c3',
+          border: '1px solid #fde047',
+          borderRadius: '8px',
+          fontSize: '12px',
+          color: '#713f12',
+          lineHeight: '1.5',
+        }}>
+          ※ この月は<strong>月次確定済み</strong>です。総支給/控除合計/差引支給は確定時の値で固定されています。日別明細・内訳項目は最新設定での再計算表示のため、合計額と一致しない場合があります。
+        </div>
+      )}
+
       {loading ? (
         <LoadingSpinner />
       ) : (
@@ -2310,14 +2345,14 @@ function PayslipPageContent() {
                 onClick={() => setShowDailyWageModal(true)}
               >
                 <div style={styles.summaryLabel}>出勤日数 ▶</div>
-                <div style={styles.summaryValue}>{dailyDetails.filter(d => d.workHours > 0).length}日</div>
+                <div style={styles.summaryValue}>{displayWorkDays}日</div>
               </div>
               <div
                 style={{ ...styles.summaryCard, cursor: 'pointer' }}
                 onClick={() => setShowDailyWageModal(true)}
               >
                 <div style={styles.summaryLabel}>勤務時間 ▶</div>
-                <div style={styles.summaryValue}>{summary.totalWorkHours}h</div>
+                <div style={styles.summaryValue}>{displayTotalWorkHours}h</div>
               </div>
               <div
                 style={{ ...styles.summaryCard, cursor: 'pointer' }}
@@ -2325,8 +2360,8 @@ function PayslipPageContent() {
               >
                 <div style={styles.summaryLabel}>平均時給 ▶</div>
                 <div style={styles.summaryValue}>
-                  {summary.totalWorkHours > 0
-                    ? currencyFormatter.format(Math.round(summary.totalWageAmount / summary.totalWorkHours))
+                  {displayAverageHourlyWage > 0
+                    ? currencyFormatter.format(displayAverageHourlyWage)
                     : '—'}
                 </div>
               </div>

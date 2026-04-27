@@ -29,6 +29,7 @@ interface PayslipSummary {
   daily_payment: number
   withholding_tax: number
   other_deductions: number
+  status?: string | null
 }
 
 export default function PayslipListPage() {
@@ -553,7 +554,12 @@ function PayslipListContent() {
               <tbody>
                 {payslips.map(p => (
                   <tr key={p.cast_id} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                    <td style={tdStyle}>{p.cast_name}</td>
+                    <td style={tdStyle}>
+                      {p.status === 'finalized' && (
+                        <span title="月次確定済み" style={{ color: '#16a34a', marginRight: '4px' }}>🔒</span>
+                      )}
+                      {p.cast_name}
+                    </td>
                     <td style={tdStyleNum}>{p.work_days}日</td>
                     <td style={tdStyleNum}>{p.total_hours.toFixed(1)}h</td>
                     <td style={tdStyleNum}>{formatCurrency(p.hourly_income)}</td>

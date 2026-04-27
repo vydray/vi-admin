@@ -45,6 +45,7 @@ interface PayslipSummary {
   other_deductions: number
   total_deduction: number
   net_payment: number
+  status?: string | null
 }
 
 // 遅刻罰金計算
@@ -93,7 +94,7 @@ export async function POST(request: NextRequest) {
     // 保存済payslips(全フィールド)を取得 — 表示対象はpayslipレコードがあるキャストのみ
     const { data: payslipCasts } = await supabase
       .from('payslips')
-      .select('cast_id, status, work_days, total_hours, hourly_income, sales_back, product_back, fixed_amount, bonus_total, gross_total, total_deduction, net_payment, casts(id, name)')
+      .select('cast_id, status, work_days, total_hours, hourly_income, sales_back, product_back, fixed_amount, per_attendance_income, bonus_total, gross_total, daily_payment, withholding_tax, other_deductions, total_deduction, net_payment, casts(id, name)')
       .eq('store_id', storeId)
       .eq('year_month', year_month)
 
@@ -106,8 +107,12 @@ export async function POST(request: NextRequest) {
       sales_back: number
       product_back: number
       fixed_amount: number
+      per_attendance_income: number
       bonus_total: number
       gross_total: number
+      daily_payment: number
+      withholding_tax: number
+      other_deductions: number
       total_deduction: number
       net_payment: number
     }>()
@@ -120,8 +125,12 @@ export async function POST(request: NextRequest) {
         sales_back: p.sales_back ?? 0,
         product_back: p.product_back ?? 0,
         fixed_amount: p.fixed_amount ?? 0,
+        per_attendance_income: p.per_attendance_income ?? 0,
         bonus_total: p.bonus_total ?? 0,
         gross_total: p.gross_total ?? 0,
+        daily_payment: p.daily_payment ?? 0,
+        withholding_tax: p.withholding_tax ?? 0,
+        other_deductions: p.other_deductions ?? 0,
         total_deduction: p.total_deduction ?? 0,
         net_payment: p.net_payment ?? 0,
       })
@@ -570,14 +579,15 @@ export async function POST(request: NextRequest) {
           sales_back: saved.sales_back,
           product_back: saved.product_back,
           fixed_amount: saved.fixed_amount,
-          per_attendance_income: perAttendanceIncome,
+          per_attendance_income: saved.per_attendance_income,
           bonus_total: saved.bonus_total,
           gross_total: saved.gross_total,
-          daily_payment: dailyPayment,
-          withholding_tax: withholdingTax,
-          other_deductions: otherDeductions,
+          daily_payment: saved.daily_payment,
+          withholding_tax: saved.withholding_tax,
+          other_deductions: saved.other_deductions,
           total_deduction: saved.total_deduction,
           net_payment: saved.net_payment,
+          status: saved.status,
         })
       } else {
         payslips.push({
