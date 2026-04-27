@@ -18,14 +18,20 @@ const FIELD_LABELS: Record<keyof PayslipRecalculationLogValues, string> = {
   sales_back: '売上バック',
   product_back: '商品バック',
   fixed_amount: '固定額',
+  per_attendance_income: '出勤報酬',
   bonus_total: '賞与',
-  total_deduction: '控除合計',
-  net_payment: '差引支給額',
+  total_deduction: '控除計',
+  daily_payment: '日払い',
+  withholding_tax: '源泉徴収',
+  other_deductions: 'その他',
+  net_payment: '残り支給',
 }
 
 const FIELD_ORDER: (keyof PayslipRecalculationLogValues)[] = [
-  'hourly_income', 'sales_back', 'product_back', 'fixed_amount', 'bonus_total',
-  'gross_total', 'total_deduction', 'net_payment',
+  'hourly_income', 'sales_back', 'product_back', 'fixed_amount', 'per_attendance_income', 'bonus_total',
+  'gross_total',
+  'daily_payment', 'withholding_tax', 'other_deductions', 'total_deduction',
+  'net_payment',
 ]
 
 function formatNumber(n: number): string {

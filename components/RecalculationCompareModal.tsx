@@ -32,10 +32,14 @@ const FIELDS: { key: keyof PayslipRecalculationLogValues; label: string }[] = [
   { key: 'sales_back', label: '売上バック' },
   { key: 'product_back', label: '商品バック' },
   { key: 'fixed_amount', label: '固定額' },
+  { key: 'per_attendance_income', label: '出勤報酬' },
   { key: 'bonus_total', label: '賞与' },
   { key: 'gross_total', label: '総支給額' },
-  { key: 'total_deduction', label: '控除合計' },
-  { key: 'net_payment', label: '差引支給額' },
+  { key: 'daily_payment', label: '日払い' },
+  { key: 'withholding_tax', label: '源泉徴収' },
+  { key: 'other_deductions', label: 'その他' },
+  { key: 'total_deduction', label: '控除計' },
+  { key: 'net_payment', label: '残り支給' },
 ]
 
 function fmt(n: number) { return n.toLocaleString() }
@@ -238,6 +242,7 @@ export default function RecalculationCompareModal({ isOpen, onClose, storeId, ye
       { key: 'sales_back', label: '売上バック' },
       { key: 'product_back', label: '商品バック' },
       { key: 'fixed_amount', label: '固定額' },
+      { key: 'per_attendance_income', label: '出勤報酬' },
       { key: 'bonus_total', label: '賞与' },
     ]
     const storeName = storeId === 1 ? 'Memorable' : 'MistressMirage'

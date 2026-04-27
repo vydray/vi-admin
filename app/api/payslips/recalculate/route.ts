@@ -7,7 +7,7 @@ import { calculateCastSalesByPublishedMethod } from '@/lib/salesCalculation'
 import { isYearMonthLocked } from '@/lib/payslipLockDate'
 import type { SalesSettings } from '@/types/database'
 
-const TRACKED_FIELDS = ['gross_total', 'hourly_income', 'sales_back', 'product_back', 'fixed_amount', 'bonus_total', 'total_deduction', 'net_payment'] as const
+const TRACKED_FIELDS = ['gross_total', 'hourly_income', 'sales_back', 'product_back', 'fixed_amount', 'per_attendance_income', 'bonus_total', 'total_deduction', 'daily_payment', 'withholding_tax', 'other_deductions', 'net_payment'] as const
 
 // Service Role Key でRLSをバイパス
 const supabaseAdmin = createClient(
@@ -148,7 +148,7 @@ async function calculatePayslipForCast(
     // ログ用に現在の値を取得
     const { data: existingPayslip } = await supabaseAdmin
       .from('payslips')
-      .select('id, gross_total, hourly_income, sales_back, product_back, fixed_amount, bonus_total, total_deduction, net_payment')
+      .select('id, gross_total, hourly_income, sales_back, product_back, fixed_amount, per_attendance_income, bonus_total, total_deduction, daily_payment, withholding_tax, other_deductions, net_payment')
       .eq('cast_id', cast.id)
       .eq('store_id', storeId)
       .eq('year_month', yearMonth)

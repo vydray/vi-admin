@@ -1203,8 +1203,12 @@ export interface PayslipRecalculationLogValues {
   sales_back: number
   product_back: number
   fixed_amount: number
+  per_attendance_income: number
   bonus_total: number
   total_deduction: number
+  daily_payment: number
+  withholding_tax: number
+  other_deductions: number
   net_payment: number
 }
 
