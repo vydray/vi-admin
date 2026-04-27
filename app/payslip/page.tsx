@@ -216,6 +216,19 @@ interface SavedPayslip {
     amount: number
     detail: string
   }> | null
+  compensation_breakdown?: Array<{
+    id: string
+    name: string
+    use_wage: boolean
+    hourly_income: number
+    sales_back: number
+    product_back: number
+    fixed_amount: number
+    per_attendance_income: number
+    total_sales: number
+    gross_earnings: number
+    is_selected: boolean
+  }> | null
   finalized_at: string | null
   created_at: string
   updated_at: string
@@ -1449,6 +1462,26 @@ function PayslipPageContent() {
 
   // 報酬形態ごとの内訳計算（比較表示用）
   const compensationTypeBreakdowns = useMemo(() => {
+    // ロック後 + 保存値あり → compensation_breakdown JSONB から復元
+    if (isYearMonthLocked(format(selectedMonth, 'yyyy-MM')) && savedPayslip?.compensation_breakdown && savedPayslip.compensation_breakdown.length > 0) {
+      return savedPayslip.compensation_breakdown.map(cb => {
+        const color = compensationTypeColors.get(cb.id)
+        const items: { label: string; amount: number }[] = []
+        if (cb.use_wage && cb.hourly_income > 0) items.push({ label: '時間報酬', amount: cb.hourly_income })
+        if (cb.sales_back > 0) items.push({ label: '売上バック', amount: cb.sales_back })
+        if (cb.product_back > 0) items.push({ label: '商品バック', amount: cb.product_back })
+        if (cb.fixed_amount > 0) items.push({ label: '固定額', amount: cb.fixed_amount })
+        if (cb.per_attendance_income > 0) items.push({ label: '出勤報酬', amount: cb.per_attendance_income })
+        return {
+          id: cb.id,
+          name: cb.name,
+          color,
+          items,
+          total: cb.gross_earnings,
+        }
+      })
+    }
+
     // 各報酬形態ごとに独自の売上バックを計算するため、売上データを集計
     let totalSalesItemBased = 0
     let totalSalesReceiptBased = 0
@@ -1527,7 +1560,7 @@ function PayslipPageContent() {
         total
       }
     })
-  }, [allEnabledCompensationTypes, compensationTypeColors, summary, dailySalesData, specialDailySales])
+  }, [allEnabledCompensationTypes, compensationTypeColors, summary, dailySalesData, specialDailySales, savedPayslip, selectedMonth])
 
   // 日別明細データ（月次確定済みなら保存値から復元、それ以外は動的計算）
   const dailyDetails = useMemo(() => {

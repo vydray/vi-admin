@@ -1217,6 +1217,21 @@ async function calculatePayslipForCast(
     // 出勤報酬は採用された報酬形態の per_attendance_amount × 出勤日数
     const perAttendanceIncomeAmount = selectedResult?.perAttendanceIncome ?? 0
 
+    // 全報酬形態の計算結果を保存(ロック後の比較表示用)
+    const compensationBreakdown = allResults.map(r => ({
+      id: r.compType.id,
+      name: r.compType.name,
+      use_wage: r.useWage,
+      hourly_income: r.useWage ? totalWageAmount : 0,
+      sales_back: r.salesBack,
+      product_back: r.productBack,
+      fixed_amount: r.fixedAmount,
+      per_attendance_income: r.perAttendanceIncome,
+      total_sales: r.totalSales,
+      gross_earnings: r.grossEarnings,
+      is_selected: selectedResult?.compType.id === r.compType.id,
+    }))
+
     // payslipsテーブルに保存
     const payslipData = {
       cast_id: cast.id,
@@ -1241,7 +1256,8 @@ async function calculatePayslipForCast(
       product_back_details: productBackDetails,
       deduction_details: deductions,
       bonus_total: bonusTotal,
-      bonus_details: bonusDetails
+      bonus_details: bonusDetails,
+      compensation_breakdown: compensationBreakdown,
     }
 
     const { error } = await supabaseAdmin
