@@ -1340,6 +1340,10 @@ function PayslipPageContent() {
   const displayWithholdingTax = isFinalized && savedPayslip ? savedPayslip.withholding_tax : dynamicWithholdingTax
   const displayOtherDeductions = isFinalized && savedPayslip ? savedPayslip.other_deductions : (dynamicTotalDeduction - dynamicDailyPayment - dynamicWithholdingTax)
 
+  // 保存値モード判定（バッジ表示用）
+  const dailyDetailsFromSaved = isFinalized && !!savedPayslip?.daily_details && savedPayslip.daily_details.length > 0
+  const deductionsFromSaved = isFinalized && !!savedPayslip?.deduction_details && savedPayslip.deduction_details.length > 0
+
   // 控除内訳: 確定時は保存値から復元（ドリフト防止）
   const displayDeductions: DeductionResult[] = useMemo(() => {
     if (isFinalized && savedPayslip?.deduction_details && savedPayslip.deduction_details.length > 0) {
@@ -2506,7 +2510,10 @@ function PayslipPageContent() {
             {/* 賞与内訳 */}
             {savedPayslip?.bonus_details && savedPayslip.bonus_details.length > 0 && (
               <div style={{ marginTop: '20px' }}>
-                <h2 style={{ ...styles.sectionTitle, marginBottom: '12px' }}>賞与内訳</h2>
+                <h2 style={{ ...styles.sectionTitle, marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  賞与内訳
+                  <span style={savedBadgeStyle}>🔒 保存値</span>
+                </h2>
                 <div style={styles.deductionList}>
                   {savedPayslip.bonus_details.map((b, i) => (
                     <div key={i} style={styles.deductionItem}>
@@ -2527,7 +2534,10 @@ function PayslipPageContent() {
 
             {/* 控除内訳 */}
             <div style={{ marginTop: '20px' }}>
-              <h2 style={{ ...styles.sectionTitle, marginBottom: '12px' }}>控除内訳</h2>
+              <h2 style={{ ...styles.sectionTitle, marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                控除内訳
+                {deductionsFromSaved && <span style={savedBadgeStyle}>🔒 保存値</span>}
+              </h2>
               {displayDeductions.length > 0 ? (
                 <div style={styles.deductionList}>
                   {displayDeductions.map((d, i) => (
@@ -2558,7 +2568,10 @@ function PayslipPageContent() {
 
           {/* 日別明細 */}
           <div style={styles.section}>
-            <h2 style={styles.sectionTitle}>日別明細</h2>
+            <h2 style={{ ...styles.sectionTitle, display: 'flex', alignItems: 'center', gap: '8px' }}>
+              日別明細
+              {dailyDetailsFromSaved && <span style={savedBadgeStyle}>🔒 保存値</span>}
+            </h2>
             {dailyDetails.length > 0 ? (
               <div style={styles.tableWrapper}>
                 <table style={styles.table}>
@@ -4202,6 +4215,17 @@ function PayslipPageContent() {
       </div>
     </div>
   )
+}
+
+const savedBadgeStyle: React.CSSProperties = {
+  fontSize: '11px',
+  fontWeight: 500,
+  padding: '2px 8px',
+  borderRadius: '10px',
+  backgroundColor: '#dcfce7',
+  color: '#166534',
+  border: '1px solid #86efac',
+  whiteSpace: 'nowrap',
 }
 
 const styles: { [key: string]: React.CSSProperties } = {
