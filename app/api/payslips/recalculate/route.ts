@@ -32,6 +32,9 @@ interface DailyStats {
   date: string
   work_hours: number
   wage_amount: number
+  total_sales_item_based?: number
+  total_sales_receipt_based?: number
+  product_back_item_based?: number
 }
 
 interface AttendanceData {
@@ -39,6 +42,8 @@ interface AttendanceData {
   daily_payment: number
   late_minutes: number
   status_id: string | null
+  check_in_datetime?: string | null
+  check_out_datetime?: string | null
 }
 
 interface DeductionType {
@@ -77,6 +82,8 @@ interface DailySalesData {
   date: string
   totalSales: number
   productBack: number
+  selfBack: number
+  helpBack: number
   items: Array<{
     product_name: string
     category: string | null
@@ -159,10 +166,10 @@ async function calculatePayslipForCast(
       .gte('date', startDate)
       .lte('date', endDate)
 
-    // 勤怠データを取得
+    // 勤怠データを取得（check_in/check_out_datetime を保存値に含めるため一緒に取得）
     const { data: attendanceData } = await supabaseAdmin
       .from('attendance')
-      .select('date, daily_payment, late_minutes, status_id')
+      .select('date, daily_payment, late_minutes, status_id, check_in_datetime, check_out_datetime')
       .eq('store_id', storeId)
       .eq('cast_name', cast.name)
       .gte('date', startDate)
@@ -558,6 +565,8 @@ async function calculatePayslipForCast(
             date: dateStr,
             totalSales: castSales.total_sales,
             productBack: 0,  // 商品バックは別途計算
+            selfBack: 0,
+            helpBack: 0,
             items: castSales.items.map(item => ({
               product_name: item.product_name,
               category: item.category,
@@ -580,6 +589,8 @@ async function calculatePayslipForCast(
           date: item.date,
           totalSales: 0,
           productBack: 0,
+          selfBack: 0,
+          helpBack: 0,
           items: []
         })
       }
@@ -601,6 +612,7 @@ async function calculatePayslipForCast(
       }
 
       dayData.productBack += calculatedBackAmount
+      dayData.selfBack += calculatedBackAmount
 
       // POS商品明細をitemsに追加（BASE商品と同じ構造）
       dayData.items.push({
@@ -623,12 +635,15 @@ async function calculatePayslipForCast(
           date: item.date,
           totalSales: 0,
           productBack: 0,
+          selfBack: 0,
+          helpBack: 0,
           items: []
         })
       }
       const dayData = dailySalesMap.get(item.date)!
       const helpBackAmount = item.help_back_amount || 0
       dayData.productBack += helpBackAmount
+      dayData.helpBack += helpBackAmount
       dayData.items.push({
         product_name: item.product_name,
         category: item.category || '',
@@ -664,12 +679,15 @@ async function calculatePayslipForCast(
           date: baseOrder.business_date,
           totalSales: 0,
           productBack: 0,
+          selfBack: 0,
+          helpBack: 0,
           items: []
         })
       }
       const dayData = dailySalesMap.get(baseOrder.business_date)!
       dayData.totalSales += subtotal  // BASE売上を追加
       dayData.productBack += backAmount
+      dayData.selfBack += backAmount
       dayData.items.push({
         product_name: baseOrder.product_name,
         category: 'BASE',
@@ -1116,7 +1134,7 @@ async function calculatePayslipForCast(
     const totalDeduction = deductions.reduce((sum, d) => sum + d.amount, 0)
     const netEarnings = grossEarnings - totalDeduction
 
-    // 日別詳細
+    // 日別詳細（フルスキーマで保存→画面側は動的計算ゼロで描画する想定）
     const days = eachDayOfInterval({ start: startOfMonth(month), end: endOfMonth(month) })
     const dailyDetails = days
       .map(day => {
@@ -1124,13 +1142,31 @@ async function calculatePayslipForCast(
         const stats = (dailyStats || []).find(s => s.date === dateStr)
         const attendance = (attendanceData || []).find(a => a.date === dateStr)
         const sales = dailySalesMap.get(dateStr)
+
+        let workTimeRange = ''
+        if (attendance?.check_in_datetime && attendance?.check_out_datetime) {
+          const checkIn = new Date(attendance.check_in_datetime)
+          const checkOut = new Date(attendance.check_out_datetime)
+          const pad = (n: number) => String(n).padStart(2, '0')
+          // JST基準で表示（UTC→JST=+9h）
+          const jstIn = new Date(checkIn.getTime() + 9 * 3600 * 1000)
+          const jstOut = new Date(checkOut.getTime() + 9 * 3600 * 1000)
+          workTimeRange = `${pad(jstIn.getUTCHours())}:${pad(jstIn.getUTCMinutes())}〜${pad(jstOut.getUTCHours())}:${pad(jstOut.getUTCMinutes())}`
+        }
+
         return {
           date: dateStr,
           hours: stats?.work_hours || 0,
           hourly_wage: stats?.work_hours ? Math.round((stats?.wage_amount || 0) / stats.work_hours) : 0,
           hourly_income: stats?.wage_amount || 0,
           sales: sales?.totalSales || 0,
+          sales_item_based: stats?.total_sales_item_based ?? sales?.totalSales ?? 0,
+          sales_receipt_based: stats?.total_sales_receipt_based ?? sales?.totalSales ?? 0,
+          // sales_service_charge は別計算が必要(exclude_service_charge使用時のみ) → 未保存。画面側でフォールバック計算する
           back: sales?.productBack || 0,
+          self_back: sales?.selfBack || 0,
+          help_back: sales?.helpBack || 0,
+          work_time_range: workTimeRange,
           daily_payment: attendance?.daily_payment || 0,
           late_minutes: attendance?.late_minutes || 0,
         }

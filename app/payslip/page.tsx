@@ -1714,6 +1714,13 @@ function PayslipPageContent() {
         amount: d.amount
       }))
 
+      // 控除内訳を控除カラム別に分解（保存値ベース描画のため）
+      const dailyPaymentForSave = deductions.find(d => d.name === '日払い')?.amount ?? 0
+      const withholdingTaxForSave = deductions.find(d => d.name === '源泉徴収')?.amount ?? 0
+      const otherDeductionsForSave = deductions
+        .filter(d => d.name !== '日払い' && d.name !== '源泉徴収')
+        .reduce((sum, d) => sum + d.amount, 0)
+
       const payslipData = {
         cast_id: selectedCastId,
         store_id: storeId,
@@ -1726,9 +1733,15 @@ function PayslipPageContent() {
         sales_back: summary.salesBack,
         product_back: summary.totalProductBack,
         fixed_amount: summary.fixedAmount,
+        per_attendance_income: summary.perAttendanceIncome,
         gross_total: grossEarningsWithBonus,
+        daily_payment: dailyPaymentForSave,
+        withholding_tax: withholdingTaxForSave,
+        other_deductions: otherDeductionsForSave,
         total_deduction: totalDeduction,
         net_payment: netEarnings,
+        bonus_total: savedPayslip?.bonus_total ?? 0,
+        bonus_details: savedPayslip?.bonus_details ?? null,
         daily_details: dailyDetailsData,
         product_back_details: productBackDetailsData,
         deduction_details: deductionDetailsData,
