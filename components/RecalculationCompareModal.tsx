@@ -178,19 +178,24 @@ export default function RecalculationCompareModal({ isOpen, onClose, storeId, ye
       const modalEl = tableRef.current.closest('[data-modal-content]') as HTMLElement | null
       const origModalMaxWidth = modalEl?.style.maxWidth || ''
       const origModalWidth = modalEl?.style.width || ''
-      if (modalEl) {
-        modalEl.style.maxWidth = 'none'
-        modalEl.style.width = '1400px'
-      }
 
       const origOverflow = tableRef.current.style.overflow
       const origMaxHeight = tableRef.current.style.maxHeight
       const origFlex = tableRef.current.style.flex
       const origMinHeight = tableRef.current.style.minHeight
+      const origDivWidth = tableRef.current.style.width
       tableRef.current.style.overflow = 'visible'
       tableRef.current.style.maxHeight = 'none'
       tableRef.current.style.flex = 'none'
       tableRef.current.style.minHeight = 'auto'
+
+      // テーブルの自然幅を測ってモーダル/コンテナを実コンテンツ幅に合わせる（右端切れ防止）
+      const contentWidth = tableRef.current.scrollWidth
+      if (modalEl) {
+        modalEl.style.maxWidth = 'none'
+        modalEl.style.width = `${contentWidth + 48}px`
+      }
+      tableRef.current.style.width = `${contentWidth}px`
 
       // sticky要素を一時解除（thead/tfoot/sticky td）
       const stickyEls = tableRef.current.querySelectorAll('[style*="sticky"]')
@@ -226,6 +231,7 @@ export default function RecalculationCompareModal({ isOpen, onClose, storeId, ye
       tableRef.current.style.maxHeight = origMaxHeight
       tableRef.current.style.flex = origFlex
       tableRef.current.style.minHeight = origMinHeight
+      tableRef.current.style.width = origDivWidth
       if (modalEl) {
         modalEl.style.maxWidth = origModalMaxWidth
         modalEl.style.width = origModalWidth
