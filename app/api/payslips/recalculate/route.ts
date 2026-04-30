@@ -881,36 +881,12 @@ async function calculatePayslipForCast(
     // 全報酬形態の計算結果
     const allResults = enabledTypes.map(calculateCompensationForType)
 
-    // 採用する報酬形態を決定
-    let selectedResult: ReturnType<typeof calculateCompensationForType> | undefined = undefined
-
-    if (compensationSettings?.payment_selection_method === 'specific' && compensationSettings?.selected_compensation_type_id) {
-      // 特定の報酬形態を選択
-      selectedResult = allResults.find(r => r.compType.id === compensationSettings.selected_compensation_type_id)
-    } else if (allResults.length > 0) {
-      // 最高額を選択
-      selectedResult = allResults.reduce((best, current) =>
-        current.grossEarnings > best.grossEarnings ? current : best
-      )
-    }
-
-    // 選択された報酬形態の値を使用
-    const activeCompType = selectedResult?.compType
-    const useWageData = selectedResult?.useWage ?? false
-    let fixedAmount = selectedResult?.fixedAmount ?? 0
-    salesBack = selectedResult?.salesBack ?? 0
-    const productBack = selectedResult?.productBack ?? totalProductBack
-    let grossEarnings = selectedResult?.grossEarnings ?? (totalProductBack + fixedAmount)
-
-    if (activeCompType) {
-      console.log(`[${cast.name}] 採用報酬形態: ${activeCompType.name}, 時給使用: ${useWageData}, 売上バック: ${salesBack}, 固定額: ${fixedAmount}, 総報酬: ${grossEarnings}`)
-    }
-
     // ===== 賞与計算（複合条件対応） =====
-    // 採用報酬形態が use_bonuses=false なら賞与スキップ（undefined は従来挙動=有効）
-    const bonusesEnabledByType = (activeCompType as { use_bonuses?: boolean } | undefined)?.use_bonuses !== false
-    const enabledBonusIds = bonusesEnabledByType ? (compensationSettings?.enabled_bonus_ids ?? null) : null
-    const bonusDetails: Array<{ name: string; type: string; amount: number; detail: string }> = []
+    // 採用判定で「賞与込みでスライド」するため、選択前にキャスト全体の賞与額を計算しておく
+    // use_bonuses=false の形態が採用された場合は最終的にルールベース賞与を0扱いにする
+    const enabledBonusIds = compensationSettings?.enabled_bonus_ids ?? null
+    const ruleBonusDetails: Array<{ name: string; type: string; amount: number; detail: string }> = []
+    const manualBonusDetails: Array<{ name: string; type: string; amount: number; detail: string }> = []
 
     // 指名数を取得（nomination条件 or nomination_tiered報酬用）
     let totalNominations = 0
@@ -1020,7 +996,7 @@ async function calculatePayslipForCast(
         }
 
         if (bonusAmount > 0) {
-          bonusDetails.push({
+          ruleBonusDetails.push({
             name: bt.name,
             type: bt.bonus_category,
             amount: bonusAmount,
@@ -1030,13 +1006,54 @@ async function calculatePayslipForCast(
       }
     }
 
-    // 手動賞与を追加
+    // 手動賞与を追加（use_bonuses の影響を受けない）
     for (const cb of (castBonuses || [])) {
-      bonusDetails.push({ name: cb.name || '手動賞与', type: 'manual', amount: cb.amount, detail: cb.note || '' })
+      manualBonusDetails.push({ name: cb.name || '手動賞与', type: 'manual', amount: cb.amount, detail: cb.note || '' })
     }
 
+    const ruleBonusTotal = ruleBonusDetails.reduce((sum, b) => sum + b.amount, 0)
+    const manualBonusTotal = manualBonusDetails.reduce((sum, b) => sum + b.amount, 0)
+
+    // ===== 採用する報酬形態を決定（賞与込みでスライド） =====
+    // 各形態の use_bonuses を考慮: false ならルール賞与は0扱いで比較
+    // 手動賞与は全形態に等しく加算されるので比較に影響しない（最終加算時に含める）
+    const scoreForType = (r: ReturnType<typeof calculateCompensationForType>): number => {
+      const useBonuses = (r.compType as { use_bonuses?: boolean }).use_bonuses !== false
+      return r.grossEarnings + (useBonuses ? ruleBonusTotal : 0)
+    }
+
+    let selectedResult: ReturnType<typeof calculateCompensationForType> | undefined = undefined
+
+    if (compensationSettings?.payment_selection_method === 'specific' && compensationSettings?.selected_compensation_type_id) {
+      // 特定の報酬形態を選択
+      selectedResult = allResults.find(r => r.compType.id === compensationSettings.selected_compensation_type_id)
+    } else if (allResults.length > 0) {
+      // 最高額（賞与込み）を選択
+      selectedResult = allResults.reduce((best, current) =>
+        scoreForType(current) > scoreForType(best) ? current : best
+      )
+    }
+
+    // 選択された報酬形態の値を使用
+    const activeCompType = selectedResult?.compType
+    const useWageData = selectedResult?.useWage ?? false
+    let fixedAmount = selectedResult?.fixedAmount ?? 0
+    salesBack = selectedResult?.salesBack ?? 0
+    const productBack = selectedResult?.productBack ?? totalProductBack
+
+    // 採用形態の use_bonuses に応じてルール賞与を実際に適用するか決定
+    const bonusesEnabledByType = (activeCompType as { use_bonuses?: boolean } | undefined)?.use_bonuses !== false
+    const bonusDetails = [
+      ...(bonusesEnabledByType ? ruleBonusDetails : []),
+      ...manualBonusDetails,
+    ]
     const bonusTotal = bonusDetails.reduce((sum, b) => sum + b.amount, 0)
-    grossEarnings += bonusTotal
+
+    let grossEarnings = (selectedResult?.grossEarnings ?? (totalProductBack + fixedAmount)) + bonusTotal
+
+    if (activeCompType) {
+      console.log(`[${cast.name}] 採用報酬形態: ${activeCompType.name}, 時給使用: ${useWageData}, 売上バック: ${salesBack}, 固定額: ${fixedAmount}, 賞与: ${bonusTotal} (use_bonuses=${bonusesEnabledByType}), 総報酬: ${grossEarnings}`)
+    }
 
     // ===== 控除計算 =====
     const deductions: Array<{ name: string; type: string; count?: number; percentage?: number; amount: number }> = []
