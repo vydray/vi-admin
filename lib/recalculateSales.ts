@@ -1139,13 +1139,15 @@ export async function recalculateForDate(storeId: number, date: string): Promise
 
     // 売上連動キャストの月累計売上を取得（cast_daily_stats を月初〜月末で集計）
     const monthlyTotalSalesMap = new Map<number, number>()
+    // 各キャストの当日より前の累計勤務時間（保証時給判定用）
+    const cumulativeHoursBeforeMap = new Map<number, number>()
     if (uniformWageCastIds.size > 0) {
       const monthStart = `${targetYear}-${String(targetMonth).padStart(2, '0')}-01`
       const nextMonth = targetMonth === 12 ? 1 : targetMonth + 1
       const nextYear = targetMonth === 12 ? targetYear + 1 : targetYear
       const monthEndExclusive = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`
 
-      // ページネーションで cast_daily_stats を取得
+      // ページネーションで cast_daily_stats を取得（月内売上 + 累計勤務時間用）
       const castIdArr = [...uniformWageCastIds]
       let allMonthStats: { cast_id: number; total_sales_item_based: number | null; total_sales_receipt_based: number | null }[] = []
       let offset = 0
@@ -1172,20 +1174,89 @@ export async function recalculateForDate(storeId: number, date: string): Promise
           .reduce((acc, r) => acc + ((aggMode === 'receipt_based' ? r.total_sales_receipt_based : r.total_sales_item_based) || 0), 0)
         monthlyTotalSalesMap.set(castId, sum)
       }
+
+      // 当日より前の累計勤務時間を一括取得（保証時給の閾値判定用）
+      let allHistoryHours: { cast_id: number; work_hours: number | null }[] = []
+      offset = 0
+      while (true) {
+        const { data: page } = await supabaseAdmin
+          .from('cast_daily_stats')
+          .select('cast_id, work_hours')
+          .eq('store_id', storeId)
+          .in('cast_id', castIdArr)
+          .lt('date', date)
+          .range(offset, offset + pageSize - 1)
+        if (!page || page.length === 0) break
+        allHistoryHours = allHistoryHours.concat(page)
+        if (page.length < pageSize) break
+        offset += pageSize
+      }
+      for (const castId of castIdArr) {
+        const sum = allHistoryHours
+          .filter(r => r.cast_id === castId)
+          .reduce((acc, r) => acc + Number(r.work_hours || 0), 0)
+        cumulativeHoursBeforeMap.set(castId, sum)
+      }
     }
 
-    // ブラケット引きヘルパー
-    const lookupUniformWageRate = (castId: number, costumeId: number | null): number | null => {
+    // 保証時給設定を取得（売上連動キャストが在籍する場合のみ）
+    let guaranteedThresholdHours: number | null = null
+    let guaranteedRates: Record<string, number> | null = null
+    if (uniformWageCastIds.size > 0) {
+      const { data: storeWageSettings } = await supabaseAdmin
+        .from('store_wage_settings')
+        .select('guaranteed_wage_threshold_hours, guaranteed_wage_rates')
+        .eq('store_id', storeId)
+        .maybeSingle()
+      if (storeWageSettings?.guaranteed_wage_threshold_hours && storeWageSettings.guaranteed_wage_rates) {
+        guaranteedThresholdHours = storeWageSettings.guaranteed_wage_threshold_hours
+        guaranteedRates = storeWageSettings.guaranteed_wage_rates as Record<string, number>
+      }
+    }
+
+    // 売上連動時給(+保証時給)の wage計算ヘルパー
+    // 保証時給期間中の場合は閾値で時間分割して厳密に計算
+    // 戻り値: { rate: 表示用の実効時給(weighted avg), amount: 実際のwage_amount }
+    const computeUniformWage = (castId: number, costumeId: number | null, workHours: number): { rate: number; amount: number } | null => {
       if (!uniformWageCastIds.has(castId)) return null
-      if (costumeId == null) return 0  // 衣装未選択なら時給0（後で運用で気付ける）
+      if (costumeId == null) return { rate: 0, amount: 0 }  // 衣装未選択
       const classLabel = costumeClassMap.get(costumeId)
-      if (!classLabel) return 0
+      if (!classLabel) return { rate: 0, amount: 0 }
+
+      // 通常レート（売上連動ブラケット）
       const monthlyTotal = monthlyTotalSalesMap.get(castId) || 0
       const bracket = wageBrackets.find(b =>
         monthlyTotal >= b.bracket_min && (b.bracket_max == null || monthlyTotal < b.bracket_max)
       )
-      if (!bracket) return 0
-      return bracket.rates[classLabel] ?? 0
+      const normalRate = bracket?.rates[classLabel] ?? 0
+
+      // 保証時給判定
+      if (guaranteedThresholdHours != null && guaranteedRates != null) {
+        const guaranteedRate = guaranteedRates[classLabel] ?? 0
+        const cumulativeBefore = cumulativeHoursBeforeMap.get(castId) || 0
+
+        if (cumulativeBefore >= guaranteedThresholdHours) {
+          // 既に閾値到達済み → 全日通常レート
+          return { rate: normalRate, amount: Math.round(normalRate * workHours) }
+        }
+
+        const cumulativeAfter = cumulativeBefore + workHours
+        if (cumulativeAfter <= guaranteedThresholdHours) {
+          // 当日終了時もまだ閾値内 → 全日保証レート
+          return { rate: guaranteedRate, amount: Math.round(guaranteedRate * workHours) }
+        }
+
+        // 境界日: 閾値で分割
+        const guaranteedHours = guaranteedThresholdHours - cumulativeBefore
+        const normalHours = workHours - guaranteedHours
+        const amount = Math.round(guaranteedRate * guaranteedHours + normalRate * normalHours)
+        // 表示用の rate は加重平均（cast_daily_stats.base_hourly_wage は単一値のため）
+        const effectiveRate = workHours > 0 ? Math.round(amount / workHours) : 0
+        return { rate: effectiveRate, amount }
+      }
+
+      // 保証時給未設定 → 通常レートのみ
+      return { rate: normalRate, amount: Math.round(normalRate * workHours) }
     }
 
     const { data: existingStats } = await supabaseAdmin
@@ -1345,18 +1416,21 @@ export async function recalculateForDate(storeId: number, date: string): Promise
       const costumeId = attendance?.costume_id || null
       const wageStatusId = compSettings?.status_id || null
 
-      // 売上連動時給キャストはブラケット引き、それ以外は従来の累計出勤日数ベース判定
-      const uniformRate = lookupUniformWageRate(castId, costumeId)
-      const baseHourlyWage = uniformRate !== null ? uniformRate : resolveHourlyWage(
+      // 売上連動時給キャストはブラケット引き(+保証時給)、それ以外は従来の累計出勤日数ベース判定
+      const uniformWage = computeUniformWage(castId, costumeId, workHours)
+      const baseHourlyWage = uniformWage !== null ? uniformWage.rate : resolveHourlyWage(
         castId, wageStatusId, compSettings, wageStatusMap,
         promotionThresholdMap, nextStatusMap, prevStatusMap,
         cumulativeCountMap, castsBeforePromotion, progressMap
       )
 
       // 売上連動時給時は costume_bonus を加算しない（ブラケット時給がそのまま時給）
-      const costumeBonus = uniformRate !== null ? 0 : (costumeId ? (costumeMap.get(costumeId) || 0) : 0)
+      const costumeBonus = uniformWage !== null ? 0 : (costumeId ? (costumeMap.get(costumeId) || 0) : 0)
       const totalHourlyWage = baseHourlyWage + specialDayBonus + costumeBonus
-      const wageAmount = Math.round(totalHourlyWage * workHours)
+      // 売上連動時給(+保証時給)は分割計算済みの amount を使用、それ以外は従来通り
+      const wageAmount = uniformWage !== null
+        ? uniformWage.amount + Math.round(specialDayBonus * workHours)
+        : Math.round(totalHourlyWage * workHours)
 
       statsToUpsert.push({
         cast_id: castId,
@@ -1396,17 +1470,19 @@ export async function recalculateForDate(storeId: number, date: string): Promise
         const costumeId = attendance.costume_id || null
         const wageStatusId = compSettings?.status_id || null
 
-        // 売上連動時給キャストはブラケット引き、それ以外は従来の累計出勤日数ベース判定
-        const uniformRate = lookupUniformWageRate(cast.id, costumeId)
-        const baseHourlyWage = uniformRate !== null ? uniformRate : resolveHourlyWage(
+        // 売上連動時給キャストはブラケット引き(+保証時給)、それ以外は従来の累計出勤日数ベース判定
+        const uniformWage = computeUniformWage(cast.id, costumeId, workHours)
+        const baseHourlyWage = uniformWage !== null ? uniformWage.rate : resolveHourlyWage(
           cast.id, wageStatusId, compSettings, wageStatusMap,
           promotionThresholdMap, nextStatusMap, prevStatusMap,
           cumulativeCountMap, castsBeforePromotion, progressMap
         )
 
-        const costumeBonus = uniformRate !== null ? 0 : (costumeId ? (costumeMap.get(costumeId) || 0) : 0)
+        const costumeBonus = uniformWage !== null ? 0 : (costumeId ? (costumeMap.get(costumeId) || 0) : 0)
         const totalHourlyWage = baseHourlyWage + specialDayBonus + costumeBonus
-        const wageAmount = Math.round(totalHourlyWage * workHours)
+        const wageAmount = uniformWage !== null
+          ? uniformWage.amount + Math.round(specialDayBonus * workHours)
+          : Math.round(totalHourlyWage * workHours)
 
         const baseSales = baseSalesByCast.get(cast.id) || 0
         const includeBaseInItem = salesSettings.include_base_in_item_sales ?? false
