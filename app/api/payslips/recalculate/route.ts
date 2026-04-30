@@ -1237,19 +1237,29 @@ async function calculatePayslipForCast(
     const perAttendanceIncomeAmount = selectedResult?.perAttendanceIncome ?? 0
 
     // 全報酬形態の計算結果を保存(ロック後の比較表示用)
-    const compensationBreakdown = allResults.map(r => ({
-      id: r.compType.id,
-      name: r.compType.name,
-      use_wage: r.useWage,
-      hourly_income: r.useWage ? totalWageAmount : 0,
-      sales_back: r.salesBack,
-      product_back: r.productBack,
-      fixed_amount: r.fixedAmount,
-      per_attendance_income: r.perAttendanceIncome,
-      total_sales: r.totalSales,
-      gross_earnings: r.grossEarnings,
-      is_selected: selectedResult?.compType.id === r.compType.id,
-    }))
+    // bonus_amount = この形態が採用された場合に加算される賞与（ルール+手動）。
+    //   use_bonuses=false ならルール賞与は0、手動賞与は常に加算。
+    //   シフトアプリ等の当月動的判定で「賞与込みスライド」を再現するために保持
+    const compensationBreakdown = allResults.map(r => {
+      const typeUseBonuses = (r.compType as { use_bonuses?: boolean }).use_bonuses !== false
+      const typeBonusAmount = (typeUseBonuses ? ruleBonusTotal : 0) + manualBonusTotal
+      return {
+        id: r.compType.id,
+        name: r.compType.name,
+        use_wage: r.useWage,
+        hourly_income: r.useWage ? totalWageAmount : 0,
+        sales_back: r.salesBack,
+        product_back: r.productBack,
+        fixed_amount: r.fixedAmount,
+        per_attendance_income: r.perAttendanceIncome,
+        total_sales: r.totalSales,
+        gross_earnings: r.grossEarnings,
+        use_bonuses: typeUseBonuses,
+        bonus_amount: typeBonusAmount,
+        gross_with_bonus: r.grossEarnings + typeBonusAmount,
+        is_selected: selectedResult?.compType.id === r.compType.id,
+      }
+    })
 
     // payslipsテーブルに保存
     const payslipData = {

@@ -228,6 +228,10 @@ interface SavedPayslip {
     total_sales: number
     gross_earnings: number
     is_selected: boolean
+    // 賞与込みスライド対応で追加されたフィールド（古い保存データでは未定義）
+    use_bonuses?: boolean
+    bonus_amount?: number
+    gross_with_bonus?: number
   }> | null
   finalized_at: string | null
   created_at: string
