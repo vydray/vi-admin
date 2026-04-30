@@ -89,6 +89,7 @@ async function executeRecalculateSales() {
         .eq('is_processed', false)
         .neq('business_date', today)
 
+      const datesAlreadyProcessed = new Set<string>([today])
       if (unprocessedDates && unprocessedDates.length > 0) {
         // 重複を除去
         const uniqueDates = [...new Set(unprocessedDates.map(d => d.business_date))]
@@ -96,7 +97,37 @@ async function executeRecalculateSales() {
           if (date) {
             const pastResult = await recalculateForDate(store.id, date)
             results.push({ store_id: store.id, date, ...pastResult })
+            datesAlreadyProcessed.add(date)
           }
+        }
+      }
+
+      // 売上連動時給キャストがいる店舗は、月内全日を遡及再計算（B案: 完全遡及）
+      // ブラケットが昇格したら過去日も自動反映するため
+      const { data: uniformWageSettings } = await supabaseAdmin
+        .from('compensation_settings')
+        .select('compensation_types')
+        .eq('store_id', store.id)
+        .eq('is_active', true)
+
+      const hasUniformWageCast = (uniformWageSettings || []).some(s => {
+        const types = (s.compensation_types || []) as Array<{ use_uniform_based_wage?: boolean }>
+        return types.some(t => t.use_uniform_based_wage === true)
+      })
+
+      if (hasUniformWageCast) {
+        // todayが属する月の月初〜末日を生成
+        const [yStr, mStr] = today.split('-')
+        const year = Number(yStr)
+        const month = Number(mStr)
+        const lastDay = new Date(year, month, 0).getDate()  // month は1始まり、Date は0始まり
+        for (let d = 1; d <= lastDay; d++) {
+          const dateStr = `${yStr}-${mStr}-${String(d).padStart(2, '0')}`
+          if (datesAlreadyProcessed.has(dateStr)) continue
+          if (dateStr > today) continue  // 未来日は飛ばす
+          const r = await recalculateForDate(store.id, dateStr)
+          results.push({ store_id: store.id, date: dateStr, ...r })
+          datesAlreadyProcessed.add(dateStr)
         }
       }
     }

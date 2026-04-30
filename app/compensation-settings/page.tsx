@@ -3250,6 +3250,7 @@ function CompensationSettingsPageContent() {
                         <input
                           type="checkbox"
                           checked={activeCompensationType.hourly_rate > 0}
+                          disabled={activeCompensationType.use_uniform_based_wage === true}
                           onChange={(e) => {
                             if (e.target.checked) {
                               // 時給の優先順位: オーバーライド > ステータス時給 > 平均時給 > デフォルト1500
@@ -3271,7 +3272,7 @@ function CompensationSettingsPageContent() {
                           }}
                           style={styles.checkbox}
                         />
-                        <span>時給</span>
+                        <span style={{ color: activeCompensationType.use_uniform_based_wage ? '#9ca3af' : undefined }}>時給</span>
                       </label>
                       <div style={styles.payInputGroup}>
                         <div style={{
@@ -3295,6 +3296,28 @@ function CompensationSettingsPageContent() {
                           })()}
                         </div>
                         <span style={styles.payUnit}>円/時</span>
+                      </div>
+                    </div>
+
+                    {/* 売上連動時給（衣装連動） */}
+                    <div style={styles.payRow}>
+                      <label style={styles.payLabel}>
+                        <input
+                          type="checkbox"
+                          checked={activeCompensationType.use_uniform_based_wage === true}
+                          onChange={(e) => updateCompensationType(activeCompensationType.id, {
+                            use_uniform_based_wage: e.target.checked,
+                            // ON時は通常時給を0に固定（ブラケット値で計算するため）
+                            hourly_rate: e.target.checked ? 0 : activeCompensationType.hourly_rate,
+                          })}
+                          style={styles.checkbox}
+                        />
+                        <span>売上連動時給</span>
+                      </label>
+                      <div style={styles.payInputGroup}>
+                        <span style={styles.productBackHint}>
+                          時給設定 → 売上連動時給タブ で設定したブラケット × 衣装クラスで時給確定
+                        </span>
                       </div>
                     </div>
 

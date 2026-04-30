@@ -425,6 +425,10 @@ export interface CompensationType {
   use_sliding_rate: boolean           // スライド式を使用するか
   sliding_rates: SlidingRate[] | null // スライド率テーブル
 
+  // 売上連動時給（衣装クラス連動）: ON時 hourly_rate / use_sliding_rate を上書き
+  // 月間売上のブラケット × その日の uniforms.class_label で時給を決定
+  use_uniform_based_wage?: boolean
+
   // 商品バック設定
   use_product_back: boolean           // 商品別バック率を使用するか
   use_help_product_back: boolean      // ヘルプの商品バックを有効にするか
@@ -1238,4 +1242,19 @@ export interface OrderEditLog {
   after_values: Record<string, unknown> | null
   modified_by: string
   created_at: string
+}
+
+// 売上連動時給ブラケット
+// 月間売上の bracket_min..bracket_max（円）に応じて、
+// rates[uniforms.class_label] が時給になる
+export interface SalesBasedWageBracket {
+  id: number
+  store_id: number
+  display_order: number
+  bracket_min: number              // 円（含む）
+  bracket_max: number | null        // 円（含まず）, null=無限大
+  rates: Record<string, number>     // 例: { "A": 1300, "B": 1400, "C": 1500 }
+  is_active: boolean
+  created_at: string
+  updated_at: string
 }

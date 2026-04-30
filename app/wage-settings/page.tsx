@@ -4,12 +4,19 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
 import { StoreWageSettings, WageStatus, WageStatusCondition, Costume, SpecialWageDay } from '@/types'
+import { SalesBasedWageBracket } from '@/types/database'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
 import ProtectedPage from '@/components/ProtectedPage'
 import toast from 'react-hot-toast'
 
-type TabType = 'basic' | 'statuses' | 'costumes' | 'special-days'
+type TabType = 'basic' | 'statuses' | 'costumes' | 'special-days' | 'sales-wage'
+
+interface UniformWithClass {
+  id: number
+  name: string
+  class_label: string | null
+}
 
 export default function WageSettingsPage() {
   return (
@@ -37,6 +44,12 @@ function WageSettingsPageContent() {
 
   // 特別日
   const [specialDays, setSpecialDays] = useState<SpecialWageDay[]>([])
+
+  // 売上連動時給ブラケット
+  const [salesWageBrackets, setSalesWageBrackets] = useState<SalesBasedWageBracket[]>([])
+  // ブラケット rates のキー候補（uniforms.class_label の distinct）
+  const [uniformClassLabels, setUniformClassLabels] = useState<string[]>([])
+  const [uniformsForLabels, setUniformsForLabels] = useState<UniformWithClass[]>([])
 
   // データ読み込み
   const loadData = useCallback(async () => {
@@ -105,6 +118,30 @@ function WageSettingsPageContent() {
         .order('date')
 
       setSpecialDays(specialDayData || [])
+
+      // 売上連動時給ブラケット
+      const { data: bracketData } = await supabase
+        .from('sales_based_wage_brackets')
+        .select('*')
+        .eq('store_id', storeId)
+        .eq('is_active', true)
+        .order('display_order')
+
+      setSalesWageBrackets((bracketData || []) as SalesBasedWageBracket[])
+
+      // uniforms から class_label の distinct 一覧を作る（売上連動時給タブで使用）
+      const { data: uniformData } = await supabase
+        .from('uniforms')
+        .select('id, name, class_label')
+        .eq('store_id', storeId)
+        .eq('is_active', true)
+        .order('display_order')
+
+      const uniforms = (uniformData || []) as UniformWithClass[]
+      setUniformsForLabels(uniforms)
+      const labels = Array.from(new Set(uniforms.map(u => u.class_label).filter((l): l is string => !!l && l.trim() !== '')))
+      labels.sort()
+      setUniformClassLabels(labels)
     } catch (error) {
       console.error('データ読み込みエラー:', error)
       toast.error('データの読み込みに失敗しました')
@@ -156,6 +193,8 @@ function WageSettingsPageContent() {
         return <CostumesTab storeId={storeId} costumes={costumes} onReload={loadData} />
       case 'special-days':
         return <SpecialDaysTab storeId={storeId} specialDays={specialDays} onReload={loadData} />
+      case 'sales-wage':
+        return <SalesWageTab storeId={storeId} brackets={salesWageBrackets} classLabels={uniformClassLabels} uniforms={uniformsForLabels} onReload={loadData} />
       default:
         return null
     }
@@ -201,6 +240,12 @@ function WageSettingsPageContent() {
           onClick={() => setActiveTab('special-days')}
         >
           特別日カレンダー
+        </button>
+        <button
+          style={{ ...styles.tab, ...(activeTab === 'sales-wage' ? styles.tabActive : {}) }}
+          onClick={() => setActiveTab('sales-wage')}
+        >
+          売上連動時給
         </button>
       </div>
 
@@ -1092,6 +1137,271 @@ function SpecialDaysTab({ storeId, specialDays, onReload }: SpecialDaysTabProps)
           </table>
         )}
       </div>
+    </div>
+  )
+}
+
+// ============================================
+// 売上連動時給タブ
+// ============================================
+interface SalesWageTabProps {
+  storeId: number
+  brackets: SalesBasedWageBracket[]
+  classLabels: string[]
+  uniforms: UniformWithClass[]
+  onReload: () => void
+}
+
+interface BracketDraft {
+  id?: number
+  display_order: number
+  bracket_min: number
+  bracket_max: number | null
+  rates: Record<string, number>
+}
+
+function SalesWageTab({ storeId, brackets, classLabels, uniforms, onReload }: SalesWageTabProps) {
+  const [editing, setEditing] = useState<BracketDraft | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  // ブラケット内の rates を classLabels の和集合で正規化（既存ブラケットに無いラベルは0で表示）
+  const allLabels = Array.from(new Set([
+    ...classLabels,
+    ...brackets.flatMap(b => Object.keys(b.rates || {})),
+  ])).sort()
+
+  const fmt = (n: number) => n.toLocaleString()
+
+  const handleAdd = () => {
+    const initRates: Record<string, number> = {}
+    allLabels.forEach(l => { initRates[l] = 0 })
+    setEditing({
+      display_order: brackets.length + 1,
+      bracket_min: brackets.length > 0 ? (brackets[brackets.length - 1].bracket_max ?? 0) : 0,
+      bracket_max: null,
+      rates: initRates,
+    })
+  }
+
+  const handleEdit = (b: SalesBasedWageBracket) => {
+    const rates: Record<string, number> = {}
+    allLabels.forEach(l => { rates[l] = b.rates[l] ?? 0 })
+    setEditing({
+      id: b.id,
+      display_order: b.display_order,
+      bracket_min: b.bracket_min,
+      bracket_max: b.bracket_max,
+      rates,
+    })
+  }
+
+  const handleSave = async () => {
+    if (!editing) return
+    if (editing.bracket_min < 0) {
+      toast.error('売上下限は0以上にしてください')
+      return
+    }
+    if (editing.bracket_max != null && editing.bracket_max <= editing.bracket_min) {
+      toast.error('売上上限は下限より大きくしてください')
+      return
+    }
+
+    setSaving(true)
+    try {
+      // rates から空ラベル除外、0以下も0として保存
+      const cleanedRates: Record<string, number> = {}
+      Object.entries(editing.rates).forEach(([k, v]) => {
+        if (k.trim() !== '') cleanedRates[k] = Math.max(0, Math.floor(Number(v) || 0))
+      })
+
+      if (editing.id) {
+        const { error } = await supabase
+          .from('sales_based_wage_brackets')
+          .update({
+            display_order: editing.display_order,
+            bracket_min: editing.bracket_min,
+            bracket_max: editing.bracket_max,
+            rates: cleanedRates,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', editing.id)
+        if (error) throw error
+      } else {
+        const { error } = await supabase
+          .from('sales_based_wage_brackets')
+          .insert({
+            store_id: storeId,
+            display_order: editing.display_order,
+            bracket_min: editing.bracket_min,
+            bracket_max: editing.bracket_max,
+            rates: cleanedRates,
+            is_active: true,
+          })
+        if (error) throw error
+      }
+
+      toast.success('保存しました')
+      setEditing(null)
+      onReload()
+    } catch (e) {
+      console.error('保存エラー:', e)
+      toast.error('保存に失敗しました')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDelete = async (id: number) => {
+    if (!confirm('このブラケットを削除しますか？')) return
+    try {
+      const { error } = await supabase
+        .from('sales_based_wage_brackets')
+        .update({ is_active: false })
+        .eq('id', id)
+      if (error) throw error
+      toast.success('削除しました')
+      onReload()
+    } catch (e) {
+      console.error('削除エラー:', e)
+      toast.error('削除に失敗しました')
+    }
+  }
+
+  const unsetUniforms = uniforms.filter(u => !u.class_label || u.class_label.trim() === '')
+
+  return (
+    <div style={styles.card}>
+      <div style={styles.cardHeader}>
+        <div>
+          <h2 style={styles.cardTitle}>売上連動時給テーブル</h2>
+          <p style={styles.cardDescription}>
+            月間売上のブラケット × 衣装クラスで時給が決まる仕組み。月内全日に同じブラケットが適用されます（リアルタイム遡及）。
+          </p>
+        </div>
+        <Button onClick={handleAdd}>＋ ブラケット追加</Button>
+      </div>
+
+      {unsetUniforms.length > 0 && (
+        <div style={{ ...styles.editForm, backgroundColor: '#fef3c7', borderColor: '#fbbf24', marginBottom: '16px' }}>
+          <p style={{ margin: 0, fontSize: '13px', color: '#92400e' }}>
+            ⚠️ クラスラベル未設定の衣装が {unsetUniforms.length} 件あります（{unsetUniforms.map(u => u.name).join('、')}）。<br />
+            「衣装マスタ」タブで設定するか、Supabase で uniforms.class_label を埋めてください。
+          </p>
+        </div>
+      )}
+
+      {classLabels.length === 0 && brackets.length === 0 && (
+        <div style={styles.emptyMessage}>
+          <p>まず uniforms.class_label を設定するとブラケット編集が始められます。</p>
+          <p style={{ fontSize: '12px' }}>例: 衣装名「A赤」「A黒」→ class_label = &quot;A&quot;</p>
+        </div>
+      )}
+
+      {editing && (
+        <div style={styles.editForm}>
+          <h3 style={styles.editFormTitle}>{editing.id ? 'ブラケットを編集' : '新しいブラケット'}</h3>
+          <div style={styles.editFormGrid}>
+            <div style={styles.formGroup}>
+              <label style={styles.label}>表示順</label>
+              <input
+                type="number"
+                style={styles.input}
+                value={editing.display_order}
+                onChange={e => setEditing({ ...editing, display_order: Number(e.target.value) || 1 })}
+              />
+            </div>
+            <div style={styles.formGroup}>
+              <label style={styles.label}>売上下限（円, 含む）</label>
+              <input
+                type="number"
+                style={styles.input}
+                value={editing.bracket_min}
+                onChange={e => setEditing({ ...editing, bracket_min: Number(e.target.value) || 0 })}
+              />
+            </div>
+            <div style={styles.formGroup}>
+              <label style={styles.label}>売上上限（円, 含まず）</label>
+              <input
+                type="number"
+                style={styles.input}
+                value={editing.bracket_max ?? ''}
+                placeholder="無限大の場合は空欄"
+                onChange={e => {
+                  const v = e.target.value
+                  setEditing({ ...editing, bracket_max: v === '' ? null : Number(v) || 0 })
+                }}
+              />
+            </div>
+          </div>
+
+          <div style={styles.formGroup}>
+            <label style={styles.label}>クラス別時給（円/時）</label>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px', marginTop: '8px' }}>
+              {allLabels.length === 0 ? (
+                <p style={styles.helpText}>まず衣装にクラスラベル（A/B/C等）を設定してください</p>
+              ) : allLabels.map(label => (
+                <div key={label} style={styles.formGroup}>
+                  <label style={{ ...styles.label, fontSize: '12px' }}>{label}クラス</label>
+                  <div style={styles.inputWithUnit}>
+                    <input
+                      type="number"
+                      style={styles.inputInUnit}
+                      value={editing.rates[label] ?? 0}
+                      onChange={e => setEditing({ ...editing, rates: { ...editing.rates, [label]: Number(e.target.value) || 0 } })}
+                    />
+                    <span style={styles.unit}>円</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ ...styles.editFormButtons, marginTop: '16px' }}>
+            <Button variant="secondary" onClick={() => setEditing(null)} disabled={saving}>キャンセル</Button>
+            <Button onClick={handleSave} disabled={saving}>{saving ? '保存中...' : '保存'}</Button>
+          </div>
+        </div>
+      )}
+
+      {brackets.length === 0 ? (
+        classLabels.length > 0 && (
+          <div style={styles.emptyMessage}>ブラケット未登録です。「ブラケット追加」から作成してください。</div>
+        )
+      ) : (
+        <div style={styles.listContainer}>
+          <table style={styles.table}>
+            <thead>
+              <tr>
+                <th style={styles.th}>順</th>
+                <th style={styles.th}>売上範囲（円）</th>
+                {allLabels.map(l => <th key={l} style={{ ...styles.th, textAlign: 'right' }}>{l}クラス</th>)}
+                <th style={{ ...styles.th, width: '120px' }}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {brackets.map(b => (
+                <tr key={b.id}>
+                  <td style={styles.td}>{b.display_order}</td>
+                  <td style={styles.td}>
+                    {fmt(b.bracket_min)} 〜 {b.bracket_max != null ? fmt(b.bracket_max) : '∞'}
+                  </td>
+                  {allLabels.map(l => (
+                    <td key={l} style={{ ...styles.td, textAlign: 'right' }}>
+                      {b.rates[l] != null ? `${fmt(b.rates[l])}円` : <span style={{ color: '#d1d5db' }}>未設定</span>}
+                    </td>
+                  ))}
+                  <td style={styles.td}>
+                    <div style={styles.actionButtons}>
+                      <Button variant="secondary" size="small" onClick={() => handleEdit(b)}>編集</Button>
+                      <Button variant="danger" size="small" onClick={() => handleDelete(b.id)}>削除</Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   )
 }

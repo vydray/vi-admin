@@ -1092,13 +1092,101 @@ export async function recalculateForDate(storeId: number, date: string): Promise
     const specialDayBonus = (specialDay as SpecialWageDay | null)?.wage_adjustment || 0
 
     const { data: costumes } = await supabaseAdmin
-      .from('costumes')
-      .select('id, wage_adjustment')
+      .from('uniforms')
+      .select('id, wage_adjustment, class_label')
       .eq('store_id', storeId)
       .eq('is_active', true)
 
     const costumeMap = new Map<number, number>()
-    costumes?.forEach((c: { id: number; wage_adjustment: number }) => costumeMap.set(c.id, c.wage_adjustment))
+    const costumeClassMap = new Map<number, string | null>()
+    costumes?.forEach((c: { id: number; wage_adjustment: number | null; class_label: string | null }) => {
+      costumeMap.set(c.id, c.wage_adjustment ?? 0)
+      costumeClassMap.set(c.id, c.class_label)
+    })
+
+    // 売上連動時給を使うキャスト判定（compensation_types に use_uniform_based_wage=true があるキャスト）
+    // selected_compensation_type_id を見て、そのタイプが売上連動時給かどうかチェック
+    const uniformWageCastIds = new Set<number>()
+    const uniformWageAggregationMap = new Map<number, 'item_based' | 'receipt_based'>()
+    for (const [castId, compFull] of compSettingsFullMap) {
+      const types = (compFull.compensation_types || []) as Array<{
+        id: string
+        is_enabled?: boolean
+        use_uniform_based_wage?: boolean
+        sales_aggregation?: 'item_based' | 'receipt_based'
+      }>
+      const selectedId = compFull.selected_compensation_type_id
+      const selected = selectedId ? types.find(t => t.id === selectedId) : types.find(t => t.is_enabled !== false)
+      if (selected?.use_uniform_based_wage) {
+        uniformWageCastIds.add(castId)
+        uniformWageAggregationMap.set(castId, selected.sales_aggregation === 'receipt_based' ? 'receipt_based' : 'item_based')
+      }
+    }
+
+    // 売上連動時給ブラケット取得（売上連動キャストが1人でもいる場合のみ）
+    const wageBrackets: { bracket_min: number; bracket_max: number | null; rates: Record<string, number> }[] = []
+    if (uniformWageCastIds.size > 0) {
+      const { data: brackets } = await supabaseAdmin
+        .from('sales_based_wage_brackets')
+        .select('bracket_min, bracket_max, rates, display_order')
+        .eq('store_id', storeId)
+        .eq('is_active', true)
+        .order('display_order', { ascending: true })
+      brackets?.forEach((b: { bracket_min: number; bracket_max: number | null; rates: Record<string, number> }) => {
+        wageBrackets.push({ bracket_min: b.bracket_min, bracket_max: b.bracket_max, rates: b.rates })
+      })
+    }
+
+    // 売上連動キャストの月累計売上を取得（cast_daily_stats を月初〜月末で集計）
+    const monthlyTotalSalesMap = new Map<number, number>()
+    if (uniformWageCastIds.size > 0) {
+      const monthStart = `${targetYear}-${String(targetMonth).padStart(2, '0')}-01`
+      const nextMonth = targetMonth === 12 ? 1 : targetMonth + 1
+      const nextYear = targetMonth === 12 ? targetYear + 1 : targetYear
+      const monthEndExclusive = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`
+
+      // ページネーションで cast_daily_stats を取得
+      const castIdArr = [...uniformWageCastIds]
+      let allMonthStats: { cast_id: number; total_sales_item_based: number | null; total_sales_receipt_based: number | null }[] = []
+      let offset = 0
+      const pageSize = 1000
+      while (true) {
+        const { data: page } = await supabaseAdmin
+          .from('cast_daily_stats')
+          .select('cast_id, total_sales_item_based, total_sales_receipt_based')
+          .eq('store_id', storeId)
+          .in('cast_id', castIdArr)
+          .gte('date', monthStart)
+          .lt('date', monthEndExclusive)
+          .range(offset, offset + pageSize - 1)
+        if (!page || page.length === 0) break
+        allMonthStats = allMonthStats.concat(page)
+        if (page.length < pageSize) break
+        offset += pageSize
+      }
+
+      for (const castId of castIdArr) {
+        const aggMode = uniformWageAggregationMap.get(castId) || 'item_based'
+        const sum = allMonthStats
+          .filter(r => r.cast_id === castId)
+          .reduce((acc, r) => acc + ((aggMode === 'receipt_based' ? r.total_sales_receipt_based : r.total_sales_item_based) || 0), 0)
+        monthlyTotalSalesMap.set(castId, sum)
+      }
+    }
+
+    // ブラケット引きヘルパー
+    const lookupUniformWageRate = (castId: number, costumeId: number | null): number | null => {
+      if (!uniformWageCastIds.has(castId)) return null
+      if (costumeId == null) return 0  // 衣装未選択なら時給0（後で運用で気付ける）
+      const classLabel = costumeClassMap.get(costumeId)
+      if (!classLabel) return 0
+      const monthlyTotal = monthlyTotalSalesMap.get(castId) || 0
+      const bracket = wageBrackets.find(b =>
+        monthlyTotal >= b.bracket_min && (b.bracket_max == null || monthlyTotal < b.bracket_max)
+      )
+      if (!bracket) return 0
+      return bracket.rates[classLabel] ?? 0
+    }
 
     const { data: existingStats } = await supabaseAdmin
       .from('cast_daily_stats')
@@ -1257,14 +1345,16 @@ export async function recalculateForDate(storeId: number, date: string): Promise
       const costumeId = attendance?.costume_id || null
       const wageStatusId = compSettings?.status_id || null
 
-      // 累計出勤日数ベースの時給判定
-      const baseHourlyWage = resolveHourlyWage(
+      // 売上連動時給キャストはブラケット引き、それ以外は従来の累計出勤日数ベース判定
+      const uniformRate = lookupUniformWageRate(castId, costumeId)
+      const baseHourlyWage = uniformRate !== null ? uniformRate : resolveHourlyWage(
         castId, wageStatusId, compSettings, wageStatusMap,
         promotionThresholdMap, nextStatusMap, prevStatusMap,
         cumulativeCountMap, castsBeforePromotion, progressMap
       )
 
-      const costumeBonus = costumeId ? (costumeMap.get(costumeId) || 0) : 0
+      // 売上連動時給時は costume_bonus を加算しない（ブラケット時給がそのまま時給）
+      const costumeBonus = uniformRate !== null ? 0 : (costumeId ? (costumeMap.get(costumeId) || 0) : 0)
       const totalHourlyWage = baseHourlyWage + specialDayBonus + costumeBonus
       const wageAmount = Math.round(totalHourlyWage * workHours)
 
@@ -1306,14 +1396,15 @@ export async function recalculateForDate(storeId: number, date: string): Promise
         const costumeId = attendance.costume_id || null
         const wageStatusId = compSettings?.status_id || null
 
-        // 累計出勤日数ベースの時給判定
-        const baseHourlyWage = resolveHourlyWage(
+        // 売上連動時給キャストはブラケット引き、それ以外は従来の累計出勤日数ベース判定
+        const uniformRate = lookupUniformWageRate(cast.id, costumeId)
+        const baseHourlyWage = uniformRate !== null ? uniformRate : resolveHourlyWage(
           cast.id, wageStatusId, compSettings, wageStatusMap,
           promotionThresholdMap, nextStatusMap, prevStatusMap,
           cumulativeCountMap, castsBeforePromotion, progressMap
         )
 
-        const costumeBonus = costumeId ? (costumeMap.get(costumeId) || 0) : 0
+        const costumeBonus = uniformRate !== null ? 0 : (costumeId ? (costumeMap.get(costumeId) || 0) : 0)
         const totalHourlyWage = baseHourlyWage + specialDayBonus + costumeBonus
         const wageAmount = Math.round(totalHourlyWage * workHours)
 
