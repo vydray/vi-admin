@@ -1782,13 +1782,29 @@ function PayslipPageContent() {
         return
       }
 
-      setRecalcProgress({ current: 0, total, castName: '' })
+      setRecalcProgress({ current: 0, total, castName: 'cast_daily_stats更新中...' })
+
+      // ループ前に月内全日の cast_daily_stats を1回だけリフレッシュ
+      // （compensation_settings 等の設定変更を過去日にも反映させるため）
+      const monthStart = format(startOfMonth(selectedMonth), 'yyyy-MM-dd')
+      const monthEnd = format(endOfMonth(selectedMonth), 'yyyy-MM-dd')
+      try {
+        await fetch('/api/cast-stats/recalculate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ store_id: storeId, date_from: monthStart, date_to: monthEnd }),
+        })
+      } catch (err) {
+        console.warn('日次stats事前リフレッシュ失敗（payslip計算は続行）:', err)
+      }
 
       let successCount = 0
       let errorCount = 0
       const failedCastNames: string[] = []
 
       // 全体再計算用の共通batch_idを生成
+      // batch_id ありで API を呼ぶと payslips/recalculate 側で日次リフレッシュをスキップする
+      // （上で既に1回まとめてリフレッシュ済みのため、キャストごとに再実行しないよう最適化）
       const batchId = crypto.randomUUID()
 
       // 各キャストについて順次計算

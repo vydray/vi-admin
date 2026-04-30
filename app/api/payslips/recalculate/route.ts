@@ -1427,9 +1427,12 @@ export async function POST(request: NextRequest) {
 
     // 手動再計算時は cast_daily_stats を月内全日リフレッシュしてから集計する
     // （compensation_settings 等の設定変更後に過去日の wage_amount が古いままになるのを防ぐ）
-    // cron は別途 recalculate-sales cron が daily stats を最新化しているのでスキップ
+    // - cron 時はスキップ（recalculate-sales cron が別途daily statsを更新済み）
+    // - バッチ実行（batch_id 指定）ではフロント側で1回だけ事前リフレッシュする想定なのでスキップ
+    //   （単一キャスト×42回呼ぶ「全キャスト再計算」で42回リフレッシュが走るのを回避）
+    const skipRefresh = triggeredBy === 'cron' || !!clientBatchId
     const refreshDailyStatsForMonth = async (storeId: number) => {
-      if (triggeredBy === 'cron') return
+      if (skipRefresh) return
       const days = eachDayOfInterval({ start: startOfMonth(month), end: endOfMonth(month) })
       for (const d of days) {
         const dateStr = format(d, 'yyyy-MM-dd')
