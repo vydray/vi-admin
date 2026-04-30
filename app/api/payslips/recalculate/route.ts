@@ -5,6 +5,7 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns'
 import { randomUUID } from 'crypto'
 import { calculateCastSalesByPublishedMethod } from '@/lib/salesCalculation'
 import { isYearMonthLocked } from '@/lib/payslipLockDate'
+import { recalculateForDate } from '@/lib/recalculateSales'
 import type { SalesSettings } from '@/types/database'
 
 const TRACKED_FIELDS = ['gross_total', 'hourly_income', 'sales_back', 'product_back', 'fixed_amount', 'per_attendance_income', 'bonus_total', 'total_deduction', 'daily_payment', 'withholding_tax', 'other_deductions', 'net_payment'] as const
@@ -1424,6 +1425,18 @@ export async function POST(request: NextRequest) {
     let totalErrors = 0
     const failedCasts: { id: number; name: string; error: string }[] = []
 
+    // 手動再計算時は cast_daily_stats を月内全日リフレッシュしてから集計する
+    // （compensation_settings 等の設定変更後に過去日の wage_amount が古いままになるのを防ぐ）
+    // cron は別途 recalculate-sales cron が daily stats を最新化しているのでスキップ
+    const refreshDailyStatsForMonth = async (storeId: number) => {
+      if (triggeredBy === 'cron') return
+      const days = eachDayOfInterval({ start: startOfMonth(month), end: endOfMonth(month) })
+      for (const d of days) {
+        const dateStr = format(d, 'yyyy-MM-dd')
+        await recalculateForDate(storeId, dateStr)
+      }
+    }
+
     if (targetCastId && targetStoreId) {
       // 単一キャスト計算（進捗表示用）
       const { data: cast } = await supabaseAdmin
@@ -1434,6 +1447,7 @@ export async function POST(request: NextRequest) {
         .single()
 
       if (cast) {
+        await refreshDailyStatsForMonth(targetStoreId)
         const result = await calculatePayslipForCast(targetStoreId, cast, month, batchId, triggeredBy)
         if (result.success) {
           totalProcessed++
@@ -1467,6 +1481,8 @@ export async function POST(request: NextRequest) {
         const c = (p as Record<string, unknown>).casts as { id: number; name: string } | null
         if (c && !castMap.has(c.id)) castMap.set(c.id, c)
       }
+
+      await refreshDailyStatsForMonth(targetStoreId)
 
       for (const cast of castMap.values()) {
         const result = await calculatePayslipForCast(targetStoreId, cast, month, batchId, triggeredBy)
