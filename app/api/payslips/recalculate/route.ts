@@ -907,7 +907,9 @@ async function calculatePayslipForCast(
     }
 
     // ===== 賞与計算（複合条件対応） =====
-    const enabledBonusIds = compensationSettings?.enabled_bonus_ids ?? null
+    // 採用報酬形態が use_bonuses=false なら賞与スキップ（undefined は従来挙動=有効）
+    const bonusesEnabledByType = (activeCompType as { use_bonuses?: boolean } | undefined)?.use_bonuses !== false
+    const enabledBonusIds = bonusesEnabledByType ? (compensationSettings?.enabled_bonus_ids ?? null) : null
     const bonusDetails: Array<{ name: string; type: string; amount: number; detail: string }> = []
 
     // 指名数を取得（nomination条件 or nomination_tiered報酬用）

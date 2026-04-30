@@ -429,6 +429,10 @@ export interface CompensationType {
   // 月間売上のブラケット × その日の uniforms.class_label で時給を決定
   use_uniform_based_wage?: boolean
 
+  // 賞与をこの報酬形態で適用するか（OFF時は採用されても賞与0）
+  // undefined は従来挙動（true 相当）として扱う
+  use_bonuses?: boolean
+
   // 商品バック設定
   use_product_back: boolean           // 商品別バック率を使用するか
   use_help_product_back: boolean      // ヘルプの商品バックを有効にするか

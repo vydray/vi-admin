@@ -3321,6 +3321,26 @@ function CompensationSettingsPageContent() {
                       </div>
                     </div>
 
+                    {/* 賞与を適用するか（OFFなら採用されてもこの形態は賞与0） */}
+                    <div style={styles.payRow}>
+                      <label style={styles.payLabel}>
+                        <input
+                          type="checkbox"
+                          checked={activeCompensationType.use_bonuses !== false}
+                          onChange={(e) => updateCompensationType(activeCompensationType.id, {
+                            use_bonuses: e.target.checked,
+                          })}
+                          style={styles.checkbox}
+                        />
+                        <span>賞与を適用</span>
+                      </label>
+                      <div style={styles.payInputGroup}>
+                        <span style={styles.productBackHint}>
+                          OFF時はこの報酬形態が採用されても賞与は0円。手動賞与は別枠で常に支給されます
+                        </span>
+                      </div>
+                    </div>
+
                     {/* 固定額 */}
                     <div style={styles.payRow}>
                       <label style={styles.payLabel}>
