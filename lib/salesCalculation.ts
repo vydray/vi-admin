@@ -347,8 +347,11 @@ export function calculateItemBased(
   const { position: roundingPosition, type: roundingType } = parseRoundingMethod(settings.item_rounding_method)
   const roundingTiming = settings.item_rounding_timing ?? 'per_item'
   const helpDistMethod = settings.item_help_distribution_method ?? 'all_to_nomination'
-  // ヘルプ商品も売上に含める（multi_cast_distributionが'all_equal'の場合）
-  const includeHelpItems = settings.item_multi_cast_distribution === 'all_equal'
+  const helpRatio = settings.item_help_ratio ?? 50
+  // ヘルプ商品も売上に含める（multi_cast_distributionが'all_equal'の場合 OR helpDistMethod が ratio で helpRatio>0）
+  // ratio + giveHelpSales のときも ヘルプ商品単独の売上を計上する必要がある
+  const includeHelpItems = settings.item_multi_cast_distribution === 'all_equal' ||
+    (helpDistMethod === 'ratio' && (settings.item_help_ratio ?? 0) > 0)
   // ヘルプにも売上をつける（help_sales_inclusionが'both'の場合）
   const giveHelpSales = settings.item_help_sales_inclusion === 'both'
 
@@ -476,6 +479,34 @@ export function calculateItemBased(
                 const summary = summaryMap.get(cast.id)
                 if (summary) {
                   summary.help_sales += Math.floor(helpShare / helpCasts.length)
+                }
+              }
+            })
+          }
+        } else if (helpDistMethod === 'ratio') {
+          // 比率で分ける: aggregateCastDailyItems と一致させる
+          // selfCast 側: 推しは perCast を獲得（推しの数で等分）
+          // helpCast 側: ヘルプは helpRatio% を獲得（ヘルプの数で等分）
+          const perCast = Math.floor(itemAmount / selfCasts.length)
+          selfCasts.forEach(castName => {
+            const cast = castNameMap.get(castName)
+            if (cast) {
+              const summary = summaryMap.get(cast.id)
+              if (summary) {
+                summary.self_sales += perCast
+              }
+            }
+          })
+
+          if (giveHelpSales) {
+            const perHelper = Math.floor(itemAmount / helpCasts.length)
+            const helpShare = Math.floor(perHelper * helpRatio / 100)
+            helpCasts.forEach(castName => {
+              const cast = castNameMap.get(castName)
+              if (cast) {
+                const summary = summaryMap.get(cast.id)
+                if (summary) {
+                  summary.help_sales += helpShare
                 }
               }
             })
