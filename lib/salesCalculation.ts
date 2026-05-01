@@ -355,6 +355,8 @@ export function calculateItemBased(
   // ヘルプにも売上をつける（help_sales_inclusionが'both'の場合）
   const giveHelpSales = settings.item_help_sales_inclusion === 'both'
 
+  console.log(`[calculateItemBased] orders=${orders.length} helpDistMethod=${helpDistMethod} helpRatio=${helpRatio} includeHelpItems=${includeHelpItems} giveHelpSales=${giveHelpSales} item_multi_cast_distribution=${settings.item_multi_cast_distribution}`)
+
   // 税計算・端数処理を適用する関数
   const applyTaxAndRounding = (amount: number) => {
     let result = amount
@@ -555,9 +557,15 @@ export function calculateItemBased(
     summary.total_sales = summary.self_sales + summary.help_sales
   })
 
-  return Array.from(summaryMap.values())
+  const result = Array.from(summaryMap.values())
     .filter(s => s.total_sales > 0)
     .sort((a, b) => b.total_sales - a.total_sales)
+  // 診断: にな の売上を確認
+  const niinaCast = result.find(c => c.cast_name === '猫乃にな')
+  if (niinaCast) {
+    console.log(`[calculateItemBased:にな] self=${niinaCast.self_sales} help=${niinaCast.help_sales} total=${niinaCast.total_sales}`)
+  }
+  return result
 }
 
 /**
