@@ -1430,7 +1430,16 @@ function PayslipPageContent() {
   const displayPerAttendanceIncome = isFinalized && savedPayslip ? savedPayslip.per_attendance_income : summary.perAttendanceIncome
   const displayWorkDays = isFinalized && savedPayslip ? savedPayslip.work_days : summary.workDays
   const displayTotalWorkHours = isFinalized && savedPayslip ? savedPayslip.total_hours : summary.totalWorkHours
-  const displayAverageHourlyWage = isFinalized && savedPayslip ? savedPayslip.average_hourly_wage : (summary.totalWorkHours > 0 ? Math.round(summary.totalWageAmount / summary.totalWorkHours) : 0)
+  // 平均時給: 採用された報酬形態(is_selected=true)の hourly_income をベースに計算
+  // - ロック後: payslips.average_hourly_wage を使用（保存値そのまま）
+  // - 未確定: compensation_breakdown[is_selected].hourly_income / total_hours
+  // - フォールバック: summary.totalWageAmount / total_hours
+  const displayAverageHourlyWage = (() => {
+    if (isFinalized && savedPayslip) return savedPayslip.average_hourly_wage
+    const selectedBreakdown = savedPayslip?.compensation_breakdown?.find(cb => cb.is_selected) || null
+    const wageBase = selectedBreakdown?.use_wage ? selectedBreakdown.hourly_income : summary.totalWageAmount
+    return summary.totalWorkHours > 0 ? Math.round(wageBase / summary.totalWorkHours) : 0
+  })()
   const dynamicDailyPayment = deductions.find(d => d.name === '日払い')?.amount ?? 0
   const dynamicWithholdingTax = deductions.find(d => d.name === '源泉徴収')?.amount ?? 0
   const displayDailyPayment = isFinalized && savedPayslip ? savedPayslip.daily_payment : dynamicDailyPayment
