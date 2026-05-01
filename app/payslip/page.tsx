@@ -3197,11 +3197,16 @@ function PayslipPageContent() {
           return isItemBased ? (item.self_sales_item_based || 0) : (item.self_sales_receipt_based || 0)
         }
 
-        // 伝票ごとにグループ化（推し売上 - 伝票内の全アイテムを表示）
-        // フリー卓のアイテム（is_self=false かつ help_cast_id=自分）は除外（ヘルプ側で表示）
-        const selfDayItems = dayItems.filter(item =>
-          !(item.is_self === false && item.help_cast_id === selectedCast?.id)
-        )
+        // 伝票ごとにグループ化（推し売上）
+        // 自分の卓のアイテムでも、自分の売上に寄与しない他キャストのヘルプ商品は除外する
+        // （Mary Mareのような「推し0%/ヘルプ100%」設定では、自分の卓でも他人の名前の商品は¥0なので表示しない）
+        const selfDayItems = dayItems.filter(item => {
+          // フリー卓のヘルプ自分（is_self=false かつ help_cast_id=自分）は除外（ヘルプ側で表示）
+          if (item.is_self === false && item.help_cast_id === selectedCast?.id) return false
+          // 自己売上が0かつ商品バックも0のヘルプアイテム（他キャストの商品で自分は¥0）は非表示
+          if (item.is_self === false && getSelfSales(item) === 0 && (item.self_back_amount || 0) === 0) return false
+          return true
+        })
         const selfOrderGroups = new Map<string, OrderGroup>()
 
         selfDayItems.forEach(item => {
@@ -3265,6 +3270,7 @@ function PayslipPageContent() {
         const helpOrders = Array.from(helpOrderGroups.values())
         const allOrders = [...selfOrders, ...helpOrders]
         const totalSelfSales = selfOrders.reduce((sum, g) => sum + g.totalSales, 0)
+        const totalHelpSales = helpOrders.reduce((sum, g) => sum + g.totalSales, 0)
 
         // 商品バック合計（推しバック + ヘルプバック）
         const totalSelfBack = selfDayItems.reduce((sum, item) => sum + (item.self_back_amount || 0), 0)
@@ -3308,10 +3314,17 @@ function PayslipPageContent() {
               <div style={{ ...styles.modalContent, overflowY: 'auto', maxHeight: 'calc(80vh - 140px)' }}>
                 {/* サマリー */}
                 <div style={{ ...styles.modalSummary, backgroundColor: '#f8f9fa', borderRadius: '8px', padding: '16px', marginBottom: '16px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: '12px' }}>
                     <div>
-                      <div style={{ fontSize: '12px', color: '#6c757d', marginBottom: '4px' }}>{isServiceChargeMode ? '売上合計（税込＋サービス料）' : '推し売上合計'}</div>
-                      <div style={{ fontSize: '24px', fontWeight: '700' }}>{currencyFormatter.format(isServiceChargeMode ? (specialDailySales.get(selectedDayDetail) || 0) : totalSelfSales)}</div>
+                      <div style={{ fontSize: '12px', color: '#6c757d', marginBottom: '4px' }}>{isServiceChargeMode ? '売上合計（税込＋サービス料）' : '売上合計'}</div>
+                      <div style={{ fontSize: '24px', fontWeight: '700' }}>
+                        {currencyFormatter.format(isServiceChargeMode ? (specialDailySales.get(selectedDayDetail) || 0) : (totalSelfSales + totalHelpSales))}
+                      </div>
+                      {!isServiceChargeMode && totalHelpSales > 0 && (
+                        <div style={{ fontSize: '11px', color: '#6c757d', marginTop: '2px' }}>
+                          推し: {currencyFormatter.format(totalSelfSales)} / ヘルプ: {currencyFormatter.format(totalHelpSales)}
+                        </div>
+                      )}
                     </div>
                     <div style={{ display: 'flex', gap: '20px' }}>
                       {totalSelfBack > 0 && (
