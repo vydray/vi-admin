@@ -1415,44 +1415,36 @@ function PayslipPageContent() {
   const dynamicTotalDeduction = deductions.reduce((sum, d) => sum + d.amount, 0)
   const dynamicNetEarnings = dynamicGrossEarningsWithBonus - dynamicTotalDeduction
 
-  // 月次確定済みなら保存値を採用(動的計算ドリフト防止)
-  // ロック判定: 翌月6日(JST)以降は自動ロック扱い
+  // 保存値ファースト: payslips に保存済みなら常にそれを表示（動的計算ドリフト防止）
+  // isFinalized は確定済みバッジUI用（自動ロック=翌月6日以降）に残す
   const isFinalized = isYearMonthLocked(format(selectedMonth, 'yyyy-MM'))
-  const grossEarningsWithBonus = isFinalized && savedPayslip ? savedPayslip.gross_total : dynamicGrossEarningsWithBonus
-  const totalDeduction = isFinalized && savedPayslip ? savedPayslip.total_deduction : dynamicTotalDeduction
-  const netEarnings = isFinalized && savedPayslip ? savedPayslip.net_payment : dynamicNetEarnings
+  const grossEarningsWithBonus = savedPayslip ? savedPayslip.gross_total : dynamicGrossEarningsWithBonus
+  const totalDeduction = savedPayslip ? savedPayslip.total_deduction : dynamicTotalDeduction
+  const netEarnings = savedPayslip ? savedPayslip.net_payment : dynamicNetEarnings
 
-  // 内訳値も確定時は保存値で固定(報酬内訳5項目+出勤報酬)
-  const displayHourlyIncome = isFinalized && savedPayslip ? savedPayslip.hourly_income : summary.totalWageAmount
-  const displaySalesBack = isFinalized && savedPayslip ? savedPayslip.sales_back : summary.salesBack
-  const displayProductBack = isFinalized && savedPayslip ? savedPayslip.product_back : summary.totalProductBack
-  const displayFixedAmount = isFinalized && savedPayslip ? savedPayslip.fixed_amount : summary.fixedAmount
-  const displayPerAttendanceIncome = isFinalized && savedPayslip ? savedPayslip.per_attendance_income : summary.perAttendanceIncome
-  const displayWorkDays = isFinalized && savedPayslip ? savedPayslip.work_days : summary.workDays
-  const displayTotalWorkHours = isFinalized && savedPayslip ? savedPayslip.total_hours : summary.totalWorkHours
-  // 平均時給: 採用された報酬形態(is_selected=true)の hourly_income をベースに計算
-  // - ロック後: payslips.average_hourly_wage を使用（保存値そのまま）
-  // - 未確定: compensation_breakdown[is_selected].hourly_income / total_hours
-  // - フォールバック: summary.totalWageAmount / total_hours
-  const displayAverageHourlyWage = (() => {
-    if (isFinalized && savedPayslip) return savedPayslip.average_hourly_wage
-    const selectedBreakdown = savedPayslip?.compensation_breakdown?.find(cb => cb.is_selected) || null
-    const wageBase = selectedBreakdown?.use_wage ? selectedBreakdown.hourly_income : summary.totalWageAmount
-    return summary.totalWorkHours > 0 ? Math.round(wageBase / summary.totalWorkHours) : 0
-  })()
+  const displayHourlyIncome = savedPayslip ? savedPayslip.hourly_income : summary.totalWageAmount
+  const displaySalesBack = savedPayslip ? savedPayslip.sales_back : summary.salesBack
+  const displayProductBack = savedPayslip ? savedPayslip.product_back : summary.totalProductBack
+  const displayFixedAmount = savedPayslip ? savedPayslip.fixed_amount : summary.fixedAmount
+  const displayPerAttendanceIncome = savedPayslip ? savedPayslip.per_attendance_income : summary.perAttendanceIncome
+  const displayWorkDays = savedPayslip ? savedPayslip.work_days : summary.workDays
+  const displayTotalWorkHours = savedPayslip ? savedPayslip.total_hours : summary.totalWorkHours
+  const displayAverageHourlyWage = savedPayslip
+    ? savedPayslip.average_hourly_wage
+    : (summary.totalWorkHours > 0 ? Math.round(summary.totalWageAmount / summary.totalWorkHours) : 0)
   const dynamicDailyPayment = deductions.find(d => d.name === '日払い')?.amount ?? 0
   const dynamicWithholdingTax = deductions.find(d => d.name === '源泉徴収')?.amount ?? 0
-  const displayDailyPayment = isFinalized && savedPayslip ? savedPayslip.daily_payment : dynamicDailyPayment
-  const displayWithholdingTax = isFinalized && savedPayslip ? savedPayslip.withholding_tax : dynamicWithholdingTax
-  const displayOtherDeductions = isFinalized && savedPayslip ? savedPayslip.other_deductions : (dynamicTotalDeduction - dynamicDailyPayment - dynamicWithholdingTax)
+  const displayDailyPayment = savedPayslip ? savedPayslip.daily_payment : dynamicDailyPayment
+  const displayWithholdingTax = savedPayslip ? savedPayslip.withholding_tax : dynamicWithholdingTax
+  const displayOtherDeductions = savedPayslip ? savedPayslip.other_deductions : (dynamicTotalDeduction - dynamicDailyPayment - dynamicWithholdingTax)
 
   // 保存値モード判定（バッジ表示用）
-  const dailyDetailsFromSaved = isFinalized && !!savedPayslip?.daily_details && savedPayslip.daily_details.length > 0
-  const deductionsFromSaved = isFinalized && !!savedPayslip?.deduction_details && savedPayslip.deduction_details.length > 0
+  const dailyDetailsFromSaved = !!savedPayslip?.daily_details && savedPayslip.daily_details.length > 0
+  const deductionsFromSaved = !!savedPayslip?.deduction_details && savedPayslip.deduction_details.length > 0
 
-  // 控除内訳: 確定時は保存値から復元（ドリフト防止）
+  // 控除内訳: 保存値があれば復元（ドリフト防止）
   const displayDeductions: DeductionResult[] = useMemo(() => {
-    if (isFinalized && savedPayslip?.deduction_details && savedPayslip.deduction_details.length > 0) {
+    if (savedPayslip?.deduction_details && savedPayslip.deduction_details.length > 0) {
       return savedPayslip.deduction_details.map(d => {
         let detail: string | undefined
         if (d.type === 'percentage' && d.percentage != null) {
@@ -1464,7 +1456,7 @@ function PayslipPageContent() {
       })
     }
     return deductions
-  }, [isFinalized, savedPayslip, deductions])
+  }, [savedPayslip, deductions])
 
   // 報酬形態ごとの売上集計方法を取得（異なる場合のみ複数表示）
   const salesAggregationByType = useMemo(() => {
@@ -1661,10 +1653,10 @@ function PayslipPageContent() {
     })
   }, [allEnabledCompensationTypes, compensationTypeColors, summary, dailySalesData, specialDailySales, savedPayslip, selectedMonth])
 
-  // 日別明細データ（月次確定済みなら保存値から復元、それ以外は動的計算）
+  // 日別明細データ（保存値があれば復元、それ以外は動的計算）
   const dailyDetails = useMemo(() => {
-    // 確定済みの場合は保存値から復元（ドリフト防止）
-    if (isYearMonthLocked(format(selectedMonth, 'yyyy-MM')) && savedPayslip?.daily_details && savedPayslip.daily_details.length > 0) {
+    // 保存値があれば復元（ドリフト防止）
+    if (savedPayslip?.daily_details && savedPayslip.daily_details.length > 0) {
       return savedPayslip.daily_details.map(d => {
         const dayObj = new Date(d.date)
         const dateStr = d.date
