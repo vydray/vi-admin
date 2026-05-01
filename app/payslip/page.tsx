@@ -2773,7 +2773,10 @@ function PayslipPageContent() {
                 const selfTotal = selfList.reduce((sum, item) => sum + item.backAmount, 0)
 
                 // 2. 卓内ヘルプ: 自分の卓で他キャストの商品 (is_self=false, help_cast_idあり)
-                const tableHelpItems = castDailyItems.filter(item => !item.is_self && item.help_cast_id)
+                // backRate / backAmount は「本人(=明細を見ているキャスト)が受け取る分」 = self_back_rate / self_back_amount
+                // 売上設定が推し0%なら self_back=0 のためその店舗ではこのリストは空(セクション非表示)になる
+                // 推し%>0 の店舗では本人にも按分された self_back が立つので正しく金額表示される
+                const tableHelpItems = castDailyItems.filter(item => !item.is_self && item.help_cast_id && item.self_back_amount > 0)
                 const tableHelpGrouped = new Map<string, {
                   productName: string
                   category: string | null
@@ -2792,7 +2795,7 @@ function PayslipPageContent() {
                   if (existing) {
                     existing.quantity += item.quantity
                     existing.selfSales += item.self_sales
-                    existing.backAmount += item.help_back_amount
+                    existing.backAmount += item.self_back_amount
                   } else {
                     tableHelpGrouped.set(key, {
                       productName: item.product_name,
@@ -2801,8 +2804,8 @@ function PayslipPageContent() {
                       selfSales: item.self_sales,
                       helpCastId: item.help_cast_id!,
                       helpCastName,
-                      backRate: item.help_back_rate,
-                      backAmount: item.help_back_amount
+                      backRate: item.self_back_rate,
+                      backAmount: item.self_back_amount
                     })
                   }
                 })
@@ -2921,10 +2924,10 @@ function PayslipPageContent() {
                     )}
 
                     {/* 卓内ヘルプ（参考情報）
-                       Mary Mare (store_id=7) は売上設定が「推し0% / ヘルプ100%」のため、
-                       このセクションに出る商品の本人取り分は実質常に¥0で誤認の元になる。
-                       他店舗では推し%>0でヘルプの取り分計算が意味を持つので従来表示を維持。 */}
-                    {storeId !== 7 && tableHelpList.length > 0 && (
+                       表示金額は本人が受け取る self_back_amount。
+                       Mary Mare のように推し0%設定の店舗では self_back=0 のため自動的にリスト空でセクション非表示。
+                       Memorable / MistressMirage のような推し%>0 の店舗では本人取り分が出る。 */}
+                    {tableHelpList.length > 0 && (
                       <div style={{ marginBottom: '20px' }}>
                         <h3 style={{ fontSize: '14px', fontWeight: '600', marginBottom: '8px', color: '#856404' }}>
                           卓内ヘルプ（自分の卓・他キャストの商品）
