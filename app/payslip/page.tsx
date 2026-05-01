@@ -1472,7 +1472,8 @@ function PayslipPageContent() {
       return savedPayslip.compensation_breakdown.map(cb => {
         const color = compensationTypeColors.get(cb.id)
         const items: { label: string; amount: number }[] = []
-        if (cb.use_wage && cb.hourly_income > 0) items.push({ label: '時間報酬', amount: cb.hourly_income })
+        // 時間報酬: use_wage が ON なら金額0でも表示（未設定の検知用）
+        if (cb.use_wage) items.push({ label: '時間報酬', amount: cb.hourly_income })
         if (cb.sales_back > 0) items.push({ label: '売上バック', amount: cb.sales_back })
         if (cb.product_back > 0) items.push({ label: '商品バック', amount: cb.product_back })
         if (cb.fixed_amount > 0) items.push({ label: '固定額', amount: cb.fixed_amount })
