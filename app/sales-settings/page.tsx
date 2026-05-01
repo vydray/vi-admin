@@ -824,11 +824,12 @@ function SalesSettingsPageContent() {
               helpShare = roundedBase
             }
           } else if (helpDistMethod === 'ratio') {
-            // 比率: helpRatio%が推し、残りがヘルプ（ヘルプがいる場合のみ）
+            // 比率: helpRatio%がヘルプ、残りが推し（ヘルプがいる場合のみ）
+            // 例: helpRatio=100 → 推し0%・ヘルプ100%（自分の名前付き商品のみ自分の売上）
             const hasHelp = helpCastsOnItem.length > 0
             if (hasRealNomination && hasHelp) {
-              nominationShare = Math.floor(roundedBase * helpRatio / 100)
-              helpShare = roundedBase - nominationShare
+              helpShare = Math.floor(roundedBase * helpRatio / 100)
+              nominationShare = roundedBase - helpShare
             } else if (hasRealNomination) {
               nominationShare = roundedBase
               helpShare = 0
@@ -1343,9 +1344,9 @@ function SalesSettingsPageContent() {
               }
             })
           } else if (helpDistMethod === 'ratio') {
-            // 比率で分ける
-            const selfShare = Math.floor(itemAmount * helpRatio / 100)
-            const helpShare = itemAmount - selfShare
+            // 比率で分ける: helpRatio% がヘルプ、残りが推し
+            const helpShare = Math.floor(itemAmount * helpRatio / 100)
+            const selfShare = itemAmount - helpShare
 
             // 推しへの分配（分配先全員）
             if (distributeTargets.length > 0) {
