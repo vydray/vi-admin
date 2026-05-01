@@ -215,10 +215,21 @@ function CompensationListContent() {
     if (type.fixed_amount > 0) {
       mainParts.push(`固定 ¥${type.fixed_amount.toLocaleString()}`)
     }
-    const actualHourlyWage = getActualHourlyWage(settings, type)
-    if (actualHourlyWage && actualHourlyWage > 0) {
-      mainParts.push(`時給 ¥${actualHourlyWage.toLocaleString()}`)
+
+    // 売上連動時給 / 保証時給のみ は hourly_rate=0 でも時給モードがON
+    const useUniformBased = (type as { use_uniform_based_wage?: boolean }).use_uniform_based_wage === true
+    const useGuaranteedOnly = (type as { use_guaranteed_wage_only?: boolean }).use_guaranteed_wage_only === true
+    if (useGuaranteedOnly) {
+      mainParts.push('保証時給のみ')
+    } else if (useUniformBased) {
+      mainParts.push('売上連動時給')
+    } else {
+      const actualHourlyWage = getActualHourlyWage(settings, type)
+      if (actualHourlyWage && actualHourlyWage > 0) {
+        mainParts.push(`時給 ¥${actualHourlyWage.toLocaleString()}`)
+      }
     }
+
     if (type.use_sliding_rate) {
       mainParts.push('スライド歩合')
       if (type.sliding_rates && type.sliding_rates.length > 0) {
@@ -229,6 +240,11 @@ function CompensationListContent() {
     }
     if (type.use_product_back) {
       mainParts.push('商品バック')
+    }
+
+    // per_attendance_amount > 0 なら出勤報酬を表示
+    if ((type.per_attendance_amount ?? 0) > 0) {
+      mainParts.push(`出勤報酬 ¥${type.per_attendance_amount?.toLocaleString()}/出勤`)
     }
 
     return {
