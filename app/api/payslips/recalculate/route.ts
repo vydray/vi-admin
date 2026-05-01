@@ -287,7 +287,8 @@ async function calculatePayslipForCast(
     }
 
     // 日別売上データを取得（cast_daily_itemsから）
-    const { data: dailyItems } = await supabaseAdmin
+    // 注: バック額のUPDATE後にもう一度refetchするため let で受ける
+    let { data: dailyItems } = await supabaseAdmin
       .from('cast_daily_items')
       .select('date, category, product_name, quantity, subtotal, self_back_amount, help_back_amount, is_self, help_cast_id')
       .eq('cast_id', cast.id)
@@ -323,7 +324,8 @@ async function calculatePayslipForCast(
       .lte('date', endDate)
 
     // 2. help_cast_id = cast.id のレコード（ヘルプとして）→ help_back_rate, help_back_amount を更新
-    const { data: helpItems } = await supabaseAdmin
+    // 注: バック額のUPDATE後にもう一度refetchするため let で受ける
+    let { data: helpItems } = await supabaseAdmin
       .from('cast_daily_items')
       .select('id, date, product_name, category, help_sales, self_sales, subtotal, cast_id, quantity, help_back_amount')
       .eq('help_cast_id', cast.id)
@@ -441,6 +443,25 @@ async function calculatePayslipForCast(
     }
 
     console.log(`[${cast.name}] cast_daily_items バック更新: self=${(selfItems || []).length}件, help=${(helpItems || []).length}件`)
+
+    // バック額UPDATE後の最新値を再取得（dailyItems と helpItems のメモリ内値は古いため）
+    // これをしないと dailySalesMap / totalSelfBack / totalHelpBack が UPDATE 前の値を参照してドリフトする
+    const refetchedDaily = await supabaseAdmin
+      .from('cast_daily_items')
+      .select('date, category, product_name, quantity, subtotal, self_back_amount, help_back_amount, is_self, help_cast_id')
+      .eq('cast_id', cast.id)
+      .eq('store_id', storeId)
+      .gte('date', startDate)
+      .lte('date', endDate)
+    dailyItems = refetchedDaily.data
+    const refetchedHelp = await supabaseAdmin
+      .from('cast_daily_items')
+      .select('id, date, product_name, category, help_sales, self_sales, subtotal, cast_id, quantity, help_back_amount')
+      .eq('help_cast_id', cast.id)
+      .eq('store_id', storeId)
+      .gte('date', startDate)
+      .lte('date', endDate)
+    helpItems = refetchedHelp.data
 
     // 売上設定を取得（全フィールド）
     const { data: salesSettings } = await supabaseAdmin
@@ -631,19 +652,12 @@ async function calculatePayslipForCast(
       const dayData = dailySalesMap.get(item.date)!
       dayData.totalSales += item.subtotal  // POS売上を追加
 
-      // DBに保存済みのバック額を使用（self_back_amount）
-      const storedBackAmount = item.self_back_amount || 0
+      // バック額はUPDATE後の self_back_amount をそのまま使用（self_sales × rate で正規化済み）
+      // is_self=false かつ self_sales=0 のテーブルヘルプ商品は self_back_amount=0 が正しい
+      // → ここでフォールバック計算（subtotal × rate）すると水増しになるためDB値のみ採用
+      const calculatedBackAmount = item.self_back_amount || 0
       const backInfo = getPosBackInfo(item.product_name, item.category, item.is_self)
-      let calculatedBackAmount = storedBackAmount
-      let backRatio: number | null = null
-
-      if (backInfo && calculatedBackAmount === 0) {
-        // バック設定があり、DBにバック額がない場合は計算
-        backRatio = backInfo.rate
-        calculatedBackAmount = backInfo.type === 'fixed'
-          ? backInfo.fixedAmount * item.quantity
-          : Math.floor(item.subtotal * backInfo.rate / 100)
-      }
+      const backRatio = backInfo?.rate ?? null
 
       dayData.productBack += calculatedBackAmount
       dayData.selfBack += calculatedBackAmount
