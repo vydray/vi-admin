@@ -147,6 +147,9 @@ function aggregateCastDailyItems(
     ? (salesSettings.item_help_ratio ?? 50)
     : (salesSettings.receipt_help_ratio ?? 50)
 
+  // 診断ログ: 売上計算で使われている設定値を確認するため
+  console.log(`[aggregateCastDailyItems] store=${storeId} date=${date} method=${method} isItemBased=${isItemBased} helpDistMethod=${helpDistMethod} helpRatio=${helpRatio} giveHelpSales=${giveHelpSales} item_help_distribution_method=${salesSettings.item_help_distribution_method} item_help_ratio=${salesSettings.item_help_ratio} item_help_sales_inclusion=${salesSettings.item_help_sales_inclusion}`)
+
   const roundingMethod = isItemBased
     ? (salesSettings.item_rounding_method ?? 'floor_100')
     : (salesSettings.receipt_rounding_method ?? 'floor_100')
