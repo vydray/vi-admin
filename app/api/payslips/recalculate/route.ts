@@ -1439,7 +1439,15 @@ async function calculatePayslipForCast(
           late_minutes: attendance?.late_minutes || 0,
         }
       })
-      .filter(d => d.hours > 0)
+      .filter(d =>
+        // 出勤あり、または売上・バック・日払い・遅刻のいずれかがある日を含める
+        // (シフト外日のBASE売上等を含めるため hours=0 でも sales/back > 0 なら表示)
+        d.hours > 0 ||
+        d.sales > 0 ||
+        d.back > 0 ||
+        d.daily_payment > 0 ||
+        d.late_minutes > 0
+      )
 
     // 商品バック詳細
     const productBackDetails: Array<{
