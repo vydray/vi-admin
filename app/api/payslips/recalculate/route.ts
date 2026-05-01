@@ -449,28 +449,59 @@ async function calculatePayslipForCast(
       .eq('store_id', storeId)
       .single()
 
-    // 注文データを取得（売上計算用）
-    const { data: orders } = await supabaseAdmin
-      .from('orders')
-      .select(`
-        id,
-        staff_name,
-        order_date,
-        total_incl_tax,
-        order_items (
-          id,
-          product_name,
-          category,
-          cast_name,
-          quantity,
-          unit_price,
-          subtotal
-        )
-      `)
-      .eq('store_id', storeId)
-      .gte('order_date', startDate)
-      .lte('order_date', endDate + 'T23:59:59')
-      .is('deleted_at', null)
+    // 注文データを取得（売上計算用） - ページネーションで1000件制限を回避
+    let orders: Array<{
+      id: string
+      staff_name: string | null
+      order_date: string
+      total_incl_tax: number | null
+      order_items: Array<{
+        id: number
+        product_name: string
+        category: string | null
+        cast_name: string[] | null
+        quantity: number
+        unit_price: number
+        subtotal: number
+      }>
+    }> = []
+    {
+      const pageSize = 1000
+      let offset = 0
+      while (true) {
+        const { data: page, error: pageError } = await supabaseAdmin
+          .from('orders')
+          .select(`
+            id,
+            staff_name,
+            order_date,
+            total_incl_tax,
+            order_items (
+              id,
+              product_name,
+              category,
+              cast_name,
+              quantity,
+              unit_price,
+              subtotal
+            )
+          `)
+          .eq('store_id', storeId)
+          .gte('order_date', startDate)
+          .lte('order_date', endDate + 'T23:59:59')
+          .is('deleted_at', null)
+          .order('id', { ascending: true })
+          .range(offset, offset + pageSize - 1)
+        if (pageError) {
+          console.error('orders fetch error:', pageError)
+          break
+        }
+        if (!page || page.length === 0) break
+        orders = orders.concat(page as typeof orders)
+        if (page.length < pageSize) break
+        offset += pageSize
+      }
+    }
 
     // キャストリスト（売上計算用）
     const { data: allCasts } = await supabaseAdmin
@@ -1046,14 +1077,28 @@ async function calculatePayslipForCast(
     if (needsNomination) {
       const monthStartTs = format(startOfMonth(month), "yyyy-MM-dd'T'00:00:00")
       const monthEndTs = format(endOfMonth(month), "yyyy-MM-dd'T'23:59:59")
-      const { data: nominationOrders } = await supabaseAdmin
-        .from('orders')
-        .select('guest_count, order_items(product_id)')
-        .eq('store_id', storeId)
-        .eq('staff_name', cast.name)
-        .gte('accounting_datetime', monthStartTs)
-        .lte('accounting_datetime', monthEndTs)
-      castMonthOrdersForNomination = (nominationOrders || []) as typeof castMonthOrdersForNomination
+      // ページネーションで1000件制限を回避
+      const pageSize = 1000
+      let offset = 0
+      while (true) {
+        const { data: page, error: pageError } = await supabaseAdmin
+          .from('orders')
+          .select('guest_count, order_items(product_id)')
+          .eq('store_id', storeId)
+          .eq('staff_name', cast.name)
+          .gte('accounting_datetime', monthStartTs)
+          .lte('accounting_datetime', monthEndTs)
+          .order('id', { ascending: true })
+          .range(offset, offset + pageSize - 1)
+        if (pageError) {
+          console.error('nomination orders fetch error:', pageError)
+          break
+        }
+        if (!page || page.length === 0) break
+        castMonthOrdersForNomination = castMonthOrdersForNomination.concat(page as typeof castMonthOrdersForNomination)
+        if (page.length < pageSize) break
+        offset += pageSize
+      }
       totalNominations = castMonthOrdersForNomination.reduce((sum, o) => sum + (o.guest_count || 0), 0)
     }
 

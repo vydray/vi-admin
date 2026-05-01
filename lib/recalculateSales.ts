@@ -807,33 +807,46 @@ export async function recalculateForDate(storeId: number, date: string): Promise
     nextDate.setDate(nextDate.getDate() + 1)
     const nextDateStr = nextDate.toISOString().split('T')[0]
 
-    const { data: orders, error: ordersError } = await supabaseAdmin
-      .from('orders')
-      .select(`
-        id,
-        staff_name,
-        order_date,
-        guest_count,
-        table_number,
-        guest_name,
-        order_items (
-          id,
-          product_name,
-          category,
-          cast_name,
-          quantity,
-          unit_price,
-          subtotal
-        )
-      `)
-      .eq('store_id', storeId)
-      .gte('order_date', `${date}T00:00:00Z`)
-      .lt('order_date', `${nextDateStr}T00:00:00Z`)
-      .is('deleted_at', null)
+    // ページネーションで1000件制限を回避
+    let orders: unknown[] = []
+    {
+      const pageSize = 1000
+      let offset = 0
+      while (true) {
+        const { data: page, error: pageError } = await supabaseAdmin
+          .from('orders')
+          .select(`
+            id,
+            staff_name,
+            order_date,
+            guest_count,
+            table_number,
+            guest_name,
+            order_items (
+              id,
+              product_name,
+              category,
+              cast_name,
+              quantity,
+              unit_price,
+              subtotal
+            )
+          `)
+          .eq('store_id', storeId)
+          .gte('order_date', `${date}T00:00:00Z`)
+          .lt('order_date', `${nextDateStr}T00:00:00Z`)
+          .is('deleted_at', null)
+          .order('id', { ascending: true })
+          .range(offset, offset + pageSize - 1)
+        if (pageError) throw pageError
+        if (!page || page.length === 0) break
+        orders = orders.concat(page)
+        if (page.length < pageSize) break
+        offset += pageSize
+      }
+    }
 
-    if (ordersError) throw ordersError
-
-    const typedOrders = (orders || []) as unknown as OrderWithStaff[]
+    const typedOrders = orders as unknown as OrderWithStaff[]
 
     const { data: baseOrders, error: baseOrdersError } = await supabaseAdmin
       .from('base_orders')
