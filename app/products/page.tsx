@@ -92,13 +92,14 @@ function ProductsPageContent() {
       return
     }
 
+    // 商品名はカテゴリ問わず店舗内で一意とする
+    // (cast_daily_items は product_name 文字列で needs_cast を引くため、同名商品があると挙動が破綻する)
     const isDuplicate = products.some(p =>
-      p.category_id === newProductCategory &&
       p.name.toLowerCase() === newProductName.trim().toLowerCase()
     )
 
     if (isDuplicate) {
-      toast.error(`「${newProductName.trim()}」は既に登録されています`)
+      toast.error(`「${newProductName.trim()}」は既に登録されています（別カテゴリでも同名は不可）`)
       return
     }
 
@@ -206,14 +207,14 @@ function ProductsPageContent() {
       return
     }
 
+    // 商品名はカテゴリ問わず店舗内で一意とする
     const isDuplicate = products.some(p =>
       p.id !== editingProduct.id &&
-      p.category_id === editCategory &&
       p.name.toLowerCase() === editName.trim().toLowerCase()
     )
 
     if (isDuplicate) {
-      toast.error(`「${editName.trim()}」は既に登録されています`)
+      toast.error(`「${editName.trim()}」は既に登録されています（別カテゴリでも同名は不可）`)
       return
     }
 
@@ -426,6 +427,19 @@ function ProductsPageContent() {
           needs_cast: needsCast
         })
       }
+
+      // CSV内の同名商品チェック（カテゴリ問わず）
+      const nameCount = new Map<string, number[]>()
+      validatedData.forEach((item, idx) => {
+        const key = item.name.trim().toLowerCase()
+        if (!nameCount.has(key)) nameCount.set(key, [])
+        nameCount.get(key)!.push(idx + 2) // ヘッダー行を考慮して+2
+      })
+      nameCount.forEach((lines, name) => {
+        if (lines.length > 1) {
+          errors.push(`商品名「${name}」が複数行で重複しています（行: ${lines.join(', ')}）`)
+        }
+      })
 
       // エラーがある場合は詳細を表示して中断
       if (errors.length > 0) {
