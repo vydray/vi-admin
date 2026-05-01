@@ -1069,7 +1069,7 @@ async function calculatePayslipForCast(
     // - nomination_tiered: 通常の guest_count 集計
     // - nomination_tiered + qualifying_product_ids: 該当商品が入っている伝票のみで集計
     let totalNominations = 0
-    let castMonthOrdersForNomination: { guest_count: number | null; order_items: { product_id: number | null }[] }[] = []
+    let castMonthOrdersForNomination: { guest_count: number | null; order_items: { product_name: string | null }[] }[] = []
     const needsNomination = (bonusTypes || []).some(bt => {
       const c = bt.conditions as { reward?: { type?: string } }
       return c.reward?.type === 'nomination_tiered'
@@ -1078,12 +1078,13 @@ async function calculatePayslipForCast(
       const monthStartTs = format(startOfMonth(month), "yyyy-MM-dd'T'00:00:00")
       const monthEndTs = format(endOfMonth(month), "yyyy-MM-dd'T'23:59:59")
       // ページネーションで1000件制限を回避
+      // order_items テーブルには product_id カラムが無いため、product_name で照合する
       const pageSize = 1000
       let offset = 0
       while (true) {
         const { data: page, error: pageError } = await supabaseAdmin
           .from('orders')
-          .select('guest_count, order_items(product_id)')
+          .select('guest_count, order_items(product_name)')
           .eq('store_id', storeId)
           .eq('staff_name', cast.name)
           .gte('order_date', monthStartTs)
@@ -1095,11 +1096,45 @@ async function calculatePayslipForCast(
           break
         }
         if (!page || page.length === 0) break
-        castMonthOrdersForNomination = castMonthOrdersForNomination.concat(page as typeof castMonthOrdersForNomination)
+        castMonthOrdersForNomination = castMonthOrdersForNomination.concat(page as unknown as typeof castMonthOrdersForNomination)
         if (page.length < pageSize) break
         offset += pageSize
       }
       totalNominations = castMonthOrdersForNomination.reduce((sum, o) => sum + (o.guest_count || 0), 0)
+    }
+
+    // VIP対象商品ID → 商品名 マッピング（qualifying_product_ids でフィルタする際に使用）
+    // order_items は product_name しか持っていないため、bonus_types に保存された
+    // product_id 配列を product_name 配列に変換しておく
+    const qualifyingProductNamesByBonus = new Map<number, Set<string>>()
+    if (needsNomination) {
+      const allQualifyingIds = new Set<number>()
+      for (const bt of bonusTypes || []) {
+        const c = bt.conditions as { reward?: { type?: string; qualifying_product_ids?: number[] } }
+        if (c.reward?.type === 'nomination_tiered' && c.reward.qualifying_product_ids) {
+          for (const pid of c.reward.qualifying_product_ids) allQualifyingIds.add(pid)
+        }
+      }
+      if (allQualifyingIds.size > 0) {
+        const { data: matchedProducts } = await supabaseAdmin
+          .from('products')
+          .select('id, name')
+          .eq('store_id', storeId)
+          .in('id', [...allQualifyingIds])
+        const idToName = new Map<number, string>()
+        ;(matchedProducts || []).forEach(p => idToName.set(p.id, p.name))
+        for (const bt of bonusTypes || []) {
+          const c = bt.conditions as { reward?: { type?: string; qualifying_product_ids?: number[] } }
+          if (c.reward?.type === 'nomination_tiered' && c.reward.qualifying_product_ids) {
+            const names = new Set<string>()
+            for (const pid of c.reward.qualifying_product_ids) {
+              const name = idToName.get(pid)
+              if (name) names.add(name)
+            }
+            qualifyingProductNamesByBonus.set(bt.id, names)
+          }
+        }
+      }
     }
 
     // rank_based 報酬用: 店舗内の月間売上ランキングを計算（cast_daily_stats から）
@@ -1232,12 +1267,12 @@ async function calculatePayslipForCast(
           if (tier) bonusAmount = tier.amount
         } else if (c.reward.type === 'nomination_tiered' && c.reward.tiers) {
           // qualifying_product_ids が指定されていれば、その商品が含まれる伝票のみで集計
-          const qualifyingIds = c.reward.qualifying_product_ids
+          // order_items は product_name しか持っていないので、事前に変換した名前セットでフィルタする
+          const qualifyingNames = qualifyingProductNamesByBonus.get(bt.id)
           let nominationCount: number
-          if (qualifyingIds && qualifyingIds.length > 0) {
-            const idSet = new Set(qualifyingIds)
+          if (qualifyingNames && qualifyingNames.size > 0) {
             nominationCount = castMonthOrdersForNomination
-              .filter(o => (o.order_items || []).some(item => item.product_id != null && idSet.has(item.product_id)))
+              .filter(o => (o.order_items || []).some(item => item.product_name != null && qualifyingNames.has(item.product_name)))
               .reduce((sum, o) => sum + (o.guest_count || 0), 0)
             detailParts.push(`対象指名${nominationCount}組(商品フィルタ)`)
           } else {
