@@ -46,6 +46,13 @@ interface AttendanceData {
   check_in_datetime: string | null
   check_out_datetime: string | null
   break_minutes: number
+  costume_id: number | null
+}
+
+interface UniformData {
+  id: number
+  name: string
+  class_label: string | null
 }
 
 interface DeductionType {
@@ -302,6 +309,15 @@ function PayslipPageContent() {
   const [salesSettings, setSalesSettings] = useState<SalesSettings | null>(null)
   const [backRates, setBackRates] = useState<CastBackRate[]>([])
   const [wageStatuses, setWageStatuses] = useState<WageStatus[]>([])
+  const [uniforms, setUniforms] = useState<UniformData[]>([])
+  // 売上連動時給ブラケット
+  const [wageBrackets, setWageBrackets] = useState<{ bracket_min: number; bracket_max: number | null; rates: Record<string, number> }[]>([])
+  // 保証時給設定
+  const [guaranteedRates, setGuaranteedRates] = useState<Record<string, number>>({})
+  const [guaranteedThresholdHours, setGuaranteedThresholdHours] = useState<number | null>(null)
+  const [guaranteedAfterMode, setGuaranteedAfterMode] = useState<'zero' | 'bracket'>('zero')
+  // 当月より前の累計勤務時間（保証時給上限判定用）
+  const [cumulativeHoursBeforeMonth, setCumulativeHoursBeforeMonth] = useState<number>(0)
   const [castDailyItems, setCastDailyItems] = useState<CastDailyItem[]>([])  // cast_daily_items データ（伝票詳細用）- 推しとして
   const [helpDailyItems, setHelpDailyItems] = useState<CastDailyItem[]>([])  // cast_daily_items データ（ヘルプとして）
   const [dailySalesData, setDailySalesData] = useState<Map<string, DailySalesData>>(new Map())
@@ -472,6 +488,65 @@ function PayslipPageContent() {
     setWageStatuses(data || [])
   }, [storeId])
 
+  // 衣装一覧を取得
+  const loadUniforms = useCallback(async () => {
+    const { data } = await supabase
+      .from('uniforms')
+      .select('id, name, class_label')
+      .eq('store_id', storeId)
+      .eq('is_active', true)
+    setUniforms((data || []) as UniformData[])
+  }, [storeId])
+
+  // 売上連動時給ブラケット & 保証時給設定を取得
+  const loadWageRateConfig = useCallback(async () => {
+    // 売上連動ブラケット
+    const { data: brackets } = await supabase
+      .from('sales_based_wage_brackets')
+      .select('bracket_min, bracket_max, rates, display_order')
+      .eq('store_id', storeId)
+      .eq('is_active', true)
+      .order('display_order', { ascending: true })
+    setWageBrackets((brackets || []).map(b => ({
+      bracket_min: b.bracket_min,
+      bracket_max: b.bracket_max,
+      rates: b.rates as Record<string, number>
+    })))
+
+    // 保証時給
+    const { data: storeWage } = await supabase
+      .from('store_wage_settings')
+      .select('guaranteed_wage_threshold_hours, guaranteed_wage_rates, guaranteed_wage_after_threshold')
+      .eq('store_id', storeId)
+      .maybeSingle()
+    setGuaranteedRates((storeWage?.guaranteed_wage_rates as Record<string, number>) || {})
+    setGuaranteedThresholdHours(storeWage?.guaranteed_wage_threshold_hours ?? null)
+    const after = storeWage?.guaranteed_wage_after_threshold as { mode?: string } | null
+    setGuaranteedAfterMode(after?.mode === 'bracket' ? 'bracket' : 'zero')
+  }, [storeId])
+
+  // 当月より前の累計勤務時間を取得（保証時給上限判定用）
+  const loadCumulativeHoursBeforeMonth = useCallback(async (castId: number, month: Date) => {
+    const monthStart = format(startOfMonth(month), 'yyyy-MM-dd')
+    let total = 0
+    let offset = 0
+    const pageSize = 1000
+    while (true) {
+      const { data: page } = await supabase
+        .from('cast_daily_stats')
+        .select('work_hours')
+        .eq('store_id', storeId)
+        .eq('cast_id', castId)
+        .lt('date', monthStart)
+        .range(offset, offset + pageSize - 1)
+      if (!page || page.length === 0) break
+      total += page.reduce((acc, r) => acc + Number(r.work_hours || 0), 0)
+      if (page.length < pageSize) break
+      offset += pageSize
+    }
+    setCumulativeHoursBeforeMonth(total)
+  }, [storeId])
+
   // キャストの報酬設定を取得（年月指定 → 直近 → デフォルトの順）
   const loadCompensationSettings = useCallback(async (castId: number, month: Date): Promise<CompensationSettings | null> => {
     const targetYear = month.getFullYear()
@@ -570,7 +645,7 @@ function PayslipPageContent() {
 
     const { data } = await supabase
       .from('attendance')
-      .select('date, daily_payment, late_minutes, status_id, status, check_in_datetime, check_out_datetime, break_minutes')
+      .select('date, daily_payment, late_minutes, status_id, status, check_in_datetime, check_out_datetime, break_minutes, costume_id')
       .eq('store_id', storeId)
       .eq('cast_name', cast.name)
       .gte('date', startDate)
@@ -754,11 +829,13 @@ function PayslipPageContent() {
       await loadSalesSettings()
       await loadBackRates()
       await loadWageStatuses()
+      await loadUniforms()
+      await loadWageRateConfig()
       setInitialized(true)
       setLoading(false)
     }
     init()
-  }, [loadCasts, loadDeductionSettings, loadSalesSettings, loadBackRates, loadWageStatuses, storeLoading, storeId])
+  }, [loadCasts, loadDeductionSettings, loadSalesSettings, loadBackRates, loadWageStatuses, loadUniforms, loadWageRateConfig, storeLoading, storeId])
 
   // キャストまたは月が変わったらデータを再取得（初期ロード完了後のみ）
   // ※ キャスト切り替え時のチカチカを防ぐため、loading状態は変更しない
@@ -770,10 +847,11 @@ function PayslipPageContent() {
         await loadAttendanceData(selectedCastId, selectedMonth)
         await loadCompensationSettings(selectedCastId, selectedMonth)
         await loadPayslip(selectedCastId, selectedMonth)
+        await loadCumulativeHoursBeforeMonth(selectedCastId, selectedMonth)
       }
       loadData()
     }
-  }, [initialized, selectedCastId, selectedMonth, casts, loadDailyStats, loadAttendanceData, loadCompensationSettings, loadPayslip])
+  }, [initialized, selectedCastId, selectedMonth, casts, loadDailyStats, loadAttendanceData, loadCompensationSettings, loadPayslip, loadCumulativeHoursBeforeMonth])
 
   // dailyStatsが更新されたら売上データを構築（空の場合もクリアするため常に実行）
   useEffect(() => {
@@ -4068,27 +4146,80 @@ function PayslipPageContent() {
               {/* 日別一覧 */}
               <div style={styles.modalSection}>
                 <div style={styles.tableWrapper}>
+                  {(() => {
+                    // 表示する追加カラムの判定
+                    // - 衣装カラム: 店舗が衣装管理を使ってる(uniforms登録あり)場合のみ
+                    // - 売上連動時給カラム: キャストの報酬形態に use_uniform_based_wage が含まれる場合のみ
+                    // - 保証時給カラム: キャストの報酬形態に use_guaranteed_wage_only が含まれる場合のみ
+                    const showUniformCol = uniforms.length > 0
+                    const types = (compensationSettings?.compensation_types || []) as Array<{
+                      use_uniform_based_wage?: boolean
+                      use_guaranteed_wage_only?: boolean
+                    }>
+                    const showSalesBasedCol = wageBrackets.length > 0 && types.some(t => t.use_uniform_based_wage === true)
+                    const showGuaranteedCol = Object.keys(guaranteedRates).length > 0 && types.some(t => t.use_guaranteed_wage_only === true)
+
+                    return (
                   <table style={styles.table}>
                     <thead>
                       <tr style={styles.tableHeader}>
                         <th style={styles.th}>日付</th>
                         <th style={styles.th}>出勤時間</th>
                         <th style={styles.th}>ステータス</th>
+                        {showUniformCol && <th style={styles.th}>衣装</th>}
                         <th style={{ ...styles.th, textAlign: 'right' }}>休憩</th>
                         <th style={{ ...styles.th, textAlign: 'right' }}>遅刻</th>
                         <th style={{ ...styles.th, textAlign: 'right' }}>時間</th>
+                        {showSalesBasedCol && <th style={{ ...styles.th, textAlign: 'right' }}>売上連動時給</th>}
+                        {showGuaranteedCol && <th style={{ ...styles.th, textAlign: 'right' }}>保証時給</th>}
                         <th style={{ ...styles.th, textAlign: 'right' }}>時給額</th>
-                        <th style={{ ...styles.th, textAlign: 'right' }}>時給</th>
+                        <th style={{ ...styles.th, textAlign: 'right' }}>採用時給</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {dailyDetails
-                        .filter(d => d.workHours > 0)
-                        .map((day, i) => {
+                      {(() => {
+                        // 月間累計売上を計算（売上連動ブラケット用）
+                        const monthlyTotalSales = dailyStats.reduce((sum, d) => sum + (d.total_sales_item_based || 0), 0)
+                        const bracket = wageBrackets.find(b =>
+                          monthlyTotalSales >= b.bracket_min && (b.bracket_max == null || monthlyTotalSales < b.bracket_max)
+                        )
+                        // 当月内の累計勤務時間を日付順で積み上げ（保証時給の上限判定用）
+                        const sortedDays = dailyDetails.filter(d => d.workHours > 0).slice().sort((a, b) => a.date.localeCompare(b.date))
+                        let runningHours = cumulativeHoursBeforeMonth
+
+                        return sortedDays.map((day, i) => {
                           const attendance = attendanceData.find(a => a.date === day.date)
                           const hourlyRate = day.workHours > 0
                             ? Math.round(day.wageAmount / day.workHours)
                             : 0
+
+                          // 衣装情報
+                          const uniform = attendance?.costume_id ? uniforms.find(u => u.id === attendance.costume_id) : null
+                          const classLabel = uniform?.class_label || null
+
+                          // 売上連動時給
+                          const salesBasedRate = classLabel && bracket ? (bracket.rates[classLabel] ?? 0) : 0
+
+                          // 保証時給（累計時間を考慮）
+                          let guaranteedRate = 0
+                          let guaranteedNote = ''
+                          if (classLabel && guaranteedRates[classLabel]) {
+                            const baseRate = guaranteedRates[classLabel]
+                            if (guaranteedThresholdHours == null) {
+                              guaranteedRate = baseRate
+                            } else if (runningHours >= guaranteedThresholdHours) {
+                              // 既に上限超え
+                              guaranteedRate = guaranteedAfterMode === 'bracket' ? salesBasedRate : 0
+                              guaranteedNote = guaranteedAfterMode === 'bracket' ? '(上限後:売上連動)' : '(上限後)'
+                            } else if (runningHours + day.workHours <= guaranteedThresholdHours) {
+                              // まだ上限内
+                              guaranteedRate = baseRate
+                            } else {
+                              // 境界日: 厳密分割（表示は基本レートを優先）
+                              guaranteedRate = baseRate
+                              guaranteedNote = '(境界日)'
+                            }
+                          }
 
                           // 出勤時間のフォーマット
                           let timeRange = '—'
@@ -4098,7 +4229,7 @@ function PayslipPageContent() {
                             timeRange = `${format(checkIn, 'HH:mm')}〜${format(checkOut, 'HH:mm')}`
                           }
 
-                          return (
+                          const row = (
                             <tr
                               key={day.date}
                               style={i % 2 === 0 ? styles.tableRowEven : styles.tableRow}
@@ -4122,6 +4253,11 @@ function PayslipPageContent() {
                                   {attendance?.status || '出勤'}
                                 </span>
                               </td>
+                              {showUniformCol && (
+                                <td style={{ ...styles.td, fontSize: '12px' }}>
+                                  {uniform ? `${uniform.name}${classLabel ? ` (${classLabel})` : ''}` : '—'}
+                                </td>
+                              )}
                               <td style={{ ...styles.td, textAlign: 'right', fontSize: '12px' }}>
                                 {attendance?.break_minutes ? `${attendance.break_minutes}分` : '—'}
                               </td>
@@ -4129,6 +4265,21 @@ function PayslipPageContent() {
                                 {attendance?.late_minutes ? `${attendance.late_minutes}分` : '—'}
                               </td>
                               <td style={{ ...styles.td, textAlign: 'right' }}>{day.workHours}h</td>
+                              {showSalesBasedCol && (
+                                <td style={{ ...styles.td, textAlign: 'right', fontSize: '12px', color: salesBasedRate > 0 ? '#1976D2' : '#999' }}>
+                                  {salesBasedRate > 0 ? currencyFormatter.format(salesBasedRate) : '—'}
+                                </td>
+                              )}
+                              {showGuaranteedCol && (
+                                <td style={{ ...styles.td, textAlign: 'right', fontSize: '12px', color: guaranteedRate > 0 ? '#9C27B0' : '#999' }}>
+                                  {guaranteedRate > 0 ? (
+                                    <>
+                                      {currencyFormatter.format(guaranteedRate)}
+                                      {guaranteedNote && <span style={{ fontSize: '10px', display: 'block', color: '#999' }}>{guaranteedNote}</span>}
+                                    </>
+                                  ) : '—'}
+                                </td>
+                              )}
                               <td style={{ ...styles.td, textAlign: 'right' }}>
                                 {currencyFormatter.format(day.wageAmount)}
                               </td>
@@ -4137,9 +4288,15 @@ function PayslipPageContent() {
                               </td>
                             </tr>
                           )
-                        })}
+
+                          runningHours += day.workHours
+                          return row
+                        })
+                      })()}
                     </tbody>
                   </table>
+                    )
+                  })()}
                 </div>
               </div>
             </div>
