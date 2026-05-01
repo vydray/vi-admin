@@ -1196,9 +1196,15 @@ async function calculatePayslipForCast(
 
     const attendedDates = new Set((attendanceData || []).map(a => a.date))
 
+    console.log(`[bonus-debug ${cast.name}] bonusTypes=${(bonusTypes||[]).length} enabledBonusIds=${JSON.stringify(enabledBonusIds)} totalNominations=${totalNominations} qualifyingMaps=${JSON.stringify([...qualifyingProductNamesByBonus.entries()].map(([k,v])=>[k,[...v]]))} castRankMap=${castRankMap ? JSON.stringify([...castRankMap.entries()]) : 'null'}`)
+
     for (const bt of (bonusTypes || [])) {
       // enabled_bonus_ids フィルタ（null or 空配列 = 賞与なし）
-      if (!enabledBonusIds || !enabledBonusIds.includes(bt.id)) continue
+      if (!enabledBonusIds || !enabledBonusIds.includes(bt.id)) {
+        console.log(`[bonus-debug ${cast.name}] SKIP bt.id=${bt.id} name=${bt.name} (not in enabled list)`)
+        continue
+      }
+      console.log(`[bonus-debug ${cast.name}] PROCESS bt.id=${bt.id} name=${bt.name}`)
 
       const c = bt.conditions as {
         attendance?: { eligible_status_ids?: string[]; disqualify_status_ids?: string[]; require_all_shifts?: boolean; min_days?: number | null; min_hours_per_day?: number | null; min_total_hours?: number | null } | null
@@ -1295,6 +1301,7 @@ async function calculatePayslipForCast(
           }
         }
 
+        console.log(`[bonus-debug ${cast.name}] bt.id=${bt.id} name=${bt.name} allConditionsMet=${allConditionsMet} bonusAmount=${bonusAmount} reward.type=${c.reward?.type} detailParts=${JSON.stringify(detailParts)}`)
         if (bonusAmount > 0) {
           ruleBonusDetails.push({
             name: bt.name,
@@ -1303,6 +1310,8 @@ async function calculatePayslipForCast(
             detail: detailParts.join(' / ') + ` → ¥${bonusAmount.toLocaleString()}`
           })
         }
+      } else {
+        console.log(`[bonus-debug ${cast.name}] bt.id=${bt.id} name=${bt.name} allConditionsMet=${allConditionsMet} (skipped reward calc)`)
       }
     }
 
