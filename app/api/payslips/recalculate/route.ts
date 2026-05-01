@@ -296,14 +296,8 @@ async function calculatePayslipForCast(
       .gte('date', startDate)
       .lte('date', endDate)
 
-    // BASE注文を取得
-    const { data: baseOrders } = await supabaseAdmin
-      .from('base_orders')
-      .select('id, product_name, actual_price, quantity, business_date')
-      .eq('store_id', storeId)
-      .eq('cast_id', cast.id)
-      .gte('business_date', startDate)
-      .lte('business_date', endDate)
+    // BASE注文は cast_daily_items テーブルに category='BASE' で取り込まれているため
+    // 個別の base_orders SELECT は不要（dailyItems 経由で同じデータを参照）
 
     // BASEバック率を取得
     const { data: backRates } = await supabaseAdmin
@@ -531,31 +525,7 @@ async function calculatePayslipForCast(
       .eq('store_id', storeId)
     const castList = (allCasts || []).map(c => ({ id: c.id, name: c.name }))
 
-    // BASEバック情報を取得するヘルパー関数
-    const getBaseBackInfo = (productName: string): { type: 'ratio' | 'fixed'; rate: number; fixedAmount: number } | null => {
-      if (!backRates || backRates.length === 0) return null
-
-      // 1. カテゴリ='BASE'で商品名完全一致
-      let matchedRate = backRates.find(
-        r => r.product_name === productName && r.category === 'BASE'
-      )
-      // 2. カテゴリ='BASE'で商品名なし
-      if (!matchedRate) {
-        matchedRate = backRates.find(
-          r => r.category === 'BASE' && r.product_name === null
-        )
-      }
-      if (!matchedRate) return null
-
-      const rate = matchedRate.self_back_ratio ?? matchedRate.back_ratio
-      return {
-        type: matchedRate.back_type || 'ratio',
-        rate,
-        fixedAmount: matchedRate.back_fixed_amount || 0
-      }
-    }
-
-    // POS商品のバック情報を取得するヘルパー関数
+    // POS商品のバック情報を取得するヘルパー関数（BASEカテゴリも getPosBackInfo で扱う）
     const getPosBackInfo = (productName: string, category: string | null, isSelf: boolean): { type: 'ratio' | 'fixed'; rate: number; fixedAmount: number } | null => {
       if (!backRates || backRates.length === 0) return null
 
@@ -662,7 +632,7 @@ async function calculatePayslipForCast(
       dayData.productBack += calculatedBackAmount
       dayData.selfBack += calculatedBackAmount
 
-      // POS商品明細をitemsに追加（BASE商品と同じ構造）
+      // POS商品明細をitemsに追加（BASE商品も cast_daily_items に取り込まれているのでここで処理）
       dayData.items.push({
         product_name: item.product_name,
         category: item.category || '',
@@ -671,7 +641,7 @@ async function calculatePayslipForCast(
         subtotal: item.subtotal,
         back_ratio: backRatio,
         back_amount: calculatedBackAmount,
-        is_base: false
+        is_base: item.category === 'BASE'
       })
     }
 
@@ -704,49 +674,10 @@ async function calculatePayslipForCast(
       })
     }
 
-    // BASE注文のバックを計算して追加
-    const excludeTax = salesSettings?.item_exclude_consumption_tax ?? salesSettings?.use_tax_excluded ?? false
-    const taxPercent = 10
-
-    for (const baseOrder of baseOrders || []) {
-      if (!baseOrder.business_date) continue
-
-      const backInfo = getBaseBackInfo(baseOrder.product_name)
-      if (!backInfo) continue // バック設定がなければスキップ
-
-      // BASE注文のactual_priceは既に税抜価格なので、税計算は不要
-      const calcPrice = baseOrder.actual_price || 0
-      const subtotal = calcPrice * baseOrder.quantity
-      const backAmount = backInfo.type === 'fixed'
-        ? backInfo.fixedAmount * baseOrder.quantity
-        : Math.floor(subtotal * backInfo.rate / 100)
-
-      // dailySalesMapに追加
-      if (!dailySalesMap.has(baseOrder.business_date)) {
-        dailySalesMap.set(baseOrder.business_date, {
-          date: baseOrder.business_date,
-          totalSales: 0,
-          productBack: 0,
-          selfBack: 0,
-          helpBack: 0,
-          items: []
-        })
-      }
-      const dayData = dailySalesMap.get(baseOrder.business_date)!
-      dayData.totalSales += subtotal  // BASE売上を追加
-      dayData.productBack += backAmount
-      dayData.selfBack += backAmount
-      dayData.items.push({
-        product_name: baseOrder.product_name,
-        category: 'BASE',
-        sales_type: 'self',
-        quantity: baseOrder.quantity,
-        subtotal,
-        back_ratio: backInfo.rate,
-        back_amount: backAmount,
-        is_base: true
-      })
-    }
+    // BASE注文は cast_daily_items に取り込まれているので上の dailyItems ループで処理済み。
+    // 以前はここで base_orders から直接バックを再計算して dailySalesMap に追加していたが、
+    // cast_daily_items 経路と二重カウントになり product_back_details 合計が水増しされていたため削除。
+    // payslips.product_back は cast_daily_items.self_back_amount の合計から作られるので変化なし。
 
     // ===== 集計計算 =====
     const totalWorkHours = (dailyStats || []).reduce((sum, d) => sum + (d.work_hours || 0), 0)
