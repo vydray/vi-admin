@@ -1635,9 +1635,17 @@ async function calculatePayslipForCast(
           byOrder.get(orderKey)!.push(row)
         }
 
+        // 出勤はあるが売上0の日も行を作るため、日付集合を統合
+        const allDates = new Set<string>()
+        for (const d of byDate.keys()) allDates.add(d)
+        for (const ds of (dailyStats || [])) {
+          if ((ds.work_hours || 0) > 0) allDates.add(ds.date)
+        }
+
         // 各日のレコード組み立て
         const insertRows: Array<Record<string, unknown>> = []
-        for (const [date, byOrder] of byDate) {
+        for (const date of allDates) {
+          const byOrder = byDate.get(date) || new Map<string, SourceRow[]>()
           let selfSalesTotal = 0
           let helpSalesTotal = 0
           let selfBackTotal = 0
