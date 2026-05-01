@@ -372,7 +372,11 @@ export function calculateItemBased(
     const orderNominations = order.staff_name
       ? order.staff_name.split(',').map(n => n.trim())
       : []
-    const allNominations = [...new Set([...orderNominations, ...nominations])]
+    // この伝票の推しのみを使用（当日の全店推しを混ぜない）。
+    // 旧実装は当日の全推し名を allNominations に含めていたため、
+    // 「他の卓でヘルプとして来たキャスト」が「自分の卓の推し」扱いになり
+    // 売上が誤って self に計上されていた（aggregateCastDailyItems と挙動が乖離）
+    const allNominations = orderNominations
 
     // ヘルプ除外名を推しから除外（実在キャストの推しのみ残す）
     const realNominations = allNominations.filter(n => !nonHelpNames.includes(n))
