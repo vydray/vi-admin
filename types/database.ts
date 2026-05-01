@@ -426,8 +426,13 @@ export interface CompensationType {
   sliding_rates: SlidingRate[] | null // スライド率テーブル
 
   // 売上連動時給（衣装クラス連動）: ON時 hourly_rate / use_sliding_rate を上書き
-  // 月間売上のブラケット × その日の uniforms.class_label で時給を決定
+  // 月間売上のブラケット × その日の uniforms.class_label で時給を決定（累計100h以下は保証時給フォールバック）
   use_uniform_based_wage?: boolean
+
+  // 保証時給のみ: ON時 hourly_rate / sliding / bracket を全て上書き
+  // store_wage_settings.guaranteed_wage_rates × 衣装クラスで時給を決定（累計時間制限なし、常に適用）
+  // use_uniform_based_wage と同時 ON は不可（UI側で相互排他）
+  use_guaranteed_wage_only?: boolean
 
   // 賞与をこの報酬形態で適用するか（OFF時は採用されても賞与0）
   // undefined は従来挙動（true 相当）として扱う

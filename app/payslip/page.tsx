@@ -1505,8 +1505,14 @@ function PayslipPageContent() {
       const items: { label: string; amount: number }[] = []
       let total = 0
 
-      // 時間報酬
-      if (type.hourly_rate && type.hourly_rate > 0) {
+      // 時間報酬: 通常時給 / 売上連動時給 / 保証時給のみ のいずれかが ON で表示
+      // 値は cast_daily_stats から集計済みの summary.totalWageAmount（採用形態ベース）
+      // ※当月の動的表示では各形態の wage を別途計算しないので「採用形態の値」が表示される
+      const hasWageMode =
+        (type.hourly_rate && type.hourly_rate > 0) ||
+        (type as { use_uniform_based_wage?: boolean }).use_uniform_based_wage === true ||
+        (type as { use_guaranteed_wage_only?: boolean }).use_guaranteed_wage_only === true
+      if (hasWageMode) {
         const amount = summary.totalWageAmount
         items.push({ label: '時間報酬', amount })
         total += amount

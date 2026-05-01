@@ -3244,79 +3244,110 @@ function CompensationSettingsPageContent() {
                       />
                     </h3>
 
-                    {/* 時給 */}
-                    <div style={styles.payRow}>
-                      <label style={styles.payLabel}>
-                        <input
-                          type="checkbox"
-                          checked={activeCompensationType.hourly_rate > 0}
-                          disabled={activeCompensationType.use_uniform_based_wage === true}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              // 時給の優先順位: オーバーライド > ステータス時給 > 平均時給 > デフォルト1500
-                              let defaultHourlyRate = 1500
-                              if (settingsState.hourlyWageOverride != null) {
-                                defaultHourlyRate = settingsState.hourlyWageOverride
-                              } else if (settingsState.statusId) {
-                                const status = wageStatuses.find(s => s.id === settingsState.statusId)
-                                if (status) {
-                                  defaultHourlyRate = status.hourly_wage
+                    {/* 時給（通常の固定時給。売上連動・保証時給ONの時は無効化） */}
+                    {(() => {
+                      const isUniform = activeCompensationType.use_uniform_based_wage === true
+                      const isGuaranteed = activeCompensationType.use_guaranteed_wage_only === true
+                      const otherWageModeOn = isUniform || isGuaranteed
+                      return (
+                        <div style={styles.payRow}>
+                          <label style={styles.payLabel}>
+                            <input
+                              type="checkbox"
+                              checked={activeCompensationType.hourly_rate > 0}
+                              disabled={otherWageModeOn}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  let defaultHourlyRate = 1500
+                                  if (settingsState.hourlyWageOverride != null) {
+                                    defaultHourlyRate = settingsState.hourlyWageOverride
+                                  } else if (settingsState.statusId) {
+                                    const status = wageStatuses.find(s => s.id === settingsState.statusId)
+                                    if (status) {
+                                      defaultHourlyRate = status.hourly_wage
+                                    }
+                                  } else if (wageStats?.averageHourlyWage) {
+                                    defaultHourlyRate = wageStats.averageHourlyWage
+                                  }
+                                  updateCompensationType(activeCompensationType.id, { hourly_rate: defaultHourlyRate })
+                                } else {
+                                  updateCompensationType(activeCompensationType.id, { hourly_rate: 0 })
                                 }
-                              } else if (wageStats?.averageHourlyWage) {
-                                defaultHourlyRate = wageStats.averageHourlyWage
-                              }
-                              updateCompensationType(activeCompensationType.id, { hourly_rate: defaultHourlyRate })
-                            } else {
-                              updateCompensationType(activeCompensationType.id, { hourly_rate: 0 })
-                            }
-                          }}
-                          style={styles.checkbox}
-                        />
-                        <span style={{ color: activeCompensationType.use_uniform_based_wage ? '#9ca3af' : undefined }}>時給</span>
-                      </label>
-                      <div style={styles.payInputGroup}>
-                        <div style={{
-                          ...styles.payInput,
-                          backgroundColor: '#f5f5f5',
-                          display: 'flex',
-                          alignItems: 'center',
-                          color: activeCompensationType.hourly_rate === 0 ? '#999' : '#333'
-                        }}>
-                          {(() => {
-                            // 表示する時給を決定（オーバーライド > ステータス時給 > 平均時給）
-                            if (settingsState.hourlyWageOverride != null) {
-                              return settingsState.hourlyWageOverride.toLocaleString()
-                            } else if (settingsState.statusId) {
-                              const status = wageStatuses.find(s => s.id === settingsState.statusId)
-                              if (status) {
-                                return status.hourly_wage.toLocaleString()
-                              }
-                            }
-                            return wageStats?.averageHourlyWage?.toLocaleString() || '-'
-                          })()}
+                              }}
+                              style={styles.checkbox}
+                            />
+                            <span style={{ color: otherWageModeOn ? '#9ca3af' : undefined }}>時給</span>
+                          </label>
+                          <div style={styles.payInputGroup}>
+                            <div style={{
+                              ...styles.payInput,
+                              backgroundColor: '#f5f5f5',
+                              display: 'flex',
+                              alignItems: 'center',
+                              color: activeCompensationType.hourly_rate === 0 ? '#999' : '#333'
+                            }}>
+                              {(() => {
+                                if (settingsState.hourlyWageOverride != null) {
+                                  return settingsState.hourlyWageOverride.toLocaleString()
+                                } else if (settingsState.statusId) {
+                                  const status = wageStatuses.find(s => s.id === settingsState.statusId)
+                                  if (status) {
+                                    return status.hourly_wage.toLocaleString()
+                                  }
+                                }
+                                return wageStats?.averageHourlyWage?.toLocaleString() || '-'
+                              })()}
+                            </div>
+                            <span style={styles.payUnit}>円/時</span>
+                          </div>
                         </div>
-                        <span style={styles.payUnit}>円/時</span>
-                      </div>
-                    </div>
+                      )
+                    })()}
 
-                    {/* 売上連動時給（衣装連動） */}
+                    {/* 売上連動時給（衣装連動）: 累計100hまでは保証時給、その後ブラケット */}
                     <div style={styles.payRow}>
                       <label style={styles.payLabel}>
                         <input
                           type="checkbox"
                           checked={activeCompensationType.use_uniform_based_wage === true}
+                          disabled={activeCompensationType.use_guaranteed_wage_only === true}
                           onChange={(e) => updateCompensationType(activeCompensationType.id, {
                             use_uniform_based_wage: e.target.checked,
-                            // ON時は通常時給を0に固定（ブラケット値で計算するため）
+                            // 相互排他: 売上連動ON時は他モードOFF
+                            use_guaranteed_wage_only: e.target.checked ? false : activeCompensationType.use_guaranteed_wage_only,
                             hourly_rate: e.target.checked ? 0 : activeCompensationType.hourly_rate,
                           })}
                           style={styles.checkbox}
                         />
-                        <span>売上連動時給</span>
+                        <span style={{ color: activeCompensationType.use_guaranteed_wage_only ? '#9ca3af' : undefined }}>売上連動時給</span>
                       </label>
                       <div style={styles.payInputGroup}>
                         <span style={styles.productBackHint}>
-                          時給設定 → 売上連動時給タブ で設定したブラケット × 衣装クラスで時給確定
+                          売上ブラケット × 衣装クラスで時給確定（累計100h以下は保証時給）
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* 保証時給のみ: 累計時間制限なし、ずっと保証時給レート */}
+                    <div style={styles.payRow}>
+                      <label style={styles.payLabel}>
+                        <input
+                          type="checkbox"
+                          checked={activeCompensationType.use_guaranteed_wage_only === true}
+                          disabled={activeCompensationType.use_uniform_based_wage === true}
+                          onChange={(e) => updateCompensationType(activeCompensationType.id, {
+                            use_guaranteed_wage_only: e.target.checked,
+                            // 相互排他: 保証時給のみON時は他モードOFF
+                            use_uniform_based_wage: e.target.checked ? false : activeCompensationType.use_uniform_based_wage,
+                            hourly_rate: e.target.checked ? 0 : activeCompensationType.hourly_rate,
+                          })}
+                          style={styles.checkbox}
+                        />
+                        <span style={{ color: activeCompensationType.use_uniform_based_wage ? '#9ca3af' : undefined }}>保証時給のみ</span>
+                      </label>
+                      <div style={styles.payInputGroup}>
+                        <span style={styles.productBackHint}>
+                          保証時給レート × 勤務時間（累計時間制限なし、常に適用）
                         </span>
                       </div>
                     </div>
