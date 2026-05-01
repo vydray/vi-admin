@@ -2920,8 +2920,9 @@ function PayslipPageContent() {
                       </div>
                     )}
 
-                    {/* 卓内ヘルプ（参考情報） */}
-                    {tableHelpList.length > 0 && (
+                    {/* 卓内ヘルプ（参考情報）: バック金額はヘルプキャスト側のものでこのキャストの収入ではない
+                       誤認のもとになるので非表示。データ計算は selectedProductDetail.type='tableHelp' で必要なのでロジックは残す */}
+                    {false && tableHelpList.length > 0 && (
                       <div style={{ marginBottom: '20px' }}>
                         <h3 style={{ fontSize: '14px', fontWeight: '600', marginBottom: '8px', color: '#856404' }}>
                           卓内ヘルプ（自分の卓・他キャストの商品）
