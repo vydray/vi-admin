@@ -2920,12 +2920,17 @@ function PayslipPageContent() {
                       </div>
                     )}
 
-                    {/* 卓内ヘルプ（参考情報） */}
+                    {/* 卓内ヘルプ（参考情報） - このキャスト本人の取り分は¥0
+                       売上はヘルプキャストへ流れるため、本人のバックは発生しない。
+                       誤認を避けるためバック率・バック金額カラムは出さない（情報過多になるので 売上小計のみ） */}
                     {tableHelpList.length > 0 && (
                       <div style={{ marginBottom: '20px' }}>
-                        <h3 style={{ fontSize: '14px', fontWeight: '600', marginBottom: '8px', color: '#856404' }}>
+                        <h3 style={{ fontSize: '14px', fontWeight: '600', marginBottom: '4px', color: '#856404' }}>
                           卓内ヘルプ（自分の卓・他キャストの商品）
                         </h3>
+                        <p style={{ fontSize: '11px', color: '#86868b', marginTop: 0, marginBottom: '8px' }}>
+                          このキャスト本人の取り分は ¥0（売上は各ヘルプキャスト側に計上されます）
+                        </p>
                         <div style={styles.tableWrapper}>
                           <table style={styles.table}>
                             <thead>
@@ -2936,8 +2941,6 @@ function PayslipPageContent() {
                                 <th style={{ ...styles.th, textAlign: 'right' }}>単価</th>
                                 <th style={{ ...styles.th, textAlign: 'right' }}>数量</th>
                                 <th style={{ ...styles.th, textAlign: 'right' }}>金額</th>
-                                <th style={{ ...styles.th, textAlign: 'center' }}>バック率</th>
-                                <th style={{ ...styles.th, textAlign: 'right' }}>バック金額</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -2964,16 +2967,12 @@ function PayslipPageContent() {
                                   <td style={{ ...styles.td, textAlign: 'right' }}>{currencyFormatter.format(unitPrice)}</td>
                                   <td style={{ ...styles.td, textAlign: 'right' }}>{item.quantity}</td>
                                   <td style={{ ...styles.td, textAlign: 'right' }}>{currencyFormatter.format(baseAmount)}</td>
-                                  <td style={{ ...styles.td, textAlign: 'center' }}>{item.backRate}%</td>
-                                  <td style={{ ...styles.td, textAlign: 'right', fontWeight: '600', color: '#856404' }}>
-                                    {currencyFormatter.format(item.backAmount)}
-                                  </td>
                                 </tr>
                               )})}
                               <tr style={styles.tableTotal}>
-                                <td colSpan={7} style={{ ...styles.td, fontWeight: 'bold' }}>小計</td>
-                                <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold', color: '#856404' }}>
-                                  {currencyFormatter.format(tableHelpTotal)}
+                                <td colSpan={5} style={{ ...styles.td, fontWeight: 'bold' }}>本人取り分</td>
+                                <td style={{ ...styles.td, textAlign: 'right', fontWeight: 'bold', color: '#86868b' }}>
+                                  ¥0
                                 </td>
                               </tr>
                             </tbody>
