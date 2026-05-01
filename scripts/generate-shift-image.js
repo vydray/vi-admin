@@ -216,6 +216,6 @@ function generateImage(dates, outputPath) {
   console.log(`Generated: ${outputPath} (${canvasWidth}x${totalH})`);
 }
 
-const dates = getDates('2026-04-01', '2026-04-15');
-generateImage(dates, path.join(process.cwd(), 'shift-memorable-april-first.png'));
+const dates = getDates('2026-05-01', '2026-05-15');
+generateImage(dates, path.join(process.cwd(), 'shift-memorable-may-first.png'));
 console.log('Done!');

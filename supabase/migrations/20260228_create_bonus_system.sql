@@ -48,3 +48,14 @@ ALTER TABLE cast_bonuses ENABLE ROW LEVEL SECURITY;
 -- RLSポリシー: service_role は全アクセス可
 CREATE POLICY "service_role_bonus_types" ON bonus_types FOR ALL TO service_role USING (true) WITH CHECK (true);
 CREATE POLICY "service_role_cast_bonuses" ON cast_bonuses FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+-- RLSポリシー: anon/authenticated も全アクセス可（管理画面用）
+CREATE POLICY "bonus_types_select" ON bonus_types FOR SELECT USING (true);
+CREATE POLICY "bonus_types_insert" ON bonus_types FOR INSERT WITH CHECK (true);
+CREATE POLICY "bonus_types_update" ON bonus_types FOR UPDATE USING (true);
+CREATE POLICY "bonus_types_delete" ON bonus_types FOR DELETE USING (true);
+
+CREATE POLICY "cast_bonuses_select" ON cast_bonuses FOR SELECT USING (true);
+CREATE POLICY "cast_bonuses_insert" ON cast_bonuses FOR INSERT WITH CHECK (true);
+CREATE POLICY "cast_bonuses_update" ON cast_bonuses FOR UPDATE USING (true);
+CREATE POLICY "cast_bonuses_delete" ON cast_bonuses FOR DELETE USING (true);

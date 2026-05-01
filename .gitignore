@@ -1,3 +1,6 @@
+# mcp
+.mcp.json
+
 # dependencies
 /node_modules
 /.pnp

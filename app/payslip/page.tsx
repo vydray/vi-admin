@@ -1466,8 +1466,9 @@ function PayslipPageContent() {
 
   // 報酬形態ごとの内訳計算（比較表示用）
   const compensationTypeBreakdowns = useMemo(() => {
-    // ロック後 + 保存値あり → compensation_breakdown JSONB から復元
-    if (isYearMonthLocked(format(selectedMonth, 'yyyy-MM')) && savedPayslip?.compensation_breakdown && savedPayslip.compensation_breakdown.length > 0) {
+    // 保存済み compensation_breakdown があれば常に優先（形態ごとに正しい時間報酬等が保存されている）
+    // ロック後だけでなく未確定月でも、再計算後の保存値はそのまま表示する
+    if (savedPayslip?.compensation_breakdown && savedPayslip.compensation_breakdown.length > 0) {
       return savedPayslip.compensation_breakdown.map(cb => {
         const color = compensationTypeColors.get(cb.id)
         const items: { label: string; amount: number }[] = []
