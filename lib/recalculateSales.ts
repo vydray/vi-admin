@@ -1146,15 +1146,13 @@ export async function recalculateForDate(storeId: number, date: string): Promise
 
     // 売上連動キャストの月累計売上を取得（cast_daily_stats を月初〜月末で集計）
     const monthlyTotalSalesMap = new Map<number, number>()
-    // 各キャストの当日より前の累計勤務時間（保証時給判定用）
-    const cumulativeHoursBeforeMap = new Map<number, number>()
     if (uniformWageCastIds.size > 0) {
       const monthStart = `${targetYear}-${String(targetMonth).padStart(2, '0')}-01`
       const nextMonth = targetMonth === 12 ? 1 : targetMonth + 1
       const nextYear = targetMonth === 12 ? targetYear + 1 : targetYear
       const monthEndExclusive = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`
 
-      // ページネーションで cast_daily_stats を取得（月内売上 + 累計勤務時間用）
+      // ページネーションで cast_daily_stats を取得（月内売上集計用）
       const castIdArr = [...uniformWageCastIds]
       let allMonthStats: { cast_id: number; total_sales_item_based: number | null; total_sales_receipt_based: number | null }[] = []
       let offset = 0
@@ -1181,49 +1179,25 @@ export async function recalculateForDate(storeId: number, date: string): Promise
           .reduce((acc, r) => acc + ((aggMode === 'receipt_based' ? r.total_sales_receipt_based : r.total_sales_item_based) || 0), 0)
         monthlyTotalSalesMap.set(castId, sum)
       }
-
-      // 当日より前の累計勤務時間を一括取得（保証時給の閾値判定用）
-      let allHistoryHours: { cast_id: number; work_hours: number | null }[] = []
-      offset = 0
-      while (true) {
-        const { data: page } = await supabaseAdmin
-          .from('cast_daily_stats')
-          .select('cast_id, work_hours')
-          .eq('store_id', storeId)
-          .in('cast_id', castIdArr)
-          .lt('date', date)
-          .range(offset, offset + pageSize - 1)
-        if (!page || page.length === 0) break
-        allHistoryHours = allHistoryHours.concat(page)
-        if (page.length < pageSize) break
-        offset += pageSize
-      }
-      for (const castId of castIdArr) {
-        const sum = allHistoryHours
-          .filter(r => r.cast_id === castId)
-          .reduce((acc, r) => acc + Number(r.work_hours || 0), 0)
-        cumulativeHoursBeforeMap.set(castId, sum)
-      }
     }
 
-    // 保証時給設定を取得（売上連動 or 保証時給のみキャストが在籍する場合のみ）
-    let guaranteedThresholdHours: number | null = null
+    // 保証時給レート取得（保証時給のみキャストが在籍する場合に使用）
     let guaranteedRates: Record<string, number> | null = null
     if (wageModeCastIds.size > 0) {
       const { data: storeWageSettings } = await supabaseAdmin
         .from('store_wage_settings')
-        .select('guaranteed_wage_threshold_hours, guaranteed_wage_rates')
+        .select('guaranteed_wage_rates')
         .eq('store_id', storeId)
         .maybeSingle()
       if (storeWageSettings?.guaranteed_wage_rates) {
-        guaranteedThresholdHours = storeWageSettings.guaranteed_wage_threshold_hours ?? null
         guaranteedRates = storeWageSettings.guaranteed_wage_rates as Record<string, number>
       }
     }
 
-    // 売上連動時給(+保証時給) または 保証時給のみ の wage計算ヘルパー
-    // - guaranteedOnly: 累計時間制限なし、常に保証レート
-    // - uniformBased: ブラケット時給、累計100h以下は保証レートにフォールバック（境界日は分割）
+    // 売上連動時給 / 保証時給のみ の wage計算ヘルパー
+    // 設計: 「保証時給」と「売上連動時給」は完全に独立した報酬形態として比較される。
+    //       売上連動時給の中で 100h以下は保証時給にフォールバック…という自動スライドはしない。
+    //       保証時給を効かせたい場合は、別の報酬形態として「保証時給のみ」を設定し highest 比較する。
     // 戻り値: { rate: 表示用の実効時給, amount: 実際のwage_amount }
     const computeUniformWage = (castId: number, costumeId: number | null, workHours: number): { rate: number; amount: number } | null => {
       const isGuaranteedOnly = guaranteedOnlyCastIds.has(castId)
@@ -1233,40 +1207,18 @@ export async function recalculateForDate(storeId: number, date: string): Promise
       const classLabel = costumeClassMap.get(costumeId)
       if (!classLabel) return { rate: 0, amount: 0 }
 
-      // 保証時給のみモード: 累計時間制限なしで保証レート×時間
+      // 保証時給のみモード: 保証レート × 時間（自動スライドなし）
       if (isGuaranteedOnly) {
         const guaranteedRate = guaranteedRates?.[classLabel] ?? 0
         return { rate: guaranteedRate, amount: Math.round(guaranteedRate * workHours) }
       }
 
-      // 売上連動時給モード: ブラケット時給（保証時給フォールバック）
+      // 売上連動時給モード: ブラケット時給のみ（保証時給フォールバックなし）
       const monthlyTotal = monthlyTotalSalesMap.get(castId) || 0
       const bracket = wageBrackets.find(b =>
         monthlyTotal >= b.bracket_min && (b.bracket_max == null || monthlyTotal < b.bracket_max)
       )
       const normalRate = bracket?.rates[classLabel] ?? 0
-
-      // 保証時給判定（uniformBasedで100h以下なら保証レート、境界日は分割）
-      if (guaranteedThresholdHours != null && guaranteedRates != null) {
-        const guaranteedRate = guaranteedRates[classLabel] ?? 0
-        const cumulativeBefore = cumulativeHoursBeforeMap.get(castId) || 0
-
-        if (cumulativeBefore >= guaranteedThresholdHours) {
-          return { rate: normalRate, amount: Math.round(normalRate * workHours) }
-        }
-
-        const cumulativeAfter = cumulativeBefore + workHours
-        if (cumulativeAfter <= guaranteedThresholdHours) {
-          return { rate: guaranteedRate, amount: Math.round(guaranteedRate * workHours) }
-        }
-
-        const guaranteedHours = guaranteedThresholdHours - cumulativeBefore
-        const normalHours = workHours - guaranteedHours
-        const amount = Math.round(guaranteedRate * guaranteedHours + normalRate * normalHours)
-        const effectiveRate = workHours > 0 ? Math.round(amount / workHours) : 0
-        return { rate: effectiveRate, amount }
-      }
-
       return { rate: normalRate, amount: Math.round(normalRate * workHours) }
     }
 

@@ -10,7 +10,7 @@ import Button from '@/components/Button'
 import ProtectedPage from '@/components/ProtectedPage'
 import toast from 'react-hot-toast'
 
-type TabType = 'basic' | 'statuses' | 'costumes' | 'special-days' | 'sales-wage'
+type TabType = 'basic' | 'statuses' | 'costumes' | 'special-days' | 'sales-wage' | 'guaranteed-wage'
 
 interface UniformWithClass {
   id: number
@@ -211,6 +211,13 @@ function WageSettingsPageContent() {
           brackets={salesWageBrackets}
           classLabels={uniformClassLabels}
           uniforms={uniformsForLabels}
+          onReload={loadData}
+        />
+      case 'guaranteed-wage':
+        return <GuaranteedWageTab
+          storeId={storeId}
+          classLabels={uniformClassLabels}
+          uniforms={uniformsForLabels}
           guaranteedThresholdHours={guaranteedThresholdHours}
           guaranteedRates={guaranteedRates}
           onReload={loadData}
@@ -266,6 +273,12 @@ function WageSettingsPageContent() {
           onClick={() => setActiveTab('sales-wage')}
         >
           売上連動時給
+        </button>
+        <button
+          style={{ ...styles.tab, ...(activeTab === 'guaranteed-wage' ? styles.tabActive : {}) }}
+          onClick={() => setActiveTab('guaranteed-wage')}
+        >
+          保証時給
         </button>
       </div>
 
@@ -1169,8 +1182,6 @@ interface SalesWageTabProps {
   brackets: SalesBasedWageBracket[]
   classLabels: string[]
   uniforms: UniformWithClass[]
-  guaranteedThresholdHours: number | null
-  guaranteedRates: Record<string, number>
   onReload: () => void
 }
 
@@ -1182,12 +1193,9 @@ interface BracketDraft {
   rates: Record<string, number>
 }
 
-function SalesWageTab({ storeId, brackets, classLabels, uniforms, guaranteedThresholdHours, guaranteedRates, onReload }: SalesWageTabProps) {
+function SalesWageTab({ storeId, brackets, classLabels, uniforms, onReload }: SalesWageTabProps) {
   const [editing, setEditing] = useState<BracketDraft | null>(null)
   const [saving, setSaving] = useState(false)
-  // 保証時給編集
-  const [editingGuaranteed, setEditingGuaranteed] = useState<{ threshold: number | null; rates: Record<string, number> } | null>(null)
-  const [savingGuaranteed, setSavingGuaranteed] = useState(false)
 
   // ブラケット内の rates を classLabels の和集合で正規化（既存ブラケットに無いラベルは0で表示）
   const allLabels = Array.from(new Set([
@@ -1302,6 +1310,9 @@ function SalesWageTab({ storeId, brackets, classLabels, uniforms, guaranteedThre
           <p style={styles.cardDescription}>
             月間売上のブラケット × 衣装クラスで時給が決まる仕組み。月内全日に同じブラケットが適用されます（リアルタイム遡及）。
           </p>
+          <p style={{ ...styles.cardDescription, marginTop: '4px', fontSize: '12px', color: '#94a3b8' }}>
+            保証時給は別の報酬形態として独立しています。「保証時給」タブから設定してください。
+          </p>
         </div>
         <Button onClick={handleAdd}>＋ ブラケット追加</Button>
       </div>
@@ -1314,114 +1325,6 @@ function SalesWageTab({ storeId, brackets, classLabels, uniforms, guaranteedThre
           </p>
         </div>
       )}
-
-      {/* 保証時給セクション */}
-      <div style={{ ...styles.editForm, backgroundColor: '#f0f9ff', borderColor: '#93c5fd', marginBottom: '16px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-          <div>
-            <h3 style={{ ...styles.editFormTitle, marginBottom: '4px' }}>保証時給（新人保護）</h3>
-            <p style={{ margin: 0, fontSize: '12px', color: '#475569' }}>
-              入店日から累計勤務時間が閾値内のキャストに、売上連動ブラケットの代わりに保証時給が適用されます。境界日は1時間単位で厳密分割。
-            </p>
-          </div>
-          {!editingGuaranteed && (
-            <Button variant="secondary" size="small" onClick={() => {
-              const initRates: Record<string, number> = {}
-              allLabels.forEach(l => { initRates[l] = guaranteedRates[l] ?? 0 })
-              setEditingGuaranteed({ threshold: guaranteedThresholdHours, rates: initRates })
-            }}>編集</Button>
-          )}
-        </div>
-
-        {editingGuaranteed ? (
-          <div>
-            <div style={{ ...styles.editFormGrid, marginBottom: '12px' }}>
-              <div style={styles.formGroup}>
-                <label style={styles.label}>累計時間の閾値（h, 空欄=保証なし）</label>
-                <input
-                  type="number"
-                  style={styles.input}
-                  value={editingGuaranteed.threshold ?? ''}
-                  placeholder="例: 100"
-                  onChange={e => setEditingGuaranteed({
-                    ...editingGuaranteed,
-                    threshold: e.target.value === '' ? null : Number(e.target.value) || 0,
-                  })}
-                />
-              </div>
-            </div>
-            <div style={styles.formGroup}>
-              <label style={styles.label}>クラス別保証時給（円/時）</label>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px', marginTop: '8px' }}>
-                {allLabels.length === 0 ? (
-                  <p style={styles.helpText}>まず衣装にクラスラベルを設定してください</p>
-                ) : allLabels.map(label => (
-                  <div key={label} style={styles.formGroup}>
-                    <label style={{ ...styles.label, fontSize: '12px' }}>{label}クラス</label>
-                    <div style={styles.inputWithUnit}>
-                      <input
-                        type="number"
-                        style={styles.inputInUnit}
-                        value={editingGuaranteed.rates[label] ?? 0}
-                        onChange={e => setEditingGuaranteed({
-                          ...editingGuaranteed,
-                          rates: { ...editingGuaranteed.rates, [label]: Number(e.target.value) || 0 },
-                        })}
-                      />
-                      <span style={styles.unit}>円</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div style={{ ...styles.editFormButtons, marginTop: '16px' }}>
-              <Button variant="secondary" onClick={() => setEditingGuaranteed(null)} disabled={savingGuaranteed}>キャンセル</Button>
-              <Button
-                disabled={savingGuaranteed}
-                onClick={async () => {
-                  if (!editingGuaranteed) return
-                  setSavingGuaranteed(true)
-                  try {
-                    const cleanedRates: Record<string, number> = {}
-                    Object.entries(editingGuaranteed.rates).forEach(([k, v]) => {
-                      if (k.trim() !== '') cleanedRates[k] = Math.max(0, Math.floor(Number(v) || 0))
-                    })
-                    const { error } = await supabase
-                      .from('store_wage_settings')
-                      .upsert({
-                        store_id: storeId,
-                        guaranteed_wage_threshold_hours: editingGuaranteed.threshold,
-                        guaranteed_wage_rates: editingGuaranteed.threshold == null ? null : cleanedRates,
-                      }, { onConflict: 'store_id' })
-                    if (error) throw error
-                    toast.success('保証時給を保存しました')
-                    setEditingGuaranteed(null)
-                    onReload()
-                  } catch (e) {
-                    console.error('保存エラー:', e)
-                    toast.error('保存に失敗しました')
-                  } finally {
-                    setSavingGuaranteed(false)
-                  }
-                }}
-              >{savingGuaranteed ? '保存中...' : '保存'}</Button>
-            </div>
-          </div>
-        ) : guaranteedThresholdHours == null ? (
-          <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>
-            未設定（保証時給なし、初回からブラケットが適用されます）
-          </p>
-        ) : (
-          <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', alignItems: 'center' }}>
-            <span style={{ fontSize: '14px', color: '#1e293b' }}>累計 {guaranteedThresholdHours}h まで</span>
-            {Object.entries(guaranteedRates).map(([label, rate]) => (
-              <span key={label} style={{ fontSize: '13px', color: '#1e293b' }}>
-                <strong>{label}クラス:</strong> ¥{rate.toLocaleString()}/h
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
 
       {classLabels.length === 0 && brackets.length === 0 && (
         <div style={styles.emptyMessage}>
@@ -1528,6 +1431,155 @@ function SalesWageTab({ storeId, brackets, classLabels, uniforms, guaranteedThre
                       <Button variant="secondary" size="small" onClick={() => handleEdit(b)}>編集</Button>
                       <Button variant="danger" size="small" onClick={() => handleDelete(b.id)}>削除</Button>
                     </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ============================================
+// 保証時給タブ
+// ============================================
+interface GuaranteedWageTabProps {
+  storeId: number
+  classLabels: string[]
+  uniforms: UniformWithClass[]
+  guaranteedThresholdHours: number | null
+  guaranteedRates: Record<string, number>
+  onReload: () => void
+}
+
+function GuaranteedWageTab({ storeId, classLabels, uniforms, guaranteedRates, onReload }: GuaranteedWageTabProps) {
+  const [editing, setEditing] = useState<{ rates: Record<string, number> } | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  const allLabels = Array.from(new Set([
+    ...classLabels,
+    ...Object.keys(guaranteedRates || {}),
+  ])).sort()
+
+  const unsetUniforms = uniforms.filter(u => !u.class_label || u.class_label.trim() === '')
+  const isConfigured = Object.keys(guaranteedRates || {}).length > 0
+
+  const handleEdit = () => {
+    const initRates: Record<string, number> = {}
+    allLabels.forEach(l => { initRates[l] = guaranteedRates[l] ?? 0 })
+    setEditing({ rates: initRates })
+  }
+
+  const handleSave = async () => {
+    if (!editing) return
+    setSaving(true)
+    try {
+      const cleanedRates: Record<string, number> = {}
+      Object.entries(editing.rates).forEach(([k, v]) => {
+        if (k.trim() !== '') cleanedRates[k] = Math.max(0, Math.floor(Number(v) || 0))
+      })
+      const { error } = await supabase
+        .from('store_wage_settings')
+        .upsert({
+          store_id: storeId,
+          // threshold は廃止（売上連動からのスライドはしない設計に変更）
+          guaranteed_wage_threshold_hours: null,
+          guaranteed_wage_rates: Object.keys(cleanedRates).length > 0 ? cleanedRates : null,
+        }, { onConflict: 'store_id' })
+      if (error) throw error
+      toast.success('保証時給を保存しました')
+      setEditing(null)
+      onReload()
+    } catch (e) {
+      console.error('保存エラー:', e)
+      toast.error('保存に失敗しました')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div style={styles.card}>
+      <div style={styles.cardHeader}>
+        <div>
+          <h2 style={styles.cardTitle}>保証時給テーブル</h2>
+          <p style={styles.cardDescription}>
+            衣装クラス × 固定時給。報酬形態で「保証時給のみ」を選んだキャストは、勤務時間に関わらずこのレート × 勤務時間で時給収入が計算されます。
+          </p>
+          <p style={{ ...styles.cardDescription, marginTop: '4px', fontSize: '12px', color: '#94a3b8' }}>
+            売上連動時給とは独立した報酬形態として比較されます（自動スライドなし）。
+          </p>
+        </div>
+        {!editing && (
+          <Button onClick={handleEdit}>編集</Button>
+        )}
+      </div>
+
+      {unsetUniforms.length > 0 && (
+        <div style={{ ...styles.editForm, backgroundColor: '#fef3c7', borderColor: '#fbbf24', marginBottom: '16px' }}>
+          <p style={{ margin: 0, fontSize: '13px', color: '#92400e' }}>
+            ⚠️ クラスラベル未設定の衣装が {unsetUniforms.length} 件あります（{unsetUniforms.map(u => u.name).join('、')}）。<br />
+            「衣装マスタ」タブで設定するか、Supabase で uniforms.class_label を埋めてください。
+          </p>
+        </div>
+      )}
+
+      {allLabels.length === 0 && !isConfigured && (
+        <div style={styles.emptyMessage}>
+          <p>まず uniforms.class_label を設定すると保証時給を編集できます。</p>
+          <p style={{ fontSize: '12px' }}>例: 衣装名「A赤」「A黒」→ class_label = &quot;A&quot;</p>
+        </div>
+      )}
+
+      {editing ? (
+        <div style={styles.editForm}>
+          <h3 style={styles.editFormTitle}>クラス別保証時給を編集</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '16px', marginBottom: '16px' }}>
+            {allLabels.length === 0 ? (
+              <p style={styles.helpText}>まず衣装にクラスラベルを設定してください</p>
+            ) : allLabels.map(label => (
+              <div key={label} style={styles.formGroup}>
+                <label style={styles.label}>{label}クラス</label>
+                <div style={styles.inputWithUnit}>
+                  <input
+                    type="number"
+                    style={styles.inputInUnit}
+                    value={editing.rates[label] ?? 0}
+                    onChange={e => setEditing({ rates: { ...editing.rates, [label]: Number(e.target.value) || 0 } })}
+                  />
+                  <span style={styles.unit}>円/h</span>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={styles.editFormButtons}>
+            <Button variant="secondary" onClick={() => setEditing(null)} disabled={saving}>キャンセル</Button>
+            <Button onClick={handleSave} disabled={saving}>{saving ? '保存中...' : '保存'}</Button>
+          </div>
+        </div>
+      ) : !isConfigured ? (
+        <div style={styles.emptyMessage}>
+          保証時給は未設定です。「編集」ボタンからクラス別の時給を設定してください。
+        </div>
+      ) : (
+        <div style={styles.listContainer}>
+          <table style={styles.table}>
+            <thead>
+              <tr>
+                <th style={styles.th}>衣装クラス</th>
+                <th style={{ ...styles.th, textAlign: 'right' }}>保証時給（円/h）</th>
+              </tr>
+            </thead>
+            <tbody>
+              {allLabels.map(label => (
+                <tr key={label}>
+                  <td style={styles.td}><strong>{label}クラス</strong></td>
+                  <td style={{ ...styles.td, textAlign: 'right' }}>
+                    {guaranteedRates[label] != null
+                      ? `¥${guaranteedRates[label].toLocaleString()}`
+                      : <span style={{ color: '#d1d5db' }}>未設定</span>}
                   </td>
                 </tr>
               ))}

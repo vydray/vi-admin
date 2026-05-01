@@ -831,7 +831,8 @@ async function calculatePayslipForCast(
     }
 
     // ========== 形態別 wage 計算用データを準備 ==========
-    // 売上連動時給 / 保証時給のみ をサポートするため、ブラケット・保証レート・衣装クラス・累計時間を取得
+    // 売上連動時給 / 保証時給のみ をサポートするため、ブラケット・保証レート・衣装クラスを取得
+    // 設計: 「保証時給」と「売上連動」は独立した報酬形態なので、互いの自動スライド/フォールバックなし
     const hasUniformOrGuaranteed = enabledTypes.some((t: CompType) =>
       (t as { use_uniform_based_wage?: boolean }).use_uniform_based_wage === true ||
       (t as { use_guaranteed_wage_only?: boolean }).use_guaranteed_wage_only === true
@@ -839,9 +840,7 @@ async function calculatePayslipForCast(
 
     const uniformClassMap = new Map<number, string>()
     const wageBrackets: { bracket_min: number; bracket_max: number | null; rates: Record<string, number> }[] = []
-    let guaranteedThresholdHours: number | null = null
     let guaranteedRates: Record<string, number> | null = null
-    const cumulativeBeforeMap = new Map<string, number>() // date -> cumulative work_hours BEFORE that date
 
     if (hasUniformOrGuaranteed) {
       // 衣装マスタ
@@ -865,29 +864,15 @@ async function calculatePayslipForCast(
         wageBrackets.push({ bracket_min: b.bracket_min, bracket_max: b.bracket_max, rates: b.rates })
       })
 
-      // 保証時給設定
+      // 保証時給レート
       const { data: storeWage } = await supabaseAdmin
         .from('store_wage_settings')
-        .select('guaranteed_wage_threshold_hours, guaranteed_wage_rates')
+        .select('guaranteed_wage_rates')
         .eq('store_id', storeId)
         .maybeSingle()
       if (storeWage?.guaranteed_wage_rates) {
-        guaranteedThresholdHours = storeWage.guaranteed_wage_threshold_hours ?? null
         guaranteedRates = storeWage.guaranteed_wage_rates as Record<string, number>
       }
-
-      // 累計時間: このキャストの全期間（月跨ぎでも累計）。 endDate より前の合計を date 別に求める
-      const { data: history } = await supabaseAdmin
-        .from('cast_daily_stats')
-        .select('date, work_hours')
-        .eq('cast_id', cast.id)
-        .eq('store_id', storeId)
-        .order('date', { ascending: true })
-      let runningTotal = 0
-      ;(history || []).forEach((d: { date: string; work_hours: number | null }) => {
-        cumulativeBeforeMap.set(d.date, runningTotal)
-        runningTotal += Number(d.work_hours || 0)
-      })
     }
 
     // 形態×日 で wage を返すヘルパー（保証時給のみ / 売上連動 / 通常 を分岐）
@@ -905,34 +890,15 @@ async function calculatePayslipForCast(
       }
 
       if (useUniformBased) {
+        // 売上連動時給: ブラケット時給のみ（保証時給フォールバックなし、独立した報酬形態として比較）
         if (day.costume_id == null) return 0
         const cls = uniformClassMap.get(day.costume_id)
         if (!cls) return 0
-
-        // 月累計売上（compType.sales_aggregation で集計方法を決定）
         const monthlyTotal = compType.sales_aggregation === 'receipt_based' ? totalSalesReceiptBased : totalSalesItemBased
         const bracket = wageBrackets.find(b =>
           monthlyTotal >= b.bracket_min && (b.bracket_max == null || monthlyTotal < b.bracket_max)
         )
         const normalRate = bracket?.rates[cls] ?? 0
-
-        if (guaranteedThresholdHours != null && guaranteedRates != null) {
-          const guaranteedRate = guaranteedRates[cls] ?? 0
-          const cumBefore = cumulativeBeforeMap.get(day.date) ?? 0
-
-          if (cumBefore >= guaranteedThresholdHours) {
-            return Math.round(normalRate * hours)
-          }
-          const cumAfter = cumBefore + hours
-          if (cumAfter <= guaranteedThresholdHours) {
-            return Math.round(guaranteedRate * hours)
-          }
-          // 境界日: 厳密分割
-          const guaranteedHours = guaranteedThresholdHours - cumBefore
-          const normalHours = hours - guaranteedHours
-          return Math.round(guaranteedRate * guaranteedHours + normalRate * normalHours)
-        }
-
         return Math.round(normalRate * hours)
       }
 
