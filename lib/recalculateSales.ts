@@ -1368,33 +1368,12 @@ export async function recalculateForDate(storeId: number, date: string): Promise
     }>()
 
     for (const item of allDailyItems) {
+      // 推し（cast_id）の自己売上・自己バックを加算
       const existing = castSalesMap.get(item.cast_id)
       if (existing) {
         existing.self_sales_item_based += item.self_sales_item_based
         existing.self_sales_receipt_based += item.self_sales_receipt_based
         existing.product_back += item.self_back_amount
-        // ヘルプ売上は help_cast_id がある場合のみ
-        if (item.help_cast_id) {
-          // フリー卓のヘルプ（cast_id === help_cast_id）は売上に含めない（商品バックのみ）
-          const isFreeTableHelp = item.cast_id === item.help_cast_id && !item.is_self
-          const helpSalesItem = isFreeTableHelp ? 0 : (item.needs_cast ? item.help_sales : 0)
-          const helpSalesReceipt = isFreeTableHelp ? 0 : item.help_sales
-
-          const helpExisting = castSalesMap.get(item.help_cast_id)
-          if (helpExisting) {
-            helpExisting.help_sales_item_based += helpSalesItem
-            helpExisting.help_sales_receipt_based += helpSalesReceipt
-            helpExisting.product_back += item.help_back_amount
-          } else {
-            castSalesMap.set(item.help_cast_id, {
-              self_sales_item_based: 0,
-              help_sales_item_based: helpSalesItem,
-              self_sales_receipt_based: 0,
-              help_sales_receipt_based: helpSalesReceipt,
-              product_back: item.help_back_amount
-            })
-          }
-        }
       } else {
         castSalesMap.set(item.cast_id, {
           self_sales_item_based: item.self_sales_item_based,
@@ -1403,6 +1382,31 @@ export async function recalculateForDate(storeId: number, date: string): Promise
           help_sales_receipt_based: 0,
           product_back: item.self_back_amount
         })
+      }
+
+      // ヘルプ（help_cast_id）の売上・バックを加算（推しの新規/既存に関わらず必ず実行）
+      // 以前は `if (existing)` 分岐の中でしか加算していなかったため、
+      // 推しの当日初アイテムにヘルプが紐付いていた場合にヘルプ売上が消失していた
+      if (item.help_cast_id) {
+        // フリー卓のヘルプ（cast_id === help_cast_id）は売上に含めない（商品バックのみ）
+        const isFreeTableHelp = item.cast_id === item.help_cast_id && !item.is_self
+        const helpSalesItem = isFreeTableHelp ? 0 : (item.needs_cast ? item.help_sales : 0)
+        const helpSalesReceipt = isFreeTableHelp ? 0 : item.help_sales
+
+        const helpExisting = castSalesMap.get(item.help_cast_id)
+        if (helpExisting) {
+          helpExisting.help_sales_item_based += helpSalesItem
+          helpExisting.help_sales_receipt_based += helpSalesReceipt
+          helpExisting.product_back += item.help_back_amount
+        } else {
+          castSalesMap.set(item.help_cast_id, {
+            self_sales_item_based: 0,
+            help_sales_item_based: helpSalesItem,
+            self_sales_receipt_based: 0,
+            help_sales_receipt_based: helpSalesReceipt,
+            product_back: item.help_back_amount
+          })
+        }
       }
     }
 
