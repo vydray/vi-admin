@@ -340,13 +340,17 @@ function AggregationSection({
             </div>
 
             {/* 比率入力（比率選択時のみ） */}
+            {/* helpRatio はヘルプキャストに分配する%。推し%は (100 - helpRatio) */}
             {helpDistMethod === 'ratio' && (
               <div style={styles.ratioInputRow}>
                 <span>推し</span>
                 <input
                   type="number"
-                  value={helpRatio}
-                  onChange={(e) => onUpdate(helpRatioKey, Math.min(100, Math.max(0, parseInt(e.target.value) || 0)))}
+                  value={100 - helpRatio}
+                  onChange={(e) => {
+                    const oshiPercent = Math.min(100, Math.max(0, parseInt(e.target.value) || 0))
+                    onUpdate(helpRatioKey, 100 - oshiPercent)
+                  }}
                   style={styles.ratioInput}
                   min="0"
                   max="100"
@@ -354,8 +358,8 @@ function AggregationSection({
                 <span>% / ヘルプ</span>
                 <input
                   type="number"
-                  value={100 - helpRatio}
-                  onChange={(e) => onUpdate(helpRatioKey, 100 - Math.min(100, Math.max(0, parseInt(e.target.value) || 0)))}
+                  value={helpRatio}
+                  onChange={(e) => onUpdate(helpRatioKey, Math.min(100, Math.max(0, parseInt(e.target.value) || 0)))}
                   style={styles.ratioInput}
                   min="0"
                   max="100"
