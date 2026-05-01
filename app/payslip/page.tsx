@@ -4119,28 +4119,37 @@ function PayslipPageContent() {
                   <div style={styles.modalSummaryLabel}>出勤日数</div>
                   <div style={styles.modalSummaryValue}>{dailyDetails.filter(d => d.workHours > 0).length}日</div>
                 </div>
-                {summary.useWageData && (
-                  <>
-                    <div style={styles.modalSummaryItem}>
-                      <div style={styles.modalSummaryLabel}>勤務時間</div>
-                      <div style={styles.modalSummaryValue}>{summary.totalWorkHours}h</div>
-                    </div>
-                    <div style={styles.modalSummaryItem}>
-                      <div style={styles.modalSummaryLabel}>平均時給</div>
-                      <div style={{ ...styles.modalSummaryValue, color: '#34C759' }}>
-                        {summary.totalWorkHours > 0
-                          ? currencyFormatter.format(Math.round(summary.totalWageAmount / summary.totalWorkHours))
-                          : '—'}
+                {summary.useWageData && (() => {
+                  // 採用された報酬形態の時給収入を優先（compensation_breakdown から）
+                  // 無ければ cast_daily_stats ベースのフォールバック
+                  const selectedBreakdown = savedPayslip?.compensation_breakdown?.find(cb => cb.is_selected) || null
+                  const displayWageAmount = selectedBreakdown?.use_wage
+                    ? selectedBreakdown.hourly_income
+                    : summary.totalWageAmount
+                  const avgHourly = summary.totalWorkHours > 0
+                    ? Math.round(displayWageAmount / summary.totalWorkHours)
+                    : 0
+                  return (
+                    <>
+                      <div style={styles.modalSummaryItem}>
+                        <div style={styles.modalSummaryLabel}>勤務時間</div>
+                        <div style={styles.modalSummaryValue}>{summary.totalWorkHours}h</div>
                       </div>
-                    </div>
-                    <div style={styles.modalSummaryItem}>
-                      <div style={styles.modalSummaryLabel}>時給収入</div>
-                      <div style={styles.modalSummaryValue}>
-                        {currencyFormatter.format(summary.totalWageAmount)}
+                      <div style={styles.modalSummaryItem}>
+                        <div style={styles.modalSummaryLabel}>平均時給</div>
+                        <div style={{ ...styles.modalSummaryValue, color: '#34C759' }}>
+                          {avgHourly > 0 ? currencyFormatter.format(avgHourly) : '—'}
+                        </div>
                       </div>
-                    </div>
-                  </>
-                )}
+                      <div style={styles.modalSummaryItem}>
+                        <div style={styles.modalSummaryLabel}>時給収入</div>
+                        <div style={styles.modalSummaryValue}>
+                          {currencyFormatter.format(displayWageAmount)}
+                        </div>
+                      </div>
+                    </>
+                  )
+                })()}
               </div>
 
               {/* 日別一覧 */}
@@ -4153,11 +4162,17 @@ function PayslipPageContent() {
                     // - 保証時給カラム: キャストの報酬形態に use_guaranteed_wage_only が含まれる場合のみ
                     const showUniformCol = uniforms.length > 0
                     const types = (compensationSettings?.compensation_types || []) as Array<{
+                      id: string
                       use_uniform_based_wage?: boolean
                       use_guaranteed_wage_only?: boolean
+                      hourly_rate?: number
                     }>
                     const showSalesBasedCol = wageBrackets.length > 0 && types.some(t => t.use_uniform_based_wage === true)
                     const showGuaranteedCol = Object.keys(guaranteedRates).length > 0 && types.some(t => t.use_guaranteed_wage_only === true)
+
+                    // 採用された報酬形態 (compensation_breakdown の is_selected) を特定
+                    const selectedBreakdown = savedPayslip?.compensation_breakdown?.find(cb => cb.is_selected) || null
+                    const selectedType = selectedBreakdown ? types.find(t => t.id === selectedBreakdown.id) : null
 
                     return (
                   <table style={styles.table}>
@@ -4172,8 +4187,8 @@ function PayslipPageContent() {
                         <th style={{ ...styles.th, textAlign: 'right' }}>時間</th>
                         {showSalesBasedCol && <th style={{ ...styles.th, textAlign: 'right' }}>売上連動時給</th>}
                         {showGuaranteedCol && <th style={{ ...styles.th, textAlign: 'right' }}>保証時給</th>}
-                        <th style={{ ...styles.th, textAlign: 'right' }}>時給額</th>
                         <th style={{ ...styles.th, textAlign: 'right' }}>採用時給</th>
+                        <th style={{ ...styles.th, textAlign: 'right' }}>当日報酬額</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -4221,6 +4236,25 @@ function PayslipPageContent() {
                             }
                           }
 
+                          // 採用時給の判定（採用された報酬形態に応じて）
+                          let appliedRate = 0
+                          let appliedSource: 'sales_based' | 'guaranteed' | 'hourly' | 'none' = 'none'
+                          if (selectedType?.use_uniform_based_wage) {
+                            appliedRate = salesBasedRate
+                            appliedSource = 'sales_based'
+                          } else if (selectedType?.use_guaranteed_wage_only) {
+                            appliedRate = guaranteedRate
+                            appliedSource = 'guaranteed'
+                          } else if (selectedType && (selectedType.hourly_rate ?? 0) > 0) {
+                            appliedRate = selectedType.hourly_rate ?? 0
+                            appliedSource = 'hourly'
+                          } else if (!selectedType) {
+                            // 採用形態が未確定の場合は cast_daily_stats の wage_amount を逆算
+                            appliedRate = hourlyRate
+                            appliedSource = 'hourly'
+                          }
+                          const appliedWageAmount = Math.round(appliedRate * day.workHours)
+
                           // 出勤時間のフォーマット
                           let timeRange = '—'
                           if (attendance?.check_in_datetime && attendance?.check_out_datetime) {
@@ -4266,12 +4300,12 @@ function PayslipPageContent() {
                               </td>
                               <td style={{ ...styles.td, textAlign: 'right' }}>{day.workHours}h</td>
                               {showSalesBasedCol && (
-                                <td style={{ ...styles.td, textAlign: 'right', fontSize: '12px', color: salesBasedRate > 0 ? '#1976D2' : '#999' }}>
+                                <td style={{ ...styles.td, textAlign: 'right', fontSize: '12px', color: salesBasedRate > 0 ? '#1976D2' : '#999', backgroundColor: appliedSource === 'sales_based' ? '#E3F2FD' : undefined, fontWeight: appliedSource === 'sales_based' ? '600' : undefined }}>
                                   {salesBasedRate > 0 ? currencyFormatter.format(salesBasedRate) : '—'}
                                 </td>
                               )}
                               {showGuaranteedCol && (
-                                <td style={{ ...styles.td, textAlign: 'right', fontSize: '12px', color: guaranteedRate > 0 ? '#9C27B0' : '#999' }}>
+                                <td style={{ ...styles.td, textAlign: 'right', fontSize: '12px', color: guaranteedRate > 0 ? '#9C27B0' : '#999', backgroundColor: appliedSource === 'guaranteed' ? '#F3E5F5' : undefined, fontWeight: appliedSource === 'guaranteed' ? '600' : undefined }}>
                                   {guaranteedRate > 0 ? (
                                     <>
                                       {currencyFormatter.format(guaranteedRate)}
@@ -4280,11 +4314,11 @@ function PayslipPageContent() {
                                   ) : '—'}
                                 </td>
                               )}
-                              <td style={{ ...styles.td, textAlign: 'right' }}>
-                                {currencyFormatter.format(day.wageAmount)}
-                              </td>
                               <td style={{ ...styles.td, textAlign: 'right', color: '#34C759', fontWeight: '600' }}>
-                                {currencyFormatter.format(hourlyRate)}
+                                {appliedRate > 0 ? currencyFormatter.format(appliedRate) : '—'}
+                              </td>
+                              <td style={{ ...styles.td, textAlign: 'right', fontWeight: '600' }}>
+                                {currencyFormatter.format(appliedWageAmount)}
                               </td>
                             </tr>
                           )
