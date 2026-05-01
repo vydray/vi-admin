@@ -1416,10 +1416,9 @@ async function calculatePayslipForCast(
           const checkIn = new Date(attendance.check_in_datetime)
           const checkOut = new Date(attendance.check_out_datetime)
           const pad = (n: number) => String(n).padStart(2, '0')
-          // JST基準で表示（UTC→JST=+9h）
-          const jstIn = new Date(checkIn.getTime() + 9 * 3600 * 1000)
-          const jstOut = new Date(checkOut.getTime() + 9 * 3600 * 1000)
-          workTimeRange = `${pad(jstIn.getUTCHours())}:${pad(jstIn.getUTCMinutes())}〜${pad(jstOut.getUTCHours())}:${pad(jstOut.getUTCMinutes())}`
+          // attendance の check_in/out は JST の時刻がそのまま格納されている運用。
+          // TIMESTAMPTZ の UTC として読み出されるが、中身は既に JST なので追加変換しない。
+          workTimeRange = `${pad(checkIn.getUTCHours())}:${pad(checkIn.getUTCMinutes())}〜${pad(checkOut.getUTCHours())}:${pad(checkOut.getUTCMinutes())}`
         }
 
         return {
