@@ -633,10 +633,12 @@ async function calculatePayslipForCast(
       dayData.selfBack += calculatedBackAmount
 
       // POS商品明細をitemsに追加（BASE商品も cast_daily_items に取り込まれているのでここで処理）
+      // sales_type は「このキャストの役割」基準: cast_id=自分の行 → 'self' (推し)、help_cast_id=自分の行 → 'help'
+      // 卓内ヘルプ商品（is_self=false で他キャストのドリンク）も「このキャストが推しとして関わってる」のでバックは推しバック扱い
       dayData.items.push({
         product_name: item.product_name,
         category: item.category || '',
-        sales_type: item.is_self ? 'self' : 'help',
+        sales_type: 'self',
         quantity: item.quantity,
         subtotal: item.subtotal,
         back_ratio: backRatio,
