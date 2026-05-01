@@ -1086,8 +1086,8 @@ async function calculatePayslipForCast(
           .select('guest_count, order_items(product_id)')
           .eq('store_id', storeId)
           .eq('staff_name', cast.name)
-          .gte('accounting_datetime', monthStartTs)
-          .lte('accounting_datetime', monthEndTs)
+          .gte('order_date', monthStartTs)
+          .lte('order_date', monthEndTs)
           .order('id', { ascending: true })
           .range(offset, offset + pageSize - 1)
         if (pageError) {
