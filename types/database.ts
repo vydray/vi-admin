@@ -1154,19 +1154,30 @@ export interface BonusAttendanceCondition {
   min_total_hours: number | null     // 月の最低合計勤務時間
 }
 
-// 報酬ティア
+// 報酬ティア（min/max 範囲ベース）
 export interface BonusRewardTier {
   min: number
   max: number | null
   amount: number
 }
 
+// 順位ティア（rank_based 用: 1位=5000, 2位=3000 等）
+export interface BonusRankTier {
+  rank: number    // 1=1位, 2=2位, ...
+  amount: number
+}
+
 // 報酬設定
 export interface BonusReward {
-  type: 'fixed' | 'per_attendance' | 'attendance_tiered' | 'sales_tiered' | 'nomination_tiered'
+  type: 'fixed' | 'per_attendance' | 'attendance_tiered' | 'sales_tiered' | 'nomination_tiered' | 'rank_based'
   amount?: number                    // fixed型 / per_attendance型（1日あたり）
-  tiers?: BonusRewardTier[]          // tiered型
+  tiers?: BonusRewardTier[]          // tiered型 (sales/attendance/nomination)
+  rank_tiers?: BonusRankTier[]       // rank_based型: 順位→金額
   sales_target?: 'item_based' | 'receipt_based'  // sales_tiered用
+  // nomination_tiered で「該当商品が含まれる伝票のみ」guest_count を集計するためのフィルタ
+  // 例: VIPセット, プレミアムセット の products.id を指定 → 7組/15組 で段階支給
+  // 未指定 or 空配列 → 全伝票対象（従来挙動）
+  qualifying_product_ids?: number[]
 }
 
 // 賞与条件: 出勤条件（任意）+ 報酬設定

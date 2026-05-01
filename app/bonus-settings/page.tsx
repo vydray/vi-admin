@@ -12,8 +12,15 @@ import type {
   BonusType,
   BonusConditions,
   BonusRewardTier,
+  BonusRankTier,
   AttendanceStatus,
 } from '@/types/database'
+
+interface ProductOption {
+  id: number
+  name: string
+  category_name?: string | null
+}
 
 export default function BonusSettingsPage() {
   return (
@@ -29,6 +36,7 @@ function BonusSettingsContent() {
   const [loading, setLoading] = useState(true)
   const [bonusTypes, setBonusTypes] = useState<BonusType[]>([])
   const [attendanceStatuses, setAttendanceStatuses] = useState<AttendanceStatus[]>([])
+  const [products, setProducts] = useState<ProductOption[]>([])
   const [showAddModal, setShowAddModal] = useState(false)
   const [editingItem, setEditingItem] = useState<BonusType | null>(null)
 
@@ -47,24 +55,41 @@ function BonusSettingsContent() {
   const [minTotalHours, setMinTotalHours] = useState('')
 
   // 報酬設定
-  const [rewardType, setRewardType] = useState<'fixed' | 'per_attendance' | 'attendance_tiered' | 'sales_tiered' | 'nomination_tiered'>('fixed')
+  const [rewardType, setRewardType] = useState<'fixed' | 'per_attendance' | 'attendance_tiered' | 'sales_tiered' | 'nomination_tiered' | 'rank_based'>('fixed')
   const [rewardAmount, setRewardAmount] = useState('')
   const [rewardTiers, setRewardTiers] = useState<BonusRewardTier[]>([{ min: 0, max: null, amount: 0 }])
   const [rewardSalesTarget, setRewardSalesTarget] = useState<'item_based' | 'receipt_based'>('item_based')
+  // nomination_tiered の対象商品（VIP以上等）
+  const [qualifyingProductIds, setQualifyingProductIds] = useState<number[]>([])
+  // rank_based の順位ティア（1位、2位、3位…）
+  const [rankTiers, setRankTiers] = useState<BonusRankTier[]>([{ rank: 1, amount: 0 }])
 
   const loadData = useCallback(async () => {
     if (!storeId) return
     setLoading(true)
 
-    const [bonusRes, statusRes] = await Promise.all([
+    const [bonusRes, statusRes, productsRes] = await Promise.all([
       supabase.from('bonus_types').select('*').eq('store_id', storeId).order('display_order'),
       supabase.from('attendance_statuses').select('*').eq('store_id', storeId).order('order_index'),
+      supabase
+        .from('products')
+        .select('id, name, product_categories(name)')
+        .eq('store_id', storeId)
+        .order('name'),
     ])
 
     if (bonusRes.error) toast.error('賞与設定の読み込みに失敗しました')
     else setBonusTypes(bonusRes.data || [])
 
     setAttendanceStatuses(statusRes.data || [])
+
+    // products: product_categories は join 結果を平坦化
+    const productOptions = (productsRes.data || []).map((p: { id: number; name: string; product_categories: { name: string } | { name: string }[] | null }) => {
+      const cat = Array.isArray(p.product_categories) ? p.product_categories[0] : p.product_categories
+      return { id: p.id, name: p.name, category_name: cat?.name ?? null }
+    })
+    setProducts(productOptions)
+
     setLoading(false)
   }, [storeId])
 
@@ -83,6 +108,8 @@ function BonusSettingsContent() {
     setRewardAmount('')
     setRewardTiers([{ min: 0, max: null, amount: 0 }])
     setRewardSalesTarget('item_based')
+    setQualifyingProductIds([])
+    setRankTiers([{ rank: 1, amount: 0 }])
   }
 
   const populateForm = (item: BonusType) => {
@@ -108,6 +135,8 @@ function BonusSettingsContent() {
       setRewardAmount(c.reward.amount != null ? String(c.reward.amount) : '')
       setRewardTiers(c.reward.tiers || [{ min: 0, max: null, amount: 0 }])
       setRewardSalesTarget(c.reward.sales_target || 'item_based')
+      setQualifyingProductIds(c.reward.qualifying_product_ids || [])
+      setRankTiers(c.reward.rank_tiers && c.reward.rank_tiers.length > 0 ? c.reward.rank_tiers : [{ rank: 1, amount: 0 }])
     }
   }
 
@@ -137,7 +166,18 @@ function BonusSettingsContent() {
     } else if (rewardType === 'sales_tiered') {
       conditions.reward = { type: 'sales_tiered', tiers: rewardTiers, sales_target: rewardSalesTarget }
     } else if (rewardType === 'nomination_tiered') {
-      conditions.reward = { type: 'nomination_tiered', tiers: rewardTiers }
+      const reward: typeof conditions.reward = { type: 'nomination_tiered', tiers: rewardTiers }
+      if (qualifyingProductIds.length > 0) {
+        reward.qualifying_product_ids = qualifyingProductIds
+      }
+      conditions.reward = reward
+    } else if (rewardType === 'rank_based') {
+      // ランクは昇順にソート + 0以下や重複は除外
+      const cleaned = rankTiers
+        .filter(t => t.rank > 0)
+        .filter((t, i, arr) => arr.findIndex(x => x.rank === t.rank) === i)
+        .sort((a, b) => a.rank - b.rank)
+      conditions.reward = { type: 'rank_based', rank_tiers: cleaned }
     }
 
     return conditions
@@ -146,7 +186,7 @@ function BonusSettingsContent() {
   // bonus_category を報酬タイプと出勤条件から自動判定
   const determineBonusCategory = (): string => {
     const hasAtt = useAttendanceCondition || rewardType === 'per_attendance' || rewardType === 'attendance_tiered'
-    const isSales = rewardType === 'sales_tiered'
+    const isSales = rewardType === 'sales_tiered' || rewardType === 'rank_based'
     const isNom = rewardType === 'nomination_tiered'
     if (hasAtt && (isSales || isNom)) return 'combined'
     if (hasAtt) return 'attendance'
@@ -225,7 +265,11 @@ function BonusSettingsContent() {
       } else if (c.reward.type === 'sales_tiered' && c.reward.tiers?.length) {
         parts.push(`→ 売上段階(${c.reward.tiers.length}段階)`)
       } else if (c.reward.type === 'nomination_tiered' && c.reward.tiers?.length) {
-        parts.push(`→ 指名段階(${c.reward.tiers.length}段階)`)
+        const filterCount = c.reward.qualifying_product_ids?.length ?? 0
+        const filterNote = filterCount > 0 ? `[対象商品${filterCount}件]` : ''
+        parts.push(`→ 指名段階(${c.reward.tiers.length}段階)${filterNote}`)
+      } else if (c.reward.type === 'rank_based' && c.reward.rank_tiers?.length) {
+        parts.push(`→ 順位報酬(${c.reward.rank_tiers.length}段階)`)
       }
     }
 
@@ -353,13 +397,14 @@ function BonusSettingsContent() {
 
               <div style={{ marginBottom: '12px' }}>
                 <label style={labelStyle}>報酬タイプ</label>
-                <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                   {[
                     { value: 'fixed' as const, label: '固定額' },
                     { value: 'per_attendance' as const, label: '出勤日額' },
                     { value: 'attendance_tiered' as const, label: '出勤段階' },
                     { value: 'sales_tiered' as const, label: '売上段階' },
                     { value: 'nomination_tiered' as const, label: '指名段階' },
+                    { value: 'rank_based' as const, label: '順位報酬' },
                   ].map(opt => (
                     <button key={opt.value} onClick={() => setRewardType(opt.value)}
                       style={{
@@ -411,7 +456,66 @@ function BonusSettingsContent() {
               )}
 
               {rewardType === 'nomination_tiered' && (
-                <TierEditor tiers={rewardTiers} setTiers={setRewardTiers} unitLabel="本" divisor={1} />
+                <div>
+                  <TierEditor tiers={rewardTiers} setTiers={setRewardTiers} unitLabel="組" divisor={1} />
+                  <div style={{ marginTop: '16px', padding: '12px', backgroundColor: '#fff7ed', borderRadius: '8px', border: '1px solid #fed7aa' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <label style={{ ...labelStyle, marginBottom: 0 }}>対象商品（VIP以上等を絞る場合）</label>
+                      <span style={{ fontSize: '11px', color: '#9a3412' }}>
+                        {qualifyingProductIds.length > 0 ? `${qualifyingProductIds.length}件選択中` : '未選択 = 全商品対象'}
+                      </span>
+                    </div>
+                    <p style={{ fontSize: '11px', color: '#9a3412', margin: '0 0 8px' }}>
+                      指定すると、その商品が含まれる伝票の guest_count（人数）のみ集計します。例: VIPセット系を選択 → 「VIP以上7組以上」を判定。
+                    </p>
+                    <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                      <button
+                        type="button"
+                        onClick={() => setQualifyingProductIds([])}
+                        style={{ padding: '4px 10px', fontSize: '11px', borderRadius: '4px', border: '1px solid #d6d3d1', backgroundColor: '#fff', cursor: 'pointer' }}
+                      >
+                        全解除
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setQualifyingProductIds(products.map(p => p.id))}
+                        style={{ padding: '4px 10px', fontSize: '11px', borderRadius: '4px', border: '1px solid #d6d3d1', backgroundColor: '#fff', cursor: 'pointer' }}
+                      >
+                        全選択
+                      </button>
+                    </div>
+                    <div style={{ maxHeight: '200px', overflow: 'auto', border: '1px solid #e7e5e4', borderRadius: '4px', backgroundColor: '#fff' }}>
+                      {products.length === 0 ? (
+                        <p style={{ padding: '12px', fontSize: '12px', color: '#999', margin: 0 }}>商品マスタがまだ登録されていません</p>
+                      ) : (
+                        products.map(p => (
+                          <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px', borderBottom: '1px solid #f5f5f4', cursor: 'pointer', fontSize: '13px' }}>
+                            <input
+                              type="checkbox"
+                              checked={qualifyingProductIds.includes(p.id)}
+                              onChange={(e) => {
+                                if (e.target.checked) setQualifyingProductIds(prev => [...prev, p.id])
+                                else setQualifyingProductIds(prev => prev.filter(id => id !== p.id))
+                              }}
+                              style={{ cursor: 'pointer' }}
+                            />
+                            <span style={{ flex: 1, color: '#333' }}>{p.name}</span>
+                            {p.category_name && <span style={{ fontSize: '11px', color: '#999' }}>{p.category_name}</span>}
+                          </label>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {rewardType === 'rank_based' && (
+                <div>
+                  <p style={{ fontSize: '12px', color: '#666', marginTop: 0, marginBottom: '12px' }}>
+                    店舗の月間売上ランキング（売上設定の「公開する集計方法」に従う）。同点はキャストID順でタイブレーク。
+                  </p>
+                  <RankTierEditor tiers={rankTiers} setTiers={setRankTiers} />
+                </div>
               )}
             </div>
 
@@ -572,6 +676,54 @@ function TierEditor({ tiers, setTiers, unitLabel, divisor }: {
       <button onClick={() => setTiers([...tiers, { min: 0, max: null, amount: 0 }])}
         style={{ padding: '6px 14px', borderRadius: '8px', border: '2px solid #9C27B0', backgroundColor: '#fff', color: '#9C27B0', cursor: 'pointer', fontSize: '13px', fontWeight: '500' }}>
         + 段階追加
+      </button>
+    </div>
+  )
+}
+
+// 順位ティア編集（rank_based 用）
+function RankTierEditor({ tiers, setTiers }: {
+  tiers: BonusRankTier[]; setTiers: (v: BonusRankTier[]) => void
+}) {
+  return (
+    <div>
+      <label style={labelStyle}>順位ごとの支給額</label>
+      {tiers.map((tier, i) => (
+        <div key={i} style={{ display: 'flex', gap: '8px', marginBottom: '8px', alignItems: 'center' }}>
+          <input
+            type="number"
+            min="1"
+            value={tier.rank}
+            onChange={e => { const t = [...tiers]; t[i] = { ...t[i], rank: Math.max(1, Number(e.target.value) || 1) }; setTiers(t) }}
+            style={{ ...inputStyle, flex: '0 0 80px' }}
+            placeholder="1"
+          />
+          <span style={{ color: '#999', fontSize: '12px', whiteSpace: 'nowrap' }}>位 →</span>
+          <input
+            type="text"
+            inputMode="numeric"
+            value={formatComma(tier.amount)}
+            onChange={e => { const t = [...tiers]; t[i] = { ...t[i], amount: parseComma(e.target.value) }; setTiers(t) }}
+            style={{ ...inputStyle, flex: 1 }}
+            placeholder="5,000"
+          />
+          <span style={{ fontSize: '12px', color: '#999' }}>円</span>
+          {tiers.length > 1 && (
+            <button
+              onClick={() => setTiers(tiers.filter((_, j) => j !== i))}
+              style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid #f44336', backgroundColor: '#fff', color: '#f44336', cursor: 'pointer', fontSize: '12px' }}
+            >×</button>
+          )}
+        </div>
+      ))}
+      <button
+        onClick={() => {
+          const nextRank = tiers.length > 0 ? Math.max(...tiers.map(t => t.rank)) + 1 : 1
+          setTiers([...tiers, { rank: nextRank, amount: 0 }])
+        }}
+        style={{ padding: '6px 14px', borderRadius: '8px', border: '2px solid #9C27B0', backgroundColor: '#fff', color: '#9C27B0', cursor: 'pointer', fontSize: '13px', fontWeight: '500' }}
+      >
+        + 順位追加
       </button>
     </div>
   )

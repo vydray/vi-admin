@@ -1034,23 +1034,65 @@ async function calculatePayslipForCast(
     const ruleBonusDetails: Array<{ name: string; type: string; amount: number; detail: string }> = []
     const manualBonusDetails: Array<{ name: string; type: string; amount: number; detail: string }> = []
 
-    // 指名数を取得（nomination条件 or nomination_tiered報酬用）
+    // 指名（推し）伝票の事前取得
+    // - nomination_tiered: 通常の guest_count 集計
+    // - nomination_tiered + qualifying_product_ids: 該当商品が入っている伝票のみで集計
     let totalNominations = 0
+    let castMonthOrdersForNomination: { guest_count: number | null; order_items: { product_id: number | null }[] }[] = []
     const needsNomination = (bonusTypes || []).some(bt => {
       const c = bt.conditions as { reward?: { type?: string } }
       return c.reward?.type === 'nomination_tiered'
     })
     if (needsNomination) {
-      const monthStart = format(startOfMonth(month), "yyyy-MM-dd'T'00:00:00")
-      const monthEnd = format(endOfMonth(month), "yyyy-MM-dd'T'23:59:59")
+      const monthStartTs = format(startOfMonth(month), "yyyy-MM-dd'T'00:00:00")
+      const monthEndTs = format(endOfMonth(month), "yyyy-MM-dd'T'23:59:59")
       const { data: nominationOrders } = await supabaseAdmin
         .from('orders')
-        .select('guest_count')
+        .select('guest_count, order_items(product_id)')
         .eq('store_id', storeId)
         .eq('staff_name', cast.name)
-        .gte('accounting_datetime', monthStart)
-        .lte('accounting_datetime', monthEnd)
-      totalNominations = (nominationOrders || []).reduce((sum, o) => sum + (o.guest_count || 0), 0)
+        .gte('accounting_datetime', monthStartTs)
+        .lte('accounting_datetime', monthEndTs)
+      castMonthOrdersForNomination = (nominationOrders || []) as typeof castMonthOrdersForNomination
+      totalNominations = castMonthOrdersForNomination.reduce((sum, o) => sum + (o.guest_count || 0), 0)
+    }
+
+    // rank_based 報酬用: 店舗内の月間売上ランキングを計算（cast_daily_stats から）
+    // sales_settings.published_aggregation に従って item_based / receipt_based を選択
+    let castRankMap: Map<number, number> | null = null
+    const needsRank = (bonusTypes || []).some(bt => {
+      const c = bt.conditions as { reward?: { type?: string } }
+      return c.reward?.type === 'rank_based'
+    })
+    if (needsRank) {
+      const { data: salesSettingsForRank } = await supabaseAdmin
+        .from('sales_settings')
+        .select('published_aggregation')
+        .eq('store_id', storeId)
+        .maybeSingle()
+      const publishedMethod = (salesSettingsForRank as { published_aggregation?: string } | null)?.published_aggregation ?? 'item_based'
+      if (publishedMethod !== 'none') {
+        const aggField = publishedMethod === 'receipt_based' ? 'total_sales_receipt_based' : 'total_sales_item_based'
+        const { data: monthStats } = await supabaseAdmin
+          .from('cast_daily_stats')
+          .select(`cast_id, ${aggField}`)
+          .eq('store_id', storeId)
+          .gte('date', startDate)
+          .lte('date', endDate)
+        const castSalesMap = new Map<number, number>()
+        ;(monthStats || []).forEach((s: Record<string, unknown>) => {
+          const cid = s.cast_id as number
+          const sales = (s[aggField] as number | null) ?? 0
+          castSalesMap.set(cid, (castSalesMap.get(cid) ?? 0) + sales)
+        })
+        // 売上 DESC, 同点は cast_id ASC でタイブレーク
+        const sortedCasts = [...castSalesMap.entries()].sort((a, b) => {
+          if (b[1] !== a[1]) return b[1] - a[1]
+          return a[0] - b[0]
+        })
+        castRankMap = new Map()
+        sortedCasts.forEach(([castId], idx) => castRankMap!.set(castId, idx + 1))
+      }
     }
 
     // シフト数・シフト日取得（attendance条件用）
@@ -1080,7 +1122,14 @@ async function calculatePayslipForCast(
 
       const c = bt.conditions as {
         attendance?: { eligible_status_ids?: string[]; disqualify_status_ids?: string[]; require_all_shifts?: boolean; min_days?: number | null; min_hours_per_day?: number | null; min_total_hours?: number | null } | null
-        reward?: { type?: string; amount?: number; tiers?: Array<{ min: number; max: number | null; amount: number }>; sales_target?: string }
+        reward?: {
+          type?: string
+          amount?: number
+          tiers?: Array<{ min: number; max: number | null; amount: number }>
+          rank_tiers?: Array<{ rank: number; amount: number }>
+          sales_target?: string
+          qualifying_product_ids?: number[]
+        }
       }
 
       let allConditionsMet = true
@@ -1137,8 +1186,33 @@ async function calculatePayslipForCast(
           const tier = [...c.reward.tiers].sort((a, b) => b.min - a.min).find(t => sales >= t.min)
           if (tier) bonusAmount = tier.amount
         } else if (c.reward.type === 'nomination_tiered' && c.reward.tiers) {
-          const tier = [...c.reward.tiers].sort((a, b) => b.min - a.min).find(t => totalNominations >= t.min)
+          // qualifying_product_ids が指定されていれば、その商品が含まれる伝票のみで集計
+          const qualifyingIds = c.reward.qualifying_product_ids
+          let nominationCount: number
+          if (qualifyingIds && qualifyingIds.length > 0) {
+            const idSet = new Set(qualifyingIds)
+            nominationCount = castMonthOrdersForNomination
+              .filter(o => (o.order_items || []).some(item => item.product_id != null && idSet.has(item.product_id)))
+              .reduce((sum, o) => sum + (o.guest_count || 0), 0)
+            detailParts.push(`対象指名${nominationCount}組(商品フィルタ)`)
+          } else {
+            nominationCount = totalNominations
+            detailParts.push(`指名${nominationCount}組`)
+          }
+          const tier = [...c.reward.tiers].sort((a, b) => b.min - a.min).find(t => nominationCount >= t.min)
           if (tier) bonusAmount = tier.amount
+        } else if (c.reward.type === 'rank_based' && c.reward.rank_tiers) {
+          // 月間ランキングを参照して該当順位の amount を支給
+          const myRank = castRankMap?.get(cast.id)
+          if (myRank != null) {
+            const tier = c.reward.rank_tiers.find(t => t.rank === myRank)
+            if (tier) {
+              bonusAmount = tier.amount
+              detailParts.push(`月間${myRank}位`)
+            } else {
+              detailParts.push(`月間${myRank}位(対象外)`)
+            }
+          }
         }
 
         if (bonusAmount > 0) {
