@@ -3592,7 +3592,10 @@ function PayslipPageContent() {
                                     <span style={{ marginLeft: '8px', color: '#6c757d' }}>{isExpanded ? '▲' : '▼'}</span>
                                   </div>
                                 ) : (
-                                  <span style={{ color: '#6c757d' }}>{isExpanded ? '▲' : '▼'}</span>
+                                  <div style={{ fontWeight: '600' }}>
+                                    {order.totalSales > 0 ? currencyFormatter.format(order.totalSales) : '—'}
+                                    <span style={{ marginLeft: '8px', color: '#6c757d' }}>{isExpanded ? '▲' : '▼'}</span>
+                                  </div>
                                 )}
                                 {order.totalBack > 0 && (
                                   <div style={{ fontSize: '11px', color: backColor, fontWeight: '500' }}>
