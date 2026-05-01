@@ -1546,6 +1546,207 @@ async function calculatePayslipForCast(
       return { success: false, error: 'Failed to save payslip' }
     }
 
+    // ===== payslip_daily_orders 構築・保存 =====
+    // shift-app/vi-admin の伝票単位 表示用 snapshot
+    // payslips.* と同じく recalc 時点の値で固定保存し、ロック後は触らない
+    try {
+      const aggregation = (selectedResult?.compType as { sales_aggregation?: string })?.sales_aggregation === 'receipt_based'
+        ? 'receipt_based' as const
+        : 'item_based' as const
+
+      // 月内の関連 cast_daily_items を全件取得（推し or ヘルプ で関わってる行）
+      const { data: pdoSourceItems, error: pdoSrcErr } = await supabaseAdmin
+        .from('cast_daily_items')
+        .select(`
+          date, order_id, table_number, guest_name,
+          cast_id, help_cast_id, is_self,
+          category, product_name, quantity, subtotal,
+          self_sales, help_sales,
+          self_sales_item_based, self_sales_receipt_based,
+          self_back_amount, help_back_amount,
+          self_back_rate, help_back_rate
+        `)
+        .eq('store_id', storeId)
+        .or(`cast_id.eq.${cast.id},help_cast_id.eq.${cast.id}`)
+        .gte('date', startDate)
+        .lte('date', endDate)
+        .order('date', { ascending: true })
+        .order('order_id', { ascending: true })
+
+      if (pdoSrcErr) {
+        console.error(`[${cast.name}] payslip_daily_orders source fetch error:`, pdoSrcErr)
+      } else {
+        type SourceRow = {
+          date: string
+          order_id: string | null
+          table_number: string | null
+          guest_name: string | null
+          cast_id: number
+          help_cast_id: number | null
+          is_self: boolean
+          category: string | null
+          product_name: string
+          quantity: number
+          subtotal: number
+          self_sales: number
+          help_sales: number
+          self_sales_item_based: number | string | null
+          self_sales_receipt_based: number | string | null
+          self_back_amount: number | string | null
+          help_back_amount: number | string | null
+          self_back_rate: number | null
+          help_back_rate: number | null
+        }
+        const rows = (pdoSourceItems || []) as SourceRow[]
+
+        // 推しキャスト名 lookup（自分以外の推しの卓で ヘルプ参加してる場合に必要）
+        const otherOshiIds = new Set<number>()
+        for (const r of rows) {
+          if (r.cast_id !== cast.id) otherOshiIds.add(r.cast_id)
+        }
+        const castNameById = new Map<number, string>()
+        castNameById.set(cast.id, cast.name)
+        if (otherOshiIds.size > 0) {
+          const { data: otherCasts } = await supabaseAdmin
+            .from('casts')
+            .select('id, name')
+            .in('id', [...otherOshiIds])
+          for (const c of (otherCasts || [])) {
+            castNameById.set(c.id, c.name as string)
+          }
+        }
+
+        // 日次の wage / hours は既に取得済みの dailyStats から
+        const statsByDate = new Map<string, { wage_amount: number; work_hours: number }>()
+        for (const ds of (dailyStats || [])) {
+          statsByDate.set(ds.date, {
+            wage_amount: ds.wage_amount || 0,
+            work_hours: ds.work_hours || 0,
+          })
+        }
+
+        // 日付 → order_id → 行の集合 に group
+        const byDate = new Map<string, Map<string, SourceRow[]>>()
+        for (const row of rows) {
+          if (!byDate.has(row.date)) byDate.set(row.date, new Map())
+          const byOrder = byDate.get(row.date)!
+          const orderKey = row.order_id || `__no_order_${row.date}`
+          if (!byOrder.has(orderKey)) byOrder.set(orderKey, [])
+          byOrder.get(orderKey)!.push(row)
+        }
+
+        // 各日のレコード組み立て
+        const insertRows: Array<Record<string, unknown>> = []
+        for (const [date, byOrder] of byDate) {
+          let selfSalesTotal = 0
+          let helpSalesTotal = 0
+          let selfBackTotal = 0
+          let helpBackTotal = 0
+
+          const orders: unknown[] = []
+          for (const [, orderRows] of byOrder) {
+            const first = orderRows[0]
+            // この伝票でこのキャストが推し参加しているか
+            const isSelfOnOrder = orderRows.some(r => r.cast_id === cast.id)
+            const orderType: 'self' | 'help' = isSelfOnOrder ? 'self' : 'help'
+            const oshiCastId = isSelfOnOrder ? cast.id : first.cast_id
+            const oshiCastName = castNameById.get(oshiCastId) || ''
+
+            // items[] 構築
+            const items: unknown[] = []
+            let orderTotalCredit = 0
+            let orderTotalBack = 0
+            for (const row of orderRows) {
+              let credit = 0
+              let back = 0
+              let rate = 0
+              if (row.cast_id === cast.id) {
+                // 推しの行
+                credit = aggregation === 'receipt_based'
+                  ? Number(row.self_sales_receipt_based) || 0
+                  : Number(row.self_sales_item_based) || 0
+                back = Number(row.self_back_amount) || 0
+                rate = row.self_back_rate || 0
+                selfSalesTotal += credit
+                selfBackTotal += back
+              } else if (row.help_cast_id === cast.id) {
+                // ヘルプの行
+                credit = Number(row.help_sales) || 0
+                back = Number(row.help_back_amount) || 0
+                rate = row.help_back_rate || 0
+                helpSalesTotal += credit
+                helpBackTotal += back
+              }
+              orderTotalCredit += credit
+              orderTotalBack += back
+
+              const unitPrice = (row.quantity || 0) > 0
+                ? Math.round((row.subtotal || 0) / row.quantity)
+                : 0
+
+              items.push({
+                category: row.category || '',
+                product_name: row.product_name,
+                quantity: row.quantity,
+                unit_price: unitPrice,
+                subtotal: row.subtotal,
+                credit,
+                back_rate: rate,
+                back_amount: back,
+                is_base: row.category === 'BASE',
+              })
+            }
+
+            orders.push({
+              order_id: first.order_id,
+              type: orderType,
+              table_number: first.table_number,
+              guest_name: first.guest_name,
+              oshi_cast_id: oshiCastId,
+              oshi_cast_name: oshiCastName,
+              total_credit: orderTotalCredit,
+              total_back: orderTotalBack,
+              items,
+            })
+          }
+
+          const stat = statsByDate.get(date) || { wage_amount: 0, work_hours: 0 }
+          insertRows.push({
+            store_id: storeId,
+            cast_id: cast.id,
+            year_month: yearMonth,
+            date,
+            self_sales_total: selfSalesTotal,
+            help_sales_total: helpSalesTotal,
+            self_back_total: selfBackTotal,
+            help_back_total: helpBackTotal,
+            wage_amount: stat.wage_amount,
+            work_hours: stat.work_hours,
+            orders,
+          })
+        }
+
+        // この (cast, year_month) の既存行を一旦削除して新規 INSERT（差分なら DELETE はノーオプ）
+        await supabaseAdmin
+          .from('payslip_daily_orders')
+          .delete()
+          .eq('cast_id', cast.id)
+          .eq('year_month', yearMonth)
+
+        if (insertRows.length > 0) {
+          const { error: insErr } = await supabaseAdmin
+            .from('payslip_daily_orders')
+            .insert(insertRows)
+          if (insErr) {
+            console.error(`[${cast.name}] payslip_daily_orders insert error:`, insErr)
+          }
+        }
+      }
+    } catch (e) {
+      // payslip 本体は保存済みなので、daily_orders 失敗は warn ログだけ
+      console.error(`[${cast.name}] payslip_daily_orders build error:`, e)
+    }
+
     // 再計算ログを記録（既存payslipがある場合、差分の有無に関わらず全キャスト記録）
     if (existingPayslip) {
       try {
