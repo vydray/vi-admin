@@ -841,6 +841,9 @@ async function calculatePayslipForCast(
     const uniformClassMap = new Map<number, string>()
     const wageBrackets: { bracket_min: number; bracket_max: number | null; rates: Record<string, number> }[] = []
     let guaranteedRates: Record<string, number> | null = null
+    let guaranteedThresholdHours: number | null = null
+    let guaranteedAfterMode: 'zero' | 'bracket' = 'zero'
+    const cumulativeBeforeMap = new Map<string, number>() // date -> cumulative work_hours BEFORE that date
 
     if (hasUniformOrGuaranteed) {
       // 衣装マスタ
@@ -864,14 +867,32 @@ async function calculatePayslipForCast(
         wageBrackets.push({ bracket_min: b.bracket_min, bracket_max: b.bracket_max, rates: b.rates })
       })
 
-      // 保証時給レート
+      // 保証時給レート + 上限 + 超過後挙動
       const { data: storeWage } = await supabaseAdmin
         .from('store_wage_settings')
-        .select('guaranteed_wage_rates')
+        .select('guaranteed_wage_threshold_hours, guaranteed_wage_rates, guaranteed_wage_after_threshold')
         .eq('store_id', storeId)
         .maybeSingle()
       if (storeWage?.guaranteed_wage_rates) {
         guaranteedRates = storeWage.guaranteed_wage_rates as Record<string, number>
+        guaranteedThresholdHours = storeWage.guaranteed_wage_threshold_hours ?? null
+        const afterCfg = storeWage.guaranteed_wage_after_threshold as { mode?: string } | null
+        guaranteedAfterMode = afterCfg?.mode === 'bracket' ? 'bracket' : 'zero'
+      }
+
+      // 累計時間: このキャストの全期間（月跨ぎでも累計）
+      if (guaranteedThresholdHours != null) {
+        const { data: history } = await supabaseAdmin
+          .from('cast_daily_stats')
+          .select('date, work_hours')
+          .eq('cast_id', cast.id)
+          .eq('store_id', storeId)
+          .order('date', { ascending: true })
+        let runningTotal = 0
+        ;(history || []).forEach((d: { date: string; work_hours: number | null }) => {
+          cumulativeBeforeMap.set(d.date, runningTotal)
+          runningTotal += Number(d.work_hours || 0)
+        })
       }
     }
 
@@ -886,7 +907,37 @@ async function calculatePayslipForCast(
         if (!guaranteedRates || day.costume_id == null) return 0
         const cls = uniformClassMap.get(day.costume_id)
         if (!cls) return 0
-        return Math.round((guaranteedRates[cls] ?? 0) * hours)
+        const guaranteedRate = guaranteedRates[cls] ?? 0
+
+        // 上限なし → 全日保証レート
+        if (guaranteedThresholdHours == null) {
+          return Math.round(guaranteedRate * hours)
+        }
+
+        // 上限超過後の代替レート
+        const computeAfterRate = (): number => {
+          if (guaranteedAfterMode !== 'bracket') return 0
+          const monthlyTotal = compType.sales_aggregation === 'receipt_based' ? totalSalesReceiptBased : totalSalesItemBased
+          const bracket = wageBrackets.find(b =>
+            monthlyTotal >= b.bracket_min && (b.bracket_max == null || monthlyTotal < b.bracket_max)
+          )
+          return bracket?.rates[cls] ?? 0
+        }
+
+        const cumBefore = cumulativeBeforeMap.get(day.date) ?? 0
+        if (cumBefore >= guaranteedThresholdHours) {
+          // 既に上限到達済み
+          return Math.round(computeAfterRate() * hours)
+        }
+        const cumAfter = cumBefore + hours
+        if (cumAfter <= guaranteedThresholdHours) {
+          // まだ上限内
+          return Math.round(guaranteedRate * hours)
+        }
+        // 境界日: 厳密分割
+        const guaranteedHours = guaranteedThresholdHours - cumBefore
+        const overHours = hours - guaranteedHours
+        return Math.round(guaranteedRate * guaranteedHours + computeAfterRate() * overHours)
       }
 
       if (useUniformBased) {

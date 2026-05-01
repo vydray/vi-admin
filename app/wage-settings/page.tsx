@@ -53,6 +53,7 @@ function WageSettingsPageContent() {
   // 保証時給設定
   const [guaranteedThresholdHours, setGuaranteedThresholdHours] = useState<number | null>(null)
   const [guaranteedRates, setGuaranteedRates] = useState<Record<string, number>>({})
+  const [guaranteedAfterThresholdMode, setGuaranteedAfterThresholdMode] = useState<'zero' | 'bracket'>('zero')
 
   // データ読み込み
   const loadData = useCallback(async () => {
@@ -149,11 +150,13 @@ function WageSettingsPageContent() {
       // 保証時給設定（store_wage_settings に統合）
       const { data: storeWage } = await supabase
         .from('store_wage_settings')
-        .select('guaranteed_wage_threshold_hours, guaranteed_wage_rates')
+        .select('guaranteed_wage_threshold_hours, guaranteed_wage_rates, guaranteed_wage_after_threshold')
         .eq('store_id', storeId)
         .maybeSingle()
       setGuaranteedThresholdHours(storeWage?.guaranteed_wage_threshold_hours ?? null)
       setGuaranteedRates((storeWage?.guaranteed_wage_rates as Record<string, number>) || {})
+      const afterThreshold = storeWage?.guaranteed_wage_after_threshold as { mode?: string } | null
+      setGuaranteedAfterThresholdMode(afterThreshold?.mode === 'bracket' ? 'bracket' : 'zero')
     } catch (error) {
       console.error('データ読み込みエラー:', error)
       toast.error('データの読み込みに失敗しました')
@@ -220,6 +223,7 @@ function WageSettingsPageContent() {
           uniforms={uniformsForLabels}
           guaranteedThresholdHours={guaranteedThresholdHours}
           guaranteedRates={guaranteedRates}
+          guaranteedAfterThresholdMode={guaranteedAfterThresholdMode}
           onReload={loadData}
         />
       default:
@@ -1451,11 +1455,12 @@ interface GuaranteedWageTabProps {
   uniforms: UniformWithClass[]
   guaranteedThresholdHours: number | null
   guaranteedRates: Record<string, number>
+  guaranteedAfterThresholdMode: 'zero' | 'bracket'
   onReload: () => void
 }
 
-function GuaranteedWageTab({ storeId, classLabels, uniforms, guaranteedRates, onReload }: GuaranteedWageTabProps) {
-  const [editing, setEditing] = useState<{ rates: Record<string, number> } | null>(null)
+function GuaranteedWageTab({ storeId, classLabels, uniforms, guaranteedThresholdHours, guaranteedRates, guaranteedAfterThresholdMode, onReload }: GuaranteedWageTabProps) {
+  const [editing, setEditing] = useState<{ threshold: number | null; rates: Record<string, number>; afterMode: 'zero' | 'bracket' } | null>(null)
   const [saving, setSaving] = useState(false)
 
   const allLabels = Array.from(new Set([
@@ -1469,7 +1474,7 @@ function GuaranteedWageTab({ storeId, classLabels, uniforms, guaranteedRates, on
   const handleEdit = () => {
     const initRates: Record<string, number> = {}
     allLabels.forEach(l => { initRates[l] = guaranteedRates[l] ?? 0 })
-    setEditing({ rates: initRates })
+    setEditing({ threshold: guaranteedThresholdHours, rates: initRates, afterMode: guaranteedAfterThresholdMode })
   }
 
   const handleSave = async () => {
@@ -1484,9 +1489,9 @@ function GuaranteedWageTab({ storeId, classLabels, uniforms, guaranteedRates, on
         .from('store_wage_settings')
         .upsert({
           store_id: storeId,
-          // threshold は廃止（売上連動からのスライドはしない設計に変更）
-          guaranteed_wage_threshold_hours: null,
+          guaranteed_wage_threshold_hours: editing.threshold,
           guaranteed_wage_rates: Object.keys(cleanedRates).length > 0 ? cleanedRates : null,
+          guaranteed_wage_after_threshold: { mode: editing.afterMode },
         }, { onConflict: 'store_id' })
       if (error) throw error
       toast.success('保証時給を保存しました')
@@ -1506,16 +1511,31 @@ function GuaranteedWageTab({ storeId, classLabels, uniforms, guaranteedRates, on
         <div>
           <h2 style={styles.cardTitle}>保証時給テーブル</h2>
           <p style={styles.cardDescription}>
-            衣装クラス × 固定時給。報酬形態で「保証時給のみ」を選んだキャストは、勤務時間に関わらずこのレート × 勤務時間で時給収入が計算されます。
+            衣装クラス × 固定時給。報酬形態で「保証時給のみ」を選んだキャストは、累計勤務時間が上限を超えるまでこのレート × 勤務時間で時給収入が計算されます。
           </p>
           <p style={{ ...styles.cardDescription, marginTop: '4px', fontSize: '12px', color: '#94a3b8' }}>
-            売上連動時給とは独立した報酬形態として比較されます（自動スライドなし）。
+            上限超過後は形態1=0扱い、売上連動時給とは独立した報酬形態として比較されます（自動スライドなし）。
           </p>
         </div>
         {!editing && (
           <Button onClick={handleEdit}>編集</Button>
         )}
       </div>
+
+      {!editing && isConfigured && (
+        <div style={{ marginBottom: '12px', padding: '10px 14px', backgroundColor: '#f0f9ff', borderRadius: '6px', border: '1px solid #bae6fd', display: 'flex', flexWrap: 'wrap', gap: '24px' }}>
+          <span style={{ fontSize: '13px', color: '#1e293b' }}>
+            <strong>累計上限:</strong>{' '}
+            {guaranteedThresholdHours != null ? `${guaranteedThresholdHours} 時間まで保証` : '上限なし（常時保証）'}
+          </span>
+          {guaranteedThresholdHours != null && (
+            <span style={{ fontSize: '13px', color: '#1e293b' }}>
+              <strong>上限超過後:</strong>{' '}
+              {guaranteedAfterThresholdMode === 'bracket' ? '売上連動ブラケットに切替' : '払わない（0扱い）'}
+            </span>
+          )}
+        </div>
+      )}
 
       {unsetUniforms.length > 0 && (
         <div style={{ ...styles.editForm, backgroundColor: '#fef3c7', borderColor: '#fbbf24', marginBottom: '16px' }}>
@@ -1535,7 +1555,46 @@ function GuaranteedWageTab({ storeId, classLabels, uniforms, guaranteedRates, on
 
       {editing ? (
         <div style={styles.editForm}>
-          <h3 style={styles.editFormTitle}>クラス別保証時給を編集</h3>
+          <h3 style={styles.editFormTitle}>保証時給を編集</h3>
+
+          {/* 累計上限設定 */}
+          <div style={{ marginBottom: '16px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px' }}>
+            <div style={styles.formGroup}>
+              <label style={styles.label}>累計勤務時間の上限（h, 空欄=上限なし）</label>
+              <div style={styles.inputWithUnit}>
+                <input
+                  type="number"
+                  style={styles.inputInUnit}
+                  value={editing.threshold ?? ''}
+                  placeholder="例: 100"
+                  onChange={e => setEditing({
+                    ...editing,
+                    threshold: e.target.value === '' ? null : Number(e.target.value) || 0,
+                  })}
+                />
+                <span style={styles.unit}>時間まで保証</span>
+              </div>
+              <p style={{ ...styles.helpText, marginTop: '4px' }}>
+                例: 100 と入力すると、入店日から累計100hまでがこのレートで保証されます。境界日は1時間単位で厳密分割。
+              </p>
+            </div>
+            <div style={styles.formGroup}>
+              <label style={styles.label}>上限超過後の挙動</label>
+              <select
+                style={styles.input}
+                value={editing.afterMode}
+                disabled={editing.threshold == null}
+                onChange={e => setEditing({ ...editing, afterMode: e.target.value as 'zero' | 'bracket' })}
+              >
+                <option value="zero">払わない（0扱い）</option>
+                <option value="bracket">売上連動ブラケットに切替</option>
+              </select>
+              <p style={{ ...styles.helpText, marginTop: '4px' }}>
+                上限到達後に保証時給形態をどう扱うか。「ブラケット」を選ぶと売上連動時給テーブルから時給確定。
+              </p>
+            </div>
+          </div>
+
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '16px', marginBottom: '16px' }}>
             {allLabels.length === 0 ? (
               <p style={styles.helpText}>まず衣装にクラスラベルを設定してください</p>
@@ -1547,7 +1606,7 @@ function GuaranteedWageTab({ storeId, classLabels, uniforms, guaranteedRates, on
                     type="number"
                     style={styles.inputInUnit}
                     value={editing.rates[label] ?? 0}
-                    onChange={e => setEditing({ rates: { ...editing.rates, [label]: Number(e.target.value) || 0 } })}
+                    onChange={e => setEditing({ ...editing, rates: { ...editing.rates, [label]: Number(e.target.value) || 0 } })}
                   />
                   <span style={styles.unit}>円/h</span>
                 </div>
