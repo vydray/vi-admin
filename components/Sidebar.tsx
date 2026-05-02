@@ -26,6 +26,7 @@ interface MenuGroup {
 const mobileRestrictedPaths = [
   '/receipts',              // 伝票管理
   '/payslip',               // 報酬明細
+  '/payslip-verify',        // 整合チェック
   '/settings',              // 設定
   '/base-settings',         // BASE連携
   '/stores',                // 店舗管理（管理者専用）
@@ -102,6 +103,7 @@ const menuGroups: MenuGroup[] = [
     icon: '💳',
     items: [
       { name: '報酬明細', path: '/payslip', icon: '📄' },
+      { name: '整合チェック', path: '/payslip-verify', icon: '🔍' },
       { name: '報酬形態一覧', path: '/compensation-list', icon: '📋' },
       { name: '報酬計算設定', path: '/compensation-settings', icon: '💳' },
       { name: 'キャスト別時給設定', path: '/cast-wage-settings', icon: '👤' },
