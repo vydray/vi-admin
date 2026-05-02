@@ -95,6 +95,9 @@ interface DailySalesData {
     back_ratio: number | null
     back_amount: number
     is_base?: boolean
+    // ヘルプ行のみ: shift-app 表示用に推しキャスト情報を保持
+    oshi_cast_id?: number | null
+    oshi_cast_name?: string | null
   }>
 }
 
@@ -177,6 +180,34 @@ async function calculatePayslipForCast(
       .eq('cast_name', cast.name)
       .gte('date', startDate)
       .lte('date', endDate)
+
+    // === 早期 skip: 当月の活動実績が一切ないキャストはスキップ ===
+    // 既存 payslip なし & dailyStats なし & attendance なし & cast_daily_items なし & cast_bonuses なし
+    // → 0円の payslip を作る意味がないので計算対象から外す
+    if (
+      !existingPayslip &&
+      (!dailyStats || dailyStats.length === 0) &&
+      (!attendanceData || attendanceData.length === 0)
+    ) {
+      const [cdiRes, cbRes] = await Promise.all([
+        supabaseAdmin
+          .from('cast_daily_items')
+          .select('id', { count: 'exact', head: true })
+          .eq('store_id', storeId)
+          .or(`cast_id.eq.${cast.id},help_cast_id.eq.${cast.id}`)
+          .gte('date', startDate)
+          .lte('date', endDate),
+        supabaseAdmin
+          .from('cast_bonuses')
+          .select('id', { count: 'exact', head: true })
+          .eq('store_id', storeId)
+          .eq('cast_id', cast.id)
+          .eq('year_month', yearMonth),
+      ])
+      if ((cdiRes.count ?? 0) === 0 && (cbRes.count ?? 0) === 0) {
+        return { success: true }
+      }
+    }
 
     // 控除設定を取得
     const { data: deductionTypes } = await supabaseAdmin
@@ -457,6 +488,22 @@ async function calculatePayslipForCast(
       .lte('date', endDate)
     helpItems = refetchedHelp.data
 
+    // ヘルプ行の推しキャスト名 lookup（productBackDetails に oshi_cast_id/name を埋めるため）
+    const helpOshiCastIds = new Set<number>()
+    for (const item of helpItems || []) {
+      if (item.cast_id && item.cast_id !== cast.id) helpOshiCastIds.add(item.cast_id as number)
+    }
+    const helpOshiNameById = new Map<number, string>()
+    if (helpOshiCastIds.size > 0) {
+      const { data: oshiCasts } = await supabaseAdmin
+        .from('casts')
+        .select('id, name')
+        .in('id', [...helpOshiCastIds])
+      for (const c of (oshiCasts || [])) {
+        helpOshiNameById.set(c.id as number, c.name as string)
+      }
+    }
+
     // 売上設定を取得（全フィールド）
     const { data: salesSettings } = await supabaseAdmin
       .from('sales_settings')
@@ -625,16 +672,21 @@ async function calculatePayslipForCast(
       // バック額はUPDATE後の self_back_amount をそのまま使用（self_sales × rate で正規化済み）
       // is_self=false かつ self_sales=0 のテーブルヘルプ商品は self_back_amount=0 が正しい
       // → ここでフォールバック計算（subtotal × rate）すると水増しになるためDB値のみ採用
-      const calculatedBackAmount = item.self_back_amount || 0
+      const selfBackAmount = item.self_back_amount || 0
+      // 卓内ヘルプ（cast_id=自分 AND help_cast_id=自分）の help_back_amount も推しバックに加算
+      // cast_id ベース bucketing 規約に従い、卓内ヘルプは「推し」として扱う
+      const isInTableHelp = item.help_cast_id === cast.id
+      const helpBackContribution = isInTableHelp ? (item.help_back_amount || 0) : 0
+      const totalBackAmount = selfBackAmount + helpBackContribution
       const backInfo = getPosBackInfo(item.product_name, item.category, item.is_self)
       const backRatio = backInfo?.rate ?? null
 
-      dayData.productBack += calculatedBackAmount
-      dayData.selfBack += calculatedBackAmount
+      dayData.productBack += totalBackAmount
+      dayData.selfBack += totalBackAmount
 
       // POS商品明細をitemsに追加（BASE商品も cast_daily_items に取り込まれているのでここで処理）
-      // sales_type は「このキャストの役割」基準: cast_id=自分の行 → 'self' (推し)、help_cast_id=自分の行 → 'help'
-      // 卓内ヘルプ商品（is_self=false で他キャストのドリンク）も「このキャストが推しとして関わってる」のでバックは推しバック扱い
+      // sales_type は「このキャストの役割」基準: cast_id=自分の行 → 'self' (推し)
+      // 卓内ヘルプ（cast_id=help_cast_id=自分）も cast_id ベース規約により 'self' に分類
       dayData.items.push({
         product_name: item.product_name,
         category: item.category || '',
@@ -642,7 +694,7 @@ async function calculatePayslipForCast(
         quantity: item.quantity,
         subtotal: item.subtotal,
         back_ratio: backRatio,
-        back_amount: calculatedBackAmount,
+        back_amount: totalBackAmount,
         is_base: item.category === 'BASE'
       })
     }
@@ -650,6 +702,9 @@ async function calculatePayslipForCast(
     // ヘルプとしての商品明細をdailySalesMapに追加
     for (const item of helpItems || []) {
       if (!item.date) continue
+      // 卓内ヘルプ（cast_id=自分）は上の self ループで処理済みなので skip
+      // cast_id ベース bucketing 規約: 卓内ヘルプは「推し」バケットに統一
+      if (item.cast_id === cast.id) continue
       if (!dailySalesMap.has(item.date)) {
         dailySalesMap.set(item.date, {
           date: item.date,
@@ -664,15 +719,20 @@ async function calculatePayslipForCast(
       const helpBackAmount = item.help_back_amount || 0
       dayData.productBack += helpBackAmount
       dayData.helpBack += helpBackAmount
+      // shift-app 表示用に推しキャスト情報と実 subtotal を埋める
+      // - subtotal: item.subtotal (単価×数量の実値、help_sales=0 の店舗でも単価逆算できるように)
+      // - oshi_cast_id/name: ヘルプ行は「他キャスト(推し)の卓で関わった商品」なので推しの id/name を保存
       dayData.items.push({
         product_name: item.product_name,
         category: item.category || '',
         sales_type: 'help',
         quantity: item.quantity || 1,
-        subtotal: item.help_sales || 0,
+        subtotal: item.subtotal || 0,
         back_ratio: null,
         back_amount: helpBackAmount,
-        is_base: false
+        is_base: false,
+        oshi_cast_id: item.cast_id || null,
+        oshi_cast_name: (item.cast_id && helpOshiNameById.get(item.cast_id as number)) || null,
       })
     }
 
@@ -1451,6 +1511,9 @@ async function calculatePayslipForCast(
       )
 
     // 商品バック詳細
+    // - help 行は (category, product_name, oshi_cast_id) で groupping → 推しごとに分かれる
+    // - self 行は (category, product_name) で groupping
+    // - help 行に oshi_cast_id / oshi_cast_name を保存（shift-app 表示用）
     const productBackDetails: Array<{
       product_name: string
       category: string | null
@@ -1459,12 +1522,16 @@ async function calculatePayslipForCast(
       subtotal: number
       back_ratio: number | null
       back_amount: number
+      oshi_cast_id?: number | null
+      oshi_cast_name?: string | null
     }> = []
 
     const grouped = new Map<string, typeof productBackDetails[0]>()
     dailySalesMap.forEach(day => {
       for (const item of day.items) {
-        const key = `${item.category || ''}:${item.product_name}:${item.sales_type}`
+        const key = item.sales_type === 'help'
+          ? `${item.category || ''}:${item.product_name}:help:${item.oshi_cast_id ?? ''}`
+          : `${item.category || ''}:${item.product_name}:self`
         const existing = grouped.get(key)
         if (existing) {
           existing.quantity += item.quantity
@@ -1678,16 +1745,21 @@ async function calculatePayslipForCast(
               let back = 0
               let rate = 0
               if (row.cast_id === cast.id) {
-                // 推しの行
+                // 推しの行（卓内ヘルプ含む: cast_id ベース bucketing 規約）
                 credit = aggregation === 'receipt_based'
                   ? Number(row.self_sales_receipt_based) || 0
                   : Number(row.self_sales_item_based) || 0
                 back = Number(row.self_back_amount) || 0
                 rate = row.self_back_rate || 0
+                // 卓内ヘルプ（help_cast_id=自分）の help 分も推し credit/back に加算
+                if (row.help_cast_id === cast.id) {
+                  credit += Number(row.help_sales) || 0
+                  back += Number(row.help_back_amount) || 0
+                }
                 selfSalesTotal += credit
                 selfBackTotal += back
               } else if (row.help_cast_id === cast.id) {
-                // ヘルプの行
+                // ヘルプの行（他卓のヘルプ）
                 credit = Number(row.help_sales) || 0
                 back = Number(row.help_back_amount) || 0
                 rate = row.help_back_rate || 0
@@ -1907,6 +1979,11 @@ export async function POST(request: NextRequest) {
 
     if (targetCastId && targetStoreId) {
       // 単一キャスト計算（進捗表示用）
+      // 注意: ここでは refreshDailyStatsForMonth を呼ばない。
+      // refreshDailyStatsForMonth は店舗全体の cast_daily_stats を更新するため、
+      // 単一キャスト recalc 時に呼ぶと「自分以外」のキャストの saved 値が stats と乖離する。
+      // ユーザー視点では「このキャストを再計算」ボタンが他キャストに影響する形になり混乱を招く。
+      // 統計値の再生成が必要な場合は「全キャスト再計算」を使うこと。
       const { data: cast } = await supabaseAdmin
         .from('casts')
         .select('id, name')
@@ -1915,7 +1992,6 @@ export async function POST(request: NextRequest) {
         .single()
 
       if (cast) {
-        await refreshDailyStatsForMonth(targetStoreId)
         const result = await calculatePayslipForCast(targetStoreId, cast, month, batchId, triggeredBy)
         if (result.success) {
           totalProcessed++
@@ -1929,7 +2005,7 @@ export async function POST(request: NextRequest) {
       }
     } else if (targetStoreId) {
       // 特定店舗の全キャスト計算（手動実行）
-      // アクティブキャスト + payslipが存在する非アクティブキャスト
+      // アクティブキャスト + payslipが存在する非アクティブキャスト + 当月 attendance がある非アクティブキャスト
       const { data: activeCasts } = await supabaseAdmin
         .from('casts')
         .select('id, name')
@@ -1943,11 +2019,55 @@ export async function POST(request: NextRequest) {
         .eq('store_id', targetStoreId)
         .eq('year_month', yearMonth)
 
+      // 当月 attendance に出てるキャスト名を取得（退店済みでも勤務記録があれば計算対象に）
+      const startDate = format(startOfMonth(month), 'yyyy-MM-dd')
+      const endDate = format(endOfMonth(month), 'yyyy-MM-dd')
+      const { data: attendanceRows } = await supabaseAdmin
+        .from('attendance')
+        .select('cast_name')
+        .eq('store_id', targetStoreId)
+        .gte('date', startDate)
+        .lte('date', endDate)
+      const attCastNameSet = new Set((attendanceRows || []).map((a: { cast_name: string }) => a.cast_name))
+      const attCasts = attCastNameSet.size > 0
+        ? (await supabaseAdmin
+            .from('casts')
+            .select('id, name')
+            .eq('store_id', targetStoreId)
+            .in('name', Array.from(attCastNameSet))).data
+        : null
+
+      // 当月 cast_daily_items に出てるキャスト（出勤なし BASE/ヘルプ売上があるケース）
+      const { data: itemCastRows } = await supabaseAdmin
+        .from('cast_daily_items')
+        .select('cast_id, help_cast_id')
+        .eq('store_id', targetStoreId)
+        .gte('date', startDate)
+        .lte('date', endDate)
+      const itemCastIdSet = new Set<number>()
+      for (const r of itemCastRows || []) {
+        if (r.cast_id) itemCastIdSet.add(r.cast_id as number)
+        if (r.help_cast_id) itemCastIdSet.add(r.help_cast_id as number)
+      }
+      const itemCasts = itemCastIdSet.size > 0
+        ? (await supabaseAdmin
+            .from('casts')
+            .select('id, name')
+            .eq('store_id', targetStoreId)
+            .in('id', Array.from(itemCastIdSet))).data
+        : null
+
       const castMap = new Map<number, { id: number; name: string }>()
       for (const c of activeCasts || []) castMap.set(c.id, c)
       for (const p of payslipCasts || []) {
         const c = (p as Record<string, unknown>).casts as { id: number; name: string } | null
         if (c && !castMap.has(c.id)) castMap.set(c.id, c)
+      }
+      for (const c of attCasts || []) {
+        if (!castMap.has(c.id)) castMap.set(c.id, c)
+      }
+      for (const c of itemCasts || []) {
+        if (!castMap.has(c.id)) castMap.set(c.id, c)
       }
 
       await refreshDailyStatsForMonth(targetStoreId)
@@ -1982,11 +2102,55 @@ export async function POST(request: NextRequest) {
           .eq('store_id', store.id)
           .eq('year_month', yearMonth)
 
+        // 当月 attendance に出てるキャスト（退店済みでも勤務記録あれば対象）
+        const startDate = format(startOfMonth(month), 'yyyy-MM-dd')
+        const endDate = format(endOfMonth(month), 'yyyy-MM-dd')
+        const { data: attendanceRows } = await supabaseAdmin
+          .from('attendance')
+          .select('cast_name')
+          .eq('store_id', store.id)
+          .gte('date', startDate)
+          .lte('date', endDate)
+        const attCastNameSet = new Set((attendanceRows || []).map((a: { cast_name: string }) => a.cast_name))
+        const attCasts = attCastNameSet.size > 0
+          ? (await supabaseAdmin
+              .from('casts')
+              .select('id, name')
+              .eq('store_id', store.id)
+              .in('name', Array.from(attCastNameSet))).data
+          : null
+
+        // 当月 cast_daily_items に出てるキャスト（出勤なし BASE/ヘルプ売上があるケース）
+        const { data: itemCastRows } = await supabaseAdmin
+          .from('cast_daily_items')
+          .select('cast_id, help_cast_id')
+          .eq('store_id', store.id)
+          .gte('date', startDate)
+          .lte('date', endDate)
+        const itemCastIdSet = new Set<number>()
+        for (const r of itemCastRows || []) {
+          if (r.cast_id) itemCastIdSet.add(r.cast_id as number)
+          if (r.help_cast_id) itemCastIdSet.add(r.help_cast_id as number)
+        }
+        const itemCasts = itemCastIdSet.size > 0
+          ? (await supabaseAdmin
+              .from('casts')
+              .select('id, name')
+              .eq('store_id', store.id)
+              .in('id', Array.from(itemCastIdSet))).data
+          : null
+
         const castMap = new Map<number, { id: number; name: string }>()
         for (const c of activeCasts || []) castMap.set(c.id, c)
         for (const p of payslipCasts || []) {
           const c = (p as Record<string, unknown>).casts as { id: number; name: string } | null
           if (c && !castMap.has(c.id)) castMap.set(c.id, c)
+        }
+        for (const c of attCasts || []) {
+          if (!castMap.has(c.id)) castMap.set(c.id, c)
+        }
+        for (const c of itemCasts || []) {
+          if (!castMap.has(c.id)) castMap.set(c.id, c)
         }
 
         for (const cast of castMap.values()) {

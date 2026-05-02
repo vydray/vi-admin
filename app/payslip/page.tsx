@@ -1845,18 +1845,68 @@ function PayslipPageContent() {
         .eq('store_id', storeId)
         .eq('year_month', yearMonth)
 
-      // アクティブキャスト（在籍中）+ payslipがある非アクティブキャストをマージ
+      // 当月 attendance に出てるキャスト名を取得（退店済みでも勤務記録あれば計算対象に）
+      const monthStartTmp = format(startOfMonth(selectedMonth), 'yyyy-MM-dd')
+      const monthEndTmp = format(endOfMonth(selectedMonth), 'yyyy-MM-dd')
+      const { data: attendanceRows } = await supabase
+        .from('attendance')
+        .select('cast_name')
+        .eq('store_id', storeId)
+        .gte('date', monthStartTmp)
+        .lte('date', monthEndTmp)
+      const attCastNameSet = new Set((attendanceRows || []).map(a => a.cast_name as string))
+      const attCasts = attCastNameSet.size > 0
+        ? (await supabase
+            .from('casts')
+            .select('id, name')
+            .eq('store_id', storeId)
+            .in('name', Array.from(attCastNameSet))).data
+        : null
+
+      // 当月 cast_daily_items に出てるキャスト ID（BASE 売上・ヘルプ売上等で出勤なし売上ありをカバー）
+      const { data: itemCastRows } = await supabase
+        .from('cast_daily_items')
+        .select('cast_id, help_cast_id')
+        .eq('store_id', storeId)
+        .gte('date', monthStartTmp)
+        .lte('date', monthEndTmp)
+      const itemCastIdSet = new Set<number>()
+      for (const r of itemCastRows || []) {
+        if (r.cast_id) itemCastIdSet.add(r.cast_id as number)
+        if (r.help_cast_id) itemCastIdSet.add(r.help_cast_id as number)
+      }
+      const itemCasts = itemCastIdSet.size > 0
+        ? (await supabase
+            .from('casts')
+            .select('id, name')
+            .eq('store_id', storeId)
+            .in('id', Array.from(itemCastIdSet))).data
+        : null
+
+      // アクティブキャスト（在籍中）+ payslip + attendance + cast_daily_items（売上あり）をマージ
       const activeCasts = casts.filter(c => c.status === '在籍')
       const castMap = new Map<number, { id: number; name: string }>()
       for (const c of activeCasts) {
         castMap.set(c.id, { id: c.id, name: c.name })
       }
-      // payslipがあるキャストも追加（重複除去）
+      // payslipがあるキャスト
       for (const p of payslipCasts || []) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const castData = (p as any).casts as { id: number; name: string } | null
         if (castData && !castMap.has(castData.id)) {
           castMap.set(castData.id, { id: castData.id, name: castData.name })
+        }
+      }
+      // attendance があるキャスト
+      for (const c of attCasts || []) {
+        if (!castMap.has(c.id)) {
+          castMap.set(c.id, { id: c.id, name: c.name })
+        }
+      }
+      // 売上ある（cast_daily_items にある）キャスト
+      for (const c of itemCasts || []) {
+        if (!castMap.has(c.id)) {
+          castMap.set(c.id, { id: c.id, name: c.name })
         }
       }
       const allTargetCasts = Array.from(castMap.values())
