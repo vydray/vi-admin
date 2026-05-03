@@ -771,7 +771,10 @@ async function calculatePayslipForCast(
     // 売上バック計算
     let salesBack = 0
     // null = 未設定（全控除適用、後方互換）, [] = 全控除無効, [1,2,3] = 指定控除のみ
-    const enabledDeductionIds = compensationSettings?.enabled_deduction_ids ?? null
+    // compensation_settings が無い場合は控除を一切適用しない（過去バグ対策）。
+    // 旧実装は null フォールバックで全 fixed 控除を無条件適用していたため、
+    // 新規キャストの過去月再計算時に「源泉徴収(他人名)」が誤発動する事故があった。
+    const enabledDeductionIds = compensationSettings?.enabled_deduction_ids ?? []
 
     // アクティブな報酬タイプを取得
     type CompType = {
