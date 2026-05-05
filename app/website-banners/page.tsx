@@ -13,6 +13,50 @@ import ProtectedPage from '@/components/ProtectedPage'
 const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB
 const BUCKET = 'website-banners'
 
+// 画像を指定の最大幅・品質で JPEG に変換
+function resizeToJPEG(file: File, maxWidth: number, quality: number): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const img = new window.Image()
+    img.onload = () => {
+      let { width, height } = img
+      if (width > maxWidth) {
+        const ratio = maxWidth / width
+        width = maxWidth
+        height = Math.round(height * ratio)
+      }
+      const canvas = document.createElement('canvas')
+      canvas.width = width
+      canvas.height = height
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return reject(new Error('canvas ctx 取得失敗'))
+      ctx.drawImage(img, 0, 0, width, height)
+      canvas.toBlob(
+        b => b ? resolve(b) : reject(new Error('blob 生成失敗')),
+        'image/jpeg',
+        quality,
+      )
+    }
+    img.onerror = () => reject(new Error('画像読み込み失敗'))
+    img.src = URL.createObjectURL(file)
+  })
+}
+
+// 上限を超えてたら段階的に縮小・圧縮して maxSize 以内にする
+async function shrinkUntilUnder(file: File, maxSize: number): Promise<Blob> {
+  const attempts: Array<{ maxW: number; q: number }> = [
+    { maxW: 1600, q: 0.85 },
+    { maxW: 1600, q: 0.70 },
+    { maxW: 1280, q: 0.65 },
+    { maxW: 1024, q: 0.60 },
+    { maxW: 800,  q: 0.55 },
+  ]
+  for (const a of attempts) {
+    const blob = await resizeToJPEG(file, a.maxW, a.q)
+    if (blob.size <= maxSize) return blob
+  }
+  return resizeToJPEG(file, 600, 0.5) // 最終手段
+}
+
 interface Banner {
   id: number
   store_id: number
@@ -120,7 +164,7 @@ function WebsiteBannersPageContent() {
     setShowModal(true)
   }
 
-  const onFile = (file: File | null) => {
+  const onFile = async (file: File | null) => {
     if (!file) {
       setForm(s => ({ ...s, imageFile: null }))
       setPreviewUrl(form.existingImageUrl)
@@ -130,12 +174,27 @@ function WebsiteBannersPageContent() {
       toast.error('画像ファイルを選択してください')
       return
     }
+
+    let finalFile: File = file
     if (file.size > MAX_FILE_SIZE) {
-      toast.error(`ファイルサイズは ${(MAX_FILE_SIZE / 1024 / 1024).toFixed(0)}MB 以下にしてください`)
-      return
+      const tid = toast.loading('画像を縮小中...')
+      try {
+        const blob = await shrinkUntilUnder(file, MAX_FILE_SIZE)
+        const newName = file.name.replace(/\.[^.]+$/, '.jpg')
+        finalFile = new File([blob], newName, { type: 'image/jpeg' })
+        toast.success(
+          `縮小完了: ${(file.size / 1024 / 1024).toFixed(1)}MB → ${(finalFile.size / 1024 / 1024).toFixed(1)}MB`,
+          { id: tid },
+        )
+      } catch (e) {
+        console.error(e)
+        toast.error('画像の縮小に失敗しました', { id: tid })
+        return
+      }
     }
-    const url = URL.createObjectURL(file)
-    setForm(s => ({ ...s, imageFile: file }))
+
+    const url = URL.createObjectURL(finalFile)
+    setForm(s => ({ ...s, imageFile: finalFile }))
     setPreviewUrl(url)
   }
 
@@ -345,7 +404,7 @@ function WebsiteBannersPageContent() {
           <div style={{ fontSize: '13px', color: '#555' }}>
             画像 {editing ? '(差し替える場合のみ選択)' : '*'}
             <span style={{ fontSize: '11px', color: '#888', marginLeft: '6px' }}>
-              最大 {Math.round(MAX_FILE_SIZE / 1024 / 1024)}MB / 16:9 推奨
+              最大 {Math.round(MAX_FILE_SIZE / 1024 / 1024)}MB (超過時は自動縮小) / 16:9 推奨
             </span>
             <label
               onDragOver={(e) => { e.preventDefault(); setIsDragging(true) }}
