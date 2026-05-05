@@ -54,6 +54,7 @@ function WebsiteBannersPageContent() {
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState<Banner | null>(null)
   const [saving, setSaving] = useState(false)
+  const [isDragging, setIsDragging] = useState(false)
   const [form, setForm] = useState<FormState>({
     title: '',
     link_url: '',
@@ -341,18 +342,44 @@ function WebsiteBannersPageContent() {
             />
           </label>
 
-          <label style={{ fontSize: '13px', color: '#555' }}>
+          <div style={{ fontSize: '13px', color: '#555' }}>
             画像 {editing ? '(差し替える場合のみ選択)' : '*'}
             <span style={{ fontSize: '11px', color: '#888', marginLeft: '6px' }}>
               最大 {Math.round(MAX_FILE_SIZE / 1024 / 1024)}MB / 16:9 推奨
             </span>
-            <input
-              type="file"
-              accept="image/*"
-              onChange={e => onFile(e.target.files?.[0] ?? null)}
-              style={{ width: '100%', padding: '8px', marginTop: '4px', fontSize: '13px' }}
-            />
-          </label>
+            <label
+              onDragOver={(e) => { e.preventDefault(); setIsDragging(true) }}
+              onDragLeave={(e) => { e.preventDefault(); setIsDragging(false) }}
+              onDrop={(e) => {
+                e.preventDefault()
+                setIsDragging(false)
+                const file = e.dataTransfer.files[0]
+                if (file) onFile(file)
+              }}
+              style={{
+                display: 'block',
+                marginTop: '6px',
+                padding: '20px',
+                border: `2px dashed ${isDragging ? '#3b82f6' : '#ccc'}`,
+                borderRadius: '8px',
+                textAlign: 'center',
+                backgroundColor: isDragging ? '#eff6ff' : '#fafafa',
+                cursor: 'pointer',
+                transition: 'all 0.15s',
+                fontSize: '13px',
+                color: '#666',
+              }}
+            >
+              <div style={{ marginBottom: '6px' }}>📁 ここにドラッグ&ドロップ</div>
+              <div style={{ fontSize: '11px', color: '#888' }}>またはクリックでファイル選択</div>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={e => onFile(e.target.files?.[0] ?? null)}
+                style={{ display: 'none' }}
+              />
+            </label>
+          </div>
 
           {previewUrl && (
             <div>
