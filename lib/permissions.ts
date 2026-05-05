@@ -24,6 +24,7 @@ export const PERMISSION_CONFIG: Record<PermissionKey, { label: string; category:
   schedule: { label: '出勤表作成', category: 'その他' },
   twitter: { label: 'Twitter管理', category: 'その他' },
   orishan_report: { label: 'オリシャン集計', category: 'キャスト' },
+  website_banners: { label: 'Webサイト・バナー管理', category: 'その他' },
 }
 
 // カテゴリ順
@@ -84,6 +85,8 @@ export function getPermissionKeyFromPath(path: string): PermissionKey | null {
     // Twitter
     '/twitter-posts': 'twitter',
     '/twitter-settings': 'twitter',
+    // Webサイト
+    '/website-banners': 'website_banners',
   }
 
   return pathMap[path] || null

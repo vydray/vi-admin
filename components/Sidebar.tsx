@@ -46,10 +46,12 @@ const mobileRestrictedPaths = [
   '/cast-back-rates',       // バック設定
   '/deduction-settings',    // 控除設定
   '/bonus-settings',        // 賞与設定
+  // Webサイト
+  '/website-banners',       // イベントバナー管理
 ]
 
 // モバイルで制限するグループ名
-const mobileRestrictedGroups = ['管理者専用', 'Twitter', '売上&経費', '報酬設定']
+const mobileRestrictedGroups = ['管理者専用', 'Twitter', '売上&経費', '報酬設定', 'Webサイト']
 
 // メイン項目（常に表示）
 const mainItems: MenuItem[] = [
@@ -111,6 +113,13 @@ const menuGroups: MenuGroup[] = [
       { name: 'バック設定', path: '/cast-back-rates', icon: '💵' },
       { name: '控除設定', path: '/deduction-settings', icon: '➖' },
       { name: '賞与設定', path: '/bonus-settings', icon: '🎁' },
+    ]
+  },
+  {
+    name: 'Webサイト',
+    icon: '🌐',
+    items: [
+      { name: 'イベントバナー', path: '/website-banners', icon: '🎉' },
     ]
   },
   {
