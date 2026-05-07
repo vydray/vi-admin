@@ -10,6 +10,7 @@ import toast from 'react-hot-toast'
 import { Payment } from '@/types'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
+import MonthlyTargetCard from '@/components/MonthlyTargetCard'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import holidayJp from '@holiday-jp/holiday_jp'
 
@@ -1235,6 +1236,15 @@ export default function Home() {
           day: 'numeric',
           timeZone: 'Asia/Tokyo'
         })}
+      </div>
+
+      <div style={{ marginBottom: isMobile ? '12px' : '20px' }}>
+        <MonthlyTargetCard
+          storeId={storeId}
+          yearMonth={`${selectedYear}-${String(selectedMonth).padStart(2, '0')}`}
+          actualSales={data.monthlySales + data.monthlyBaseSales}
+          isMobile={isMobile}
+        />
       </div>
 
       <div style={{
