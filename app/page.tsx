@@ -445,7 +445,7 @@ export default function Home() {
           '常連',
           '現金',
           'カード',
-          '売掛',
+          'その他',
           '日払い',
           '経費入金',
           '経費支出',
@@ -1260,7 +1260,7 @@ export default function Home() {
             { label: '　├ 店舗売上', value: '¥' + data.monthlySales.toLocaleString() },
             { label: '　│　├ 現金', value: '¥' + data.monthlyCashSales.toLocaleString() },
             { label: '　│　├ カード', value: '¥' + data.monthlyCardSales.toLocaleString() },
-            { label: '　│　└ 売掛', value: '¥' + data.monthlyCredit.toLocaleString() },
+            { label: '　│　└ その他', value: '¥' + data.monthlyCredit.toLocaleString() },
             { label: '　└ BASE売上', value: '¥' + data.monthlyBaseSales.toLocaleString() },
             { label: '会計数', value: data.monthlyCustomers + '件' },
             { label: '来店人数', value: data.monthlyGroups + '人' },
@@ -1282,7 +1282,7 @@ export default function Home() {
             { label: '　├ 店舗売上', value: '¥' + data.todaySales.toLocaleString() },
             { label: '　│　├ 現金', value: '¥' + data.todayCashSales.toLocaleString() },
             { label: '　│　├ カード', value: '¥' + data.todayCardSales.toLocaleString() },
-            { label: '　│　└ 売掛', value: '¥' + data.todayCredit.toLocaleString() },
+            { label: '　│　└ その他', value: '¥' + data.todayCredit.toLocaleString() },
             { label: '　└ BASE売上', value: '¥' + data.todayBaseSales.toLocaleString() },
             { label: '会計数', value: data.todayCustomers + '件' },
             { label: '来店人数', value: data.todayGroups + '人' },
@@ -1388,7 +1388,7 @@ export default function Home() {
                 <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>出勤</th>
                 <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>現金</th>
                 <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>カード</th>
-                <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>売掛</th>
+                <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>その他</th>
                 <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>日払い</th>
                 <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>経費入金</th>
                 <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>経費支出</th>
@@ -1670,7 +1670,7 @@ export default function Home() {
                     </div>
                   </div>
                   <div style={styles.dailyReportGridItem}>
-                    <div style={styles.dailyReportLabel}>売掛</div>
+                    <div style={styles.dailyReportLabel}>その他</div>
                     <div style={{ ...styles.dailyReportValue, color: '#FF9500' }}>
                       ¥{selectedDayData.otherSales.toLocaleString()}
                     </div>
