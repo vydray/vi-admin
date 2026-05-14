@@ -10,7 +10,7 @@ if (fs.existsSync(path.join(fontsDir, 'MPLUSRounded1c-Bold.ttf'))) {
   registerFont(path.join(fontsDir, 'MPLUSRounded1c-Bold.ttf'), { family: 'Rounded Mplus 1c Bold' });
 }
 
-const shifts = JSON.parse(fs.readFileSync('/tmp/april_shifts.json', 'utf8'));
+const shifts = JSON.parse(fs.readFileSync('/tmp/may_second_shifts.json', 'utf8'));
 const castsData = JSON.parse(fs.readFileSync('/tmp/casts.json', 'utf8'));
 
 const castMap = new Map();
@@ -216,6 +216,6 @@ function generateImage(dates, outputPath) {
   console.log(`Generated: ${outputPath} (${canvasWidth}x${totalH})`);
 }
 
-const dates = getDates('2026-05-01', '2026-05-15');
-generateImage(dates, path.join(process.cwd(), 'shift-memorable-may-first.png'));
+const dates = getDates('2026-05-16', '2026-05-31');
+generateImage(dates, path.join(process.cwd(), 'shift-memorable-may-second.png'));
 console.log('Done!');
