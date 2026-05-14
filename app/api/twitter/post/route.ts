@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import crypto from 'crypto'
+import { getTwitterAppCreds } from '@/lib/twitterOAuth'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -235,6 +236,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Twitter not connected' }, { status: 400 })
     }
 
+    // アプリ共通の Consumer Key/Secret を環境変数から
+    const appCreds = getTwitterAppCreds()
+    if (!appCreds) {
+      return NextResponse.json({ error: 'Twitter app credentials not configured (TWITTER_API_KEY / TWITTER_API_SECRET)' }, { status: 500 })
+    }
+
     // 画像URLをパース（JSON配列または単一URL）
     let imageUrls: string[] = []
     if (post.image_url) {
@@ -251,8 +258,8 @@ export async function POST(request: NextRequest) {
     for (const imageUrl of imageUrls) {
       const mediaId = await uploadMediaToTwitter(
         imageUrl,
-        settings.api_key,
-        settings.api_secret,
+        appCreds.api_key,
+        appCreds.api_secret,
         settings.access_token,
         settings.refresh_token
       )
@@ -264,8 +271,8 @@ export async function POST(request: NextRequest) {
     // ツイートを投稿（画像付き）
     const result = await postTweet(
       post.content,
-      settings.api_key,
-      settings.api_secret,
+      appCreds.api_key,
+      appCreds.api_secret,
       settings.access_token,
       settings.refresh_token, // OAuth 1.0aではaccess_token_secret
       mediaIds.length > 0 ? mediaIds : undefined

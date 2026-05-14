@@ -2,13 +2,19 @@ const { createCanvas, registerFont } = require('canvas');
 const fs = require('fs');
 const path = require('path');
 
-// ヒラギノ明朝 ProN W6 (太字) を全テキスト用に登録
-const minchoFile = '/System/Library/Fonts/ヒラギノ明朝 ProN.ttc';
-if (fs.existsSync(minchoFile)) {
-  // .ttc 内の太字 (W6) を使う指定として weight: bold を付ける
-  registerFont(minchoFile, { family: 'Hiragino', weight: 'bold' });
-  registerFont(minchoFile, { family: 'HiraginoBold', weight: 'bold' });
-  registerFont(minchoFile, { family: 'HiraginoBlack', weight: 'bold' });
+// Shippori Mincho (Google Fonts) — node-canvas で確実に動く .ttf
+const fontsDir = path.join(process.cwd(), 'public', 'fonts');
+const minchoRegular = path.join(fontsDir, 'ShipporiMincho-Regular.ttf');
+const minchoBold = path.join(fontsDir, 'ShipporiMincho-Bold.ttf');
+if (fs.existsSync(minchoRegular)) {
+  registerFont(minchoRegular, { family: 'Hiragino' });
+}
+if (fs.existsSync(minchoBold)) {
+  registerFont(minchoBold, { family: 'HiraginoBold', weight: 'bold' });
+}
+const minchoExtraBold = path.join(fontsDir, 'ShipporiMincho-ExtraBold.ttf');
+if (fs.existsSync(minchoExtraBold)) {
+  registerFont(minchoExtraBold, { family: 'HiraginoBlack', weight: 'bold' });
 }
 
 const shifts = JSON.parse(fs.readFileSync('/tmp/mirage_may_second_shifts.json', 'utf8'));
@@ -34,11 +40,11 @@ const JS_DAY_TO_COL = [6, 0, 1, 2, 3, 4, 5]; // 日→col6, 月→col0, ..., 土
 // ========== カラー ==========
 const BG_TRANSPARENT = true; // false にすると BG_COLOR で塗りつぶし
 const BG_COLOR = '#ffffff';
-const TITLE_BG = '#6e6e6e';     // タイトル: 濃いめグレー
-const TITLE_TEXT = '#f5f5f5';
-const HEADER_BG = '#9e9e9e';    // 曜日ヘッダー: 中間グレー
-const HEADER_TEXT = '#fafafa';
-const DATE_ROW_BG = '#bdbdbd';  // 日付行: 薄めグレー（曜日とは微妙に違う）
+const TITLE_BG = '#7a7a7a';     // タイトル: 濃いめグレー
+const TITLE_TEXT = '#f5f5f5';   // タイトル文字: ほぼ白
+const HEADER_BG = '#c8c8c8';    // 曜日ヘッダー: 薄グレー
+const HEADER_TEXT = '#555555';  // 曜日文字: 濃いめ
+const DATE_ROW_BG = '#dcdcdc';  // 日付行: もっと薄いグレー
 const CELL_BG = 'rgba(255, 255, 255, 0.92)';
 const BORDER = '#bdbdbd';
 const DATE_COLOR = '#3a3a3a';
@@ -51,8 +57,8 @@ const EMPTY_BG = 'rgba(0, 0, 0, 0)';
 // ========== レイアウト ==========
 const COL_W = 200;
 const TITLE_H = 90;
-const HEADER_H = 36;     // 曜日ヘッダー
-const DATE_ROW_H = 34;   // 日付行（各週の頭に出る）
+const HEADER_H = 50;     // 曜日ヘッダー
+const DATE_ROW_H = 42;   // 日付行（各週の頭に出る）
 const ROW_MIN_H = 180;   // 日付行を除いたセル本体の最低高さ
 const CELL_PADDING = 10;
 const NAME_LINE_HEIGHT = 34;
@@ -158,12 +164,12 @@ ctx.fillText(TITLE, CANVAS_W / 2, TITLE_H / 2);
 // 曜日ヘッダー（土=青、日=赤）
 ctx.fillStyle = HEADER_BG;
 ctx.fillRect(0, TITLE_H, CANVAS_W, HEADER_H);
-ctx.font = 'bold 18px "HiraginoBold", sans-serif';
+ctx.font = 'bold 26px "HiraginoBold", sans-serif';
 ctx.textAlign = 'center';
 ctx.textBaseline = 'middle';
 for (let i = 0; i < 7; i++) {
-  if (i === 5) ctx.fillStyle = '#93c5fd';      // 土：薄青
-  else if (i === 6) ctx.fillStyle = '#fca5a5'; // 日：薄赤
+  if (i === 5) ctx.fillStyle = '#2563eb';      // 土：青
+  else if (i === 6) ctx.fillStyle = '#dc2626'; // 日：赤
   else ctx.fillStyle = HEADER_TEXT;
   ctx.fillText(DAYS[i], i * COL_W + COL_W / 2, TITLE_H + HEADER_H / 2);
 }
@@ -190,7 +196,7 @@ for (let w = 0; w < weeks.length; w++) {
     if (i === 5) dateColor = DATE_SAT;
     if (i === 6) dateColor = DATE_SUN;
     ctx.fillStyle = dateColor;
-    ctx.font = 'bold 20px "HiraginoBold", sans-serif';
+    ctx.font = '24px "Hiragino", sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(String(day.getDate()), x + COL_W / 2, dateRowY + DATE_ROW_H / 2);
@@ -227,10 +233,10 @@ for (let w = 0; w < weeks.length; w++) {
       ctx.fillStyle = ev.text;
       const evMaxW = COL_W - 14;
       let evFont = 22;
-      ctx.font = `bold ${evFont}px "HiraginoBold", sans-serif`;
+      ctx.font = `bold ${evFont}px "HiraginoBlack", sans-serif`;
       while (ctx.measureText(ev.label).width > evMaxW && evFont > 10) {
         evFont -= 1;
-        ctx.font = `bold ${evFont}px "HiraginoBold", sans-serif`;
+        ctx.font = `bold ${evFont}px "HiraginoBlack", sans-serif`;
       }
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
@@ -250,14 +256,14 @@ for (let w = 0; w < weeks.length; w++) {
       let fontSize = 22;
       let fit = false;
       while (!fit && fontSize >= 14) {
-        ctx.font = `bold ${fontSize}px "Hiragino", sans-serif`;
+        ctx.font = `bold ${fontSize}px "HiraginoBold", sans-serif`;
         const nameW = ctx.measureText(name).width;
         const timeW = ctx.measureText(' ' + tStr).width;
         if (nameW + timeW <= nameMaxW) fit = true;
         else fontSize -= 1;
       }
 
-      ctx.font = `bold ${fontSize}px "Hiragino", sans-serif`;
+      ctx.font = `bold ${fontSize}px "HiraginoBold", sans-serif`;
       const nameW = ctx.measureText(name).width;
       const timeW = ctx.measureText(' ' + tStr).width;
       const totalW = nameW + timeW;

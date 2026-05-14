@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import crypto from 'crypto'
 import { withCronLock } from '@/lib/cronLock'
+import { getTwitterAppCreds } from '@/lib/twitterOAuth'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -11,8 +12,6 @@ const supabase = createClient(
 // 型定義
 interface TwitterSettings {
   store_id: number
-  api_key: string | null
-  api_secret: string | null
   access_token: string | null
   refresh_token: string | null
 }
@@ -76,7 +75,7 @@ async function executeTwitterPosts() {
     const storeIds = Array.from(new Set(pendingPosts.map(p => p.store_id)))
     const { data: settingsList, error: settingsError } = await supabase
       .from('store_twitter_settings')
-      .select('store_id, api_key, api_secret, access_token, refresh_token')
+      .select('store_id, access_token, refresh_token')
       .in('store_id', storeIds)
 
     if (settingsError) {
@@ -89,13 +88,20 @@ async function executeTwitterPosts() {
       settingsByStore.set(s.store_id, s)
     }
 
+    // アプリ共通の Consumer Key/Secret
+    const appCreds = getTwitterAppCreds()
+    if (!appCreds) {
+      console.error('TWITTER_API_KEY / TWITTER_API_SECRET not configured')
+      return NextResponse.json({ error: 'Twitter app credentials not configured' }, { status: 500 })
+    }
+
     let successCount = 0
     let failCount = 0
 
     for (const post of pendingPosts) {
       const settings = settingsByStore.get(post.store_id)
 
-      if (!settings?.access_token || !settings.api_key || !settings.api_secret || !settings.refresh_token) {
+      if (!settings?.access_token || !settings.refresh_token) {
         // 認証情報がない場合はスキップ
         await supabase
           .from('scheduled_posts')
@@ -130,8 +136,8 @@ async function executeTwitterPosts() {
       for (const imageUrl of imageUrls) {
         const mediaId = await uploadMediaToTwitter(
           imageUrl,
-          settings.api_key,
-          settings.api_secret,
+          appCreds.api_key,
+          appCreds.api_secret,
           settings.access_token,
           settings.refresh_token
         )
@@ -143,8 +149,8 @@ async function executeTwitterPosts() {
       // ツイートを投稿（画像付き）
       const result = await postTweet(
         post.content,
-        settings.api_key,
-        settings.api_secret,
+        appCreds.api_key,
+        appCreds.api_secret,
         settings.access_token,
         settings.refresh_token,
         mediaIds.length > 0 ? mediaIds : undefined

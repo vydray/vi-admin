@@ -9,8 +9,6 @@ import LoadingSpinner from '@/components/LoadingSpinner'
 interface TwitterSettings {
   id?: number
   store_id: number
-  api_key: string
-  api_secret: string
   access_token: string | null
   refresh_token: string | null
   twitter_user_id: string | null
@@ -26,9 +24,6 @@ export default function TwitterSettingsPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [settings, setSettings] = useState<TwitterSettings | null>(null)
-  const [apiKey, setApiKey] = useState('')
-  const [apiSecret, setApiSecret] = useState('')
-  const [showSecrets, setShowSecrets] = useState(false)
   const [showConnectModal, setShowConnectModal] = useState(false)
 
   const loadSettings = useCallback(async () => {
@@ -42,12 +37,8 @@ export default function TwitterSettingsPage() {
 
       if (json.settings) {
         setSettings(json.settings)
-        setApiKey(json.settings.api_key || '')
-        setApiSecret(json.settings.api_secret || '')
       } else {
         setSettings(null)
-        setApiKey('')
-        setApiSecret('')
       }
     } catch (error) {
       console.error('設定読み込みエラー:', error)
@@ -63,37 +54,7 @@ export default function TwitterSettingsPage() {
     }
   }, [storeLoading, storeId, loadSettings])
 
-  const handleSaveCredentials = async () => {
-    if (!storeId) return
-    if (!apiKey.trim() || !apiSecret.trim()) {
-      toast.error('API KeyとAPI Secretを入力してください')
-      return
-    }
-
-    setSaving(true)
-    try {
-      const res = await fetch('/api/twitter-settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'save_credentials', store_id: storeId, api_key: apiKey.trim(), api_secret: apiSecret.trim() }),
-      })
-      if (!res.ok) throw new Error('Save failed')
-
-      toast.success('API認証情報を保存しました')
-      await loadSettings()
-    } catch (error) {
-      console.error('保存エラー:', error)
-      toast.error('保存に失敗しました')
-    } finally {
-      setSaving(false)
-    }
-  }
-
   const handleConnect = () => {
-    if (!settings?.api_key || !settings?.api_secret) {
-      toast.error('先にAPI認証情報を保存してください')
-      return
-    }
     setShowConnectModal(true)
   }
 
@@ -170,56 +131,16 @@ export default function TwitterSettingsPage() {
       </div>
 
       <div style={styles.content}>
-        {/* API認証情報 */}
+        {/* API認証情報（環境変数管理に移行済み） */}
         <div style={styles.section}>
           <h2 style={styles.sectionTitle}>API認証情報</h2>
           <p style={styles.description}>
-            Twitter Developer Portalで取得したAPI KeyとAPI Secretを入力してください。
+            Twitter Developer の Consumer Key / Secret は環境変数（TWITTER_API_KEY / TWITTER_API_SECRET）で全店舗共通管理しています。
+            個別の店舗で別 API キーを使う必要はなくなりました。
           </p>
-
-          <div style={styles.form}>
-            <div style={styles.inputGroup}>
-              <label style={styles.label}>API Key (Consumer Key)</label>
-              <input
-                type={showSecrets ? 'text' : 'password'}
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                style={styles.input}
-                placeholder="xxxxxxxxxxxxxxxxxxxxxxxxx"
-              />
-            </div>
-
-            <div style={styles.inputGroup}>
-              <label style={styles.label}>API Secret (Consumer Secret)</label>
-              <input
-                type={showSecrets ? 'text' : 'password'}
-                value={apiSecret}
-                onChange={(e) => setApiSecret(e.target.value)}
-                style={styles.input}
-                placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-              />
-            </div>
-
-            <div style={styles.checkboxGroup}>
-              <input
-                type="checkbox"
-                id="showSecrets"
-                checked={showSecrets}
-                onChange={(e) => setShowSecrets(e.target.checked)}
-              />
-              <label htmlFor="showSecrets" style={styles.checkboxLabel}>
-                認証情報を表示
-              </label>
-            </div>
-
-            <button
-              onClick={handleSaveCredentials}
-              disabled={saving}
-              style={styles.saveButton}
-            >
-              {saving ? '保存中...' : '認証情報を保存'}
-            </button>
-          </div>
+          <p style={{ ...styles.description, fontSize: '12px', color: '#888' }}>
+            ※ 認証情報を変更する場合は Vercel の環境変数を更新してください。
+          </p>
         </div>
 
         {/* 連携状態 */}
@@ -282,15 +203,12 @@ export default function TwitterSettingsPage() {
                 Twitterアカウントと連携していません
               </p>
               <p style={styles.notConnectedHint}>
-                API認証情報を保存後、「Twitterと連携」ボタンで連携できます。
+                「Twitterと連携」ボタンで Twitter アカウントを認証できます。
               </p>
               <button
                 onClick={handleConnect}
-                disabled={saving || !settings?.api_key}
-                style={{
-                  ...styles.connectButton,
-                  ...((!settings?.api_key) ? styles.disabledButton : {})
-                }}
+                disabled={saving}
+                style={styles.connectButton}
               >
                 Twitterと連携
               </button>

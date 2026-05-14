@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { verifyTwitterCredentials } from '@/lib/twitterOAuth'
+import { verifyTwitterCredentials, getTwitterAppCreds } from '@/lib/twitterOAuth'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -20,17 +20,27 @@ export async function POST(request: NextRequest) {
   const { store_id } = await request.json()
   if (!store_id) return NextResponse.json({ error: 'store_id required' }, { status: 400 })
 
-  const { data: creds } = await supabase
+  const { data: tokens } = await supabase
     .from('store_twitter_settings')
-    .select('api_key, api_secret, access_token, refresh_token')
+    .select('access_token, refresh_token')
     .eq('store_id', store_id)
     .single()
 
-  if (!creds?.access_token) {
+  if (!tokens?.access_token) {
     return NextResponse.json({ ok: false, error: 'Twitter未連携' }, { status: 404 })
   }
 
-  const result = await verifyTwitterCredentials(creds)
+  const appCreds = getTwitterAppCreds()
+  if (!appCreds) {
+    return NextResponse.json({ ok: false, error: 'アプリ認証情報未設定 (TWITTER_API_KEY / TWITTER_API_SECRET)' }, { status: 500 })
+  }
+
+  const result = await verifyTwitterCredentials({
+    api_key: appCreds.api_key,
+    api_secret: appCreds.api_secret,
+    access_token: tokens.access_token,
+    refresh_token: tokens.refresh_token,
+  })
   const now = new Date().toISOString()
 
   if (result.ok) {

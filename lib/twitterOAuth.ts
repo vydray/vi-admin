@@ -7,6 +7,15 @@ export interface TwitterCredentials {
   refresh_token: string // OAuth1.0a の token_secret 相当
 }
 
+// アプリ共通の Consumer Key/Secret を環境変数から取得
+// 1 つの Twitter Developer アプリで全店舗の OAuth を捌く
+export function getTwitterAppCreds(): { api_key: string; api_secret: string } | null {
+  const api_key = process.env.TWITTER_API_KEY
+  const api_secret = process.env.TWITTER_API_SECRET
+  if (!api_key || !api_secret) return null
+  return { api_key, api_secret }
+}
+
 export function generateOAuthSignature(
   method: string,
   url: string,

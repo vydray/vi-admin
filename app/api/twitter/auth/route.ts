@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import crypto from 'crypto'
+import { getTwitterAppCreds } from '@/lib/twitterOAuth'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -56,14 +57,9 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // 店舗のAPI認証情報を取得
-    const { data: settings, error } = await supabase
-      .from('store_twitter_settings')
-      .select('api_key, api_secret')
-      .eq('store_id', storeId)
-      .single()
-
-    if (error || !settings?.api_key || !settings?.api_secret) {
+    // 環境変数からアプリ共通の Consumer Key/Secret を取得
+    const appCreds = getTwitterAppCreds()
+    if (!appCreds) {
       return NextResponse.redirect(new URL('/twitter-settings?error=no_credentials', request.url))
     }
 
@@ -73,7 +69,7 @@ export async function GET(request: NextRequest) {
     // OAuth パラメータ
     const oauthParams: Record<string, string> = {
       oauth_callback: callbackUrl,
-      oauth_consumer_key: settings.api_key,
+      oauth_consumer_key: appCreds.api_key,
       oauth_nonce: crypto.randomBytes(16).toString('hex'),
       oauth_signature_method: 'HMAC-SHA1',
       oauth_timestamp: Math.floor(Date.now() / 1000).toString(),
@@ -85,7 +81,7 @@ export async function GET(request: NextRequest) {
       'POST',
       requestTokenUrl,
       oauthParams,
-      settings.api_secret
+      appCreds.api_secret
     )
 
     // Request Token取得
