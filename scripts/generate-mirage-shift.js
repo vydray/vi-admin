@@ -2,13 +2,13 @@ const { createCanvas, registerFont } = require('canvas');
 const fs = require('fs');
 const path = require('path');
 
-const fontsDir = path.join(process.cwd(), 'public', 'fonts');
-if (fs.existsSync(path.join(fontsDir, 'MPLUSRounded1c-Regular.ttf'))) {
-  registerFont(path.join(fontsDir, 'MPLUSRounded1c-Regular.ttf'), { family: 'Rounded Mplus 1c' });
-}
-if (fs.existsSync(path.join(fontsDir, 'MPLUSRounded1c-Bold.ttf'))) {
-  registerFont(path.join(fontsDir, 'MPLUSRounded1c-Bold.ttf'), { family: 'Rounded Mplus 1c Bold' });
-}
+// ヒラギノ角ゴシック (macOS system) を登録
+const hiraginoW3 = '/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc';
+const hiraginoW6 = '/System/Library/Fonts/ヒラギノ角ゴシック W6.ttc';
+const hiraginoW8 = '/System/Library/Fonts/ヒラギノ角ゴシック W8.ttc';
+if (fs.existsSync(hiraginoW3)) registerFont(hiraginoW3, { family: 'Hiragino' });
+if (fs.existsSync(hiraginoW6)) registerFont(hiraginoW6, { family: 'HiraginoBold' });
+if (fs.existsSync(hiraginoW8)) registerFont(hiraginoW8, { family: 'HiraginoBlack' });
 
 const shifts = JSON.parse(fs.readFileSync('/tmp/mirage_may_second_shifts.json', 'utf8'));
 
@@ -49,12 +49,12 @@ const EMPTY_BG = 'rgba(0, 0, 0, 0)';
 
 // ========== レイアウト ==========
 const COL_W = 200;
-const TITLE_H = 60;
+const TITLE_H = 90;
 const HEADER_H = 36;     // 曜日ヘッダー
 const DATE_ROW_H = 34;   // 日付行（各週の頭に出る）
 const ROW_MIN_H = 180;   // 日付行を除いたセル本体の最低高さ
 const CELL_PADDING = 10;
-const NAME_LINE_HEIGHT = 28;
+const NAME_LINE_HEIGHT = 34;
 
 // ========== ヘルパ ==========
 function ymdToDate(s) {
@@ -113,7 +113,7 @@ function getEventFor(dateStr) {
   return null;
 }
 
-const EVENT_LABEL_H = 26;
+const EVENT_LABEL_H = 32;
 
 // ========== 各週のセル本体高さ（日付行を除く）==========
 function getWeekHeight(week) {
@@ -149,7 +149,7 @@ if (!BG_TRANSPARENT) {
 ctx.fillStyle = TITLE_BG;
 ctx.fillRect(0, 0, CANVAS_W, TITLE_H);
 ctx.fillStyle = TITLE_TEXT;
-ctx.font = 'bold 28px "Rounded Mplus 1c Bold", sans-serif';
+ctx.font = '48px "HiraginoBlack", sans-serif';
 ctx.textAlign = 'center';
 ctx.textBaseline = 'middle';
 ctx.fillText(TITLE, CANVAS_W / 2, TITLE_H / 2);
@@ -157,7 +157,7 @@ ctx.fillText(TITLE, CANVAS_W / 2, TITLE_H / 2);
 // 曜日ヘッダー（土=青、日=赤）
 ctx.fillStyle = HEADER_BG;
 ctx.fillRect(0, TITLE_H, CANVAS_W, HEADER_H);
-ctx.font = 'bold 18px "Rounded Mplus 1c Bold", sans-serif';
+ctx.font = '18px "HiraginoBold", sans-serif';
 ctx.textAlign = 'center';
 ctx.textBaseline = 'middle';
 for (let i = 0; i < 7; i++) {
@@ -189,7 +189,7 @@ for (let w = 0; w < weeks.length; w++) {
     if (i === 5) dateColor = DATE_SAT;
     if (i === 6) dateColor = DATE_SUN;
     ctx.fillStyle = dateColor;
-    ctx.font = 'bold 20px "Rounded Mplus 1c Bold", sans-serif';
+    ctx.font = '20px "HiraginoBold", sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(String(day.getDate()), x + COL_W / 2, dateRowY + DATE_ROW_H / 2);
@@ -216,7 +216,7 @@ for (let w = 0; w < weeks.length; w++) {
     ctx.lineWidth = 1;
     ctx.strokeRect(x + 0.5, cellY + 0.5, COL_W - 1, bodyH - 1);
 
-    // イベントラベル（セル上部に色帯）
+    // イベントラベル（セル上部に色帯。幅ギリギリに自動フィット）
     const ev = getEventFor(dateToYmd(day));
     let castStartY = cellY + 10;
     if (ev) {
@@ -224,23 +224,40 @@ for (let w = 0; w < weeks.length; w++) {
       ctx.fillStyle = ev.bg;
       ctx.fillRect(x + 4, labelY, COL_W - 8, EVENT_LABEL_H);
       ctx.fillStyle = ev.text;
-      ctx.font = 'bold 14px "Rounded Mplus 1c Bold", sans-serif';
+      const evMaxW = COL_W - 14;
+      let evFont = 22;
+      ctx.font = `${evFont}px "HiraginoBold", sans-serif`;
+      while (ctx.measureText(ev.label).width > evMaxW && evFont > 10) {
+        evFont -= 1;
+        ctx.font = `${evFont}px "HiraginoBold", sans-serif`;
+      }
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(ev.label, x + COL_W / 2, labelY + EVENT_LABEL_H / 2);
       castStartY = labelY + EVENT_LABEL_H + 8;
     }
 
-    // シフト名（中央寄せ）
+    // シフト名（中央寄せ・幅ギリギリに自動フィット）
     const list = shiftsByDate.get(dateToYmd(day)) || [];
     let castY = castStartY;
+    const nameMaxW = COL_W - 12;
     for (const s of list) {
       const name = s.cast_name;
       const tStr = formatTime(s.start_time);
 
-      ctx.font = '17px "Rounded Mplus 1c", sans-serif';
+      // 22px から始めて、はみ出すなら 1px ずつ下げる（下限 14）
+      let fontSize = 22;
+      let fit = false;
+      while (!fit && fontSize >= 14) {
+        ctx.font = `${fontSize}px "Hiragino", sans-serif`;
+        const nameW = ctx.measureText(name).width;
+        const timeW = ctx.measureText(' ' + tStr).width;
+        if (nameW + timeW <= nameMaxW) fit = true;
+        else fontSize -= 1;
+      }
+
+      ctx.font = `${fontSize}px "Hiragino", sans-serif`;
       const nameW = ctx.measureText(name).width;
-      ctx.font = '17px "Rounded Mplus 1c", sans-serif';
       const timeW = ctx.measureText(' ' + tStr).width;
       const totalW = nameW + timeW;
       const startX = x + (COL_W - totalW) / 2;
