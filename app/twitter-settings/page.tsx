@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import { toast } from 'react-hot-toast'
 import LoadingSpinner from '@/components/LoadingSpinner'
 
@@ -21,6 +22,7 @@ interface TwitterSettings {
 
 export default function TwitterSettingsPage() {
   const { storeId, storeName, isLoading: storeLoading } = useStore()
+  const { isMobile } = useIsMobile()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [settings, setSettings] = useState<TwitterSettings | null>(null)
@@ -115,7 +117,7 @@ export default function TwitterSettingsPage() {
 
   if (storeLoading || loading) {
     return (
-      <div style={styles.container}>
+      <div style={{ ...styles.container, ...(isMobile ? styles.containerMobile : {}) }}>
         <LoadingSpinner />
       </div>
     )
@@ -337,6 +339,10 @@ const styles: { [key: string]: React.CSSProperties } = {
     margin: '0 auto',
     minHeight: '100vh',
     backgroundColor: '#f7f9fc',
+  },
+  // モバイル用: ハンバーガーボタン(left:8px, w:44px)とtop:12pxを避けるため
+  containerMobile: {
+    padding: '64px 12px 16px 12px',
   },
   header: {
     marginBottom: '32px',

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import { toast } from 'react-hot-toast'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Link from 'next/link'
@@ -124,6 +125,7 @@ type ViewMode = 'week' | 'month'
 
 export default function TwitterPostsPage() {
   const { storeId, isLoading: storeLoading } = useStore()
+  const { isMobile } = useIsMobile()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [posts, setPosts] = useState<ScheduledPost[]>([])
@@ -852,16 +854,16 @@ export default function TwitterPostsPage() {
   }
 
   return (
-    <div style={styles.container}>
+    <div style={{ ...styles.container, ...(isMobile ? styles.containerMobile : {}) }}>
       {/* ヘッダー */}
-      <div style={styles.header}>
+      <div style={{ ...styles.header, ...(isMobile ? styles.headerMobile : {}) }}>
         <div style={styles.headerLeft}>
           <button onClick={goToToday} style={styles.todayBtn}>今日</button>
           <div style={styles.navButtons}>
             <button onClick={navigatePrev} style={styles.navBtn}>‹</button>
             <button onClick={navigateNext} style={styles.navBtn}>›</button>
           </div>
-          <h1 style={styles.title}>{formatHeaderDate()}</h1>
+          <h1 style={{ ...styles.title, ...(isMobile ? styles.titleMobile : {}) }}>{formatHeaderDate()}</h1>
         </div>
         <div style={styles.headerRight}>
           <div style={styles.viewToggle}>
@@ -918,7 +920,8 @@ export default function TwitterPostsPage() {
           {/* カレンダー */}
           <div style={styles.calendar}>
             {viewMode === 'week' ? (
-              <>
+              <div style={isMobile ? styles.weekScrollWrapper : undefined}>
+                <div style={isMobile ? styles.weekInnerMobile : undefined}>
                 {/* 週表示：時間軸付き */}
                 <div style={styles.weekHeaderWithTime}>
                   <div style={styles.timeColumnHeader}></div>
@@ -943,7 +946,7 @@ export default function TwitterPostsPage() {
                     )
                   })}
                 </div>
-                <div style={styles.weekGridWithTime}>
+                <div style={isMobile ? { ...styles.weekGridWithTime, maxHeight: 'none' } : styles.weekGridWithTime}>
                   {hours.map(hour => (
                     <div key={hour} style={styles.hourRow}>
                       <div style={styles.timeLabel}>{hour}:00</div>
@@ -1001,7 +1004,8 @@ export default function TwitterPostsPage() {
                     </div>
                   ))}
                 </div>
-              </>
+                </div>
+              </div>
             ) : (
               <>
                 {/* 月表示 */}
@@ -1030,7 +1034,7 @@ export default function TwitterPostsPage() {
       {/* 通常投稿モーダル（左右分割） */}
       {showForm && (
         <div style={styles.modalOverlay} onClick={resetForm}>
-          <div style={styles.postModal} onClick={e => e.stopPropagation()}>
+          <div style={{ ...styles.postModal, ...(isMobile ? styles.postModalMobile : {}) }} onClick={e => e.stopPropagation()}>
             <div style={styles.modalHeader}>
               <h2 style={styles.modalTitle}>
                 {editingId ? '投稿を編集' : '投稿を作成'}
@@ -1038,9 +1042,9 @@ export default function TwitterPostsPage() {
               <button onClick={resetForm} style={styles.closeButton}>×</button>
             </div>
 
-            <div style={styles.postModalBody}>
+            <div style={{ ...styles.postModalBody, ...(isMobile ? styles.postModalBodyMobile : {}) }}>
               {/* 左側：入力エリア */}
-              <div style={styles.postEditArea}>
+              <div style={{ ...styles.postEditArea, ...(isMobile ? styles.postEditAreaMobile : {}) }}>
                 <div style={styles.inputGroup}>
                   <label style={styles.label}>投稿内容</label>
                   <textarea
@@ -1154,7 +1158,7 @@ export default function TwitterPostsPage() {
               </div>
 
               {/* 右側：プレビューエリア */}
-              <div style={styles.previewArea}>
+              <div style={{ ...styles.previewArea, ...(isMobile ? styles.previewAreaMobile : {}) }}>
                 <div style={styles.previewHeader}>
                   <span style={styles.previewTitle}>プレビュー</span>
                   <div style={styles.previewToggle}>
@@ -1478,6 +1482,10 @@ const styles: { [key: string]: React.CSSProperties } = {
     minHeight: '100vh',
     backgroundColor: '#f7f9fc',
   },
+  // モバイル用: ハンバーガーボタン(left:8px, w:44px)とtop:12pxを避けるため
+  containerMobile: {
+    padding: '64px 12px 16px 12px',
+  },
   header: {
     display: 'flex',
     justifyContent: 'space-between',
@@ -1485,6 +1493,41 @@ const styles: { [key: string]: React.CSSProperties } = {
     marginBottom: '16px',
     flexWrap: 'wrap',
     gap: '12px',
+  },
+  headerMobile: {
+    gap: '8px',
+  },
+  titleMobile: {
+    fontSize: '16px',
+  },
+  // 週カレンダーをモバイルで横スクロール可能にするラッパー
+  weekScrollWrapper: {
+    overflowX: 'auto',
+    WebkitOverflowScrolling: 'touch',
+  },
+  weekInnerMobile: {
+    minWidth: '720px',
+  },
+  // 投稿モーダルをモバイルで縦並びに
+  postModalMobile: {
+    width: '100%',
+    maxWidth: 'none',
+    height: '100vh',
+    maxHeight: '100vh',
+    borderRadius: 0,
+  },
+  postModalBodyMobile: {
+    flexDirection: 'column',
+    overflowY: 'auto',
+  },
+  postEditAreaMobile: {
+    borderRight: 'none',
+    borderBottom: '1px solid #e5e7eb',
+    padding: '16px',
+  },
+  previewAreaMobile: {
+    width: '100%',
+    padding: '16px',
   },
   headerLeft: {
     display: 'flex',
