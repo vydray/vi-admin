@@ -8,8 +8,9 @@ import LoadingSpinner from '@/components/LoadingSpinner'
 import Link from 'next/link'
 
 const MAX_IMAGES = 4 // Twitterの最大画像枚数
-const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB
-const TARGET_FILE_SIZE = 4 * 1024 * 1024 // 圧縮後の目標サイズ 4MB
+// Vercel の Route Handler は body 4.5MB 上限。multipart overhead を考慮して 4MB を境界に
+const MAX_FILE_SIZE = 4 * 1024 * 1024 // 4MB
+const TARGET_FILE_SIZE = 3 * 1024 * 1024 // 圧縮後の目標サイズ 3MB
 
 // 画像を圧縮する関数
 async function compressImage(file: File, maxSize: number = TARGET_FILE_SIZE): Promise<File> {
@@ -330,7 +331,7 @@ export default function TwitterPostsPage() {
 
         // 圧縮後もサイズオーバーの場合はスキップ
         if (processedFile.size > MAX_FILE_SIZE) {
-          toast.error(`${file.name}: 圧縮後も5MB以下になりませんでした`)
+          toast.error(`${file.name}: 圧縮後も4MB以下になりませんでした`)
           continue
         }
         toast.success(`${file.name}: 圧縮完了`)
@@ -358,22 +359,24 @@ export default function TwitterPostsPage() {
       formData.append('file', localImg.file)
       formData.append('storeId', storeId.toString())
 
-      try {
-        const response = await fetch('/api/twitter/upload-image', {
-          method: 'POST',
-          body: formData,
-        })
+      const response = await fetch('/api/twitter/upload-image', {
+        method: 'POST',
+        body: formData,
+      })
 
-        if (response.ok) {
-          const data = await response.json()
-          uploaded.push({ url: data.url, path: data.path })
-        } else {
+      if (!response.ok) {
+        let msg = `画像のアップロードに失敗しました (status: ${response.status})`
+        try {
           const err = await response.json()
-          toast.error(`アップロードエラー: ${err.error}`)
+          if (err?.error) msg = `アップロードエラー: ${err.error}`
+        } catch {
+          // 非JSON応答（Vercelの413など）
         }
-      } catch {
-        toast.error('画像のアップロードに失敗しました')
+        throw new Error(msg)
       }
+
+      const data = await response.json()
+      uploaded.push({ url: data.url, path: data.path })
     }
 
     return uploaded
@@ -507,7 +510,8 @@ export default function TwitterPostsPage() {
       await loadData()
     } catch (error) {
       console.error('保存エラー:', error)
-      toast.error('保存に失敗しました')
+      const msg = error instanceof Error ? error.message : '保存に失敗しました'
+      toast.error(msg)
     } finally {
       setSaving(false)
     }
@@ -1088,7 +1092,7 @@ export default function TwitterPostsPage() {
                           ドラッグ&ドロップ または クリックして選択
                         </span>
                         <span style={styles.dropZoneHint}>
-                          JPEG, PNG, GIF, WebP（各5MB以下）
+                          JPEG, PNG, GIF, WebP（各4MB以下、自動圧縮）
                         </span>
                       </>
                     )}

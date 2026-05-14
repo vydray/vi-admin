@@ -9,7 +9,7 @@ const supabase = createClient(
 )
 
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
-const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB
+const MAX_FILE_SIZE = 4 * 1024 * 1024 // 4MB（Vercel Route Handler の body 4.5MB 上限内に収める）
 
 // セッション検証関数
 async function validateSession(): Promise<{ storeId: number; isAllStore: boolean } | null> {
@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
     // ファイルサイズチェック
     if (file.size > MAX_FILE_SIZE) {
       return NextResponse.json(
-        { error: '画像サイズは5MB以下にしてください' },
+        { error: '画像サイズは4MB以下にしてください' },
         { status: 400 }
       )
     }
