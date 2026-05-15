@@ -643,11 +643,12 @@ function AttendancePageContent() {
       return {
         name: castName,
         startTime: s.start_time || '',
+        endTime: s.end_time || '',
       }
     }).sort((a, b) => a.startTime.localeCompare(b.startTime))
 
     // 空行を追加（手書き用、3行だけ）
-    const emptyRows = Array.from({ length: 3 }, () => ({ name: '', startTime: '' }))
+    const emptyRows = Array.from({ length: 3 }, () => ({ name: '', startTime: '', endTime: '' }))
     const allRows = [...shiftRows, ...emptyRows]
 
     const printWindow = window.open('', '_blank')
@@ -666,11 +667,11 @@ function AttendancePageContent() {
           table { width: 100%; border-collapse: collapse; }
           th { background: #f0f0f0; font-size: 13px; padding: 8px 10px; border: 1px solid #333; text-align: center; }
           td { font-size: 14px; padding: 10px; border: 1px solid #333; height: 28px; }
-          .name { width: ${uniformsEnabled ? '11%' : '14%'}; }
-          .uniform { width: 22%; text-align: center; font-size: 12px; line-height: 1.6; }
+          .name { width: ${uniformsEnabled ? '10%' : '13%'}; }
+          .uniform { width: 20%; text-align: center; font-size: 12px; line-height: 1.6; }
           .uniform .opt { display: inline-block; margin: 0 4px; white-space: nowrap; }
-          .scheduled { width: ${uniformsEnabled ? '9%' : '12%'}; text-align: center; }
-          .time { width: ${uniformsEnabled ? '12%' : '15%'}; }
+          .scheduled { width: ${uniformsEnabled ? '13%' : '16%'}; text-align: center; white-space: nowrap; }
+          .time { width: ${uniformsEnabled ? '11%' : '14%'}; }
           .status { width: ${uniformsEnabled ? '14%' : '18%'}; text-align: center; font-size: 12px; }
           .late { width: ${uniformsEnabled ? '8%' : '10%'}; text-align: center; }
           .payment { width: ${uniformsEnabled ? '12%' : '14%'}; }
@@ -684,7 +685,7 @@ function AttendancePageContent() {
             <tr>
               <th class="name">名前</th>
               ${uniformsEnabled ? '<th class="uniform">制服</th>' : ''}
-              <th class="scheduled">予定出勤</th>
+              <th class="scheduled">予定シフト</th>
               <th class="time">出勤時間</th>
               <th class="time">退勤時間</th>
               <th class="status">ステータス</th>
@@ -697,7 +698,7 @@ function AttendancePageContent() {
               <tr>
                 <td class="name">${r.name}</td>
                 ${uniformsEnabled ? `<td class="uniform">${uniformOptionsHtml}</td>` : ''}
-                <td class="scheduled">${r.startTime ? r.startTime.slice(0, 5) : ''}</td>
+                <td class="scheduled">${r.startTime ? `${r.startTime.slice(0, 5)}${r.endTime ? '-' + r.endTime.slice(0, 5) : ''}` : ''}</td>
                 <td class="time"></td>
                 <td class="time"></td>
                 <td class="status">出勤 ・ 遅刻 ・ 欠勤</td>
