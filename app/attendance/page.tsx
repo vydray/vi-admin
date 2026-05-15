@@ -55,6 +55,7 @@ function AttendancePageContent() {
   const { confirm } = useConfirm()
   const { isMobile, isLoading: mobileLoading } = useIsMobile()
   const [selectedMonth, setSelectedMonth] = useState(new Date())
+  const [printDate, setPrintDate] = useState(new Date())
   const [casts, setCasts] = useState<CastBasic[]>([])
   const [attendances, setAttendances] = useState<Attendance[]>([])
   const [loading, setLoading] = useState(true)
@@ -606,14 +607,15 @@ function AttendancePageContent() {
     return { castId, dateStr, cast, date, attendance }
   }, [editingCell, casts, attendances])
 
-  // 今日の出勤表を印刷
-  const handlePrintToday = async () => {
-    const today = format(new Date(), 'yyyy-MM-dd')
+  // 出勤表を印刷（指定日付）
+  const handlePrintToday = async (targetDate?: Date) => {
+    const printDate = targetDate || new Date()
+    const dateKey = format(printDate, 'yyyy-MM-dd')
     const { data: todayShifts } = await supabase
       .from('shifts')
       .select('cast_id, start_time, end_time')
       .eq('store_id', storeId)
-      .eq('date', today)
+      .eq('date', dateKey)
       .order('start_time')
 
     // 制服機能の有効状態と店舗の制服マスタ一覧を取得(印刷では全選択肢を○マーク表示)
@@ -654,7 +656,7 @@ function AttendancePageContent() {
     const printWindow = window.open('', '_blank')
     if (!printWindow) return
 
-    const dateStr = format(new Date(), 'yyyy年M月d日(E)', { locale: ja })
+    const dateStr = format(printDate, 'yyyy年M月d日(E)', { locale: ja })
     printWindow.document.write(`
       <html>
       <head>
@@ -836,13 +838,72 @@ function AttendancePageContent() {
             勤怠管理
           </h1>
           {!isMobile && (
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <Button
-                onClick={handlePrintToday}
-                variant="secondary"
-              >
-                今日の出勤表
-              </Button>
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                border: '1px solid #d1d5db',
+                borderRadius: '6px',
+                backgroundColor: '#fff',
+                overflow: 'hidden',
+              }}>
+                <button
+                  onClick={() => {
+                    const d = new Date(printDate)
+                    d.setDate(d.getDate() - 1)
+                    setPrintDate(d)
+                  }}
+                  style={{
+                    width: '32px',
+                    height: '36px',
+                    border: 'none',
+                    background: 'transparent',
+                    fontSize: '16px',
+                    cursor: 'pointer',
+                    color: '#374151',
+                  }}
+                  title="前日"
+                >
+                  ‹
+                </button>
+                <button
+                  onClick={() => handlePrintToday(printDate)}
+                  style={{
+                    minWidth: '140px',
+                    height: '36px',
+                    border: 'none',
+                    background: 'transparent',
+                    fontSize: '14px',
+                    cursor: 'pointer',
+                    color: '#1f2937',
+                    fontWeight: 500,
+                    padding: '0 8px',
+                  }}
+                  title="この日付の出勤表を印刷"
+                >
+                  {format(printDate, 'M月d日(E)', { locale: ja })} 出勤表
+                </button>
+                <button
+                  onClick={() => {
+                    const d = new Date(printDate)
+                    d.setDate(d.getDate() + 1)
+                    setPrintDate(d)
+                  }}
+                  style={{
+                    width: '32px',
+                    height: '36px',
+                    border: 'none',
+                    background: 'transparent',
+                    fontSize: '16px',
+                    cursor: 'pointer',
+                    color: '#374151',
+                  }}
+                  title="翌日"
+                >
+                  ›
+                </button>
+              </div>
               <Button
                 onClick={handlePrintStatusSummary}
                 variant="secondary"
