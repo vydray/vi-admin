@@ -37,6 +37,7 @@ export interface Cast {
   primary_cast_id?: number | null  // 同一人物のメインcast_id（NULLなら自分がメイン）
   mbti: string | null
   one_word: string | null
+  slug?: string | null
 }
 
 // Simplified Cast type for listings (id and name only)
@@ -71,6 +72,7 @@ export interface CastListView {
   primary_cast_id?: number | null
   mbti: string | null
   one_word: string | null
+  slug?: string | null
 }
 
 // Cast type for POS operations

@@ -7,6 +7,7 @@ import { useStore } from '@/contexts/StoreContext'
 import { useConfirm } from '@/contexts/ConfirmContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { handleSupabaseError } from '@/lib/errorHandling'
+import { nameToSlug } from '@/lib/cast-slug'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
 import Modal from '@/components/Modal'
@@ -56,6 +57,7 @@ function CastsPageContent() {
   // モーダル状態
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingCast, setEditingCast] = useState<Cast | null>(null)
+  const [slugManuallyEdited, setSlugManuallyEdited] = useState(false)
   const [showTwitterPassword, setShowTwitterPassword] = useState(false)
   const [showInstagramPassword, setShowInstagramPassword] = useState(false)
 
@@ -92,7 +94,7 @@ function CastsPageContent() {
     setLoading(true)
     const { data, error } = await supabase
       .from('casts')
-      .select('id, name, employee_name, birthday, status, attributes, experience_date, hire_date, resignation_date, residence_record, attendance_certificate, contract_documents, twitter, password, instagram, password2, show_in_pos, is_active, is_admin, is_manager, display_order, primary_cast_id, mbti, one_word')
+      .select('id, name, employee_name, birthday, status, attributes, experience_date, hire_date, resignation_date, residence_record, attendance_certificate, contract_documents, twitter, password, instagram, password2, show_in_pos, is_active, is_admin, is_manager, display_order, primary_cast_id, mbti, one_word, slug')
       .eq('store_id', storeId)
       .order('display_order', { ascending: true, nullsFirst: false })
       .order('name')
@@ -405,6 +407,8 @@ function CastsPageContent() {
       store_id: storeId,
     }
     setEditingCast(fullCast)
+    // 既存キャストは slug が DB に保存済みの可能性が高いので、手動扱い（名前変更で上書きしない）
+    setSlugManuallyEdited(!!fullCast.slug)
     setShowTwitterPassword(false)
     setShowInstagramPassword(false)
     setSelectedStoreForLink(null) // 店舗選択をリセット
@@ -449,8 +453,10 @@ function CastsPageContent() {
       is_active: true,
       mbti: null,
       one_word: null,
+      slug: null,
     }
     setEditingCast(newCast)
+    setSlugManuallyEdited(false)
     setShowTwitterPassword(false)
     setShowInstagramPassword(false)
     setIsModalOpen(true)
@@ -535,6 +541,7 @@ function CastsPageContent() {
           display_order: maxOrder + 1,
           mbti: editingCast.mbti,
           one_word: editingCast.one_word,
+          slug: editingCast.slug?.trim() || null,
         })
 
       if (handleSupabaseError(error, { operation: 'キャストの作成' })) {
@@ -571,6 +578,7 @@ function CastsPageContent() {
           contract_documents: editingCast.contract_documents,
           mbti: editingCast.mbti,
           one_word: editingCast.one_word,
+          slug: editingCast.slug?.trim() || null,
         })
         .eq('id', editingCast.id)
 
@@ -640,10 +648,22 @@ function CastsPageContent() {
   }, [confirm, loadCasts, storeId])
 
   const handleFieldChange = useCallback((field: keyof Cast, value: any) => {
-    if (editingCast) {
+    if (!editingCast) return
+    if (field === 'name') {
+      // 名前変更時、slug が手動編集済みでなければ自動生成
+      const next: Cast = { ...editingCast, name: value }
+      if (!slugManuallyEdited) {
+        next.slug = nameToSlug(value || '')
+      }
+      setEditingCast(next)
+    } else if (field === 'slug') {
+      // slug を直接編集したら手動扱いに切り替え
+      setEditingCast({ ...editingCast, slug: value })
+      setSlugManuallyEdited(true)
+    } else {
       setEditingCast({ ...editingCast, [field]: value })
     }
-  }, [editingCast])
+  }, [editingCast, slugManuallyEdited])
 
   // 属性管理関数
   const handleAddPosition = useCallback(async () => {
@@ -1229,6 +1249,22 @@ function CastsPageContent() {
                   type="text"
                   value={editingCast.employee_name || ''}
                   onChange={(e) => handleFieldChange('employee_name', e.target.value)}
+                  style={inputStyle}
+                />
+              </div>
+
+              <div>
+                <label style={labelStyle}>
+                  slug（URL用ローマ字）
+                  <span style={{ marginLeft: '8px', fontSize: '11px', color: '#888', fontWeight: 'normal' }}>
+                    {slugManuallyEdited ? '手動編集中' : '名前から自動生成'}
+                  </span>
+                </label>
+                <input
+                  type="text"
+                  value={editingCast.slug || ''}
+                  onChange={(e) => handleFieldChange('slug', e.target.value)}
+                  placeholder="漢字名は手動入力してください"
                   style={inputStyle}
                 />
               </div>
