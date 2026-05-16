@@ -6,7 +6,19 @@
   "regions": ["hnd1"],
   "crons": [
     {
-      "path": "/api/payslips/recalculate",
+      "path": "/api/cron/recalculate-payslips/1",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/recalculate-payslips/2",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/recalculate-payslips/3",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/recalculate-payslips/7",
       "schedule": "0 3 * * *"
     },
     {
