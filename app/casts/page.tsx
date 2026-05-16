@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo, useCallback } from 'react'
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
@@ -58,6 +58,11 @@ function CastsPageContent() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingCast, setEditingCast] = useState<Cast | null>(null)
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(false)
+  // 追加写真
+  type ExtraPhoto = { id: number; cast_id: number; store_id: number; path: string; display_order: number; url: string }
+  const [extraPhotos, setExtraPhotos] = useState<ExtraPhoto[]>([])
+  const [extraPhotoUploading, setExtraPhotoUploading] = useState(false)
+  const extraPhotoInputRef = useRef<HTMLInputElement | null>(null)
   const [showTwitterPassword, setShowTwitterPassword] = useState(false)
   const [showInstagramPassword, setShowInstagramPassword] = useState(false)
 
@@ -392,6 +397,25 @@ function CastsPageContent() {
     }
   }, [])
 
+  const loadExtraPhotos = useCallback(async (castId: number) => {
+    if (!castId || castId <= 0) {
+      setExtraPhotos([])
+      return
+    }
+    try {
+      const res = await fetch(`/api/casts/extra-photos?cast_id=${castId}`)
+      if (!res.ok) {
+        setExtraPhotos([])
+        return
+      }
+      const json = await res.json()
+      setExtraPhotos(json.photos || [])
+    } catch (e) {
+      console.error('追加写真 取得失敗:', e)
+      setExtraPhotos([])
+    }
+  }, [])
+
   const openEditModal = useCallback((cast: CastListView) => {
     // CastListView から Cast に変換（削除されたフィールドにデフォルト値を設定）
     const fullCast: Cast = {
@@ -412,12 +436,14 @@ function CastsPageContent() {
     setShowTwitterPassword(false)
     setShowInstagramPassword(false)
     setSelectedStoreForLink(null) // 店舗選択をリセット
+    // 追加写真をロード
+    loadExtraPhotos(fullCast.id)
     // super_adminの場合のみ他店舗のキャストを読み込む
     if (isSuperAdmin) {
       loadOtherStoreCasts()
     }
     setIsModalOpen(true)
-  }, [storeId, loadOtherStoreCasts, isSuperAdmin])
+  }, [storeId, loadOtherStoreCasts, isSuperAdmin, loadExtraPhotos])
 
   const openNewCastModal = useCallback(() => {
     // 新規キャストのデフォルト値を設定
@@ -459,6 +485,7 @@ function CastsPageContent() {
     setSlugManuallyEdited(false)
     setShowTwitterPassword(false)
     setShowInstagramPassword(false)
+    setExtraPhotos([])
     setIsModalOpen(true)
   }, [storeId])
 
@@ -468,7 +495,129 @@ function CastsPageContent() {
     setShowTwitterPassword(false)
     setShowInstagramPassword(false)
     setSelectedStoreForLink(null)
+    setExtraPhotos([])
   }, [])
+
+  // === 追加写真 ===
+  // クライアント側で 1200px / JPEG 85% にリサイズ
+  const resizeImage = useCallback((file: File, maxDim = 1200, quality = 0.85): Promise<Blob> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image()
+      const url = URL.createObjectURL(file)
+      img.onload = () => {
+        URL.revokeObjectURL(url)
+        let { width, height } = img
+        if (width > maxDim || height > maxDim) {
+          if (width >= height) {
+            height = Math.round((height * maxDim) / width)
+            width = maxDim
+          } else {
+            width = Math.round((width * maxDim) / height)
+            height = maxDim
+          }
+        }
+        const canvas = document.createElement('canvas')
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')
+        if (!ctx) { reject(new Error('canvas 2d context unavailable')); return }
+        ctx.drawImage(img, 0, 0, width, height)
+        canvas.toBlob(
+          (blob) => blob ? resolve(blob) : reject(new Error('toBlob failed')),
+          'image/jpeg',
+          quality
+        )
+      }
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('image load failed')) }
+      img.src = url
+    })
+  }, [])
+
+  const handleExtraPhotoUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = '' // 同じファイル再選択を可能に
+    if (!file || !editingCast || editingCast.id <= 0) return
+    if (extraPhotos.length >= 3) {
+      toast.error('最大3枚までです')
+      return
+    }
+    if (!file.type.startsWith('image/')) {
+      toast.error('画像ファイルを選択してください')
+      return
+    }
+    setExtraPhotoUploading(true)
+    try {
+      const resized = await resizeImage(file)
+      const formData = new FormData()
+      formData.append('file', new File([resized], 'extra.jpg', { type: 'image/jpeg' }))
+      formData.append('cast_id', String(editingCast.id))
+
+      const res = await fetch('/api/casts/extra-photos', {
+        method: 'POST',
+        body: formData,
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        toast.error(err.error || 'アップロードに失敗しました')
+        return
+      }
+      const json = await res.json()
+      setExtraPhotos(prev => [...prev, json.photo])
+      toast.success('写真を追加しました')
+    } catch (err) {
+      console.error('追加写真 アップロード失敗:', err)
+      toast.error('アップロードに失敗しました')
+    } finally {
+      setExtraPhotoUploading(false)
+    }
+  }, [editingCast, extraPhotos, resizeImage])
+
+  const handleExtraPhotoMove = useCallback(async (photoId: number, direction: 'up' | 'down') => {
+    if (!editingCast) return
+    const idx = extraPhotos.findIndex(p => p.id === photoId)
+    if (idx < 0) return
+    const swapIdx = direction === 'up' ? idx - 1 : idx + 1
+    if (swapIdx < 0 || swapIdx >= extraPhotos.length) return
+
+    const newOrder = [...extraPhotos]
+    ;[newOrder[idx], newOrder[swapIdx]] = [newOrder[swapIdx], newOrder[idx]]
+    // 楽観更新
+    setExtraPhotos(newOrder.map((p, i) => ({ ...p, display_order: i })))
+
+    try {
+      const res = await fetch('/api/casts/extra-photos', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cast_id: editingCast.id, photo_ids: newOrder.map(p => p.id) }),
+      })
+      if (!res.ok) {
+        toast.error('並び替えに失敗しました')
+        await loadExtraPhotos(editingCast.id) // ロールバック
+      }
+    } catch {
+      toast.error('並び替えに失敗しました')
+      await loadExtraPhotos(editingCast.id)
+    }
+  }, [editingCast, extraPhotos, loadExtraPhotos])
+
+  const handleExtraPhotoDelete = useCallback(async (photoId: number) => {
+    if (!editingCast) return
+    const ok = await confirm('この写真を削除しますか？')
+    if (!ok) return
+    try {
+      const res = await fetch(`/api/casts/extra-photos?photo_id=${photoId}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        toast.error(err.error || '削除に失敗しました')
+        return
+      }
+      await loadExtraPhotos(editingCast.id)
+      toast.success('削除しました')
+    } catch (e) {
+      console.error(e)
+      toast.error('削除に失敗しました')
+    }
+  }, [editingCast, confirm, loadExtraPhotos])
 
   const handleSaveCast = useCallback(async () => {
     if (!editingCast) return
@@ -1651,6 +1800,81 @@ function CastsPageContent() {
                 </div>
               )}
             </div>
+
+            {editingCast.id > 0 && (
+              <div style={{ marginBottom: '20px', padding: '14px', backgroundColor: '#fafafa', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                  <label style={{ ...labelStyle, marginBottom: 0 }}>
+                    追加写真
+                    <span style={{ marginLeft: '8px', fontSize: '11px', color: '#888', fontWeight: 'normal' }}>
+                      {extraPhotos.length}/3 枚
+                    </span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => extraPhotoInputRef.current?.click()}
+                    disabled={extraPhotos.length >= 3 || extraPhotoUploading}
+                    style={{
+                      padding: '6px 14px',
+                      fontSize: '13px',
+                      backgroundColor: extraPhotos.length >= 3 || extraPhotoUploading ? '#ccc' : '#3b82f6',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: '6px',
+                      cursor: extraPhotos.length >= 3 || extraPhotoUploading ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    {extraPhotoUploading ? 'アップロード中...' : '+ 追加'}
+                  </button>
+                  <input
+                    ref={extraPhotoInputRef}
+                    type="file"
+                    accept="image/*"
+                    style={{ display: 'none' }}
+                    onChange={handleExtraPhotoUpload}
+                  />
+                </div>
+                {extraPhotos.length === 0 ? (
+                  <p style={{ fontSize: '12px', color: '#999', margin: 0 }}>
+                    追加写真はありません（最大3枚、自動で1200px / JPEG 85% に圧縮）
+                  </p>
+                ) : (
+                  <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                    {extraPhotos.map((photo, idx) => (
+                      <div key={photo.id} style={{ width: '140px', border: '1px solid #ddd', borderRadius: '6px', overflow: 'hidden', backgroundColor: '#fff' }}>
+                        <div style={{ width: '140px', height: '140px', backgroundColor: '#f3f4f6' }}>
+                          <img src={photo.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 8px', borderTop: '1px solid #eee' }}>
+                          <div style={{ display: 'flex', gap: '4px' }}>
+                            <button
+                              type="button"
+                              onClick={() => handleExtraPhotoMove(photo.id, 'up')}
+                              disabled={idx === 0}
+                              title="左へ"
+                              style={{ width: '24px', height: '24px', border: '1px solid #d1d5db', borderRadius: '4px', backgroundColor: idx === 0 ? '#f3f4f6' : '#fff', cursor: idx === 0 ? 'not-allowed' : 'pointer', fontSize: '12px' }}
+                            >‹</button>
+                            <button
+                              type="button"
+                              onClick={() => handleExtraPhotoMove(photo.id, 'down')}
+                              disabled={idx === extraPhotos.length - 1}
+                              title="右へ"
+                              style={{ width: '24px', height: '24px', border: '1px solid #d1d5db', borderRadius: '4px', backgroundColor: idx === extraPhotos.length - 1 ? '#f3f4f6' : '#fff', cursor: idx === extraPhotos.length - 1 ? 'not-allowed' : 'pointer', fontSize: '12px' }}
+                            >›</button>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleExtraPhotoDelete(photo.id)}
+                            title="削除"
+                            style={{ width: '24px', height: '24px', border: '1px solid #fecaca', borderRadius: '4px', backgroundColor: '#fee2e2', color: '#dc2626', cursor: 'pointer', fontSize: '12px' }}
+                          >✕</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'space-between' }}>
               <div>
