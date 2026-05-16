@@ -8,6 +8,9 @@ import { isYearMonthLocked } from '@/lib/payslipLockDate'
 import { recalculateForDate } from '@/lib/recalculateSales'
 import type { SalesSettings } from '@/types/database'
 
+// Vercel 関数タイムアウトを明示（cron 全店舗実行が 60s デフォルトを超えるため）
+export const maxDuration = 600 // 10分
+
 const TRACKED_FIELDS = ['gross_total', 'hourly_income', 'sales_back', 'product_back', 'fixed_amount', 'per_attendance_income', 'bonus_total', 'total_deduction', 'daily_payment', 'withholding_tax', 'other_deductions', 'net_payment'] as const
 
 // Service Role Key でRLSをバイパス
@@ -1960,6 +1963,10 @@ export async function POST(request: NextRequest) {
 
     const batchId = clientBatchId || randomUUID()
     const triggeredBy: 'manual' | 'cron' = isCron ? 'cron' : 'manual'
+
+    if (isCron) {
+      console.log(`[payslips/recalculate] cron start: batch=${batchId} month=${format(month, 'yyyy-MM')}`)
+    }
 
     let totalProcessed = 0
     let totalErrors = 0
