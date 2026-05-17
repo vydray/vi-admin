@@ -24,6 +24,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (response.ok) {
         const data = await response.json()
         setUser(data.user)
+
+        // admin_session が有効でも、ページ遷移時に Supabase Auth セッションが
+        // 失われていると RLS クエリが空で返って「データが見えない」状態になる。
+        // ここで Supabase Auth セッションを再発行して supabase-js にセットし直す。
+        try {
+          const refreshRes = await fetch('/api/auth/refresh-supabase', { method: 'POST' })
+          if (refreshRes.ok) {
+            const refreshData = await refreshRes.json()
+            if (refreshData.session?.access_token) {
+              await supabase.auth.setSession({
+                access_token: refreshData.session.access_token,
+                refresh_token: refreshData.session.refresh_token,
+              })
+            }
+          }
+        } catch (refreshErr) {
+          console.error('Supabase Auth refresh error:', refreshErr)
+          // refresh失敗してもログイン状態は維持する
+        }
       } else {
         setUser(null)
       }
