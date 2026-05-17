@@ -52,6 +52,10 @@
     {
       "path": "/api/wage-status/auto-update",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/force-logout-all",
+      "schedule": "0 4 * * *"
     }
   ]
 }
