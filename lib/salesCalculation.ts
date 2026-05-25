@@ -425,21 +425,86 @@ export function calculateItemBased(
           }
         })
       } else if (isHelpOnly) {
-        // HELP商品
+        // HELP商品（商品 cast_name に推し本人が含まれていない）
+        // 例：ゆに推しの伝票で、A のキャストドリンクが入ってる場合
+        // 売上設定のサンプル画面の規約：
+        //   「ヘルプ商品も売上に含める」 ON のとき、伝票の推し本人にも売上を計上する
+        // （ヘルプは giveHelpSales のときだけ）
         if (includeHelpItems) {
-          // ヘルプも含める → 分配方法による
           if (helpDistMethod === 'all_to_nomination') {
-            // 全額推しに → 何もしない（推しが商品にいないので）
-          } else {
-            // ヘルプにも分配
+            // 全額推しに加算（伝票の推し本人）
+            realNominations.forEach(castName => {
+              const cast = castNameMap.get(castName)
+              if (cast) {
+                const summary = summaryMap.get(cast.id)
+                if (summary) {
+                  const amount = Math.floor(itemAmount / realNominations.length)
+                  summary.self_sales += amount
+                }
+              }
+            })
+          } else if (helpDistMethod === 'equal_per_person') {
+            // 全員（推し+ヘルプ）で均等割 → 推しに加算、ヘルプは giveHelpSales のときのみ
+            const allCasts = [...realNominations, ...helpCasts]
+            if (allCasts.length > 0) {
+              const perPerson = Math.floor(itemAmount / allCasts.length)
+              realNominations.forEach(castName => {
+                const cast = castNameMap.get(castName)
+                if (cast) {
+                  const summary = summaryMap.get(cast.id)
+                  if (summary) {
+                    summary.self_sales += perPerson
+                  }
+                }
+              })
+              if (giveHelpSales) {
+                helpCasts.forEach(castName => {
+                  const cast = castNameMap.get(castName)
+                  if (cast) {
+                    const summary = summaryMap.get(cast.id)
+                    if (summary) {
+                      summary.help_sales += perPerson
+                    }
+                  }
+                })
+              }
+            }
+          } else if (helpDistMethod === 'equal') {
+            // 推し:ヘルプ = 50:50
+            const selfShare = Math.floor(itemAmount / 2)
+            const helpShare = itemAmount - selfShare
+            realNominations.forEach(castName => {
+              const cast = castNameMap.get(castName)
+              if (cast) {
+                const summary = summaryMap.get(cast.id)
+                if (summary && realNominations.length > 0) {
+                  summary.self_sales += Math.floor(selfShare / realNominations.length)
+                }
+              }
+            })
             if (giveHelpSales) {
               helpCasts.forEach(castName => {
                 const cast = castNameMap.get(castName)
                 if (cast) {
                   const summary = summaryMap.get(cast.id)
                   if (summary) {
-                    const amount = Math.floor(itemAmount / helpCasts.length)
-                    summary.help_sales += amount
+                    summary.help_sales += Math.floor(helpShare / helpCasts.length)
+                  }
+                }
+              })
+            }
+          } else if (helpDistMethod === 'ratio') {
+            // 比率分配（既存挙動を維持・推しへの加算は行わない）
+            // Mary Mare 等 ratio 設定店舗の既存動作を変えないため
+            if (giveHelpSales) {
+              const perHelper = Math.floor(itemAmount / helpCasts.length)
+              const helpShare = Math.floor(perHelper * helpRatio / 100)
+              helpCasts.forEach(castName => {
+                const cast = castNameMap.get(castName)
+                if (cast) {
+                  const summary = summaryMap.get(cast.id)
+                  if (summary) {
+                    summary.help_sales += helpShare
                   }
                 }
               })
