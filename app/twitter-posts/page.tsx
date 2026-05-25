@@ -119,6 +119,9 @@ interface RecurringPost {
 interface TwitterSettings {
   twitter_username: string | null
   connected_at: string | null
+  health_status: 'healthy' | 'broken' | 'unknown' | null
+  health_error_message: string | null
+  last_health_check_at: string | null
 }
 
 type ViewMode = 'week' | 'month'
@@ -157,6 +160,9 @@ export default function TwitterPostsPage() {
   // 定期投稿リスト表示
   const [showRecurringList, setShowRecurringList] = useState(false)
 
+  // 接続エラー時の再認証誘導モーダル
+  const [showReauthModal, setShowReauthModal] = useState(false)
+
   // プレビューモード（mobile/desktop）
   const [previewMode, setPreviewMode] = useState<'mobile' | 'desktop'>('mobile')
 
@@ -166,7 +172,7 @@ export default function TwitterPostsPage() {
     setLoading(true)
     try {
       // store_twitter_settings はAPI Route経由（anon keyで直接アクセスしない）
-      const settingsRes = await fetch(`/api/twitter-settings?store_id=${storeId}&fields=twitter_username,connected_at`)
+      const settingsRes = await fetch(`/api/twitter-settings?store_id=${storeId}&fields=twitter_username,connected_at,health_status,health_error_message,last_health_check_at`)
       const settingsJson = settingsRes.ok ? await settingsRes.json() : { settings: null }
       setTwitterSettings(settingsJson.settings)
 
@@ -559,6 +565,11 @@ export default function TwitterPostsPage() {
   }
 
   const handleCreateNew = (date?: Date) => {
+    // 接続エラー時は予約作成をブロックして再認証誘導
+    if (isBroken) {
+      setShowReauthModal(true)
+      return
+    }
     resetForm()
     if (date) {
       const d = new Date(date)
@@ -778,7 +789,18 @@ export default function TwitterPostsPage() {
     )
   }
 
-  const isConnected = !!twitterSettings?.twitter_username
+  // 接続状態を 3 状態で判定:
+  // - 'connected': 連携OK（health_status='healthy' または未確認）
+  // - 'broken':    連携はあるが Twitter API が 401/403（再認証必要）
+  // - 'disconnected': 未連携
+  const connectionState: 'connected' | 'broken' | 'disconnected' =
+    !twitterSettings?.twitter_username
+      ? 'disconnected'
+      : twitterSettings.health_status === 'broken'
+        ? 'broken'
+        : 'connected'
+  const isConnected = connectionState === 'connected'
+  const isBroken = connectionState === 'broken'
   const dayNames = ['月', '火', '水', '木', '金', '土', '日']
 
   const renderPostCard = (post: ScheduledPost, compact = false) => (
@@ -886,10 +908,13 @@ export default function TwitterPostsPage() {
               週
             </button>
           </div>
-          {isConnected && (
+          {connectionState !== 'disconnected' && (
             <>
               <button
-                onClick={() => setShowRecurringList(true)}
+                onClick={() => {
+                  if (isBroken) { setShowReauthModal(true); return }
+                  setShowRecurringList(true)
+                }}
                 style={styles.recurringListBtn}
               >
                 定期投稿 ({recurringPosts.filter(p => p.is_active).length})
@@ -902,7 +927,7 @@ export default function TwitterPostsPage() {
         </div>
       </div>
 
-      {!isConnected ? (
+      {connectionState === 'disconnected' ? (
         <div style={styles.notConnectedBox}>
           <p style={styles.notConnectedText}>
             Twitterアカウントと連携していません
@@ -913,9 +938,33 @@ export default function TwitterPostsPage() {
         </div>
       ) : (
         <>
-          <div style={styles.connectedInfo}>
-            連携中: @{twitterSettings.twitter_username}
-          </div>
+          {isBroken ? (
+            <div style={styles.brokenBanner}>
+              <div style={styles.brokenBannerLeft}>
+                <span style={styles.brokenBannerIcon}>!</span>
+                <div>
+                  <p style={styles.brokenBannerTitle}>
+                    Twitter連携が切れています（@{twitterSettings?.twitter_username}）
+                  </p>
+                  <p style={styles.brokenBannerText}>
+                    予約投稿は実行されません。Twitter設定で再認証してください。
+                  </p>
+                  {twitterSettings?.health_error_message && (
+                    <p style={styles.brokenBannerError}>
+                      {twitterSettings.health_error_message.split('\n')[0]}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <Link href="/twitter-settings" style={styles.brokenBannerBtn}>
+                Twitter設定へ
+              </Link>
+            </div>
+          ) : (
+            <div style={styles.connectedInfo}>
+              連携中: @{twitterSettings?.twitter_username}
+            </div>
+          )}
 
           {/* カレンダー */}
           <div style={styles.calendar}>
@@ -1287,6 +1336,39 @@ export default function TwitterPostsPage() {
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 再認証誘導モーダル（接続エラー時に「+新しい投稿」「定期投稿」ボタン押下で表示） */}
+      {showReauthModal && (
+        <div style={styles.modalOverlay} onClick={() => setShowReauthModal(false)}>
+          <div style={{ ...styles.modal, maxWidth: '480px' }} onClick={e => e.stopPropagation()}>
+            <div style={styles.modalHeader}>
+              <h2 style={styles.modalTitle}>Twitter連携が切れています</h2>
+              <button onClick={() => setShowReauthModal(false)} style={styles.closeButton}>×</button>
+            </div>
+            <div style={styles.modalBody}>
+              <p style={{ fontSize: '14px', color: '#374151', margin: '0 0 12px 0', lineHeight: 1.6 }}>
+                Twitterの認証が無効になっているため、新しい予約投稿を作成できません。
+              </p>
+              <p style={{ fontSize: '14px', color: '#374151', margin: '0 0 16px 0', lineHeight: 1.6 }}>
+                Twitter設定画面で<strong>連携解除 → 再連携</strong>を行ってください。
+              </p>
+              {twitterSettings?.health_error_message && (
+                <div style={{ padding: '8px 12px', backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', fontSize: '12px', color: '#991b1b', marginBottom: '16px', fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                  {twitterSettings.health_error_message}
+                </div>
+              )}
+            </div>
+            <div style={styles.modalFooter}>
+              <button onClick={() => setShowReauthModal(false)} style={styles.cancelButton}>
+                閉じる
+              </button>
+              <Link href="/twitter-settings" style={{ ...styles.submitButton, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
+                Twitter設定へ
+              </Link>
             </div>
           </div>
         </div>
@@ -2279,5 +2361,65 @@ const styles: { [key: string]: React.CSSProperties } = {
     aspectRatio: '1',
     borderRadius: '8px',
     overflow: 'hidden',
+  },
+  brokenBanner: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: '16px',
+    padding: '12px 16px',
+    backgroundColor: '#fef2f2',
+    border: '1px solid #fecaca',
+    borderRadius: '8px',
+    marginBottom: '16px',
+  },
+  brokenBannerLeft: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: '12px',
+    flex: 1,
+  },
+  brokenBannerIcon: {
+    width: '24px',
+    height: '24px',
+    backgroundColor: '#dc2626',
+    color: '#fff',
+    borderRadius: '50%',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: '14px',
+    fontWeight: 'bold',
+    flexShrink: 0,
+  },
+  brokenBannerTitle: {
+    fontSize: '14px',
+    fontWeight: '600',
+    color: '#991b1b',
+    margin: '0 0 4px 0',
+  },
+  brokenBannerText: {
+    fontSize: '13px',
+    color: '#7f1d1d',
+    margin: 0,
+    lineHeight: 1.5,
+  },
+  brokenBannerError: {
+    fontSize: '11px',
+    color: '#991b1b',
+    margin: '6px 0 0 0',
+    fontFamily: 'monospace',
+    wordBreak: 'break-word',
+  },
+  brokenBannerBtn: {
+    padding: '8px 14px',
+    backgroundColor: '#dc2626',
+    color: '#fff',
+    borderRadius: '6px',
+    fontSize: '13px',
+    fontWeight: '600',
+    textDecoration: 'none',
+    whiteSpace: 'nowrap',
+    flexShrink: 0,
   },
 }
