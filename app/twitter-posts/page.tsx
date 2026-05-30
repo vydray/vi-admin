@@ -783,18 +783,11 @@ export default function TwitterPostsPage() {
     return `毎週 ${days} ${time}`
   }
 
-  if (storeLoading || loading) {
-    return (
-      <div style={styles.container}>
-        <LoadingSpinner />
-      </div>
-    )
-  }
-
   // ツイート文字数上限（Mary Mare 等 Premium 連携店舗は 25000、他は 280）
   const maxTweetLength = twitterSettings?.max_tweet_length ?? 280
 
   // Twitter本家と同じ重み付けで文字数を数える (CJK=2, 絵文字=2, URL=23 weight)
+  // ※early return より前に置くこと (Rules of Hooks)
   const parsedTweet = useMemo(
     () => twitterText.parseTweet(content, { maxWeightedTweetLength: maxTweetLength }),
     [content, maxTweetLength]
@@ -803,6 +796,14 @@ export default function TwitterPostsPage() {
     () => twitterText.parseTweet(recurringContent, { maxWeightedTweetLength: maxTweetLength }),
     [recurringContent, maxTweetLength]
   )
+
+  if (storeLoading || loading) {
+    return (
+      <div style={styles.container}>
+        <LoadingSpinner />
+      </div>
+    )
+  }
 
   // 接続状態を 3 状態で判定:
   // - 'connected': 連携OK（health_status='healthy' または未確認）
