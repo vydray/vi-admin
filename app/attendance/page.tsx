@@ -2248,9 +2248,10 @@ function AttendancePageContent() {
 
 // 勤怠編集モーダル内に表示する出退勤写真サムネ
 // - 打刻がない場合は枠ごと非表示
-// - 打刻あり・URL欠損は「写真なし」グレー枠
-// - URL あり・読込失敗は「読み込み失敗」グレー枠
-// - URL あり・正常は <button> でラップしてクリックでライトボックス起動
+// - 打刻あり・値欠損は「写真なし」グレー枠
+// - 値が完全URL (https://) なら互換でそのまま表示 (移行期間)
+// - 値が path なら /api/attendance/signed-photo-url で 5分有効の signed URL を取得して表示
+// - 読込失敗 / 認可拒否 / 取得失敗は「読み込み失敗」
 function PhotoThumb({
   url,
   hasTimestamp,
@@ -2266,6 +2267,40 @@ function PhotoThumb({
 }) {
   const [error, setError] = useState(false)
   const [loaded, setLoaded] = useState(false)
+  const [resolvedUrl, setResolvedUrl] = useState<string | null>(null)
+  const rawValue = typeof url === 'string' ? url.trim() : ''
+
+  // 値が path のときは signed URL を取得。https URL ならそのまま使う。
+  useEffect(() => {
+    if (!hasTimestamp || !rawValue) {
+      setResolvedUrl(null)
+      return
+    }
+    if (rawValue.startsWith('https://')) {
+      setResolvedUrl(rawValue)
+      return
+    }
+    let cancelled = false
+    setError(false)
+    setLoaded(false)
+    fetch(`/api/attendance/signed-photo-url?path=${encodeURIComponent(rawValue)}`, {
+      credentials: 'same-origin',
+    })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`status ${res.status}`)
+        return res.json() as Promise<{ url: string }>
+      })
+      .then((data) => {
+        if (cancelled) return
+        setResolvedUrl(data.url)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setError(true)
+      })
+    return () => { cancelled = true }
+  }, [hasTimestamp, rawValue])
+
   if (!hasTimestamp) return null
   const size = 120
   const boxBase: React.CSSProperties = {
@@ -2284,8 +2319,6 @@ function PhotoThumb({
     padding: 0,
     margin: 0,
   }
-  const trimmedUrl = typeof url === 'string' ? url.trim() : ''
-  const isHttps = trimmedUrl.startsWith('https://')
   return (
     <div style={{ marginBottom: '16px' }}>
       <label style={{
@@ -2297,25 +2330,29 @@ function PhotoThumb({
       }}>
         {label}
       </label>
-      {!trimmedUrl ? (
+      {!rawValue ? (
         <div style={{ ...boxBase, cursor: 'default' }} aria-label={`${alt}: 写真なし`}>
           写真なし
         </div>
-      ) : !isHttps || error ? (
+      ) : error ? (
         <div style={{ ...boxBase, cursor: 'default' }} aria-label={`${alt}: 読み込み失敗`}>
           読み込み失敗
+        </div>
+      ) : !resolvedUrl ? (
+        <div style={{ ...boxBase, cursor: 'default' }} aria-label={`${alt}: 読み込み中`}>
+          読み込み中...
         </div>
       ) : (
         <button
           type="button"
-          onClick={(e) => onZoom(trimmedUrl, e.currentTarget)}
+          onClick={(e) => onZoom(resolvedUrl, e.currentTarget)}
           style={{ ...boxBase, cursor: 'pointer' }}
           aria-label={`${alt} (クリックで拡大)`}
         >
           {!loaded && <span style={{ position: 'absolute' }}>読み込み中...</span>}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={trimmedUrl}
+            src={resolvedUrl}
             alt={alt}
             decoding="async"
             width={size}
