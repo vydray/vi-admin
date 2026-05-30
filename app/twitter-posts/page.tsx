@@ -122,6 +122,7 @@ interface TwitterSettings {
   health_status: 'healthy' | 'broken' | 'unknown' | null
   health_error_message: string | null
   last_health_check_at: string | null
+  max_tweet_length: number | null
 }
 
 type ViewMode = 'week' | 'month'
@@ -172,7 +173,7 @@ export default function TwitterPostsPage() {
     setLoading(true)
     try {
       // store_twitter_settings はAPI Route経由（anon keyで直接アクセスしない）
-      const settingsRes = await fetch(`/api/twitter-settings?store_id=${storeId}&fields=twitter_username,connected_at,health_status,health_error_message,last_health_check_at`)
+      const settingsRes = await fetch(`/api/twitter-settings?store_id=${storeId}&fields=twitter_username,connected_at,health_status,health_error_message,last_health_check_at,max_tweet_length`)
       const settingsJson = settingsRes.ok ? await settingsRes.json() : { settings: null }
       setTwitterSettings(settingsJson.settings)
 
@@ -789,6 +790,9 @@ export default function TwitterPostsPage() {
     )
   }
 
+  // ツイート文字数上限（Mary Mare 等 Premium 連携店舗は 25000、他は 280）
+  const maxTweetLength = twitterSettings?.max_tweet_length ?? 280
+
   // 接続状態を 3 状態で判定:
   // - 'connected': 連携OK（health_status='healthy' または未確認）
   // - 'broken':    連携はあるが Twitter API が 401/403（再認証必要）
@@ -1101,9 +1105,9 @@ export default function TwitterPostsPage() {
                     onChange={(e) => setContent(e.target.value)}
                     style={styles.postTextarea}
                     placeholder="ツイート内容を入力..."
-                    maxLength={280}
+                    maxLength={maxTweetLength}
                   />
-                  <span style={styles.charCount}>{content.length}/280</span>
+                  <span style={styles.charCount}>{content.length}/{maxTweetLength.toLocaleString()}</span>
                 </div>
 
                 <div style={styles.inputGroup}>
@@ -1468,9 +1472,9 @@ export default function TwitterPostsPage() {
                   onChange={(e) => setRecurringContent(e.target.value)}
                   style={styles.textarea}
                   placeholder="ツイート内容を入力..."
-                  maxLength={280}
+                  maxLength={maxTweetLength}
                 />
-                <span style={styles.charCount}>{recurringContent.length}/280</span>
+                <span style={styles.charCount}>{recurringContent.length}/{maxTweetLength.toLocaleString()}</span>
               </div>
 
               <div style={styles.inputGroup}>
