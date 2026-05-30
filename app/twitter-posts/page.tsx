@@ -7,6 +7,7 @@ import { useIsMobile } from '@/hooks/useIsMobile'
 import { toast } from 'react-hot-toast'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Link from 'next/link'
+import { parseTweet } from 'twitter-text'
 
 const MAX_IMAGES = 4 // Twitterの最大画像枚数
 // Vercel の Route Handler は body 4.5MB 上限。multipart overhead を考慮して 4MB を境界に
@@ -793,6 +794,16 @@ export default function TwitterPostsPage() {
   // ツイート文字数上限（Mary Mare 等 Premium 連携店舗は 25000、他は 280）
   const maxTweetLength = twitterSettings?.max_tweet_length ?? 280
 
+  // Twitter本家と同じ重み付けで文字数を数える (CJK=2, 絵文字=2, URL=23 weight)
+  const parsedTweet = useMemo(
+    () => parseTweet(content, { maxWeightedTweetLength: maxTweetLength }),
+    [content, maxTweetLength]
+  )
+  const parsedRecurringTweet = useMemo(
+    () => parseTweet(recurringContent, { maxWeightedTweetLength: maxTweetLength }),
+    [recurringContent, maxTweetLength]
+  )
+
   // 接続状態を 3 状態で判定:
   // - 'connected': 連携OK（health_status='healthy' または未確認）
   // - 'broken':    連携はあるが Twitter API が 401/403（再認証必要）
@@ -1105,9 +1116,17 @@ export default function TwitterPostsPage() {
                     onChange={(e) => setContent(e.target.value)}
                     style={styles.postTextarea}
                     placeholder="ツイート内容を入力..."
-                    maxLength={maxTweetLength}
                   />
-                  <span style={styles.charCount}>{content.length}/{maxTweetLength.toLocaleString()}</span>
+                  <span
+                    style={{
+                      ...styles.charCount,
+                      ...(parsedTweet.weightedLength > maxTweetLength
+                        ? { color: '#ef4444', fontWeight: 600 }
+                        : {}),
+                    }}
+                  >
+                    {parsedTweet.weightedLength}/{maxTweetLength.toLocaleString()}
+                  </span>
                 </div>
 
                 <div style={styles.inputGroup}>
@@ -1202,7 +1221,7 @@ export default function TwitterPostsPage() {
                   </button>
                   <button
                     onClick={handleSubmit}
-                    disabled={saving}
+                    disabled={saving || parsedTweet.weightedLength > maxTweetLength}
                     style={styles.submitButton}
                   >
                     {saving ? '保存中...' : '投稿を予約'}
@@ -1472,9 +1491,17 @@ export default function TwitterPostsPage() {
                   onChange={(e) => setRecurringContent(e.target.value)}
                   style={styles.textarea}
                   placeholder="ツイート内容を入力..."
-                  maxLength={maxTweetLength}
                 />
-                <span style={styles.charCount}>{recurringContent.length}/{maxTweetLength.toLocaleString()}</span>
+                <span
+                  style={{
+                    ...styles.charCount,
+                    ...(parsedRecurringTweet.weightedLength > maxTweetLength
+                      ? { color: '#ef4444', fontWeight: 600 }
+                      : {}),
+                  }}
+                >
+                  {parsedRecurringTweet.weightedLength}/{maxTweetLength.toLocaleString()}
+                </span>
               </div>
 
               <div style={styles.inputGroup}>
@@ -1549,7 +1576,7 @@ export default function TwitterPostsPage() {
               </button>
               <button
                 onClick={handleRecurringSubmit}
-                disabled={saving}
+                disabled={saving || parsedRecurringTweet.weightedLength > maxTweetLength}
                 style={styles.submitButton}
               >
                 {saving ? '保存中...' : '保存'}
