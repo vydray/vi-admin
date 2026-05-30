@@ -7,7 +7,7 @@ import { useIsMobile } from '@/hooks/useIsMobile'
 import { toast } from 'react-hot-toast'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Link from 'next/link'
-import { parseTweet } from 'twitter-text'
+import twitterText from 'twitter-text'
 
 const MAX_IMAGES = 4 // Twitterの最大画像枚数
 // Vercel の Route Handler は body 4.5MB 上限。multipart overhead を考慮して 4MB を境界に
@@ -796,11 +796,11 @@ export default function TwitterPostsPage() {
 
   // Twitter本家と同じ重み付けで文字数を数える (CJK=2, 絵文字=2, URL=23 weight)
   const parsedTweet = useMemo(
-    () => parseTweet(content, { maxWeightedTweetLength: maxTweetLength }),
+    () => twitterText.parseTweet(content, { maxWeightedTweetLength: maxTweetLength }),
     [content, maxTweetLength]
   )
   const parsedRecurringTweet = useMemo(
-    () => parseTweet(recurringContent, { maxWeightedTweetLength: maxTweetLength }),
+    () => twitterText.parseTweet(recurringContent, { maxWeightedTweetLength: maxTweetLength }),
     [recurringContent, maxTweetLength]
   )
 
