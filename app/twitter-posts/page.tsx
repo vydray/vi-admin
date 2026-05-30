@@ -2065,7 +2065,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     maxWidth: '100%',
   },
   tweetPreview: {
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", sans-serif',
   },
   tweetHeader: {
     display: 'flex',

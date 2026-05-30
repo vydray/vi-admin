@@ -25,7 +25,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="ja">
-      <body style={{ margin: 0, fontFamily: 'system-ui, sans-serif', backgroundColor: '#f5f5f5' }}>
+      <body style={{ margin: 0, fontFamily: 'system-ui, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", sans-serif', backgroundColor: '#f5f5f5' }}>
         <ErrorBoundary>
           <AuthProvider>
             <StoreProvider>
