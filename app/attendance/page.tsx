@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, addMonths, subMonths, getDate } from 'date-fns'
@@ -81,6 +81,11 @@ function AttendancePageContent() {
   const [showHistory, setShowHistory] = useState(false)
   const [historyData, setHistoryData] = useState<AttendanceHistory[]>([])
   const [loadingHistory, setLoadingHistory] = useState(false)
+  // 出退勤写真ライトボックス用
+  const [zoomPhotoUrl, setZoomPhotoUrl] = useState<string | null>(null)
+  const [zoomPhotoError, setZoomPhotoError] = useState(false)
+  const [zoomPhotoLoading, setZoomPhotoLoading] = useState(false)
+  const zoomTriggerRef = useRef<HTMLButtonElement | null>(null)
 
   const loadCasts = useCallback(async () => {
     const { data, error} = await supabase
@@ -103,7 +108,7 @@ function AttendancePageContent() {
 
     const { data, error } = await supabase
       .from('attendance')
-      .select('id, cast_name, date, check_in_datetime, check_out_datetime, status, status_id, store_id, late_minutes, break_minutes, daily_payment, costume_id, is_modified, last_modified_at')
+      .select('id, cast_name, date, check_in_datetime, check_out_datetime, status, status_id, store_id, late_minutes, break_minutes, daily_payment, costume_id, is_modified, last_modified_at, check_in_photo_url, check_out_photo_url')
       .eq('store_id', storeId)
       .gte('date', format(start, 'yyyy-MM-dd'))
       .lte('date', format(end, 'yyyy-MM-dd'))
@@ -184,6 +189,32 @@ function AttendancePageContent() {
       loadAttendanceStatuses()
     }
   }, [showStatusModal, loadAttendanceStatuses])
+
+  // 編集中のセルが切り替わったら、ライトボックスは自動で閉じる
+  useEffect(() => {
+    setZoomPhotoUrl(null)
+  }, [editingCell])
+
+  // ライトボックス開閉時の副作用: Esc で閉じる、body スクロールロック、閉じたら起動元 button にフォーカス返却
+  useEffect(() => {
+    if (!zoomPhotoUrl) {
+      // クローズ時: 起動元サムネにフォーカス戻し
+      zoomTriggerRef.current?.focus()
+      return
+    }
+    setZoomPhotoError(false)
+    setZoomPhotoLoading(true)
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setZoomPhotoUrl(null)
+    }
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.body.style.overflow = prevOverflow
+    }
+  }, [zoomPhotoUrl])
 
   const addAttendanceStatus = async () => {
     if (!newStatusName.trim()) {
@@ -1222,7 +1253,8 @@ function AttendancePageContent() {
             borderRadius: '12px',
             boxShadow: '0 10px 40px rgba(0,0,0,0.2)',
             zIndex: 1000,
-            minWidth: isMobile ? 'auto' : '380px',
+            minWidth: isMobile ? 'auto' : '660px',
+            maxWidth: isMobile ? 'auto' : '720px',
             maxHeight: isMobile ? '90vh' : '90vh',
             overflowY: 'auto',
             WebkitOverflowScrolling: 'touch'
@@ -1236,6 +1268,14 @@ function AttendancePageContent() {
           }}>
             勤怠編集
           </h3>
+
+          <div style={{
+            display: 'flex',
+            flexDirection: isMobile ? 'column' : 'row',
+            gap: isMobile ? '0' : '24px',
+            alignItems: 'flex-start',
+          }}>
+            <div style={{ flex: '1 1 auto', minWidth: 0, width: isMobile ? '100%' : 'auto' }}>
 
           <div style={{ marginBottom: '16px' }}>
             <div style={{ fontSize: isMobile ? '13px' : '14px', color: '#64748b', marginBottom: '4px' }}>
@@ -1328,6 +1368,17 @@ function AttendancePageContent() {
                     </select>
                   </div>
 
+                  {/* Mobile: 出勤時間 select の直下に出勤写真サムネを挿入 (PC は右ペイン側に出る) */}
+                  {isMobile && (
+                    <PhotoThumb
+                      url={editingInfo.attendance?.check_in_photo_url}
+                      hasTimestamp={!!editingInfo.attendance?.check_in_datetime}
+                      alt={`${editingInfo.cast?.name || ''} ${format(editingInfo.date, 'yyyy/MM/dd')} 出勤時の写真`}
+                      label="出勤時の写真"
+                      onZoom={(u, btn) => { zoomTriggerRef.current = btn; setZoomPhotoUrl(u) }}
+                    />
+                  )}
+
                   <div style={{ marginBottom: '20px' }}>
                     <label style={{
                       display: 'block',
@@ -1357,6 +1408,17 @@ function AttendancePageContent() {
                       ))}
                     </select>
                   </div>
+
+                  {/* Mobile: 退勤時間 select の直下に退勤写真サムネを挿入 (PC は右ペイン側に出る) */}
+                  {isMobile && (
+                    <PhotoThumb
+                      url={editingInfo.attendance?.check_out_photo_url}
+                      hasTimestamp={!!editingInfo.attendance?.check_out_datetime}
+                      alt={`${editingInfo.cast?.name || ''} ${format(editingInfo.date, 'yyyy/MM/dd')} 退勤時の写真`}
+                      label="退勤時の写真"
+                      onZoom={(u, btn) => { zoomTriggerRef.current = btn; setZoomPhotoUrl(u) }}
+                    />
+                  )}
 
                   {/* 遅刻分数（遅刻ステータスの場合のみ） */}
                   {attendanceStatuses.find(s => s.id === tempTime.statusId)?.name === '遅刻' && (
@@ -1686,6 +1748,109 @@ function AttendancePageContent() {
             >
               キャンセル
             </button>
+          </div>
+
+            </div>
+            {/* PC: 右ペインに出勤/退勤写真サムネ。Mobile では出勤時間/退勤時間 select の直下に挿入済み */}
+            {!isMobile && (
+              <div style={{ flex: '0 0 140px', minWidth: 140 }}>
+                <PhotoThumb
+                  url={editingInfo.attendance?.check_in_photo_url}
+                  hasTimestamp={!!editingInfo.attendance?.check_in_datetime}
+                  alt={`${editingInfo.cast?.name || ''} ${format(editingInfo.date, 'yyyy/MM/dd')} 出勤時の写真`}
+                  label="出勤時の写真"
+                  onZoom={(u, btn) => { zoomTriggerRef.current = btn; setZoomPhotoUrl(u) }}
+                />
+                <PhotoThumb
+                  url={editingInfo.attendance?.check_out_photo_url}
+                  hasTimestamp={!!editingInfo.attendance?.check_out_datetime}
+                  alt={`${editingInfo.cast?.name || ''} ${format(editingInfo.date, 'yyyy/MM/dd')} 退勤時の写真`}
+                  label="退勤時の写真"
+                  onZoom={(u, btn) => { zoomTriggerRef.current = btn; setZoomPhotoUrl(u) }}
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 出退勤写真ライトボックス */}
+      {zoomPhotoUrl && (
+        <div
+          onClick={() => setZoomPhotoUrl(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="写真拡大ビュー"
+          style={{
+            position: 'fixed',
+            top: 0, left: 0, right: 0, bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.9)',
+            zIndex: 2000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+          }}
+        >
+          <button
+            onClick={(e) => { e.stopPropagation(); setZoomPhotoUrl(null) }}
+            aria-label="閉じる"
+            style={{
+              position: 'fixed',
+              top: '16px',
+              right: '16px',
+              background: 'rgba(0,0,0,0.5)',
+              border: 'none',
+              color: '#fff',
+              fontSize: '28px',
+              width: '44px',
+              height: '44px',
+              borderRadius: '22px',
+              cursor: 'pointer',
+              lineHeight: 1,
+              zIndex: 2001,
+            }}
+          >×</button>
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              position: 'relative',
+              maxWidth: '95vw',
+              maxHeight: '90vh',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'default',
+            }}
+          >
+            {zoomPhotoError ? (
+              <div style={{ color: '#fff', fontSize: '16px', padding: '24px' }}>
+                写真を読み込めませんでした
+              </div>
+            ) : (
+              <>
+                {zoomPhotoLoading && (
+                  <div style={{ position: 'absolute', color: '#fff', fontSize: '14px' }}>
+                    読み込み中...
+                  </div>
+                )}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={zoomPhotoUrl}
+                  alt="拡大写真"
+                  onLoad={() => setZoomPhotoLoading(false)}
+                  onError={() => { setZoomPhotoError(true); setZoomPhotoLoading(false) }}
+                  style={{
+                    maxWidth: '95vw',
+                    maxHeight: '90vh',
+                    objectFit: 'contain',
+                    borderRadius: '4px',
+                    opacity: zoomPhotoLoading ? 0 : 1,
+                    transition: 'opacity 0.2s',
+                  }}
+                />
+              </>
+            )}
           </div>
         </div>
       )}
@@ -2076,6 +2241,96 @@ function AttendancePageContent() {
             </div>
           </div>
         </div>
+      )}
+    </div>
+  )
+}
+
+// 勤怠編集モーダル内に表示する出退勤写真サムネ
+// - 打刻がない場合は枠ごと非表示
+// - 打刻あり・URL欠損は「写真なし」グレー枠
+// - URL あり・読込失敗は「読み込み失敗」グレー枠
+// - URL あり・正常は <button> でラップしてクリックでライトボックス起動
+function PhotoThumb({
+  url,
+  hasTimestamp,
+  alt,
+  label,
+  onZoom,
+}: {
+  url: string | null | undefined
+  hasTimestamp: boolean
+  alt: string
+  label: string
+  onZoom: (url: string, trigger: HTMLButtonElement) => void
+}) {
+  const [error, setError] = useState(false)
+  const [loaded, setLoaded] = useState(false)
+  if (!hasTimestamp) return null
+  const size = 120
+  const boxBase: React.CSSProperties = {
+    width: size,
+    height: size,
+    borderRadius: '6px',
+    border: '1px solid #e2e8f0',
+    backgroundColor: '#f1f5f9',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: '#475569',
+    fontSize: '12px',
+    overflow: 'hidden',
+    position: 'relative',
+    padding: 0,
+    margin: 0,
+  }
+  const trimmedUrl = typeof url === 'string' ? url.trim() : ''
+  const isHttps = trimmedUrl.startsWith('https://')
+  return (
+    <div style={{ marginBottom: '16px' }}>
+      <label style={{
+        display: 'block',
+        fontSize: '14px',
+        fontWeight: '500',
+        color: '#475569',
+        marginBottom: '6px',
+      }}>
+        {label}
+      </label>
+      {!trimmedUrl ? (
+        <div style={{ ...boxBase, cursor: 'default' }} aria-label={`${alt}: 写真なし`}>
+          写真なし
+        </div>
+      ) : !isHttps || error ? (
+        <div style={{ ...boxBase, cursor: 'default' }} aria-label={`${alt}: 読み込み失敗`}>
+          読み込み失敗
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={(e) => onZoom(trimmedUrl, e.currentTarget)}
+          style={{ ...boxBase, cursor: 'pointer' }}
+          aria-label={`${alt} (クリックで拡大)`}
+        >
+          {!loaded && <span style={{ position: 'absolute' }}>読み込み中...</span>}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={trimmedUrl}
+            alt={alt}
+            decoding="async"
+            width={size}
+            height={size}
+            onLoad={() => setLoaded(true)}
+            onError={() => setError(true)}
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              opacity: loaded ? 1 : 0,
+              transition: 'opacity 0.2s',
+            }}
+          />
+        </button>
       )}
     </div>
   )

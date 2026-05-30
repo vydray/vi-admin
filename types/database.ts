@@ -174,6 +174,8 @@ export interface Attendance {
   costume_id?: number       // 衣装ID
   is_modified?: boolean     // 締め時刻後に修正されたか
   last_modified_at?: string // 最終修正日時
+  check_in_photo_url: string | null  // 出勤時の顔写真 (vi-attendance-app が書き込む完全URL)
+  check_out_photo_url: string | null // 退勤時の顔写真
 }
 
 // 勤怠修正履歴
