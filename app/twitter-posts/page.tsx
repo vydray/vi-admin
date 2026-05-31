@@ -147,7 +147,8 @@ export default function TwitterPostsPage() {
   const [uploadedImages, setUploadedImages] = useState<UploadedImage[]>([]) // 編集時の既存画像
   const [editingId, setEditingId] = useState<number | null>(null)
   const [showDuplicateModal, setShowDuplicateModal] = useState(false)
-  const [duplicateScheduledAt, setDuplicateScheduledAt] = useState('')
+  // 複製先の日付 (YYYY-MM-DD の配列)。時刻は元投稿の時刻を固定で使う。
+  const [duplicateDates, setDuplicateDates] = useState<string[]>([])
   const [uploading, setUploading] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -544,36 +545,36 @@ export default function TwitterPostsPage() {
     }
   }
 
-  // 複製モーダルを開く。日時は翌日同時刻をデフォルトで提示。
+  // 複製モーダルを開く。日付は空チェックでスタート (元投稿の翌日にチェックを初期セットしてもいいが、
+  // 「気付かず重複作成」を避けるため明示的に選んでもらう)
   const handleDuplicate = () => {
     if (!scheduledAt) {
       toast.error('投稿日時が未設定です')
       return
     }
-    const next = new Date(scheduledAt)
-    next.setDate(next.getDate() + 1)
-    setDuplicateScheduledAt(formatDateTimeLocal(next.toISOString()))
+    setDuplicateDates([])
     setShowDuplicateModal(true)
   }
 
-  // 複製モーダルで日時を確定して INSERT する
-  // 元の content / uploadedImages はそのまま使い、scheduledAt だけ差し替え
+  // 複製モーダルで選んだ日付すべてに対して、元投稿の時刻で INSERT する
   const handleDuplicateConfirm = async () => {
     if (!storeId) return
-    if (!duplicateScheduledAt) {
-      toast.error('複製先の日時を選択してください')
+    if (duplicateDates.length === 0) {
+      toast.error('複製先の日付を1つ以上選んでください')
       return
     }
-    const scheduledDate = new Date(duplicateScheduledAt)
-    if (scheduledDate <= new Date()) {
-      toast.error('複製先の日時は現在より後の時間を選択してください')
+    if (!scheduledAt) {
+      toast.error('元の投稿日時が不明です')
       return
     }
 
+    // 元投稿の時刻 (HH:MM) を抽出。scheduledAt は datetime-local 形式 "YYYY-MM-DDTHH:MM"
+    const origDate = new Date(scheduledAt)
+    const hh = origDate.getHours()
+    const mm = origDate.getMinutes()
+
     setSaving(true)
     try {
-      // uploadedImages は既存(URLのみ保持)、localImagesは編集モーダルで追加された未アップロード分
-      // 複製で新規アップロードする必要があれば走らせる
       let allImageUrls: string[] = [...uploadedImages.map(img => img.url)]
       if (localImages.length > 0) {
         const newlyUploaded = await uploadImagesToStorage()
@@ -581,27 +582,54 @@ export default function TwitterPostsPage() {
       }
       const imageUrlsJson = allImageUrls.length > 0 ? JSON.stringify(allImageUrls) : null
 
-      const { data: inserted, error } = await supabase
-        .from('scheduled_posts')
-        .insert({
+      // 各日付に対して scheduled_at を組み立てる。過去日時はスキップ。
+      const now = Date.now()
+      type Row = {
+        store_id: number
+        content: string
+        image_url: string | null
+        scheduled_at: string
+        status: 'pending'
+      }
+      const candidates: Row[] = duplicateDates.map(dateStr => {
+        const [y, mo, d] = dateStr.split('-').map(Number)
+        const dt = new Date(y, mo - 1, d, hh, mm, 0)
+        return {
           store_id: storeId,
           content: content.trim(),
           image_url: imageUrlsJson,
-          scheduled_at: scheduledDate.toISOString(),
-          status: 'pending',
-        })
+          scheduled_at: dt.toISOString(),
+          status: 'pending' as const,
+        }
+      })
+      const validRows = candidates.filter(r => new Date(r.scheduled_at).getTime() > now)
+      const skipped = candidates.length - validRows.length
+
+      if (validRows.length === 0) {
+        toast.error('複製先の日時はすべて過去です')
+        setSaving(false)
+        return
+      }
+
+      const { data: inserted, error } = await supabase
+        .from('scheduled_posts')
+        .insert(validRows)
         .select()
-        .single()
       if (error) throw error
 
-      // posts state を直接更新 (loadData は呼ばない → スクロール位置維持)
-      if (inserted) {
-        setPosts(prev => [...prev, inserted as ScheduledPost].sort((a, b) =>
+      if (inserted && inserted.length > 0) {
+        setPosts(prev => [...prev, ...(inserted as ScheduledPost[])].sort((a, b) =>
           new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime()
         ))
       }
-      toast.success('複製して新規予約しました')
+
+      if (skipped > 0) {
+        toast.success(`${validRows.length}件複製しました (過去日時${skipped}件はスキップ)`)
+      } else {
+        toast.success(`${validRows.length}件複製しました`)
+      }
       setShowDuplicateModal(false)
+      setDuplicateDates([])
       resetForm()
     } catch (error) {
       console.error('複製エラー:', error)
@@ -1583,59 +1611,152 @@ export default function TwitterPostsPage() {
         </div>
       )}
 
-      {/* 複製先 日時選択モーダル */}
-      {showDuplicateModal && (
-        <div
-          style={{ ...styles.modalOverlay, zIndex: 1100 }}
-          onClick={() => !saving && setShowDuplicateModal(false)}
-        >
+      {/* 複製先 日付一括選択モーダル */}
+      {showDuplicateModal && (() => {
+        // 元投稿の時刻 (datetime-local 文字列から HH:MM を抽出)
+        const origTimeLabel = scheduledAt ? scheduledAt.slice(11, 16) : '--:--'
+
+        // 今日から60日先までの候補日付を生成 (YYYY-MM-DD)
+        const today = new Date()
+        today.setHours(0, 0, 0, 0)
+        const candidates: { dateStr: string; label: string; weekDayIdx: number }[] = []
+        for (let i = 0; i < 60; i++) {
+          const d = new Date(today)
+          d.setDate(d.getDate() + i)
+          const y = d.getFullYear()
+          const m = String(d.getMonth() + 1).padStart(2, '0')
+          const dd = String(d.getDate()).padStart(2, '0')
+          const dateStr = `${y}-${m}-${dd}`
+          const weekDays = ['日', '月', '火', '水', '木', '金', '土']
+          candidates.push({
+            dateStr,
+            label: `${d.getMonth() + 1}/${d.getDate()} (${weekDays[d.getDay()]})`,
+            weekDayIdx: d.getDay(),
+          })
+        }
+
+        const allSelected = duplicateDates.length === candidates.length
+        const toggleDate = (dateStr: string) => {
+          setDuplicateDates(prev =>
+            prev.includes(dateStr) ? prev.filter(x => x !== dateStr) : [...prev, dateStr]
+          )
+        }
+
+        return (
           <div
-            style={{ ...styles.modal, maxWidth: '420px' }}
-            onClick={e => e.stopPropagation()}
+            style={{ ...styles.modalOverlay, zIndex: 1100 }}
+            onClick={() => !saving && setShowDuplicateModal(false)}
           >
-            <div style={styles.modalHeader}>
-              <h2 style={styles.modalTitle}>複製先の日時</h2>
-              <button
-                onClick={() => setShowDuplicateModal(false)}
-                style={styles.closeButton}
-                disabled={saving}
-              >
-                ×
-              </button>
-            </div>
-            <div style={styles.modalBody}>
-              <div style={styles.inputGroup}>
-                <label style={styles.label}>投稿日時</label>
-                <input
-                  type="datetime-local"
-                  value={duplicateScheduledAt}
-                  onChange={(e) => setDuplicateScheduledAt(e.target.value)}
-                  style={styles.input}
-                />
-                <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '6px' }}>
-                  同じ内容・同じ画像でこの日時の新規予約を作ります。
+            <div
+              style={{ ...styles.modal, maxWidth: '520px' }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div style={styles.modalHeader}>
+                <h2 style={styles.modalTitle}>複製先の日付を選択</h2>
+                <button
+                  onClick={() => setShowDuplicateModal(false)}
+                  style={styles.closeButton}
+                  disabled={saving}
+                >
+                  ×
+                </button>
+              </div>
+              <div style={styles.modalBody}>
+                <div style={styles.inputGroup}>
+                  <label style={styles.label}>投稿時刻 (元投稿と同じ)</label>
+                  <div style={{ fontSize: '18px', fontWeight: 700, color: '#1da1f2' }}>
+                    {origTimeLabel}
+                  </div>
+                </div>
+
+                <div style={styles.inputGroup}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <label style={styles.label}>
+                      複製する日付（{duplicateDates.length}件選択中）
+                    </label>
+                    <button
+                      onClick={() => setDuplicateDates(allSelected ? [] : candidates.map(c => c.dateStr))}
+                      style={{
+                        padding: '4px 10px',
+                        fontSize: '12px',
+                        backgroundColor: '#f3f4f6',
+                        color: '#374151',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {allSelected ? '全解除' : '全選択'}
+                    </button>
+                  </div>
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(3, 1fr)',
+                      gap: '6px',
+                      maxHeight: '320px',
+                      overflowY: 'auto',
+                      border: '1px solid #e5e7eb',
+                      borderRadius: '6px',
+                      padding: '8px',
+                    }}
+                  >
+                    {candidates.map(c => {
+                      const checked = duplicateDates.includes(c.dateStr)
+                      const color = c.weekDayIdx === 0 ? '#dc2626' : c.weekDayIdx === 6 ? '#2563eb' : '#374151'
+                      return (
+                        <label
+                          key={c.dateStr}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '6px 8px',
+                            backgroundColor: checked ? '#dbeafe' : '#fff',
+                            border: `1px solid ${checked ? '#1da1f2' : '#e5e7eb'}`,
+                            borderRadius: '6px',
+                            fontSize: '13px',
+                            color,
+                            cursor: 'pointer',
+                            userSelect: 'none',
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleDate(c.dateStr)}
+                            style={{ cursor: 'pointer' }}
+                          />
+                          {c.label}
+                        </label>
+                      )
+                    })}
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '6px' }}>
+                    選んだ日付すべてに対し、{origTimeLabel} で同じ内容・同じ画像の新規予約を作ります。
+                  </div>
                 </div>
               </div>
-            </div>
-            <div style={styles.modalFooter}>
-              <button
-                onClick={() => setShowDuplicateModal(false)}
-                style={styles.cancelButton}
-                disabled={saving}
-              >
-                キャンセル
-              </button>
-              <button
-                onClick={handleDuplicateConfirm}
-                disabled={saving || !duplicateScheduledAt}
-                style={styles.submitButton}
-              >
-                {saving ? '作成中...' : '複製'}
-              </button>
+              <div style={styles.modalFooter}>
+                <button
+                  onClick={() => setShowDuplicateModal(false)}
+                  style={styles.cancelButton}
+                  disabled={saving}
+                >
+                  キャンセル
+                </button>
+                <button
+                  onClick={handleDuplicateConfirm}
+                  disabled={saving || duplicateDates.length === 0}
+                  style={styles.submitButton}
+                >
+                  {saving ? '作成中...' : `${duplicateDates.length}件 複製`}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
 
       {/* 定期投稿作成/編集モーダル */}
       {showRecurringForm && (
