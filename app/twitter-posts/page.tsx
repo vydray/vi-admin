@@ -177,6 +177,77 @@ export default function TwitterPostsPage() {
   // 接続エラー時の再認証誘導モーダル
   const [showReauthModal, setShowReauthModal] = useState(false)
 
+  // 投稿スロット (よく使う時刻) 管理モーダル
+  const [showSlotModal, setShowSlotModal] = useState(false)
+  const [slotEditTimes, setSlotEditTimes] = useState<string[]>([])
+  const [newSlotTime, setNewSlotTime] = useState('')
+  const [savingSlots, setSavingSlots] = useState(false)
+  const HHMM_RE = /^([01]\d|2[0-3]):[0-5]\d$/
+
+  // モーダルを開いたら現在のスロットを反映
+  useEffect(() => {
+    if (showSlotModal) {
+      setSlotEditTimes(twitterSettings?.default_post_times ?? [])
+      setNewSlotTime('')
+    }
+  }, [showSlotModal, twitterSettings?.default_post_times])
+
+  const addSlotTime = () => {
+    const v = newSlotTime.trim()
+    if (!HHMM_RE.test(v)) {
+      toast.error('HH:MM 形式で入力してください')
+      return
+    }
+    if (slotEditTimes.includes(v)) {
+      toast.error('同じ時刻が既に登録されています')
+      return
+    }
+    setSlotEditTimes([...slotEditTimes, v].sort())
+    setNewSlotTime('')
+  }
+
+  const removeSlotTime = (time: string) => {
+    setSlotEditTimes(slotEditTimes.filter(t => t !== time))
+  }
+
+  const saveSlotTimes = async () => {
+    if (!storeId) return
+    let timesToSave = slotEditTimes
+    const pending = newSlotTime.trim()
+    if (pending && HHMM_RE.test(pending) && !slotEditTimes.includes(pending)) {
+      timesToSave = [...slotEditTimes, pending].sort()
+      setSlotEditTimes(timesToSave)
+      setNewSlotTime('')
+    }
+
+    setSavingSlots(true)
+    try {
+      const res = await fetch('/api/twitter-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'save_post_times',
+          store_id: storeId,
+          default_post_times: timesToSave,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toast.error(data.error || '保存に失敗しました')
+        return
+      }
+      toast.success('投稿スロットを保存しました')
+      const saved = data.default_post_times ?? []
+      setSlotEditTimes(saved)
+      setTwitterSettings(prev => prev ? { ...prev, default_post_times: saved } : prev)
+      setShowSlotModal(false)
+    } catch {
+      toast.error('保存に失敗しました')
+    } finally {
+      setSavingSlots(false)
+    }
+  }
+
   // プレビューモード（mobile/desktop）
   const [previewMode, setPreviewMode] = useState<'mobile' | 'desktop'>('mobile')
 
@@ -1275,6 +1346,13 @@ export default function TwitterPostsPage() {
           </div>
           {connectionState !== 'disconnected' && (
             <>
+              <button
+                onClick={() => setShowSlotModal(true)}
+                style={styles.recurringListBtn}
+                title="よく使う投稿時刻を登録"
+              >
+                スロット ({twitterSettings?.default_post_times?.length ?? 0})
+              </button>
               <button onClick={() => handleCreateNew()} style={styles.addButton}>
                 + 新しい投稿
               </button>
@@ -1884,6 +1962,124 @@ export default function TwitterPostsPage() {
               <Link href="/twitter-settings" style={{ ...styles.submitButton, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
                 Twitter設定へ
               </Link>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 投稿スロット (よく使う時刻) 管理モーダル */}
+      {showSlotModal && (
+        <div style={styles.modalOverlay} onClick={() => !savingSlots && setShowSlotModal(false)}>
+          <div style={{ ...styles.modal, maxWidth: '520px' }} onClick={e => e.stopPropagation()}>
+            <div style={styles.modalHeader}>
+              <h2 style={styles.modalTitle}>投稿スロット（よく使う時刻）</h2>
+              <button onClick={() => !savingSlots && setShowSlotModal(false)} style={styles.closeButton}>×</button>
+            </div>
+            <div style={styles.modalBody}>
+              <p style={{ fontSize: '13px', color: '#6b7280', margin: '0 0 16px 0', lineHeight: 1.6 }}>
+                ここで登録した時刻は、投稿作成モーダルでクイック選択ボタンとして表示されます。
+                既にその時刻に予約がある日には、スロットボタンは自動的に非表示になります。
+              </p>
+
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px' }}>
+                {slotEditTimes.length === 0 ? (
+                  <div style={{ fontSize: '13px', color: '#9ca3af' }}>
+                    まだスロットは登録されていません
+                  </div>
+                ) : (
+                  slotEditTimes.map(time => (
+                    <div
+                      key={time}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '6px 8px 6px 12px',
+                        backgroundColor: '#eff6ff',
+                        border: '1px solid #1da1f2',
+                        borderRadius: '999px',
+                        fontSize: '14px',
+                        fontWeight: 600,
+                        color: '#0c4a6e',
+                      }}
+                    >
+                      {time}
+                      <button
+                        onClick={() => removeSlotTime(time)}
+                        style={{
+                          width: '20px',
+                          height: '20px',
+                          borderRadius: '50%',
+                          backgroundColor: '#fff',
+                          border: '1px solid #cbd5e1',
+                          color: '#475569',
+                          cursor: 'pointer',
+                          fontSize: '12px',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          padding: 0,
+                        }}
+                        title={`${time} を削除`}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <input
+                  type="time"
+                  value={newSlotTime}
+                  onChange={e => setNewSlotTime(e.target.value)}
+                  style={{
+                    padding: '8px 12px',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '6px',
+                    fontSize: '14px',
+                  }}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      addSlotTime()
+                    }
+                  }}
+                />
+                <button
+                  onClick={addSlotTime}
+                  disabled={!newSlotTime}
+                  style={{
+                    padding: '8px 16px',
+                    backgroundColor: newSlotTime ? '#1da1f2' : '#e5e7eb',
+                    color: newSlotTime ? '#fff' : '#9ca3af',
+                    border: 'none',
+                    borderRadius: '6px',
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    cursor: newSlotTime ? 'pointer' : 'not-allowed',
+                  }}
+                >
+                  + 追加
+                </button>
+              </div>
+            </div>
+            <div style={styles.modalFooter}>
+              <button
+                onClick={() => setShowSlotModal(false)}
+                style={styles.cancelButton}
+                disabled={savingSlots}
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={saveSlotTimes}
+                disabled={savingSlots}
+                style={styles.submitButton}
+              >
+                {savingSlots ? '保存中...' : '保存'}
+              </button>
             </div>
           </div>
         </div>
