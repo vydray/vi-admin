@@ -527,6 +527,22 @@ export default function TwitterPostsPage() {
     }
   }
 
+  // 編集中の投稿を「複製して新規」化する
+  // - content / uploadedImages / scheduledAt はそのまま保持
+  // - scheduledAt は翌日 同時刻 にシフト (店長が一番よくやる使い方)
+  // - editingId をクリアして INSERT になるよう切替
+  const handleDuplicate = () => {
+    if (!scheduledAt) {
+      toast.error('投稿日時が未設定です')
+      return
+    }
+    const next = new Date(scheduledAt)
+    next.setDate(next.getDate() + 1)
+    setScheduledAt(formatDateTimeLocal(next.toISOString()))
+    setEditingId(null)
+    toast.success('複製しました。日時を確認して保存してください')
+  }
+
   const handleEdit = (post: ScheduledPost) => {
     setContent(post.content)
     setScheduledAt(formatDateTimeLocal(post.scheduled_at))
@@ -1034,7 +1050,7 @@ export default function TwitterPostsPage() {
                               handleCreateNew(d)
                             }}
                           >
-                            {hourPosts.map(post => (
+                            {hourPosts.slice(0, 1).map(post => (
                               <div
                                 key={post.id}
                                 onClick={(e) => {
@@ -1063,6 +1079,20 @@ export default function TwitterPostsPage() {
                                 </p>
                               </div>
                             ))}
+                            {hourPosts.length > 1 && (
+                              <div
+                                style={styles.hourPostMore}
+                                title={hourPosts.slice(1).map(p => p.content.slice(0, 30)).join('\n')}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  // 2件目以降の先頭を編集モーダルで開く
+                                  const next = hourPosts[1]
+                                  if (next.status === 'pending') handleEdit(next)
+                                }}
+                              >
+                                +{hourPosts.length - 1}件
+                              </div>
+                            )}
                           </div>
                         )
                       })}
@@ -1220,6 +1250,16 @@ export default function TwitterPostsPage() {
                   <button onClick={resetForm} style={styles.cancelButton}>
                     キャンセル
                   </button>
+                  {editingId && (
+                    <button
+                      onClick={handleDuplicate}
+                      disabled={saving}
+                      style={styles.duplicateButton}
+                      title="同じ内容で翌日同時刻の新規予約に切り替えます"
+                    >
+                      複製して新規
+                    </button>
+                  )}
                   <button
                     onClick={handleSubmit}
                     disabled={saving || parsedTweet.weightedLength > maxTweetLength}
@@ -1837,6 +1877,9 @@ const styles: { [key: string]: React.CSSProperties } = {
     padding: '2px 4px',
     cursor: 'pointer',
     minHeight: '60px',
+    maxHeight: '60px',
+    minWidth: 0, // grid セルが内容で広がって隣の曜日列にはみ出すのを防ぐ
+    overflow: 'hidden',
     transition: 'background-color 0.2s',
   },
   hourPostCard: {
@@ -1845,7 +1888,18 @@ const styles: { [key: string]: React.CSSProperties } = {
     padding: '4px 6px',
     marginBottom: '2px',
     fontSize: '11px',
+    minWidth: 0,
+    overflow: 'hidden',
   },
+  hourPostMore: {
+    fontSize: '10px',
+    color: '#6b7280',
+    textAlign: 'center',
+    padding: '1px 4px',
+    backgroundColor: '#f3f4f6',
+    borderRadius: '3px',
+    fontWeight: '600',
+  } as React.CSSProperties,
   hourPostHeader: {
     display: 'flex',
     justifyContent: 'space-between',
@@ -2268,6 +2322,16 @@ const styles: { [key: string]: React.CSSProperties } = {
     backgroundColor: '#1da1f2',
     color: '#fff',
     border: 'none',
+    borderRadius: '8px',
+    fontSize: '14px',
+    fontWeight: '600',
+    cursor: 'pointer',
+  },
+  duplicateButton: {
+    padding: '10px 16px',
+    backgroundColor: '#fff',
+    color: '#1da1f2',
+    border: '1px solid #1da1f2',
     borderRadius: '8px',
     fontSize: '14px',
     fontWeight: '600',
