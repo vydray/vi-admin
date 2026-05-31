@@ -100,6 +100,16 @@ export default function TwitterSettingsPage() {
 
   const saveSlots = async () => {
     if (!storeId) return
+
+    // 入力欄に未追加の値があれば自動で含める（+ 追加 を押し忘れ対策）
+    let timesToSave = slotTimes
+    const pending = newSlotTime.trim()
+    if (pending && HHMM_RE.test(pending) && !slotTimes.includes(pending)) {
+      timesToSave = [...slotTimes, pending].sort()
+      setSlotTimes(timesToSave)
+      setNewSlotTime('')
+    }
+
     setSavingSlots(true)
     try {
       const res = await fetch('/api/twitter-settings', {
@@ -108,7 +118,7 @@ export default function TwitterSettingsPage() {
         body: JSON.stringify({
           action: 'save_post_times',
           store_id: storeId,
-          default_post_times: slotTimes,
+          default_post_times: timesToSave,
         }),
       })
       const data = await res.json()
@@ -357,11 +367,12 @@ export default function TwitterSettingsPage() {
               disabled={!newSlotTime}
               style={{
                 padding: '8px 16px',
-                backgroundColor: newSlotTime ? '#f3f4f6' : '#e5e7eb',
-                color: '#374151',
-                border: '1px solid #d1d5db',
+                backgroundColor: newSlotTime ? '#1da1f2' : '#e5e7eb',
+                color: newSlotTime ? '#fff' : '#9ca3af',
+                border: 'none',
                 borderRadius: '6px',
                 fontSize: '14px',
+                fontWeight: 600,
                 cursor: newSlotTime ? 'pointer' : 'not-allowed',
               }}
             >
