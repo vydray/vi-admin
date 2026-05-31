@@ -1306,6 +1306,29 @@ export default function TwitterPostsPage() {
         </div>
         <div style={styles.dayPosts}>
           {dayPosts.map(post => renderPostCard(post, isCompact))}
+          {/* 空きスロット枠 (SocialDog ライク) */}
+          {!isPastDay && !bulkDeleteMode && (twitterSettings?.default_post_times ?? [])
+            .filter(s => {
+              const taken = takenTimesByDate.get(dateKey)
+              return !taken?.has(s)
+            })
+            .map(slot => (
+              <div
+                key={`slot-${slot}`}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  const d = new Date(date)
+                  const [h, m] = slot.split(':').map(Number)
+                  d.setHours(h, m, 0, 0)
+                  handleCreateNew(d)
+                }}
+                style={styles.slotPlaceholderMonth}
+                title={`${slot} に新規投稿を予約`}
+              >
+                {slot} +
+              </div>
+            ))
+          }
         </div>
       </div>
     )
@@ -1590,6 +1613,32 @@ export default function TwitterPostsPage() {
                                 +{hourPosts.length - 1}件
                               </div>
                             )}
+                            {/* 空きスロット枠 (SocialDog ライク) */}
+                            {!bulkDeleteMode && !isPastHour && (twitterSettings?.default_post_times ?? [])
+                              .filter(s => {
+                                const [h] = s.split(':').map(Number)
+                                if (h !== hour) return false
+                                const taken = takenTimesByDate.get(dateKey)
+                                return !taken?.has(s)
+                              })
+                              .map(slot => (
+                                <div
+                                  key={`slot-${slot}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    const d = new Date(date)
+                                    const [h, m] = slot.split(':').map(Number)
+                                    d.setHours(h, m, 0, 0)
+                                    handleCreateNew(d)
+                                  }}
+                                  style={styles.slotPlaceholder}
+                                  title={`${slot} に新規投稿を予約`}
+                                >
+                                  <span style={styles.slotPlaceholderTime}>{slot}</span>
+                                  <span style={styles.slotPlaceholderLabel}>+ 予約</span>
+                                </div>
+                              ))
+                            }
                           </div>
                         )
                       })}
@@ -2550,6 +2599,38 @@ const styles: { [key: string]: React.CSSProperties } = {
     backgroundColor: '#f3f4f6',
     borderRadius: '3px',
     fontWeight: '600',
+  } as React.CSSProperties,
+  slotPlaceholder: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '3px 6px',
+    border: '1px dashed #93c5fd',
+    borderRadius: '4px',
+    backgroundColor: 'rgba(219, 234, 254, 0.35)',
+    color: '#1d4ed8',
+    cursor: 'pointer',
+    marginTop: '2px',
+    minWidth: 0,
+  } as React.CSSProperties,
+  slotPlaceholderTime: {
+    fontSize: '11px',
+    fontWeight: 600,
+  } as React.CSSProperties,
+  slotPlaceholderLabel: {
+    fontSize: '10px',
+    opacity: 0.7,
+  } as React.CSSProperties,
+  slotPlaceholderMonth: {
+    fontSize: '11px',
+    padding: '2px 6px',
+    border: '1px dashed #93c5fd',
+    borderRadius: '4px',
+    backgroundColor: 'rgba(219, 234, 254, 0.35)',
+    color: '#1d4ed8',
+    cursor: 'pointer',
+    fontWeight: 600,
+    textAlign: 'center',
   } as React.CSSProperties,
   hourPostHeader: {
     display: 'flex',
