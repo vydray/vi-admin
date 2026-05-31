@@ -476,6 +476,21 @@ export default function TwitterPostsPage() {
 
     setSaving(true)
     try {
+      // 同時刻・同内容の重複チェック (編集中の自分は除外)
+      if (storeId) {
+        const isDup = await checkDuplicatePost(
+          storeId,
+          scheduledDate.toISOString(),
+          content.trim(),
+          editingId ?? undefined
+        )
+        if (isDup) {
+          toast.error('同じ日時・同じ内容の予約投稿が既に存在します')
+          setSaving(false)
+          return
+        }
+      }
+
       // ローカル画像をアップロード
       let allImageUrls: string[] = []
 
@@ -545,6 +560,31 @@ export default function TwitterPostsPage() {
     }
   }
 
+  // 同じ store_id / scheduled_at / content の pending 予約が既にあるかチェック
+  // 編集中の自分自身は除外したい場合は excludeId を渡す
+  const checkDuplicatePost = async (
+    storeIdNum: number,
+    scheduledAtIso: string,
+    contentTrimmed: string,
+    excludeId?: number
+  ): Promise<boolean> => {
+    let q = supabase
+      .from('scheduled_posts')
+      .select('id')
+      .eq('store_id', storeIdNum)
+      .eq('scheduled_at', scheduledAtIso)
+      .eq('content', contentTrimmed)
+      .eq('status', 'pending')
+      .limit(1)
+    if (excludeId !== undefined) q = q.neq('id', excludeId)
+    const { data, error } = await q
+    if (error) {
+      console.warn('重複チェック失敗:', error)
+      return false // チェック失敗時は INSERT を通す (失敗で予約できなくなる方が困る)
+    }
+    return (data?.length ?? 0) > 0
+  }
+
   // 複製モーダルを開く。日付は空チェックでスタート (元投稿の翌日にチェックを初期セットしてもいいが、
   // 「気付かず重複作成」を避けるため明示的に選んでもらう)
   const handleDuplicate = () => {
@@ -602,11 +642,33 @@ export default function TwitterPostsPage() {
           status: 'pending' as const,
         }
       })
-      const validRows = candidates.filter(r => new Date(r.scheduled_at).getTime() > now)
-      const skipped = candidates.length - validRows.length
+      const futureRows = candidates.filter(r => new Date(r.scheduled_at).getTime() > now)
+      const pastSkipped = candidates.length - futureRows.length
+
+      if (futureRows.length === 0) {
+        toast.error('複製先の日時はすべて過去です')
+        setSaving(false)
+        return
+      }
+
+      // 同時刻・同内容の既存 pending 予約をまとめてチェック
+      const contentTrimmed = content.trim()
+      const { data: existingRows } = await supabase
+        .from('scheduled_posts')
+        .select('scheduled_at')
+        .eq('store_id', storeId)
+        .eq('content', contentTrimmed)
+        .eq('status', 'pending')
+        .in('scheduled_at', futureRows.map(r => r.scheduled_at))
+      const dupSet = new Set((existingRows ?? []).map(e => new Date(e.scheduled_at).toISOString()))
+      const validRows = futureRows.filter(r => !dupSet.has(r.scheduled_at))
+      const dupSkipped = futureRows.length - validRows.length
 
       if (validRows.length === 0) {
-        toast.error('複製先の日時はすべて過去です')
+        const reasons: string[] = []
+        if (pastSkipped > 0) reasons.push(`過去日時${pastSkipped}件`)
+        if (dupSkipped > 0) reasons.push(`同時刻・同内容の予約が既に存在${dupSkipped}件`)
+        toast.error(`複製可能な日付がありません (${reasons.join(' / ')})`)
         setSaving(false)
         return
       }
@@ -623,8 +685,11 @@ export default function TwitterPostsPage() {
         ))
       }
 
-      if (skipped > 0) {
-        toast.success(`${validRows.length}件複製しました (過去日時${skipped}件はスキップ)`)
+      const skipNotes: string[] = []
+      if (pastSkipped > 0) skipNotes.push(`過去${pastSkipped}件`)
+      if (dupSkipped > 0) skipNotes.push(`重複${dupSkipped}件`)
+      if (skipNotes.length > 0) {
+        toast.success(`${validRows.length}件複製しました (${skipNotes.join(' / ')}スキップ)`)
       } else {
         toast.success(`${validRows.length}件複製しました`)
       }
