@@ -100,6 +100,38 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true })
   }
 
+  if (action === 'save_post_times') {
+    const { default_post_times } = body
+    // "HH:MM" 形式 (24h) のみ受け付け、昇順ソート + 重複排除
+    if (!Array.isArray(default_post_times)) {
+      return NextResponse.json({ error: 'default_post_times must be an array' }, { status: 400 })
+    }
+    const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/
+    const cleaned = Array.from(
+      new Set(
+        default_post_times
+          .map((t: unknown) => (typeof t === 'string' ? t.trim() : ''))
+          .filter((t: string) => HHMM.test(t))
+      )
+    ).sort()
+
+    const { error } = await supabase
+      .from('store_twitter_settings')
+      .upsert({
+        store_id,
+        default_post_times: cleaned,
+        updated_at: new Date().toISOString(),
+      }, {
+        onConflict: 'store_id',
+      })
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    return NextResponse.json({ success: true, default_post_times: cleaned })
+  }
+
   if (action === 'disconnect') {
     const { error } = await supabase
       .from('store_twitter_settings')

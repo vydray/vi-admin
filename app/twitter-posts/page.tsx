@@ -124,6 +124,7 @@ interface TwitterSettings {
   health_error_message: string | null
   last_health_check_at: string | null
   max_tweet_length: number | null
+  default_post_times: string[] | null
 }
 
 type ViewMode = 'week' | 'month'
@@ -181,7 +182,7 @@ export default function TwitterPostsPage() {
     setLoading(true)
     try {
       // store_twitter_settings はAPI Route経由（anon keyで直接アクセスしない）
-      const settingsRes = await fetch(`/api/twitter-settings?store_id=${storeId}&fields=twitter_username,connected_at,health_status,health_error_message,last_health_check_at,max_tweet_length`)
+      const settingsRes = await fetch(`/api/twitter-settings?store_id=${storeId}&fields=twitter_username,connected_at,health_status,health_error_message,last_health_check_at,max_tweet_length,default_post_times`)
       const settingsJson = settingsRes.ok ? await settingsRes.json() : { settings: null }
       setTwitterSettings(settingsJson.settings)
 
@@ -1042,6 +1043,35 @@ export default function TwitterPostsPage() {
     [recurringContent, maxTweetLength]
   )
 
+  // 日付ごとに既に予約が入ってる HH:MM の Set。スロットボタンの表示判定に使う
+  const takenTimesByDate = useMemo(() => {
+    const map = new Map<string, Set<string>>()
+    for (const p of posts) {
+      if (p.status !== 'pending') continue
+      const dt = new Date(p.scheduled_at)
+      const y = dt.getFullYear()
+      const mo = String(dt.getMonth() + 1).padStart(2, '0')
+      const d = String(dt.getDate()).padStart(2, '0')
+      const hh = String(dt.getHours()).padStart(2, '0')
+      const mm = String(dt.getMinutes()).padStart(2, '0')
+      const dateKey = `${y}-${mo}-${d}`
+      if (!map.has(dateKey)) map.set(dateKey, new Set())
+      map.get(dateKey)!.add(`${hh}:${mm}`)
+    }
+    return map
+  }, [posts])
+
+  // 投稿モーダルで表示するスロット (現在の scheduledAt の日付に対して、空いてる時刻だけ)
+  // 編集中の自分自身の時刻は除外しない (元の時刻も選び直せる)
+  const visiblePostSlots = useMemo(() => {
+    const slots = twitterSettings?.default_post_times ?? []
+    if (slots.length === 0 || !scheduledAt) return slots
+    const dateKey = scheduledAt.slice(0, 10) // "YYYY-MM-DD"
+    const takenSet = takenTimesByDate.get(dateKey) ?? new Set<string>()
+    const ownTime = scheduledAt.slice(11, 16) // 編集中ならこの時刻は除外しない
+    return slots.filter(s => !takenSet.has(s) || s === ownTime)
+  }, [twitterSettings?.default_post_times, scheduledAt, takenTimesByDate])
+
   if (storeLoading || loading) {
     return (
       <div style={styles.container}>
@@ -1473,6 +1503,38 @@ export default function TwitterPostsPage() {
                     onChange={(e) => setScheduledAt(e.target.value)}
                     style={styles.input}
                   />
+                  {visiblePostSlots.length > 0 && scheduledAt && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px' }}>
+                      {visiblePostSlots.map(slot => {
+                        const currentTime = scheduledAt.slice(11, 16)
+                        const active = currentTime === slot
+                        return (
+                          <button
+                            key={slot}
+                            type="button"
+                            onClick={() => {
+                              // 日付部分は保持、時刻だけ slot で上書き
+                              if (!scheduledAt) return
+                              const datePart = scheduledAt.slice(0, 10)
+                              setScheduledAt(`${datePart}T${slot}`)
+                            }}
+                            style={{
+                              padding: '4px 12px',
+                              fontSize: '12px',
+                              fontWeight: 600,
+                              backgroundColor: active ? '#1da1f2' : '#fff',
+                              color: active ? '#fff' : '#1da1f2',
+                              border: '1px solid #1da1f2',
+                              borderRadius: '999px',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            {slot}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
                 </div>
 
                 <div style={styles.postModalActions}>
