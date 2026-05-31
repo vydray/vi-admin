@@ -149,6 +149,8 @@ export default function TwitterPostsPage() {
   const [showDuplicateModal, setShowDuplicateModal] = useState(false)
   // 複製先の日付 (YYYY-MM-DD の配列)。時刻は元投稿の時刻を固定で使う。
   const [duplicateDates, setDuplicateDates] = useState<string[]>([])
+  // 既に同時刻・同内容の予約がある日付 (チェック不可)。複製モーダルを開いた時点で 1回だけ取得。
+  const [duplicateBlockedDates, setDuplicateBlockedDates] = useState<Set<string>>(new Set())
   const [uploading, setUploading] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -211,6 +213,63 @@ export default function TwitterPostsPage() {
       loadData()
     }
   }, [storeLoading, storeId, loadData])
+
+  // 複製モーダルを開いたタイミングで、同時刻・同内容の予約が既にある日付を取得して
+  // チェックボックスを disable する
+  useEffect(() => {
+    if (!showDuplicateModal || !scheduledAt || !storeId) {
+      setDuplicateBlockedDates(new Set())
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      const orig = new Date(scheduledAt)
+      const hh = orig.getHours()
+      const mm = orig.getMinutes()
+
+      // 候補日 (今日~60日後) の scheduled_at リストを生成
+      const isoList: string[] = []
+      const isoToDateStr = new Map<string, string>()
+      for (let i = 0; i < 60; i++) {
+        const d = new Date(today)
+        d.setDate(d.getDate() + i)
+        const y = d.getFullYear()
+        const mo = String(d.getMonth() + 1).padStart(2, '0')
+        const dd = String(d.getDate()).padStart(2, '0')
+        const dateStr = `${y}-${mo}-${dd}`
+        const dt = new Date(y, d.getMonth(), d.getDate(), hh, mm, 0)
+        const iso = dt.toISOString()
+        isoList.push(iso)
+        isoToDateStr.set(iso, dateStr)
+      }
+
+      const { data, error } = await supabase
+        .from('scheduled_posts')
+        .select('scheduled_at')
+        .eq('store_id', storeId)
+        .eq('content', content.trim())
+        .eq('status', 'pending')
+        .in('scheduled_at', isoList)
+
+      if (cancelled) return
+      if (error) {
+        console.warn('複製先重複チェック失敗:', error)
+        return
+      }
+      const blocked = new Set<string>()
+      for (const row of data ?? []) {
+        const iso = new Date(row.scheduled_at).toISOString()
+        const dateStr = isoToDateStr.get(iso)
+        if (dateStr) blocked.add(dateStr)
+      }
+      setDuplicateBlockedDates(blocked)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [showDuplicateModal, scheduledAt, storeId, content])
 
   // 週の日付を取得
   const getWeekDays = useCallback((date: Date) => {
@@ -1700,8 +1759,12 @@ export default function TwitterPostsPage() {
           })
         }
 
-        const allSelected = duplicateDates.length === candidates.length
+        // 選択可能な (blockされていない) 日付のみカウント
+        const selectableDates = candidates.filter(c => !duplicateBlockedDates.has(c.dateStr))
+        const allSelectableChecked = selectableDates.length > 0 &&
+          selectableDates.every(c => duplicateDates.includes(c.dateStr))
         const toggleDate = (dateStr: string) => {
+          if (duplicateBlockedDates.has(dateStr)) return
           setDuplicateDates(prev =>
             prev.includes(dateStr) ? prev.filter(x => x !== dateStr) : [...prev, dateStr]
           )
@@ -1740,7 +1803,7 @@ export default function TwitterPostsPage() {
                       複製する日付（{duplicateDates.length}件選択中）
                     </label>
                     <button
-                      onClick={() => setDuplicateDates(allSelected ? [] : candidates.map(c => c.dateStr))}
+                      onClick={() => setDuplicateDates(allSelectableChecked ? [] : selectableDates.map(c => c.dateStr))}
                       style={{
                         padding: '4px 10px',
                         fontSize: '12px',
@@ -1750,8 +1813,9 @@ export default function TwitterPostsPage() {
                         borderRadius: '6px',
                         cursor: 'pointer',
                       }}
+                      disabled={selectableDates.length === 0}
                     >
-                      {allSelected ? '全解除' : '全選択'}
+                      {allSelectableChecked ? '全解除' : '全選択'}
                     </button>
                   </div>
                   <div
@@ -1767,30 +1831,40 @@ export default function TwitterPostsPage() {
                     }}
                   >
                     {candidates.map(c => {
+                      const blocked = duplicateBlockedDates.has(c.dateStr)
                       const checked = duplicateDates.includes(c.dateStr)
-                      const color = c.weekDayIdx === 0 ? '#dc2626' : c.weekDayIdx === 6 ? '#2563eb' : '#374151'
+                      const baseColor = c.weekDayIdx === 0 ? '#dc2626' : c.weekDayIdx === 6 ? '#2563eb' : '#374151'
+                      const color = blocked ? '#9ca3af' : baseColor
                       return (
                         <label
                           key={c.dateStr}
+                          title={blocked ? '同じ時刻・同じ内容の予約が既にあります' : undefined}
                           style={{
                             display: 'flex',
                             alignItems: 'center',
                             gap: '6px',
                             padding: '6px 8px',
-                            backgroundColor: checked ? '#dbeafe' : '#fff',
-                            border: `1px solid ${checked ? '#1da1f2' : '#e5e7eb'}`,
+                            backgroundColor: blocked
+                              ? '#f3f4f6'
+                              : checked
+                                ? '#dbeafe'
+                                : '#fff',
+                            border: `1px solid ${blocked ? '#e5e7eb' : checked ? '#1da1f2' : '#e5e7eb'}`,
                             borderRadius: '6px',
                             fontSize: '13px',
                             color,
-                            cursor: 'pointer',
+                            cursor: blocked ? 'not-allowed' : 'pointer',
                             userSelect: 'none',
+                            opacity: blocked ? 0.6 : 1,
+                            textDecoration: blocked ? 'line-through' : 'none',
                           }}
                         >
                           <input
                             type="checkbox"
                             checked={checked}
+                            disabled={blocked}
                             onChange={() => toggleDate(c.dateStr)}
-                            style={{ cursor: 'pointer' }}
+                            style={{ cursor: blocked ? 'not-allowed' : 'pointer' }}
                           />
                           {c.label}
                         </label>
