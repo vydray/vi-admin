@@ -146,6 +146,8 @@ export default function TwitterPostsPage() {
   const [localImages, setLocalImages] = useState<LocalImage[]>([]) // 新規追加時のローカル画像
   const [uploadedImages, setUploadedImages] = useState<UploadedImage[]>([]) // 編集時の既存画像
   const [editingId, setEditingId] = useState<number | null>(null)
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false)
+  const [duplicateScheduledAt, setDuplicateScheduledAt] = useState('')
   const [uploading, setUploading] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -489,7 +491,7 @@ export default function TwitterPostsPage() {
       const imageUrlsJson = allImageUrls.length > 0 ? JSON.stringify(allImageUrls) : null
 
       if (editingId) {
-        const { error } = await supabase
+        const { data: updated, error } = await supabase
           .from('scheduled_posts')
           .update({
             content: content.trim(),
@@ -498,11 +500,20 @@ export default function TwitterPostsPage() {
             updated_at: new Date().toISOString(),
           })
           .eq('id', editingId)
+          .select()
+          .single()
 
         if (error) throw error
+        // posts state を直接更新 (loadData を呼ぶとカレンダーが LoadingSpinner に置き換わってスクロール位置が0に戻るため)
+        if (updated) {
+          setPosts(prev => prev
+            .map(p => p.id === editingId ? (updated as ScheduledPost) : p)
+            .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())
+          )
+        }
         toast.success('予約投稿を更新しました')
       } else {
-        const { error } = await supabase
+        const { data: inserted, error } = await supabase
           .from('scheduled_posts')
           .insert({
             store_id: storeId,
@@ -511,13 +522,19 @@ export default function TwitterPostsPage() {
             scheduled_at: scheduledDate.toISOString(),
             status: 'pending',
           })
+          .select()
+          .single()
 
         if (error) throw error
+        if (inserted) {
+          setPosts(prev => [...prev, inserted as ScheduledPost].sort((a, b) =>
+            new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime()
+          ))
+        }
         toast.success('予約投稿を作成しました')
       }
 
       resetForm()
-      await loadData()
     } catch (error) {
       console.error('保存エラー:', error)
       const msg = error instanceof Error ? error.message : '保存に失敗しました'
@@ -527,10 +544,7 @@ export default function TwitterPostsPage() {
     }
   }
 
-  // 編集中の投稿を「複製して新規」化する
-  // - content / uploadedImages / scheduledAt はそのまま保持
-  // - scheduledAt は翌日 同時刻 にシフト (店長が一番よくやる使い方)
-  // - editingId をクリアして INSERT になるよう切替
+  // 複製モーダルを開く。日時は翌日同時刻をデフォルトで提示。
   const handleDuplicate = () => {
     if (!scheduledAt) {
       toast.error('投稿日時が未設定です')
@@ -538,9 +552,64 @@ export default function TwitterPostsPage() {
     }
     const next = new Date(scheduledAt)
     next.setDate(next.getDate() + 1)
-    setScheduledAt(formatDateTimeLocal(next.toISOString()))
-    setEditingId(null)
-    toast.success('複製しました。日時を確認して保存してください')
+    setDuplicateScheduledAt(formatDateTimeLocal(next.toISOString()))
+    setShowDuplicateModal(true)
+  }
+
+  // 複製モーダルで日時を確定して INSERT する
+  // 元の content / uploadedImages はそのまま使い、scheduledAt だけ差し替え
+  const handleDuplicateConfirm = async () => {
+    if (!storeId) return
+    if (!duplicateScheduledAt) {
+      toast.error('複製先の日時を選択してください')
+      return
+    }
+    const scheduledDate = new Date(duplicateScheduledAt)
+    if (scheduledDate <= new Date()) {
+      toast.error('複製先の日時は現在より後の時間を選択してください')
+      return
+    }
+
+    setSaving(true)
+    try {
+      // uploadedImages は既存(URLのみ保持)、localImagesは編集モーダルで追加された未アップロード分
+      // 複製で新規アップロードする必要があれば走らせる
+      let allImageUrls: string[] = [...uploadedImages.map(img => img.url)]
+      if (localImages.length > 0) {
+        const newlyUploaded = await uploadImagesToStorage()
+        allImageUrls = [...uploadedImages.map(img => img.url), ...newlyUploaded.map(img => img.url)]
+      }
+      const imageUrlsJson = allImageUrls.length > 0 ? JSON.stringify(allImageUrls) : null
+
+      const { data: inserted, error } = await supabase
+        .from('scheduled_posts')
+        .insert({
+          store_id: storeId,
+          content: content.trim(),
+          image_url: imageUrlsJson,
+          scheduled_at: scheduledDate.toISOString(),
+          status: 'pending',
+        })
+        .select()
+        .single()
+      if (error) throw error
+
+      // posts state を直接更新 (loadData は呼ばない → スクロール位置維持)
+      if (inserted) {
+        setPosts(prev => [...prev, inserted as ScheduledPost].sort((a, b) =>
+          new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime()
+        ))
+      }
+      toast.success('複製して新規予約しました')
+      setShowDuplicateModal(false)
+      resetForm()
+    } catch (error) {
+      console.error('複製エラー:', error)
+      const msg = error instanceof Error ? error.message : '複製に失敗しました'
+      toast.error(msg)
+    } finally {
+      setSaving(false)
+    }
   }
 
   const handleEdit = (post: ScheduledPost) => {
@@ -574,8 +643,9 @@ export default function TwitterPostsPage() {
         .eq('id', id)
 
       if (error) throw error
+      // posts state を直接更新 (loadData を呼ぶとスクロール位置が0に戻る)
+      setPosts(prev => prev.filter(p => p.id !== id))
       toast.success('削除しました')
-      await loadData()
     } catch (error) {
       console.error('削除エラー:', error)
       toast.error('削除に失敗しました')
@@ -1255,9 +1325,9 @@ export default function TwitterPostsPage() {
                       onClick={handleDuplicate}
                       disabled={saving}
                       style={styles.duplicateButton}
-                      title="同じ内容で翌日同時刻の新規予約に切り替えます"
+                      title="同じ内容で別の日時に複製します"
                     >
-                      複製して新規
+                      複製
                     </button>
                   )}
                   <button
@@ -1508,6 +1578,60 @@ export default function TwitterPostsPage() {
                   ))}
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 複製先 日時選択モーダル */}
+      {showDuplicateModal && (
+        <div
+          style={{ ...styles.modalOverlay, zIndex: 1100 }}
+          onClick={() => !saving && setShowDuplicateModal(false)}
+        >
+          <div
+            style={{ ...styles.modal, maxWidth: '420px' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={styles.modalHeader}>
+              <h2 style={styles.modalTitle}>複製先の日時</h2>
+              <button
+                onClick={() => setShowDuplicateModal(false)}
+                style={styles.closeButton}
+                disabled={saving}
+              >
+                ×
+              </button>
+            </div>
+            <div style={styles.modalBody}>
+              <div style={styles.inputGroup}>
+                <label style={styles.label}>投稿日時</label>
+                <input
+                  type="datetime-local"
+                  value={duplicateScheduledAt}
+                  onChange={(e) => setDuplicateScheduledAt(e.target.value)}
+                  style={styles.input}
+                />
+                <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '6px' }}>
+                  同じ内容・同じ画像でこの日時の新規予約を作ります。
+                </div>
+              </div>
+            </div>
+            <div style={styles.modalFooter}>
+              <button
+                onClick={() => setShowDuplicateModal(false)}
+                style={styles.cancelButton}
+                disabled={saving}
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={handleDuplicateConfirm}
+                disabled={saving || !duplicateScheduledAt}
+                style={styles.submitButton}
+              >
+                {saving ? '作成中...' : '複製'}
+              </button>
             </div>
           </div>
         </div>
