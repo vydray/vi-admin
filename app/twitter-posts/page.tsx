@@ -154,6 +154,10 @@ export default function TwitterPostsPage() {
   const [duplicateBlockedDates, setDuplicateBlockedDates] = useState<Set<string>>(new Set())
   // 重複チェック中フラグ (フェッチ完了までチェックボックス操作を抑制)
   const [duplicateChecking, setDuplicateChecking] = useState(false)
+  // 一括削除モード関連
+  const [bulkDeleteMode, setBulkDeleteMode] = useState(false)
+  const [selectedPostIds, setSelectedPostIds] = useState<Set<number>>(new Set())
+  const [bulkDeleting, setBulkDeleting] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -792,6 +796,51 @@ export default function TwitterPostsPage() {
     setShowForm(true)
   }
 
+  // 一括削除モードを開始 / 終了
+  const enterBulkDeleteMode = () => {
+    setBulkDeleteMode(true)
+    setSelectedPostIds(new Set())
+  }
+  const exitBulkDeleteMode = () => {
+    setBulkDeleteMode(false)
+    setSelectedPostIds(new Set())
+  }
+
+  // 投稿カードの選択トグル
+  const togglePostSelection = (postId: number) => {
+    setSelectedPostIds(prev => {
+      const next = new Set(prev)
+      if (next.has(postId)) next.delete(postId)
+      else next.add(postId)
+      return next
+    })
+  }
+
+  // 選択した投稿をまとめて削除
+  const handleBulkDelete = async () => {
+    if (selectedPostIds.size === 0) return
+    if (!confirm(`選択した ${selectedPostIds.size} 件の予約投稿を削除しますか？\nこの操作は取り消せません。`)) return
+
+    const idsToDelete = Array.from(selectedPostIds)
+    setBulkDeleting(true)
+    try {
+      const { error } = await supabase
+        .from('scheduled_posts')
+        .delete()
+        .in('id', idsToDelete)
+      if (error) throw error
+      // posts state を直接更新 (loadData は呼ばない → スクロール位置維持)
+      setPosts(prev => prev.filter(p => !selectedPostIds.has(p.id)))
+      toast.success(`${idsToDelete.length} 件削除しました`)
+      exitBulkDeleteMode()
+    } catch (error) {
+      console.error('一括削除エラー:', error)
+      toast.error('削除に失敗しました')
+    } finally {
+      setBulkDeleting(false)
+    }
+  }
+
   const handleDelete = async (id: number, e: React.MouseEvent) => {
     e.stopPropagation()
     if (!confirm('この予約投稿を削除しますか？')) return
@@ -1094,41 +1143,66 @@ export default function TwitterPostsPage() {
   const isBroken = connectionState === 'broken'
   const dayNames = ['月', '火', '水', '木', '金', '土', '日']
 
-  const renderPostCard = (post: ScheduledPost, compact = false) => (
-    <div
-      key={post.id}
-      onClick={(e) => {
-        e.stopPropagation()
-        if (post.status === 'pending') handleEdit(post)
-      }}
-      style={{
-        ...styles.postCard,
-        ...(compact ? styles.postCardCompact : {}),
-        cursor: post.status === 'pending' ? 'pointer' : 'default',
-        borderLeft: `3px solid ${getStatusColor(post.status)}`,
-      }}
-    >
-      <div style={styles.postCardHeader}>
-        <span style={styles.postTime}>{formatTime(post.scheduled_at)}</span>
-        {post.status === 'pending' && (
-          <button
-            onClick={(e) => handleDelete(post.id, e)}
-            style={styles.deleteBtn}
-          >
-            ×
-          </button>
+  const renderPostCard = (post: ScheduledPost, compact = false) => {
+    // 一括削除モード判定。posted は選択不可
+    const selectable = post.status !== 'posted'
+    const selected = selectedPostIds.has(post.id)
+    return (
+      <div
+        key={post.id}
+        onClick={(e) => {
+          e.stopPropagation()
+          if (bulkDeleteMode) {
+            if (selectable) togglePostSelection(post.id)
+            return
+          }
+          if (post.status === 'pending') handleEdit(post)
+        }}
+        style={{
+          ...styles.postCard,
+          ...(compact ? styles.postCardCompact : {}),
+          cursor: bulkDeleteMode
+            ? (selectable ? 'pointer' : 'not-allowed')
+            : (post.status === 'pending' ? 'pointer' : 'default'),
+          borderLeft: `3px solid ${getStatusColor(post.status)}`,
+          ...(bulkDeleteMode && selected
+            ? { backgroundColor: '#fee2e2', outline: '2px solid #dc2626', outlineOffset: '-1px' }
+            : {}),
+          ...(bulkDeleteMode && !selectable ? { opacity: 0.45 } : {}),
+        }}
+      >
+        <div style={styles.postCardHeader}>
+          {bulkDeleteMode && (
+            <input
+              type="checkbox"
+              checked={selected}
+              disabled={!selectable}
+              onChange={() => selectable && togglePostSelection(post.id)}
+              onClick={e => e.stopPropagation()}
+              style={{ marginRight: '4px', cursor: selectable ? 'pointer' : 'not-allowed' }}
+            />
+          )}
+          <span style={styles.postTime}>{formatTime(post.scheduled_at)}</span>
+          {!bulkDeleteMode && post.status === 'pending' && (
+            <button
+              onClick={(e) => handleDelete(post.id, e)}
+              style={styles.deleteBtn}
+            >
+              ×
+            </button>
+          )}
+        </div>
+        {post.image_url && (
+          <img src={post.image_url} alt="" style={styles.postThumbnail} />
         )}
+        <p style={styles.postContent}>
+          {post.content.length > (compact ? 30 : 50)
+            ? post.content.slice(0, compact ? 30 : 50) + '...'
+            : post.content}
+        </p>
       </div>
-      {post.image_url && (
-        <img src={post.image_url} alt="" style={styles.postThumbnail} />
-      )}
-      <p style={styles.postContent}>
-        {post.content.length > (compact ? 30 : 50)
-          ? post.content.slice(0, compact ? 30 : 50) + '...'
-          : post.content}
-      </p>
-    </div>
-  )
+    )
+  }
 
   const renderDayCell = (date: Date, isCompact = false) => {
     const dateKey = toLocalDateKey(date)
@@ -1213,10 +1287,78 @@ export default function TwitterPostsPage() {
               <button onClick={() => handleCreateNew()} style={styles.addButton}>
                 + 新しい投稿
               </button>
+              {bulkDeleteMode ? (
+                <>
+                  <button
+                    onClick={handleBulkDelete}
+                    disabled={selectedPostIds.size === 0 || bulkDeleting}
+                    style={{
+                      ...styles.addButton,
+                      backgroundColor: selectedPostIds.size === 0 ? '#9ca3af' : '#dc2626',
+                      cursor: selectedPostIds.size === 0 || bulkDeleting ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    {bulkDeleting ? '削除中...' : `${selectedPostIds.size}件 削除`}
+                  </button>
+                  <button
+                    onClick={exitBulkDeleteMode}
+                    disabled={bulkDeleting}
+                    style={{
+                      ...styles.recurringListBtn,
+                      backgroundColor: '#fff',
+                      color: '#6b7280',
+                      borderColor: '#d1d5db',
+                    }}
+                  >
+                    キャンセル
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={enterBulkDeleteMode}
+                  style={{
+                    ...styles.recurringListBtn,
+                    backgroundColor: '#fff',
+                    color: '#dc2626',
+                    borderColor: '#fecaca',
+                  }}
+                  title="複数の予約投稿をまとめて削除"
+                >
+                  一括削除
+                </button>
+              )}
             </>
           )}
         </div>
       </div>
+
+      {bulkDeleteMode && (
+        <div
+          style={{
+            position: 'sticky',
+            top: 0,
+            zIndex: 50,
+            backgroundColor: '#fef2f2',
+            border: '1px solid #fecaca',
+            borderRadius: '6px',
+            padding: '8px 12px',
+            margin: '0 0 12px 0',
+            fontSize: '13px',
+            color: '#991b1b',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}
+        >
+          <span>
+            一括削除モード: 削除する予約投稿をタップして選択
+            （<strong>{selectedPostIds.size}</strong> 件選択中）
+          </span>
+          <span style={{ fontSize: '11px', color: '#7f1d1d' }}>
+            投稿済みの予約は選択できません
+          </span>
+        </div>
+      )}
 
       {connectionState === 'disconnected' ? (
         <div style={styles.notConnectedBox}>
@@ -1302,43 +1444,70 @@ export default function TwitterPostsPage() {
                             style={{
                               ...styles.hourCell,
                               ...(isPastHour ? { backgroundColor: '#f3f4f6', cursor: 'not-allowed' } : {}),
+                              // 一括削除モード中は全件見える必要があるので高さ制限を解除
+                              ...(bulkDeleteMode ? { maxHeight: 'none', overflow: 'visible' } : {}),
                             }}
                             onClick={() => {
+                              if (bulkDeleteMode) return // 一括削除モード中はセル空クリックで新規作成しない
                               const d = new Date(date)
                               d.setHours(hour, 0, 0, 0)
                               handleCreateNew(d)
                             }}
                           >
-                            {hourPosts.slice(0, 1).map(post => (
-                              <div
-                                key={post.id}
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  if (post.status === 'pending') handleEdit(post)
-                                }}
-                                style={{
-                                  ...styles.hourPostCard,
-                                  borderLeft: `3px solid ${getStatusColor(post.status)}`,
-                                  cursor: post.status === 'pending' ? 'pointer' : 'default',
-                                }}
-                              >
-                                <div style={styles.hourPostHeader}>
-                                  <span style={styles.hourPostTime}>{formatTime(post.scheduled_at)}</span>
-                                  {post.status === 'pending' && (
-                                    <button
-                                      onClick={(e) => handleDelete(post.id, e)}
-                                      style={styles.deleteBtn}
-                                    >
-                                      ×
-                                    </button>
-                                  )}
+                            {(bulkDeleteMode ? hourPosts : hourPosts.slice(0, 1)).map(post => {
+                              const selectable = post.status !== 'posted'
+                              const selected = selectedPostIds.has(post.id)
+                              return (
+                                <div
+                                  key={post.id}
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    if (bulkDeleteMode) {
+                                      if (selectable) togglePostSelection(post.id)
+                                      return
+                                    }
+                                    if (post.status === 'pending') handleEdit(post)
+                                  }}
+                                  style={{
+                                    ...styles.hourPostCard,
+                                    borderLeft: `3px solid ${getStatusColor(post.status)}`,
+                                    cursor: bulkDeleteMode
+                                      ? (selectable ? 'pointer' : 'not-allowed')
+                                      : (post.status === 'pending' ? 'pointer' : 'default'),
+                                    ...(bulkDeleteMode && selected
+                                      ? { backgroundColor: '#fee2e2', outline: '2px solid #dc2626', outlineOffset: '-1px' }
+                                      : {}),
+                                    ...(bulkDeleteMode && !selectable ? { opacity: 0.45 } : {}),
+                                  }}
+                                >
+                                  <div style={styles.hourPostHeader}>
+                                    {bulkDeleteMode && (
+                                      <input
+                                        type="checkbox"
+                                        checked={selected}
+                                        disabled={!selectable}
+                                        onChange={() => selectable && togglePostSelection(post.id)}
+                                        onClick={e => e.stopPropagation()}
+                                        style={{ marginRight: '2px', cursor: selectable ? 'pointer' : 'not-allowed' }}
+                                      />
+                                    )}
+                                    <span style={styles.hourPostTime}>{formatTime(post.scheduled_at)}</span>
+                                    {!bulkDeleteMode && post.status === 'pending' && (
+                                      <button
+                                        onClick={(e) => handleDelete(post.id, e)}
+                                        style={styles.deleteBtn}
+                                      >
+                                        ×
+                                      </button>
+                                    )}
+                                  </div>
+                                  <p style={styles.hourPostContent}>
+                                    {post.content.length > 40 ? post.content.slice(0, 40) + '...' : post.content}
+                                  </p>
                                 </div>
-                                <p style={styles.hourPostContent}>
-                                  {post.content.length > 40 ? post.content.slice(0, 40) + '...' : post.content}
-                                </p>
-                              </div>
-                            ))}
-                            {hourPosts.length > 1 && (
+                              )
+                            })}
+                            {!bulkDeleteMode && hourPosts.length > 1 && (
                               <div
                                 style={styles.hourPostMore}
                                 title={hourPosts.slice(1).map(p => p.content.slice(0, 30)).join('\n')}
