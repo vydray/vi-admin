@@ -14,14 +14,39 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { store_id, message } = await request.json()
+    const { store_id, message, image_url } = await request.json()
 
-    if (!store_id || !message) {
-      return NextResponse.json({ error: 'store_id and message are required' }, { status: 400 })
+    if (!store_id) {
+      return NextResponse.json({ error: 'store_id is required' }, { status: 400 })
     }
 
-    if (message.length > 2000) {
+    const hasMessage = typeof message === 'string' && message.trim().length > 0
+    const hasImage = typeof image_url === 'string' && image_url.length > 0
+
+    if (!hasMessage && !hasImage) {
+      return NextResponse.json({ error: 'メッセージまたは画像が必要です' }, { status: 400 })
+    }
+
+    if (hasMessage && message.length > 2000) {
       return NextResponse.json({ error: 'メッセージは2000文字以内にしてください' }, { status: 400 })
+    }
+
+    // LINE Messaging API は HTTPS URL のみ受け付ける
+    if (hasImage && !image_url.startsWith('https://')) {
+      return NextResponse.json({ error: '画像URLは https:// である必要があります' }, { status: 400 })
+    }
+
+    // LINE 用メッセージ配列を組み立て (テキスト+画像なら2件、片方なら1件)
+    const lineMessages: Array<Record<string, unknown>> = []
+    if (hasMessage) {
+      lineMessages.push({ type: 'text', text: message.trim() })
+    }
+    if (hasImage) {
+      lineMessages.push({
+        type: 'image',
+        originalContentUrl: image_url,
+        previewImageUrl: image_url,
+      })
     }
 
     // LINE設定を取得
@@ -62,7 +87,7 @@ export async function POST(request: NextRequest) {
           },
           body: JSON.stringify({
             to: cast.line_user_id,
-            messages: [{ type: 'text', text: message }],
+            messages: lineMessages,
           }),
         })
 

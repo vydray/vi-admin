@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useStore } from '@/contexts/StoreContext'
 import { supabase } from '@/lib/supabase'
 import ProtectedPage from '@/components/ProtectedPage'
@@ -11,6 +11,10 @@ function LineBroadcastContent() {
   const [message, setMessage] = useState('')
   const [sending, setSending] = useState(false)
   const [registeredCount, setRegisteredCount] = useState<number | null>(null)
+  const [imageUrl, setImageUrl] = useState<string | null>(null)
+  const [imagePath, setImagePath] = useState<string | null>(null)
+  const [uploadingImage, setUploadingImage] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [result, setResult] = useState<{
     total: number
     successCount: number
@@ -33,9 +37,68 @@ function LineBroadcastContent() {
     fetchCount()
   }, [storeId])
 
+  const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // LINE は JPEG 推奨。とりあえず JPEG/PNG を許容 (LINE側で互換動作)
+    if (!file.type.startsWith('image/')) {
+      toast.error('画像ファイルを選択してください')
+      return
+    }
+    // 4MB 上限 (Vercel route handler の body 上限内に収める)
+    if (file.size > 4 * 1024 * 1024) {
+      toast.error('画像サイズは4MB以下にしてください')
+      return
+    }
+
+    setUploadingImage(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('storeId', String(storeId))
+
+      const res = await fetch('/api/twitter/upload-image', {
+        method: 'POST',
+        body: formData,
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toast.error(data.error || 'アップロードに失敗しました')
+        return
+      }
+      setImageUrl(data.url)
+      setImagePath(data.path)
+    } catch {
+      toast.error('アップロードに失敗しました')
+    } finally {
+      setUploadingImage(false)
+      // 同じファイルを再選択できるよう input をリセット
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
+  const handleImageRemove = async () => {
+    if (!imagePath) {
+      setImageUrl(null)
+      return
+    }
+    try {
+      await fetch(`/api/twitter/upload-image?path=${encodeURIComponent(imagePath)}`, {
+        method: 'DELETE',
+      })
+    } catch {
+      // 削除失敗は致命的じゃないので無視
+    }
+    setImageUrl(null)
+    setImagePath(null)
+  }
+
   const handleSend = async () => {
-    if (!message.trim()) {
-      toast.error('メッセージを入力してください')
+    const hasMessage = message.trim().length > 0
+    const hasImage = imageUrl !== null
+    if (!hasMessage && !hasImage) {
+      toast.error('メッセージまたは画像を入力してください')
       return
     }
     if (message.length > 2000) {
@@ -50,7 +113,11 @@ function LineBroadcastContent() {
       const res = await fetch('/api/line-broadcast', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ store_id: storeId, message: message.trim() }),
+        body: JSON.stringify({
+          store_id: storeId,
+          message: hasMessage ? message.trim() : undefined,
+          image_url: hasImage ? imageUrl : undefined,
+        }),
       })
 
       const data = await res.json()
@@ -64,6 +131,8 @@ function LineBroadcastContent() {
       if (data.failCount === 0) {
         toast.success(`${data.successCount}人に送信しました`)
         setMessage('')
+        setImageUrl(null)
+        setImagePath(null)
       } else {
         toast.error(`${data.successCount}人成功、${data.failCount}人失敗`)
       }
@@ -118,18 +187,77 @@ function LineBroadcastContent() {
         </div>
       </div>
 
+      <div style={{ marginBottom: '16px' }}>
+        <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', marginBottom: '8px' }}>
+          画像（任意・1枚まで・4MB以下）
+        </label>
+        {imageUrl ? (
+          <div style={{ position: 'relative', display: 'inline-block' }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={imageUrl}
+              alt="送信プレビュー"
+              style={{
+                maxWidth: '240px',
+                maxHeight: '240px',
+                borderRadius: '8px',
+                border: '1px solid #d1d5db',
+              }}
+            />
+            <button
+              onClick={handleImageRemove}
+              style={{
+                position: 'absolute',
+                top: '4px',
+                right: '4px',
+                width: '24px',
+                height: '24px',
+                borderRadius: '50%',
+                backgroundColor: 'rgba(0,0,0,0.6)',
+                color: '#fff',
+                border: 'none',
+                fontSize: '14px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+              aria-label="画像を削除"
+            >
+              ×
+            </button>
+          </div>
+        ) : (
+          <div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png"
+              onChange={handleImageSelect}
+              disabled={uploadingImage}
+              style={{ fontSize: '14px' }}
+            />
+            {uploadingImage && (
+              <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>
+                アップロード中...
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       <button
         onClick={handleSend}
-        disabled={sending || !message.trim() || registeredCount === 0}
+        disabled={sending || uploadingImage || (!message.trim() && !imageUrl) || registeredCount === 0}
         style={{
           padding: '10px 24px',
-          backgroundColor: sending || !message.trim() ? '#94a3b8' : '#22c55e',
+          backgroundColor: sending || uploadingImage || (!message.trim() && !imageUrl) ? '#94a3b8' : '#22c55e',
           color: '#fff',
           border: 'none',
           borderRadius: '8px',
           fontSize: '14px',
           fontWeight: '600',
-          cursor: sending || !message.trim() ? 'not-allowed' : 'pointer',
+          cursor: sending || uploadingImage || (!message.trim() && !imageUrl) ? 'not-allowed' : 'pointer',
         }}
       >
         {sending ? '送信中...' : '一斉送信'}
