@@ -151,6 +151,8 @@ export default function TwitterPostsPage() {
   const [duplicateDates, setDuplicateDates] = useState<string[]>([])
   // 既に同時刻・同内容の予約がある日付 (チェック不可)。複製モーダルを開いた時点で 1回だけ取得。
   const [duplicateBlockedDates, setDuplicateBlockedDates] = useState<Set<string>>(new Set())
+  // 重複チェック中フラグ (フェッチ完了までチェックボックス操作を抑制)
+  const [duplicateChecking, setDuplicateChecking] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -219,9 +221,12 @@ export default function TwitterPostsPage() {
   useEffect(() => {
     if (!showDuplicateModal || !scheduledAt || !storeId) {
       setDuplicateBlockedDates(new Set())
+      setDuplicateChecking(false)
       return
     }
     let cancelled = false
+    setDuplicateChecking(true)
+    setDuplicateBlockedDates(new Set())
     ;(async () => {
       const today = new Date()
       today.setHours(0, 0, 0, 0)
@@ -256,6 +261,7 @@ export default function TwitterPostsPage() {
       if (cancelled) return
       if (error) {
         console.warn('複製先重複チェック失敗:', error)
+        setDuplicateChecking(false)
         return
       }
       const blocked = new Set<string>()
@@ -265,6 +271,7 @@ export default function TwitterPostsPage() {
         if (dateStr) blocked.add(dateStr)
       }
       setDuplicateBlockedDates(blocked)
+      setDuplicateChecking(false)
     })()
     return () => {
       cancelled = true
@@ -1813,13 +1820,14 @@ export default function TwitterPostsPage() {
                         borderRadius: '6px',
                         cursor: 'pointer',
                       }}
-                      disabled={selectableDates.length === 0}
+                      disabled={selectableDates.length === 0 || duplicateChecking}
                     >
                       {allSelectableChecked ? '全解除' : '全選択'}
                     </button>
                   </div>
                   <div
                     style={{
+                      position: 'relative',
                       display: 'grid',
                       gridTemplateColumns: 'repeat(3, 1fr)',
                       gap: '6px',
@@ -1830,6 +1838,35 @@ export default function TwitterPostsPage() {
                       padding: '8px',
                     }}
                   >
+                    {duplicateChecking && (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          inset: 0,
+                          backgroundColor: 'rgba(255, 255, 255, 0.85)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          zIndex: 10,
+                          borderRadius: '6px',
+                          backdropFilter: 'blur(1px)',
+                        }}
+                      >
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                          <div
+                            style={{
+                              width: '24px',
+                              height: '24px',
+                              border: '3px solid #e5e7eb',
+                              borderTopColor: '#1da1f2',
+                              borderRadius: '50%',
+                              animation: 'spin 0.8s linear infinite',
+                            }}
+                          />
+                          <div style={{ fontSize: '12px', color: '#6b7280' }}>既存予約を確認中...</div>
+                        </div>
+                      </div>
+                    )}
                     {candidates.map(c => {
                       const blocked = duplicateBlockedDates.has(c.dateStr)
                       const checked = duplicateDates.includes(c.dateStr)
@@ -1886,10 +1923,10 @@ export default function TwitterPostsPage() {
                 </button>
                 <button
                   onClick={handleDuplicateConfirm}
-                  disabled={saving || duplicateDates.length === 0}
+                  disabled={saving || duplicateChecking || duplicateDates.length === 0}
                   style={styles.submitButton}
                 >
-                  {saving ? '作成中...' : `${duplicateDates.length}件 複製`}
+                  {saving ? '作成中...' : duplicateChecking ? '確認中...' : `${duplicateDates.length}件 複製`}
                 </button>
               </div>
             </div>
