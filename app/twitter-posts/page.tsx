@@ -757,12 +757,11 @@ export default function TwitterPostsPage() {
 
     setSaving(true)
     try {
-      let allImageUrls: string[] = [...uploadedImages.map(img => img.url)]
+      let sourceUrls: string[] = [...uploadedImages.map(img => img.url)]
       if (localImages.length > 0) {
         const newlyUploaded = await uploadImagesToStorage()
-        allImageUrls = [...uploadedImages.map(img => img.url), ...newlyUploaded.map(img => img.url)]
+        sourceUrls = [...uploadedImages.map(img => img.url), ...newlyUploaded.map(img => img.url)]
       }
-      const imageUrlsJson = allImageUrls.length > 0 ? JSON.stringify(allImageUrls) : null
 
       // 各日付に対して scheduled_at を組み立てる。過去日時はスキップ。
       const now = Date.now()
@@ -773,21 +772,15 @@ export default function TwitterPostsPage() {
         scheduled_at: string
         status: 'pending'
       }
-      const candidates: Row[] = duplicateDates.map(dateStr => {
+      const candidates = duplicateDates.map(dateStr => {
         const [y, mo, d] = dateStr.split('-').map(Number)
         const dt = new Date(y, mo - 1, d, hh, mm, 0)
-        return {
-          store_id: storeId,
-          content: content.trim(),
-          image_url: imageUrlsJson,
-          scheduled_at: dt.toISOString(),
-          status: 'pending' as const,
-        }
+        return { dateStr, scheduled_at: dt.toISOString() }
       })
-      const futureRows = candidates.filter(r => new Date(r.scheduled_at).getTime() > now)
-      const pastSkipped = candidates.length - futureRows.length
+      const futureCandidates = candidates.filter(c => new Date(c.scheduled_at).getTime() > now)
+      const pastSkipped = candidates.length - futureCandidates.length
 
-      if (futureRows.length === 0) {
+      if (futureCandidates.length === 0) {
         toast.error('複製先の日時はすべて過去です')
         setSaving(false)
         return
@@ -801,12 +794,12 @@ export default function TwitterPostsPage() {
         .eq('store_id', storeId)
         .eq('content', contentTrimmed)
         .eq('status', 'pending')
-        .in('scheduled_at', futureRows.map(r => r.scheduled_at))
+        .in('scheduled_at', futureCandidates.map(c => c.scheduled_at))
       const dupSet = new Set((existingRows ?? []).map(e => new Date(e.scheduled_at).toISOString()))
-      const validRows = futureRows.filter(r => !dupSet.has(r.scheduled_at))
-      const dupSkipped = futureRows.length - validRows.length
+      const validCandidates = futureCandidates.filter(c => !dupSet.has(c.scheduled_at))
+      const dupSkipped = futureCandidates.length - validCandidates.length
 
-      if (validRows.length === 0) {
+      if (validCandidates.length === 0) {
         const reasons: string[] = []
         if (pastSkipped > 0) reasons.push(`過去日時${pastSkipped}件`)
         if (dupSkipped > 0) reasons.push(`同時刻・同内容の予約が既に存在${dupSkipped}件`)
@@ -814,6 +807,34 @@ export default function TwitterPostsPage() {
         setSaving(false)
         return
       }
+
+      // 各複製先につき独立した image_url を割り当てる (cron で 1つ失敗しても他に影響しない)
+      let imageUrlsByCandidate: (string | null)[] = validCandidates.map(() => null)
+      if (sourceUrls.length > 0) {
+        const dupRes = await fetch('/api/twitter/duplicate-images', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sourceUrls,
+            count: validCandidates.length,
+            store_id: storeId,
+          }),
+        })
+        if (!dupRes.ok) {
+          const err = await dupRes.json().catch(() => ({ error: '画像コピーに失敗しました' }))
+          throw new Error(err.error || '画像コピーに失敗しました')
+        }
+        const { copies } = await dupRes.json() as { copies: string[][] }
+        imageUrlsByCandidate = copies.map(urls => JSON.stringify(urls))
+      }
+
+      const validRows: Row[] = validCandidates.map((c, i) => ({
+        store_id: storeId,
+        content: contentTrimmed,
+        image_url: imageUrlsByCandidate[i],
+        scheduled_at: c.scheduled_at,
+        status: 'pending' as const,
+      }))
 
       const { data: inserted, error } = await supabase
         .from('scheduled_posts')

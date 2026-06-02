@@ -133,6 +133,7 @@ async function executeTwitterPosts() {
 
       // 画像をTwitterにアップロード
       const mediaIds: string[] = []
+      const failedImageUrls: string[] = []
       for (const imageUrl of imageUrls) {
         const mediaId = await uploadMediaToTwitter(
           imageUrl,
@@ -143,7 +144,31 @@ async function executeTwitterPosts() {
         )
         if (mediaId) {
           mediaIds.push(mediaId)
+        } else {
+          failedImageUrls.push(imageUrl)
         }
+      }
+
+      // 画像が指定されていたのに 1枚でも upload に失敗した場合は post 自体を失敗扱いに
+      // (text-only で勝手にツイートして観測不能になる事故を防止)
+      const imageUploadFailed = imageUrls.length > 0 && failedImageUrls.length > 0
+      if (imageUploadFailed) {
+        const errorMessage = `画像アップロード失敗 (${failedImageUrls.length}/${imageUrls.length}枚): ${failedImageUrls.join(', ')}`
+        console.error(`[Twitter Post Cron] post ${post.id} skip: ${errorMessage}`)
+        await supabase
+          .from('scheduled_posts')
+          .update({
+            status: 'failed',
+            posted_at: null,
+            twitter_post_id: null,
+            error_message: errorMessage,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', post.id)
+        failCount++
+        // 画像upload失敗時は Storage 削除しない (次回再試行のために残す)
+        await new Promise(resolve => setTimeout(resolve, 1000))
+        continue
       }
 
       // ツイートを投稿（画像付き）
@@ -179,8 +204,9 @@ async function executeTwitterPosts() {
       if (result.success) {
         successCount++
         // 投稿成功後、Storageから画像を削除（容量節約）
+        // ただし、同じ URL を他の pending/failed 投稿が参照してたら削除しない
         if (imageUrls.length > 0) {
-          await deleteImagesFromStorage(imageUrls)
+          await deleteImagesFromStorageIfUnreferenced(imageUrls, post.id)
         }
       } else {
         failCount++
@@ -214,12 +240,32 @@ async function executeTwitterPosts() {
   }
 }
 
-// Supabase Storageから画像を削除
-async function deleteImagesFromStorage(imageUrls: string[]) {
+// Supabase Storageから画像を削除（同じ URL を他の pending/failed 投稿が参照してたら残す）
+async function deleteImagesFromStorageIfUnreferenced(imageUrls: string[], currentPostId: number) {
   const bucketUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/twitter-images/`
 
   for (const url of imageUrls) {
-    // URLからパスを抽出
+    // 他に同じ image_url を参照してる pending/failed 投稿があるか確認
+    // image_url は JSON配列文字列なので部分一致で検索
+    const { data: refs, error: refErr } = await supabase
+      .from('scheduled_posts')
+      .select('id, status')
+      .neq('id', currentPostId)
+      .in('status', ['pending', 'failed'])
+      .like('image_url', `%${url}%`)
+      .limit(1)
+
+    if (refErr) {
+      console.error('Failed to check image references:', refErr)
+      // 参照チェックに失敗したら安全側に倒して削除しない
+      continue
+    }
+    if (refs && refs.length > 0) {
+      console.log(`[Storage Cleanup] skip ${url} — referenced by post ${refs[0].id} (${refs[0].status})`)
+      continue
+    }
+
+    // URLからパスを抽出して削除
     if (url.startsWith(bucketUrl)) {
       const path = url.replace(bucketUrl, '')
       try {
