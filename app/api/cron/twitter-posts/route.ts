@@ -133,9 +133,9 @@ async function executeTwitterPosts() {
 
       // 画像をTwitterにアップロード
       const mediaIds: string[] = []
-      const failedImageUrls: string[] = []
+      const failedImageUploads: Array<{ url: string; reason: string }> = []
       for (const imageUrl of imageUrls) {
-        const mediaId = await uploadMediaToTwitter(
+        const { mediaId, errorDetail } = await uploadMediaToTwitter(
           imageUrl,
           appCreds.api_key,
           appCreds.api_secret,
@@ -145,15 +145,18 @@ async function executeTwitterPosts() {
         if (mediaId) {
           mediaIds.push(mediaId)
         } else {
-          failedImageUrls.push(imageUrl)
+          failedImageUploads.push({ url: imageUrl, reason: errorDetail || 'unknown' })
         }
       }
 
       // 画像が指定されていたのに 1枚でも upload に失敗した場合は post 自体を失敗扱いに
       // (text-only で勝手にツイートして観測不能になる事故を防止)
-      const imageUploadFailed = imageUrls.length > 0 && failedImageUrls.length > 0
+      const imageUploadFailed = imageUrls.length > 0 && failedImageUploads.length > 0
       if (imageUploadFailed) {
-        const errorMessage = `画像アップロード失敗 (${failedImageUrls.length}/${imageUrls.length}枚): ${failedImageUrls.join(', ')}`
+        const reasonsCsv = failedImageUploads
+          .map(f => `${f.url.split('/').pop()} → ${f.reason}`)
+          .join(' | ')
+        const errorMessage = `画像アップロード失敗 (${failedImageUploads.length}/${imageUrls.length}枚): ${reasonsCsv}`
         console.error(`[Twitter Post Cron] post ${post.id} skip: ${errorMessage}`)
         await supabase
           .from('scheduled_posts')
@@ -324,26 +327,50 @@ function generateOAuthHeader(params: Record<string, string>): string {
 }
 
 // 画像をTwitterにアップロードしてmedia_idを取得
+// transient な失敗は 1回リトライ。失敗時は errorDetail を返して error_message に保存できるようにする。
 async function uploadMediaToTwitter(
   imageUrl: string,
   apiKey: string,
   apiSecret: string,
   accessToken: string,
   accessTokenSecret: string
-): Promise<string | null> {
+): Promise<{ mediaId: string | null; errorDetail?: string }> {
   const uploadUrl = 'https://upload.twitter.com/1.1/media/upload.json'
 
-  try {
-    // 画像をダウンロード
-    const imageResponse = await fetch(imageUrl)
-    if (!imageResponse.ok) {
-      console.error('Failed to fetch image:', imageUrl)
-      return null
+  // 1) 画像をダウンロード (最大2回 trial、500ms backoff)
+  let imageBuffer: ArrayBuffer | null = null
+  let imageFetchError = ''
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const imageResponse = await fetch(imageUrl)
+      if (!imageResponse.ok) {
+        imageFetchError = `HTTP ${imageResponse.status}`
+        if (attempt < 2) {
+          await new Promise(r => setTimeout(r, 500))
+          continue
+        }
+        return { mediaId: null, errorDetail: `image fetch ${imageFetchError}` }
+      }
+      imageBuffer = await imageResponse.arrayBuffer()
+      break
+    } catch (e) {
+      imageFetchError = e instanceof Error ? e.message : 'unknown'
+      if (attempt < 2) {
+        await new Promise(r => setTimeout(r, 500))
+        continue
+      }
+      return { mediaId: null, errorDetail: `image fetch exception: ${imageFetchError}` }
     }
+  }
+  if (!imageBuffer) {
+    return { mediaId: null, errorDetail: `image fetch ${imageFetchError}` }
+  }
 
-    const imageBuffer = await imageResponse.arrayBuffer()
-    const base64Image = Buffer.from(imageBuffer).toString('base64')
+  const base64Image = Buffer.from(imageBuffer).toString('base64')
 
+  // 2) Twitter v1.1 media upload (最大2回 trial、1s backoff、OAuthは毎回再生成)
+  let lastErrorDetail = ''
+  for (let attempt = 1; attempt <= 2; attempt++) {
     const oauthParams: Record<string, string> = {
       oauth_consumer_key: apiKey,
       oauth_nonce: crypto.randomBytes(16).toString('hex'),
@@ -352,7 +379,6 @@ async function uploadMediaToTwitter(
       oauth_token: accessToken,
       oauth_version: '1.0',
     }
-
     oauthParams.oauth_signature = generateOAuthSignature(
       'POST',
       uploadUrl,
@@ -364,27 +390,39 @@ async function uploadMediaToTwitter(
     const formData = new URLSearchParams()
     formData.append('media_data', base64Image)
 
-    const response = await fetch(uploadUrl, {
-      method: 'POST',
-      headers: {
-        'Authorization': generateOAuthHeader(oauthParams),
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: formData.toString(),
-    })
+    try {
+      const response = await fetch(uploadUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': generateOAuthHeader(oauthParams),
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: formData.toString(),
+      })
 
-    if (!response.ok) {
-      const errorText = await response.text()
-      console.error('Media upload error:', errorText)
-      return null
+      if (response.ok) {
+        const data = await response.json()
+        const mediaId = data.media_id_string || null
+        if (mediaId) return { mediaId }
+        lastErrorDetail = `no media_id_string in response: ${JSON.stringify(data).slice(0, 200)}`
+      } else {
+        const errorText = await response.text()
+        lastErrorDetail = `HTTP ${response.status}: ${errorText.slice(0, 300)}`
+        // 4xx は retry しない (権限/署名/duplicate 等、retry しても同じ)
+        if (response.status >= 400 && response.status < 500) {
+          return { mediaId: null, errorDetail: `media upload ${lastErrorDetail}` }
+        }
+      }
+    } catch (e) {
+      lastErrorDetail = `exception: ${e instanceof Error ? e.message : 'unknown'}`
     }
 
-    const data = await response.json()
-    return data.media_id_string || null
-  } catch (error) {
-    console.error('Upload media error:', error)
-    return null
+    if (attempt < 2) {
+      await new Promise(r => setTimeout(r, 1000))
+    }
   }
+
+  return { mediaId: null, errorDetail: `media upload ${lastErrorDetail}` }
 }
 
 // ツイートを投稿（画像対応）

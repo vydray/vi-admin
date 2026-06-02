@@ -631,6 +631,38 @@ export default function TwitterPostsPage() {
           setSaving(false)
           return
         }
+
+        // 直近24時間以内の同 content (posted/pending) を検出 → Twitter duplicate 拒否回避のため警告
+        const trimmedContent = content.trim()
+        const start = new Date(scheduledDate.getTime() - 24 * 60 * 60 * 1000).toISOString()
+        const end = new Date(scheduledDate.getTime() + 24 * 60 * 60 * 1000).toISOString()
+        const { data: nearby } = await supabase
+          .from('scheduled_posts')
+          .select('id, scheduled_at, status')
+          .eq('store_id', storeId)
+          .eq('content', trimmedContent)
+          .in('status', ['pending', 'posted'])
+          .gte('scheduled_at', start)
+          .lte('scheduled_at', end)
+        const conflict = (nearby ?? []).filter(p => p.id !== editingId)
+        if (conflict.length > 0) {
+          const labels = conflict
+            .map(p => {
+              const d = new Date(p.scheduled_at)
+              const ymd = `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+              return `・${ymd} (${p.status})`
+            })
+            .join('\n')
+          const proceed = window.confirm(
+            `同じ内容のツイートが直近24時間以内に ${conflict.length}件 あります。\n${labels}\n\n` +
+            `Twitter は同じテキストの連投を「重複」として拒否することが多く、配信が失敗する可能性が高いです。\n\n` +
+            `本当にこの内容で予約しますか？`
+          )
+          if (!proceed) {
+            setSaving(false)
+            return
+          }
+        }
       }
 
       // ローカル画像をアップロード
