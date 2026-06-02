@@ -87,19 +87,35 @@ function AttendancePageContent() {
   const [zoomPhotoLoading, setZoomPhotoLoading] = useState(false)
   const zoomTriggerRef = useRef<HTMLButtonElement | null>(null)
 
-  const loadCasts = useCallback(async () => {
-    const { data, error} = await supabase
+  // 在籍キャスト + 「退店者で attendanceCastNames に含まれる人」を取得
+  const loadCasts = useCallback(async (attendanceCastNames: string[] = []) => {
+    // 在籍中のキャスト
+    const { data: activeCasts, error: actErr } = await supabase
       .from('casts')
-      .select('id, name, display_order')
+      .select('id, name, display_order, status')
       .eq('store_id', storeId)
       .eq('status', '在籍')
       .eq('is_active', true)
       .order('display_order', { ascending: true, nullsFirst: false })
       .order('name')
 
-    if (!error && data) {
-      setCasts(data)
+    if (actErr) return
+
+    // 退店者で当月 attendance ありのキャストを追加取得
+    let retiredCasts: CastBasic[] = []
+    if (attendanceCastNames.length > 0) {
+      const { data } = await supabase
+        .from('casts')
+        .select('id, name, display_order, status')
+        .eq('store_id', storeId)
+        .neq('status', '在籍')
+        .in('name', attendanceCastNames)
+        .order('display_order', { ascending: true, nullsFirst: false })
+        .order('name')
+      retiredCasts = (data as CastBasic[]) || []
     }
+
+    setCasts([...((activeCasts as CastBasic[]) || []), ...retiredCasts])
   }, [storeId])
 
   const loadAttendances = useCallback(async () => {
@@ -115,7 +131,9 @@ function AttendancePageContent() {
 
     if (!error && data) {
       setAttendances(data)
+      return data as Attendance[]
     }
+    return [] as Attendance[]
   }, [selectedMonth, storeId])
 
   const loadAttendanceStatuses = useCallback(async () => {
@@ -169,12 +187,14 @@ function AttendancePageContent() {
 
   const loadData = useCallback(async () => {
     setLoading(true)
-    await Promise.all([
-      loadCasts(),
+    // attendances 先に取得し、その cast_name から退店者を判定して loadCasts に渡す
+    const [attendanceRows] = await Promise.all([
       loadAttendances(),
       loadAttendanceStatuses(),
-      loadCostumes()
+      loadCostumes(),
     ])
+    const castNames = Array.from(new Set(attendanceRows.map(a => a.cast_name).filter(Boolean)))
+    await loadCasts(castNames)
     setLoading(false)
   }, [loadCasts, loadAttendances, loadAttendanceStatuses, loadCostumes])
 
@@ -474,6 +494,9 @@ function AttendancePageContent() {
     // ステータス名を取得（status カラム用）
     const statusName = selectedStatus?.name || ''
 
+    // 遅刻以外のステータスなら late_minutes は強制的に 0 (UI でリセット済みだが保険)
+    const lateMinutesToSave = statusName === '遅刻' ? (tempTime.lateMinutes || 0) : 0
+
     try {
       if (existingAttendance) {
         // 更新
@@ -482,7 +505,7 @@ function AttendancePageContent() {
           check_out_datetime: normalizedClockOut,
           status_id: tempTime.statusId,
           status: statusName,
-          late_minutes: tempTime.lateMinutes || 0,
+          late_minutes: lateMinutesToSave,
           break_minutes: tempTime.breakMinutes || 0,
           daily_payment: tempTime.dailyPayment || 0,
           costume_id: tempTime.costumeId
@@ -515,7 +538,7 @@ function AttendancePageContent() {
             status_id: tempTime.statusId,
             status: statusName,
             store_id: storeId,
-            late_minutes: tempTime.lateMinutes || 0,
+            late_minutes: lateMinutesToSave,
             break_minutes: tempTime.breakMinutes || 0,
             daily_payment: tempTime.dailyPayment || 0,
             costume_id: tempTime.costumeId
@@ -1082,18 +1105,20 @@ function AttendancePageContent() {
               </tr>
             </thead>
             <tbody>
-              {casts.map((cast) => (
-                <tr key={cast.id}>
+              {casts.map((cast) => {
+                const isRetired = cast.status === '退店'
+                return (
+                <tr key={cast.id} style={isRetired ? { backgroundColor: '#f3f4f6' } : undefined}>
                   <td
                     style={{
                       position: 'sticky',
                       left: 0,
-                      backgroundColor: '#fff',
+                      backgroundColor: isRetired ? '#f3f4f6' : '#fff',
                       padding: isMobile ? '8px' : '12px',
                       borderBottom: '1px solid #e2e8f0',
                       borderRight: '1px solid #e2e8f0',
                       fontWeight: '500',
-                      color: '#1a1a1a',
+                      color: isRetired ? '#9ca3af' : '#1a1a1a',
                       zIndex: 5,
                       boxShadow: '2px 0 4px rgba(0,0,0,0.05)',
                       fontSize: isMobile ? '13px' : '14px',
@@ -1101,6 +1126,17 @@ function AttendancePageContent() {
                     }}
                   >
                     {cast.name}
+                    {isRetired && (
+                      <span style={{
+                        marginLeft: '6px',
+                        fontSize: '10px',
+                        padding: '1px 6px',
+                        borderRadius: '8px',
+                        backgroundColor: '#e5e7eb',
+                        color: '#6b7280',
+                        fontWeight: 600,
+                      }}>退店</span>
+                    )}
                   </td>
                   {daysInMonth.map(date => {
                     const cellKey = getCellKey(cast.id, date)
@@ -1232,7 +1268,8 @@ function AttendancePageContent() {
                     })()}
                   </td>
                 </tr>
-              ))}
+                )
+              })}
             </tbody>
           </table>
         </div>
@@ -1306,11 +1343,14 @@ function AttendancePageContent() {
                     const newStatusId = e.target.value
                     const newStatus = attendanceStatuses.find(s => s.id === newStatusId)
                     const needsTime = newStatus?.name === '出勤' || newStatus?.name === '遅刻' || newStatus?.name === '早退' || newStatus?.name === 'リクエスト出勤'
+                    const isLate = newStatus?.name === '遅刻'
                     setTempTime({
                       ...tempTime,
                       statusId: newStatusId,
                       clockIn: needsTime ? (tempTime.clockIn || '18:00') : '',
-                      clockOut: needsTime ? (tempTime.clockOut || '24:00') : ''
+                      clockOut: needsTime ? (tempTime.clockOut || '24:00') : '',
+                      // 遅刻以外に切替えたら遅刻分はリセット (罰金が誤って残らないように)
+                      lateMinutes: isLate ? tempTime.lateMinutes : 0,
                     })
                   }}
                   style={{

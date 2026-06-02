@@ -44,6 +44,8 @@ export interface Cast {
 export interface CastBasic {
   id: number
   name: string
+  display_order?: number | null
+  status?: string | null
 }
 
 // Optimized Cast type for list view (only fields actually displayed/used in UI)
