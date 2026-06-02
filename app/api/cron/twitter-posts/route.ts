@@ -379,10 +379,14 @@ async function uploadMediaToTwitter(
       oauth_token: accessToken,
       oauth_version: '1.0',
     }
+    // RFC 5849 §3.4.1.3.1: Content-Type=application/x-www-form-urlencoded の場合、
+    // body の form parameter も signature base string に含める必要がある。
+    // ここでは media_data(base64) も含めて署名計算する。
+    // Authorization ヘッダには oauth_* のみ載せる (generateOAuthHeader が startsWith('oauth_') でフィルタ)
     oauthParams.oauth_signature = generateOAuthSignature(
       'POST',
       uploadUrl,
-      oauthParams,
+      { ...oauthParams, media_data: base64Image },
       apiSecret,
       accessTokenSecret
     )
