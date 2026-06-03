@@ -203,6 +203,23 @@ function ExpensesPageContent() {
         balance += tx.amount
       }
     }
+
+    // 現金回収から小口へ入れた額(daily_reports.expense_amount)も入金として全期間分を加算する。
+    // ここを当月分だけにすると支出(全期間)との期間が非対称になり、残高が大きくマイナスにズレる。
+    const { data: drData, error: drError } = await supabase
+      .from('daily_reports')
+      .select('expense_amount')
+      .eq('store_id', storeId)
+      .gt('expense_amount', 0)
+
+    if (drError) {
+      console.error('小口残高(業務日報入金)取得エラー:', drError)
+    } else {
+      for (const dr of drData || []) {
+        balance += dr.expense_amount
+      }
+    }
+
     return balance
   }, [storeId])
 
@@ -312,9 +329,10 @@ function ExpensesPageContent() {
       setRecentChecks(checksData)
       setDailyReportExpenses(dailyExpenses)
 
-      // システム残高 = petty_cash残高 + 業務日報入金合計
-      const dailyExpenseTotal = dailyExpenses.reduce((sum, d) => sum + d.expense_amount, 0)
-      setSystemBalance(balance + dailyExpenseTotal)
+      // システム残高 = 全期間の petty_cash残高 + 全期間の業務日報入金
+      // (calculateSystemBalance 内で両方を全期間で計算済み。
+      //  ここで当月分の dailyExpenses を足すと二重計上になるため足さない)
+      setSystemBalance(balance)
 
       // 月末残高を計算
       await calculateMonthEndBalance()
