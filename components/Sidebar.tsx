@@ -33,6 +33,7 @@ const mobileRestrictedPaths = [
   '/line-settings',         // LINE設定（管理者専用）
   '/line-broadcast',        // LINE一斉送信（管理者専用）
   '/settings/ai',           // AI統合設定（管理者専用）
+  '/daily-check-settings',  // デイリーチェック設定（管理者専用）
   // Twitter
   '/twitter-posts',         // 予約投稿
   '/twitter-settings',      // Twitter設定
@@ -140,6 +141,7 @@ const menuGroups: MenuGroup[] = [
       { name: 'LINE設定', path: '/line-settings', icon: '💬' },
       { name: 'LINE一斉送信', path: '/line-broadcast', icon: '📨' },
       { name: 'AI統合設定', path: '/settings/ai', icon: '🤖' },
+      { name: 'デイリーチェック', path: '/daily-check-settings', icon: '🚨' },
     ]
   },
 ]

@@ -18,6 +18,7 @@ const mobileRestrictedPaths = [
   '/line-settings',         // LINE設定（管理者専用）
   '/line-broadcast',        // LINE一斉送信（管理者専用）
   '/settings/ai',           // AI統合設定（管理者専用）
+  '/daily-check-settings',  // デイリーチェック設定（管理者専用）
   // 売上&報酬
   '/sales-settings',        // 売上設定
   '/payslip-list',          // 報酬明細一覧
