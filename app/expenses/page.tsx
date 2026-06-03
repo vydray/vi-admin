@@ -275,6 +275,10 @@ function ExpensesPageContent() {
   }, [storeId, selectedMonth])
 
   // 残高確認履歴
+  // system_balance / difference は保存時のスナップショットではなく、
+  // 「各確認日時点までの最新データ」で毎回再計算して表示する。
+  // (後から過去日付の経費を追加入力しても差額が自動で正しくなるように)
+  // actual_balance(実際に数えた額)は確認時の記録なのでそのまま使う。
   const loadRecentChecks = useCallback(async () => {
     const { data, error } = await supabase
       .from('petty_cash_checks')
@@ -287,7 +291,34 @@ function ExpensesPageContent() {
       console.error('残高確認履歴取得エラー:', error)
       return []
     }
-    return data || []
+    if (!data || data.length === 0) return []
+
+    // 再計算に必要な全期間の petty_cash と daily_reports入金 をまとめて取得
+    const [{ data: allTx }, { data: allDr }] = await Promise.all([
+      supabase
+        .from('petty_cash_transactions')
+        .select('transaction_type, amount, transaction_date')
+        .eq('store_id', storeId),
+      supabase
+        .from('daily_reports')
+        .select('expense_amount, business_date')
+        .eq('store_id', storeId)
+        .gt('expense_amount', 0),
+    ])
+
+    return data.map(check => {
+      let bal = 0
+      for (const t of allTx || []) {
+        if (t.transaction_date <= check.check_date) {
+          if (t.transaction_type === 'withdrawal') bal -= t.amount
+          else bal += t.amount // deposit / adjustment
+        }
+      }
+      for (const d of allDr || []) {
+        if (d.business_date <= check.check_date) bal += d.expense_amount
+      }
+      return { ...check, system_balance: bal, difference: check.actual_balance - bal }
+    })
   }, [storeId])
 
   // 業務日報から経費を取得（選択月でフィルター）
