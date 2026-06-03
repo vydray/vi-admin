@@ -929,6 +929,8 @@ function ExpensesPageContent() {
     })).filter(c => c.total > 0),
     byCost: expenses.filter(e => e.category?.account_type === 'cost').reduce((sum, e) => sum + e.amount, 0),
     byExpense: expenses.filter(e => e.category?.account_type === 'expense').reduce((sum, e) => sum + e.amount, 0),
+    // その月に現金回収から小口へ入れた入金合計(daily_reports.expense_amount、business_date基準)
+    totalDeposit: dailyReportExpenses.reduce((sum, d) => sum + d.expense_amount, 0),
   }
 
   if (loading || storeLoading) {
@@ -1027,6 +1029,10 @@ function ExpensesPageContent() {
                   <span style={styles.summaryValue}>{formatCurrency(monthSummary.totalRegister)}</span>
                 </div>
               )}
+              <div style={styles.summaryItem}>
+                <span style={styles.summaryLabel}>入金（現金回収→小口）</span>
+                <span style={{ ...styles.summaryValue, color: '#16a34a' }}>{formatCurrency(monthSummary.totalDeposit)}</span>
+              </div>
             </div>
             {monthSummary.byCategory.length > 0 && (
               <div style={styles.categorySummary}>
