@@ -253,51 +253,20 @@ export async function POST(request: NextRequest) {
               ...template.grid_settings,
             };
 
-            // 最初の写真からサイズを取得して自動計算
-            let photoWidth = 300;
-            let photoHeight = 400;
-
-            // Vercelレスポンス上限(4.5MB)対策: 1辺の上限を設定。
-            // 元のアスペクト比は維持し、超えた場合のみ等比縮小する。
-            const MAX_PHOTO_DIMENSION = 1000;
-            const capDimensions = (w: number, h: number): [number, number] => {
-              const maxDim = Math.max(w, h);
-              if (maxDim <= MAX_PHOTO_DIMENSION) return [w, h];
-              const scale = MAX_PHOTO_DIMENSION / maxDim;
-              return [Math.round(w * scale), Math.round(h * scale)];
-            };
-
-            // 写真がある最初のキャストを探してサイズを取得
-            for (const cast of orderedCasts) {
-              if (cast.photo_path) {
-                const photoUrl = `${SUPABASE_URL}/storage/v1/object/public/cast-photos/${cast.photo_path}`;
-                const photoResponse = await fetch(photoUrl);
-                if (photoResponse.ok) {
-                  const photoBuffer = Buffer.from(await photoResponse.arrayBuffer());
-                  const metadata = await sharp(photoBuffer).metadata();
-                  if (metadata.width && metadata.height) {
-                    [photoWidth, photoHeight] = capDimensions(metadata.width, metadata.height);
-                    break;
-                  }
-                }
-              }
-            }
-
-            // プレースホルダーがある場合はそのサイズも考慮
-            if (photoWidth === 300 && photoHeight === 400 && placeholderBuffer) {
-              const metadata = await sharp(placeholderBuffer).metadata();
-              if (metadata.width && metadata.height) {
-                [photoWidth, photoHeight] = capDimensions(metadata.width, metadata.height);
-              }
-            }
+            // 全セルを固定アスペクト比 3:4 にする（プレビューの aspectRatio:'3/4' と一致させる）。
+            // 以前は「最初の写真のサイズ」基準だったため、写真ごとに縦横比が違うと
+            // cover で見切れたり崩れたりしていた。固定比にして全員同じ枠に揃える。
+            const photoWidth = gridSettings.photo_width || 600;
+            const photoHeight = gridSettings.photo_height || Math.round(photoWidth * 4 / 3);
 
             const castsPerPage = gridSettings.columns * gridSettings.rows;
             const totalPages = Math.ceil(orderedCasts.length / castsPerPage);
 
-            // 名前表示時の追加高さ
-            const nameHeight = gridSettings.show_names ? nameStyle.font_size + 20 + nameStyle.offset_y : 0;
+            // 名前は写真の下に余白を足すのではなく、写真内の下部にオーバーレイする
+            // （プレビューが position:absolute; bottom で写真内に重ねているのに合わせる）
+            const nameHeight = 0;
 
-            // キャンバスサイズを計算
+            // キャンバスサイズを計算（名前用の余白は付けない）
             const canvasWidth = gridSettings.columns * photoWidth + (gridSettings.columns + 1) * gridSettings.gap;
             const canvasHeight = gridSettings.rows * (photoHeight + nameHeight) + (gridSettings.rows + 1) * gridSettings.gap;
 
@@ -347,10 +316,16 @@ export async function POST(request: NextRequest) {
                 if (gridSettings.show_names && cast) {
                   const nameBuffer = generateNameText(cast.name, photoWidth, nameStyle);
                   if (nameBuffer) {
+                    // 名前テキスト画像の高さ（generateNameText は font_size+20 の高さで生成）
+                    const nameTextHeight = nameStyle.font_size + 20;
+                    // 写真内の下部に重ねる。offset_y は「下端からどれだけ上げるか」の余白として扱う。
+                    const nameTop = Math.round(
+                      y + photoHeight - nameTextHeight - Math.max(0, nameStyle.offset_y)
+                    );
                     composites.push({
                       input: nameBuffer,
                       left: x,
-                      top: y + photoHeight + nameStyle.offset_y,
+                      top: Math.max(y, nameTop),
                     });
                   }
                 }
