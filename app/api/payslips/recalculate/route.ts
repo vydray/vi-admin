@@ -324,7 +324,7 @@ async function calculatePayslipForCast(
     // 注: バック額のUPDATE後にもう一度refetchするため let で受ける
     let { data: dailyItems } = await supabaseAdmin
       .from('cast_daily_items')
-      .select('date, category, product_name, quantity, subtotal, self_back_amount, help_back_amount, is_self, help_cast_id')
+      .select('date, category, product_name, quantity, subtotal, self_sales, self_back_amount, help_back_amount, is_self, help_cast_id')
       .eq('cast_id', cast.id)
       .eq('store_id', storeId)
       .gte('date', startDate)
@@ -476,7 +476,7 @@ async function calculatePayslipForCast(
     // これをしないと dailySalesMap / totalSelfBack / totalHelpBack が UPDATE 前の値を参照してドリフトする
     const refetchedDaily = await supabaseAdmin
       .from('cast_daily_items')
-      .select('date, category, product_name, quantity, subtotal, self_back_amount, help_back_amount, is_self, help_cast_id')
+      .select('date, category, product_name, quantity, subtotal, self_sales, self_back_amount, help_back_amount, is_self, help_cast_id')
       .eq('cast_id', cast.id)
       .eq('store_id', storeId)
       .gte('date', startDate)
@@ -690,12 +690,33 @@ async function calculatePayslipForCast(
       // POS商品明細をitemsに追加（BASE商品も cast_daily_items に取り込まれているのでここで処理）
       // sales_type は「このキャストの役割」基準: cast_id=自分の行 → 'self' (推し)
       // 卓内ヘルプ（cast_id=help_cast_id=自分）も cast_id ベース規約により 'self' に分類
+
+      // Mary Mare(store_id=7)のみ: item_help_ratio による卓内ヘルプ按分で
+      // self_back_amount が控除後(self_sales基準)になっているのに、表示明細の
+      // quantity/subtotal が控除前(全杯数)だと「17杯/¥17,000 なのに back ¥3,000」と
+      // 母集団がズレて矛盾して見える。按分が起きた商品(self_sales < subtotal)だけ
+      // 表示の quantity/subtotal も控除後に揃える。
+      // ※ totalSales(L673)やバック合計は item.subtotal/back_amount(控除前/確定値)の
+      //   ままで不変。表示明細の見かけのみ整合させる。他店・按分なし商品は従来通り。
+      let displayQuantity = item.quantity
+      let displaySubtotal = item.subtotal
+      if (
+        storeId === 7 &&
+        item.self_sales != null &&
+        item.self_sales < item.subtotal &&
+        item.subtotal > 0
+      ) {
+        const unitPrice = item.quantity > 0 ? item.subtotal / item.quantity : 0
+        displaySubtotal = item.self_sales
+        displayQuantity = unitPrice > 0 ? Math.round(item.self_sales / unitPrice) : item.quantity
+      }
+
       dayData.items.push({
         product_name: item.product_name,
         category: item.category || '',
         sales_type: 'self',
-        quantity: item.quantity,
-        subtotal: item.subtotal,
+        quantity: displayQuantity,
+        subtotal: displaySubtotal,
         back_ratio: backRatio,
         back_amount: totalBackAmount,
         is_base: item.category === 'BASE'
