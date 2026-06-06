@@ -598,6 +598,24 @@ export default function TwitterPostsPage() {
     e.target.value = ''
   }
 
+  // 画像形式ラベル (URL拡張子 or File.type から JPEG/PNG/GIF/WEBP を返す)
+  const formatLabelFromUrl = (url: string): string => {
+    const ext = url.split('?')[0].split('.').pop()?.toLowerCase() || ''
+    if (ext === 'jpg' || ext === 'jpeg') return 'JPEG'
+    if (ext === 'png') return 'PNG'
+    if (ext === 'gif') return 'GIF'
+    if (ext === 'webp') return 'WEBP'
+    return ext.toUpperCase() || '不明'
+  }
+  const formatLabelFromFile = (file: File): string => {
+    const t = file.type.split('/')[1]?.toLowerCase() || ''
+    if (t === 'jpeg' || t === 'jpg') return 'JPEG'
+    if (t === 'png') return 'PNG'
+    if (t === 'gif') return 'GIF'
+    if (t === 'webp') return 'WEBP'
+    return t.toUpperCase() || '不明'
+  }
+
   // 通常投稿の処理
   const handleSubmit = async () => {
     if (!storeId) return
@@ -1808,9 +1826,19 @@ export default function TwitterPostsPage() {
                   {totalImageCount > 0 && (
                     <div style={styles.imageGrid}>
                       {/* アップロード済み画像（編集時の既存画像） */}
-                      {uploadedImages.map((img, index) => (
+                      {uploadedImages.map((img, index) => {
+                        const fmt = formatLabelFromUrl(img.url)
+                        const isWebp = fmt === 'WEBP'
+                        return (
                         <div key={`uploaded-${index}`} style={styles.imagePreviewItem}>
                           <img src={img.url} alt={`画像${index + 1}`} style={styles.imagePreviewImg} />
+                          <span style={{
+                            position: 'absolute', left: 4, bottom: 4,
+                            padding: '1px 6px', borderRadius: 4, fontSize: 10, fontWeight: 700,
+                            backgroundColor: isWebp ? '#dc2626' : 'rgba(0,0,0,0.6)', color: '#fff',
+                          }} title={isWebp ? 'WEBPはTwitter非対応のため投稿時にPNGへ変換されます' : undefined}>
+                            {isWebp ? 'WEBP→PNG' : fmt}
+                          </span>
                           <button
                             onClick={() => removeUploadedImage(index)}
                             style={styles.imageRemoveBtn}
@@ -1818,11 +1846,22 @@ export default function TwitterPostsPage() {
                             ×
                           </button>
                         </div>
-                      ))}
+                        )
+                      })}
                       {/* ローカル画像（新規追加分、まだアップロードされていない） */}
-                      {localImages.map((img, index) => (
+                      {localImages.map((img, index) => {
+                        const fmt = formatLabelFromFile(img.file)
+                        const isWebp = fmt === 'WEBP'
+                        return (
                         <div key={`local-${index}`} style={styles.imagePreviewItem}>
                           <img src={img.previewUrl} alt={`新規画像${index + 1}`} style={styles.imagePreviewImg} />
+                          <span style={{
+                            position: 'absolute', left: 4, bottom: 4,
+                            padding: '1px 6px', borderRadius: 4, fontSize: 10, fontWeight: 700,
+                            backgroundColor: isWebp ? '#dc2626' : 'rgba(0,0,0,0.6)', color: '#fff',
+                          }} title={isWebp ? 'WEBPはTwitter非対応のため投稿時にPNGへ変換されます' : undefined}>
+                            {isWebp ? 'WEBP→PNG' : fmt}
+                          </span>
                           <button
                             onClick={() => removeLocalImage(index)}
                             style={styles.imageRemoveBtn}
@@ -1830,7 +1869,8 @@ export default function TwitterPostsPage() {
                             ×
                           </button>
                         </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   )}
                 </div>

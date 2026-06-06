@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import crypto from 'crypto'
+import sharp from 'sharp'
 import { withCronLock } from '@/lib/cronLock'
 import { getTwitterAppCreds } from '@/lib/twitterOAuth'
 
@@ -366,7 +367,21 @@ async function uploadMediaToTwitter(
     return { mediaId: null, errorDetail: `image fetch ${imageFetchError}` }
   }
 
-  const base64Image = Buffer.from(imageBuffer).toString('base64')
+  // webp は Twitter が tweet 添付で拒否する("You are not permitted to perform this action")。
+  // アップロード入口(upload-image API)で PNG 変換済みだが、既存の webp 保存分や取りこぼし対策として
+  // ここでも format を判定し webp なら PNG に変換する。
+  let imgBuf: Buffer = Buffer.from(new Uint8Array(imageBuffer))
+  try {
+    const meta = await sharp(imgBuf).metadata()
+    if (meta.format === 'webp') {
+      imgBuf = await sharp(imgBuf).png().toBuffer()
+    }
+  } catch (e) {
+    // 変換失敗時は元データのまま続行（jpeg/png はそのまま通る）
+    console.warn('[twitter-posts] webp変換チェック失敗:', e instanceof Error ? e.message : e)
+  }
+
+  const base64Image = imgBuf.toString('base64')
 
   // 2) Twitter v1.1 media upload (最大2回 trial、1s backoff、OAuthは毎回再生成)
   let lastErrorDetail = ''

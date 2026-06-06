@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import crypto from 'crypto'
+import sharp from 'sharp'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -62,20 +63,30 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // アップロード用のバッファ・拡張子・Content-Typeを決定
+    const arrayBuffer = await file.arrayBuffer()
+    let buffer: Buffer = Buffer.from(new Uint8Array(arrayBuffer))
+    let ext = file.name.split('.').pop() || 'jpg'
+    let contentType = file.type
+
+    // webp は Twitter が tweet 添付で拒否する("You are not permitted to perform this action")ため、
+    // アップロード時点で PNG に変換して保存する。webp ファイルとしては Storage に残さない。
+    if (file.type === 'image/webp') {
+      buffer = await sharp(buffer).png().toBuffer()
+      ext = 'png'
+      contentType = 'image/png'
+    }
+
     // ユニークなファイル名を生成
-    const ext = file.name.split('.').pop() || 'jpg'
     const uniqueId = crypto.randomBytes(8).toString('hex')
     const timestamp = Date.now()
     const fileName = `${storeId}/twitter/${timestamp}-${uniqueId}.${ext}`
 
     // Supabase Storageにアップロード
-    const arrayBuffer = await file.arrayBuffer()
-    const buffer = Buffer.from(arrayBuffer)
-
     const { error: uploadError } = await supabase.storage
       .from('twitter-images')
       .upload(fileName, buffer, {
-        contentType: file.type,
+        contentType,
         cacheControl: '3600',
         upsert: false,
       })
