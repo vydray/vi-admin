@@ -3272,16 +3272,15 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   // 画像グリッド
   imageGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(4, 1fr)',
-    gap: '8px',
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '14px',
     marginTop: '12px',
   },
   imagePreviewItem: {
     position: 'relative',
-    aspectRatio: '1',
-    borderRadius: '8px',
-    overflow: 'hidden',
+    width: '80px',
+    height: '80px',
   },
   brokenBanner: {
     display: 'flex',
