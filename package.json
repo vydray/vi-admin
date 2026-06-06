@@ -24,6 +24,7 @@
     "bcryptjs": "^3.0.3",
     "canvas": "^3.2.0",
     "date-fns": "^4.1.0",
+    "emoji-picker-react": "^4.19.1",
     "html2canvas": "^1.4.1",
     "jspdf": "^3.0.4",
     "next": "^16.0.2",

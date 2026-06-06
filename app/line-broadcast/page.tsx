@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useStore } from '@/contexts/StoreContext'
 import { supabase } from '@/lib/supabase'
 import ProtectedPage from '@/components/ProtectedPage'
+import EmojiButton from '@/components/EmojiButton'
 import toast from 'react-hot-toast'
 
 function LineBroadcastContent() {
@@ -15,6 +16,24 @@ function LineBroadcastContent() {
   const [imagePath, setImagePath] = useState<string | null>(null)
   const [uploadingImage, setUploadingImage] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const messageRef = useRef<HTMLTextAreaElement>(null)
+
+  // 絵文字をカーソル位置に挿入（Windows対策）
+  const insertEmoji = (emoji: string) => {
+    const ta = messageRef.current
+    if (!ta) {
+      setMessage(m => m + emoji)
+      return
+    }
+    const start = ta.selectionStart
+    const end = ta.selectionEnd
+    setMessage(m => m.slice(0, start) + emoji + m.slice(end))
+    requestAnimationFrame(() => {
+      ta.focus()
+      const pos = start + emoji.length
+      ta.selectionStart = ta.selectionEnd = pos
+    })
+  }
   const [result, setResult] = useState<{
     total: number
     successCount: number
@@ -162,10 +181,14 @@ function LineBroadcastContent() {
       </div>
 
       <div style={{ marginBottom: '16px' }}>
-        <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', marginBottom: '8px' }}>
-          メッセージ
-        </label>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+          <label style={{ fontSize: '14px', fontWeight: '600' }}>
+            メッセージ
+          </label>
+          <EmojiButton onSelect={insertEmoji} />
+        </div>
         <textarea
+          ref={messageRef}
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           placeholder="送信するメッセージを入力..."

@@ -6,6 +6,7 @@ import { useStore } from '@/contexts/StoreContext'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { toast } from 'react-hot-toast'
 import LoadingSpinner from '@/components/LoadingSpinner'
+import EmojiButton from '@/components/EmojiButton'
 import Link from 'next/link'
 import twitterText from 'twitter-text'
 
@@ -161,6 +162,24 @@ export default function TwitterPostsPage() {
   const [uploading, setUploading] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const contentRef = useRef<HTMLTextAreaElement>(null)
+
+  // 絵文字をカーソル位置に挿入（Windows対策）
+  const insertEmoji = (emoji: string) => {
+    const ta = contentRef.current
+    if (!ta) {
+      setContent(c => c + emoji)
+      return
+    }
+    const start = ta.selectionStart
+    const end = ta.selectionEnd
+    setContent(c => c.slice(0, start) + emoji + c.slice(end))
+    requestAnimationFrame(() => {
+      ta.focus()
+      const pos = start + emoji.length
+      ta.selectionStart = ta.selectionEnd = pos
+    })
+  }
 
   // 定期投稿モーダル
   const [showRecurringForm, setShowRecurringForm] = useState(false)
@@ -1758,8 +1777,12 @@ export default function TwitterPostsPage() {
               {/* 左側：入力エリア */}
               <div style={{ ...styles.postEditArea, ...(isMobile ? styles.postEditAreaMobile : {}) }}>
                 <div style={styles.inputGroup}>
-                  <label style={styles.label}>投稿内容</label>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                    <label style={{ ...styles.label, marginBottom: 0 }}>投稿内容</label>
+                    <EmojiButton onSelect={insertEmoji} />
+                  </div>
                   <textarea
+                    ref={contentRef}
                     value={content}
                     onChange={(e) => setContent(e.target.value)}
                     style={styles.postTextarea}
