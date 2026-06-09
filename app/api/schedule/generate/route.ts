@@ -99,6 +99,28 @@ interface Frame {
 interface FrameSize {
   width: number;
   height: number;
+  corner_radius?: number; // 写真の角丸半径（px）
+}
+
+// 写真に角丸マスクを適用する（SVGの角丸矩形を dest-in で合成）。
+// 角丸の外側は透明になり、背景テンプレートが透けて見える。
+async function roundPhotoCorners(
+  buf: Buffer,
+  width: number,
+  height: number,
+  radius: number
+): Promise<Buffer> {
+  if (!radius || radius <= 0) return buf;
+  // 半径は短辺の半分を上限にクランプ（過大値で破綻しないように）
+  const r = Math.min(Math.round(radius), Math.floor(Math.min(width, height) / 2));
+  if (r <= 0) return buf;
+  const mask = Buffer.from(
+    `<svg width="${width}" height="${height}"><rect x="0" y="0" width="${width}" height="${height}" rx="${r}" ry="${r}"/></svg>`
+  );
+  return sharp(buf)
+    .composite([{ input: mask, blend: 'dest-in' }])
+    .png()
+    .toBuffer();
 }
 
 interface NameStyle {
@@ -395,6 +417,8 @@ export async function POST(request: NextRequest) {
                 }
 
                 if (photoBuffer) {
+                  const fw = Math.round(frameSize.width);
+                  const fh = Math.round(frameSize.height);
                   let processedPhoto: Buffer;
                   if (cast.photo_crop) {
                     processedPhoto = await sharp(photoBuffer)
@@ -404,13 +428,16 @@ export async function POST(request: NextRequest) {
                         width: Math.round(cast.photo_crop.width),
                         height: Math.round(cast.photo_crop.height),
                       })
-                      .resize(Math.round(frameSize.width), Math.round(frameSize.height), { fit: 'cover' })
+                      .resize(fw, fh, { fit: 'cover' })
                       .toBuffer();
                   } else {
                     processedPhoto = await sharp(photoBuffer)
-                      .resize(Math.round(frameSize.width), Math.round(frameSize.height), { fit: 'cover' })
+                      .resize(fw, fh, { fit: 'cover' })
                       .toBuffer();
                   }
+
+                  // 角丸を適用
+                  processedPhoto = await roundPhotoCorners(processedPhoto, fw, fh, frameSize.corner_radius || 0);
 
                   composites.push({
                     input: processedPhoto,

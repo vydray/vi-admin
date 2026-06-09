@@ -107,6 +107,7 @@ interface Frame {
 interface FrameSize {
   width: number
   height: number
+  corner_radius?: number // 写真の角丸半径（px・実画像座標）
 }
 
 const FRAME_ASPECT_RATIO = 3 / 4 // 写真と同じ比率
@@ -309,7 +310,19 @@ export default function TemplateEditorPage() {
         }
         setTemplate(templateWithDefaults)
         if (data.template.image_path) {
-          setTemplateImageUrl(`${SUPABASE_URL}/storage/v1/object/public/schedule-templates/${data.template.image_path}`)
+          const bgUrl = `${SUPABASE_URL}/storage/v1/object/public/schedule-templates/${data.template.image_path}`
+          setTemplateImageUrl(bgUrl)
+          // 背景画像の実寸を読み込んで imageSize に反映する。
+          // これをやらないと imageSize が初期値(1200×1200)のままになり、
+          // プレビューの scale と背景(cover)の比率が実画像とズレて
+          // 枠が生成結果と全然違う位置に描画される。
+          const bgImg = new window.Image()
+          bgImg.onload = () => {
+            if (latestLoadRef.current === loadId) {
+              setImageSize({ width: bgImg.width, height: bgImg.height })
+            }
+          }
+          bgImg.src = bgUrl
         }
         if (data.template.placeholder_path) {
           setPlaceholderImageUrl(`${SUPABASE_URL}/storage/v1/object/public/schedule-templates/${data.template.placeholder_path}`)
@@ -646,6 +659,7 @@ export default function TemplateEditorPage() {
                     height: template.frame_size.height * scale,
                     borderColor: showFrameBorders ? (selectedFrameIndex === index ? '#3b82f6' : frameBorderColor) : 'transparent',
                     backgroundColor: showFrameBorders ? 'rgba(255,255,255,0.2)' : 'transparent',
+                    borderRadius: (template.frame_size.corner_radius || 0) * scale,
                     zIndex: selectedFrameIndex === index ? 10 : 1,
                   }}
                   onMouseDown={(e) => handleMouseDown(e, index, false)}
@@ -759,6 +773,13 @@ export default function TemplateEditorPage() {
                         const newHeight = parseInt(e.target.value) || 50
                         updateFrameSize({ width: newHeight * FRAME_ASPECT_RATIO, height: newHeight })
                       }}
+                      style={styles.numberInput}
+                    /></label>
+                    <label>角丸: <input
+                      type="number"
+                      min="0"
+                      value={Math.round(template?.frame_size.corner_radius || 0)}
+                      onChange={(e) => updateFrameSize({ corner_radius: Math.max(0, parseInt(e.target.value) || 0) })}
                       style={styles.numberInput}
                     /></label>
                   </div>
