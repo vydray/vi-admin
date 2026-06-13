@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
+import { getSalesSettingsForMonth } from '@/lib/salesSettings'
 import { format, eachDayOfInterval, addMonths, subMonths, startOfMonth, endOfMonth } from 'date-fns'
 import { ja } from 'date-fns/locale'
 import { useStore } from '@/contexts/StoreContext'
 import { CastBasic, SalesSettings, CastBackRate } from '@/types'
-import { calculateCastSalesByPublishedMethod, getDefaultSalesSettings } from '@/lib/salesCalculation'
+import { calculateCastSalesByPublishedMethod } from '@/lib/salesCalculation'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
 import Link from 'next/link'
@@ -122,29 +123,12 @@ function CastSalesPageContent() {
   }, [storeId])
 
   const loadSalesSettings = useCallback(async (): Promise<SalesSettings> => {
-    const { data, error } = await supabase
-      .from('sales_settings')
-      .select('*')
-      .eq('store_id', storeId)
-      .maybeSingle()
-
-    if (error) {
-      console.warn('売上設定の取得に失敗:', error)
-    }
-
-    if (data) {
-      return data as SalesSettings
-    }
-
-    // デフォルト設定を返す
-    const defaults = getDefaultSalesSettings(storeId)
-    return {
-      id: 0,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      ...defaults,
-    } as SalesSettings
-  }, [storeId])
+    // 適用開始月対応: 表示中の月(selectedMonth)に有効な売上設定を引く。
+    // store7(Mary Mare)のように sales_settings が複数行(effective_from_ym)ある店舗で、
+    // 旧 .eq(store_id).maybeSingle() だと複数行エラー→デフォルト設定にフォールバックして
+    // 売上が誤計算されるバグになっていたのを修正（他画面と同じ getter に統一）。
+    return getSalesSettingsForMonth(supabase, storeId, format(selectedMonth, 'yyyy-MM'))
+  }, [storeId, selectedMonth])
 
   const loadBackRates = useCallback(async (): Promise<CastBackRate[]> => {
     const { data, error } = await supabase
