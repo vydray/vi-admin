@@ -464,6 +464,10 @@ export interface SalesSettings {
   id: number
   store_id: number
 
+  // 適用開始月（'YYYY-MM'）。同一 store_id で複数行を持ち、対象月以下で最大の行が有効。
+  // 既存行は移行時に '2000-01'（過去全月をカバー）。未設定環境では undefined になり得る。
+  effective_from_ym?: string
+
   // ========== キャスト名が入ってる商品のみの集計設定 ==========
   // 計算基準
   item_use_tax_excluded: boolean        // true: 税抜き金額で計算

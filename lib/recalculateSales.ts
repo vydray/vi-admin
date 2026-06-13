@@ -4,7 +4,8 @@
  */
 
 import { createClient } from '@supabase/supabase-js'
-import { calculateCastSalesByPublishedMethod, getDefaultSalesSettings } from './salesCalculation'
+import { calculateCastSalesByPublishedMethod } from './salesCalculation'
+import { getSalesSettingsForMonth, ymFromDate } from './salesSettings'
 import { SalesSettings, CastSalesSummary } from '@/types'
 
 // Service Role Key でRLSをバイパス
@@ -732,31 +733,6 @@ function calculateWorkHours(clockIn: string | null, clockOut: string | null): nu
   return Math.max(0, Math.round(hours * 100) / 100)
 }
 
-// sales_settingsを取得
-async function loadSalesSettings(storeId: number): Promise<SalesSettings> {
-  const { data, error } = await supabaseAdmin
-    .from('sales_settings')
-    .select('*')
-    .eq('store_id', storeId)
-    .maybeSingle()
-
-  if (error) {
-    console.warn('売上設定の取得に失敗:', error)
-  }
-
-  if (data) {
-    return data as SalesSettings
-  }
-
-  const defaults = getDefaultSalesSettings(storeId)
-  return {
-    id: 0,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    ...defaults,
-  } as SalesSettings
-}
-
 // system_settingsから税率などを取得
 async function loadSystemSettings(storeId: number): Promise<{ tax_rate: number; service_fee_rate: number }> {
   const { data, error } = await supabaseAdmin
@@ -798,7 +774,8 @@ export async function recalculateForDate(storeId: number, date: string): Promise
   error?: string
 }> {
   try {
-    const salesSettings = await loadSalesSettings(storeId)
+    // その日(date)の年月時点で有効な売上設定を取得（適用開始月対応）
+    const salesSettings = await getSalesSettingsForMonth(supabaseAdmin, storeId, ymFromDate(date))
     const systemSettings = await loadSystemSettings(storeId)
     const taxRate = systemSettings.tax_rate / 100
     const serviceRate = systemSettings.service_fee_rate / 100

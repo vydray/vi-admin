@@ -473,11 +473,26 @@ function SalesSettingsPageContent() {
     setLoading(true)
     try {
       // 売上設定を読み込み
-      const { data, error } = await supabase
+      // 適用開始月対応で1店舗に複数行を持つため、最新(effective_from_ym 最大)の1行を編集対象として読む。
+      // effective_from_ym カラムが無い旧環境では order がエラーになるので id 降順にフォールバックする。
+      let { data, error } = await supabase
         .from('sales_settings')
         .select('*')
         .eq('store_id', currentStoreId)
-        .single()
+        .order('effective_from_ym', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (error) {
+        const fb = await supabase
+          .from('sales_settings')
+          .select('*')
+          .eq('store_id', currentStoreId)
+          .order('id', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        data = fb.data
+        error = fb.error
+      }
 
       if (latestStoreIdRef.current !== currentStoreId) return
 

@@ -7,6 +7,7 @@ import { calculateCastSalesByPublishedMethod } from '@/lib/salesCalculation'
 import { isYearMonthLocked } from '@/lib/payslipLockDate'
 import { recalculateForDate } from '@/lib/recalculateSales'
 import type { SalesSettings } from '@/types/database'
+import { getSalesSettingsForMonth } from '@/lib/salesSettings'
 
 // Vercel 関数タイムアウトを明示（cron 全店舗実行が 60s デフォルトを超えるため）
 export const maxDuration = 600 // 10分
@@ -507,12 +508,8 @@ async function calculatePayslipForCast(
       }
     }
 
-    // 売上設定を取得（全フィールド）
-    const { data: salesSettings } = await supabaseAdmin
-      .from('sales_settings')
-      .select('*')
-      .eq('store_id', storeId)
-      .single()
+    // 売上設定を取得（全フィールド）。対象月(yearMonth)に有効な行を引く（適用開始月対応）
+    const salesSettings = await getSalesSettingsForMonth(supabaseAdmin, storeId, yearMonth)
 
     // 注文データを取得（売上計算用） - ページネーションで1000件制限を回避
     let orders: Array<{
@@ -1179,12 +1176,8 @@ async function calculatePayslipForCast(
       return c.reward?.type === 'rank_based'
     })
     if (needsRank) {
-      const { data: salesSettingsForRank } = await supabaseAdmin
-        .from('sales_settings')
-        .select('published_aggregation')
-        .eq('store_id', storeId)
-        .maybeSingle()
-      const publishedMethod = (salesSettingsForRank as { published_aggregation?: string } | null)?.published_aggregation ?? 'item_based'
+      // 上で取得済みの salesSettings（対象月に有効な行）をそのまま使う
+      const publishedMethod = salesSettings.published_aggregation ?? 'item_based'
       if (publishedMethod !== 'none') {
         const aggField = publishedMethod === 'receipt_based' ? 'total_sales_receipt_based' : 'total_sales_item_based'
         const { data: monthStats } = await supabaseAdmin
