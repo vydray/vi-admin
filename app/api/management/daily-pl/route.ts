@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
         .gte('order_date', monthStart)
         .lte('order_date', monthEnd + 'T23:59:59')
         .is('deleted_at', null),
-      supabase.from('attendance_statuses').select('id, is_active').eq('store_id', storeId).eq('is_active', true),
+      supabase.from('attendance_statuses').select('id, code').eq('store_id', storeId).eq('is_active', true),
       supabase.from('attendance').select('date, status_id').eq('store_id', storeId).gte('date', monthStart).lte('date', monthEnd),
       supabase.from('shifts').select('cast_id, date').eq('store_id', storeId).gte('date', monthStart).lte('date', monthEnd),
       // 告知イベント（management_events）: 期間が対象月に重なるもの
@@ -114,8 +114,12 @@ export async function POST(request: NextRequest) {
   const orders = (ordersRes.data ?? []) as unknown as OrderRow[]
   const payslips = (payslipsRes.data ?? []) as unknown as Payslip[]
 
-  // 出勤扱いステータスID
-  const workDayStatusIds = new Set((attStatusRes.data ?? []).map((s) => String(s.id)))
+  // 出勤扱いステータスID（出勤/遅刻/早退/リクエスト出勤 等。欠勤系は除外）
+  // ※ store によっては欠勤系も is_active=true のため、code で欠勤を確実に除外する
+  const ABSENCE_CODES = new Set(['same_day_absence', 'advance_absence', 'no_call_no_show', 'excused'])
+  const workDayStatusIds = new Set(
+    (attStatusRes.data ?? []).filter((s) => !ABSENCE_CODES.has(s.code ?? '')).map((s) => String(s.id))
+  )
 
   // 出勤人数（日次）
   const attByDate = new Map<string, number>()

@@ -101,3 +101,28 @@ export interface DailyPlResponse {
   labor: LaborReconciliation
   meta: { payslipCount: number; recalculated: boolean }
 }
+
+// キャスト別 給与率（月次）
+export interface CastWageRateRow {
+  castId: number
+  castName: string
+  gross: number // 総支給額
+  castSales: number // ① キャスト売上（推し/ヘルプ仕分け後）
+  helpSales: number // うちヘルプ売上
+  tableTotal: number // ② 自分の卓の伝票合計（推しの卓の会計総額）
+  rate1: number | null // gross / castSales
+  rate2: number | null // gross / tableTotal
+  shiftDays: number // シフト予定日数
+  attendedDays: number // 実出勤日数（出勤扱い）
+  attendanceRate: number | null // attendedDays / shiftDays
+  lineReserved: number // 公式LINE予定客数（月合計）
+  nominatedGuests: number // 推し卓の実来店客数
+  callRate: number | null // nominatedGuests / lineReserved（呼べてる率）
+}
+
+export interface CastWageRateResponse {
+  storeId: number
+  yearMonth: string
+  axis: 'total_sales_item_based' | 'total_sales_receipt_based'
+  rows: CastWageRateRow[]
+}

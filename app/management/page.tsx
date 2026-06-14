@@ -7,7 +7,7 @@ import { useStore } from '@/contexts/StoreContext'
 import ProtectedPage from '@/components/ProtectedPage'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import holiday_jp from '@holiday-jp/holiday_jp'
-import type { DailyPlResponse, DailyPlRow } from '@/types/management'
+import type { DailyPlResponse, DailyPlRow, CastWageRateResponse, CastWageRateRow } from '@/types/management'
 import type { ManagementEvent } from '@/types/database'
 
 export default function ManagementPage() {
@@ -30,6 +30,9 @@ function ManagementContent() {
   const [loading, setLoading] = useState(true)
   const [events, setEvents] = useState<ManagementEvent[]>([])
   const [showEventModal, setShowEventModal] = useState(false)
+  const [view, setView] = useState<'daily' | 'castWage'>('daily')
+  const [castWage, setCastWage] = useState<CastWageRateResponse | null>(null)
+  const [castWageLoading, setCastWageLoading] = useState(false)
 
   const yearMonth = format(selectedMonth, 'yyyy-MM')
 
@@ -65,12 +68,33 @@ function ManagementContent() {
     }
   }, [storeId, yearMonth])
 
+  const loadCastWage = useCallback(async () => {
+    if (!storeId) return
+    setCastWageLoading(true)
+    try {
+      const res = await fetch('/api/management/cast-wage-rate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ store_id: storeId, year_month: yearMonth }),
+      })
+      setCastWage(res.ok ? await res.json() : null)
+    } catch (e) {
+      console.error('キャスト給与率取得エラー:', e)
+      setCastWage(null)
+    } finally {
+      setCastWageLoading(false)
+    }
+  }, [storeId, yearMonth])
+
   useEffect(() => {
     load()
   }, [load])
   useEffect(() => {
     loadEvents()
   }, [loadEvents])
+  useEffect(() => {
+    if (view === 'castWage') loadCastWage()
+  }, [view, loadCastWage])
 
   const exportCsv = () => {
     if (!data) return
@@ -84,6 +108,10 @@ function ManagementContent() {
       { label: 'その他', fmt: (r) => String(r.otherSales) },
       { label: 'BASE', fmt: (r) => String(r.baseSales) },
       { label: '総売上', fmt: (r) => String(r.totalSales) },
+      { label: 'シフト人数', fmt: (r) => String(r.shiftCount) },
+      { label: '出勤人数', fmt: (r) => String(r.attendanceCount) },
+      { label: '出勤率', fmt: (r) => (r.attendanceRate == null ? '' : (r.attendanceRate * 100).toFixed(1)) },
+      { label: 'LINE予定客数', fmt: (r) => String(r.lineReservedGuests) },
       { label: '会計数', fmt: (r) => String(r.orderCount) },
       { label: '来店人数', fmt: (r) => String(r.guests) },
       { label: '初回', fmt: (r) => String(r.firstTimeGuests) },
@@ -94,10 +122,6 @@ function ManagementContent() {
       { label: '人件費率', fmt: (r) => (r.laborCostRate == null ? '' : (r.laborCostRate * 100).toFixed(1)) },
       { label: '経費', fmt: (r) => String(r.expense) },
       { label: '粗利', fmt: (r) => String(r.grossProfit) },
-      { label: 'シフト人数', fmt: (r) => String(r.shiftCount) },
-      { label: '出勤人数', fmt: (r) => String(r.attendanceCount) },
-      { label: '出勤率', fmt: (r) => (r.attendanceRate == null ? '' : (r.attendanceRate * 100).toFixed(1)) },
-      { label: 'LINE予定客数', fmt: (r) => String(r.lineReservedGuests) },
     ]
     const header = cols.map((c) => c.label).join(',')
     const lines = data.rows.map((r) => cols.map((c) => `"${c.fmt(r).replace(/"/g, '""')}"`).join(','))
@@ -130,7 +154,11 @@ function ManagementContent() {
       >
         <div>
           <h1 style={{ fontSize: '24px', fontWeight: 600, color: '#1e293b' }}>経営ダッシュボード</h1>
-          <p style={{ fontSize: '14px', color: '#64748b', marginTop: '4px' }}>{storeName} ／ 日毎の経営数値</p>
+          <p style={{ fontSize: '14px', color: '#64748b', marginTop: '4px' }}>{storeName}</p>
+          <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+            <button onClick={() => setView('daily')} style={tabBtn(view === 'daily')}>日毎ダッシュボード</button>
+            <button onClick={() => setView('castWage')} style={tabBtn(view === 'castWage')}>キャスト給与率</button>
+          </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <button onClick={() => setSelectedMonth((p) => subMonths(p, 1))} style={navBtn}>◀</button>
@@ -138,15 +166,23 @@ function ManagementContent() {
             {format(selectedMonth, 'yyyy年M月', { locale: ja })}
           </span>
           <button onClick={() => setSelectedMonth((p) => addMonths(p, 1))} style={navBtn}>▶</button>
-          <button onClick={() => setShowEventModal(true)} style={{ ...actionBtn, background: '#8b5cf6', marginLeft: '12px' }}>
-            イベント管理
-          </button>
-          <button onClick={exportCsv} disabled={!data} style={{ ...actionBtn, opacity: data ? 1 : 0.5 }}>
-            CSV
-          </button>
+          {view === 'daily' && (
+            <>
+              <button onClick={() => setShowEventModal(true)} style={{ ...actionBtn, background: '#8b5cf6', marginLeft: '12px' }}>
+                イベント管理
+              </button>
+              <button onClick={exportCsv} disabled={!data} style={{ ...actionBtn, opacity: data ? 1 : 0.5 }}>
+                CSV
+              </button>
+            </>
+          )}
         </div>
       </div>
 
+      {view === 'castWage' && <CastWageView loading={castWageLoading} data={castWage} />}
+
+      {view === 'daily' && (
+        <>
       {/* 警告バナー */}
       {labor && !labor.ok && (
         <div style={banner('#fef2f2', '#fecaca', '#b91c1c')}>
@@ -164,135 +200,78 @@ function ManagementContent() {
       ) : !data || data.rows.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '60px', color: '#94a3b8' }}>データがありません</div>
       ) : (
-        <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '8px', background: '#fff' }}>
-          <table style={{ borderCollapse: 'collapse', fontSize: '12px', whiteSpace: 'nowrap' }}>
-            <thead>
-              <tr>
-                <th style={thDate}>日</th>
-                <th style={{ ...th, minWidth: '90px', textAlign: 'left' }}>イベント</th>
-                <th style={thG}>店舗売上</th>
-                <th style={th}>現金</th>
-                <th style={th}>カード</th>
-                <th style={th}>その他</th>
-                <th style={th}>BASE</th>
-                <th style={thG}>総売上</th>
-                <th style={th}>会計数</th>
-                <th style={th}>来店</th>
-                <th style={th}>初回</th>
-                <th style={th}>再訪</th>
-                <th style={th}>常連</th>
-                <th style={thG}>客単価</th>
-                <th style={thG}>人件費</th>
-                <th style={th}>人件費率</th>
-                <th style={thG}>経費</th>
-                <th style={th}>経費率</th>
-                <th style={thG}>粗利</th>
-                <th style={thG}>シフト</th>
-                <th style={th}>出勤</th>
-                <th style={th}>出勤率</th>
-                <th style={thG}>LINE予定</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.rows.map((r) => {
-                const dow = dowOf(r.date)
-                const dateColor = dow === 0 || isHolidayDate(r.date) ? '#dc2626' : dow === 6 ? '#2563eb' : '#1e293b'
-                const dayEvents = events.filter((e) => e.start_date <= r.date && e.end_date >= r.date)
-                const eventNames = dayEvents.map((e) => e.name).join('、')
-                const eventDesc = dayEvents.map((e) => (e.description ? `${e.name}: ${e.description}` : e.name)).join('\n\n')
-                return (
-                  <tr key={r.date} style={{ borderTop: '1px solid #f1f5f9' }}>
-                    <td style={{ ...tdDate, color: dateColor, fontWeight: 600 }}>
-                      {r.day}({WD[dow]})
-                    </td>
-                    <td
-                      style={{ ...td, textAlign: 'left', color: '#7c3aed', maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', cursor: eventNames ? 'help' : 'default' }}
-                      title={eventDesc}
-                    >
-                      {eventNames}
-                    </td>
-                    <td style={tdG}>{r.sales ? yen(r.sales) : '-'}</td>
-                    <td style={tdMuted}>{r.cashSales ? yen(r.cashSales) : '-'}</td>
-                    <td style={tdMuted}>{r.cardSales ? yen(r.cardSales) : '-'}</td>
-                    <td style={tdMuted}>{r.otherSales ? yen(r.otherSales) : '-'}</td>
-                    <td style={tdMuted}>{r.baseSales ? yen(r.baseSales) : '-'}</td>
-                    <td style={{ ...tdG, fontWeight: 600 }}>{r.totalSales ? yen(r.totalSales) : '-'}</td>
-                    <td style={td}>{r.orderCount || '-'}</td>
-                    <td style={td}>{r.guests || '-'}</td>
-                    <td style={tdMuted}>{r.firstTimeGuests || '-'}</td>
-                    <td style={tdMuted}>{r.returnGuests || '-'}</td>
-                    <td style={tdMuted}>{r.regularGuests || '-'}</td>
-                    <td style={tdG}>{r.avgSpend ? yen(r.avgSpend) : '-'}</td>
-                    <td style={tdG}>{r.laborCost ? yen(r.laborCost) : '-'}</td>
-                    <td style={tdMuted}>{pct(r.laborCostRate)}</td>
-                    <td style={tdG}>{r.expense ? yen(r.expense) : '-'}</td>
-                    <td style={tdMuted}>{pct(r.expenseRate)}</td>
-                    <td style={{ ...tdG, fontWeight: 600, color: r.grossProfit < 0 ? '#dc2626' : '#15803d' }}>
-                      {yen(r.grossProfit)}
-                    </td>
-                    <td style={tdG}>{r.shiftCount || '-'}</td>
-                    <td style={td}>{r.attendanceCount || '-'}</td>
-                    <td style={tdMuted}>{pct(r.attendanceRate)}</td>
-                    <td style={tdG}>{r.lineReservedGuests || '-'}</td>
+        <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '8px', background: '#fff', maxHeight: '78vh' }}>
+          {summary && (() => {
+            const avgYen = (v: number) => (businessDays > 0 ? yen(Math.round(v / businessDays)) : '-')
+            const evCell = (date: string) => {
+              const de = events.filter((e) => e.start_date <= date && e.end_date >= date)
+              return {
+                names: de.map((e) => e.name).join('、'),
+                desc: de.map((e) => (e.description ? `${e.name}: ${e.description}` : e.name)).join('\n\n'),
+              }
+            }
+            type Metric = { label: string; group?: boolean; cell: (r: DailyPlRow) => React.ReactNode; total: React.ReactNode; avg: React.ReactNode }
+            const metrics: Metric[] = [
+              { label: 'イベント', cell: (r) => { const e = evCell(r.date); return e.names ? <span title={e.desc} style={{ color: '#7c3aed', cursor: 'help' }}>{e.names}</span> : '' }, total: '', avg: '' },
+              { label: '店舗売上', group: true, cell: (r) => (r.sales ? yen(r.sales) : '-'), total: yen(summary.sales), avg: yen(summary.avgDailySales) },
+              { label: '現金', cell: (r) => (r.cashSales ? yen(r.cashSales) : '-'), total: yen(summary.cashSales), avg: '' },
+              { label: 'カード', cell: (r) => (r.cardSales ? yen(r.cardSales) : '-'), total: yen(summary.cardSales), avg: '' },
+              { label: 'その他', cell: (r) => (r.otherSales ? yen(r.otherSales) : '-'), total: yen(summary.otherSales), avg: '' },
+              { label: 'BASE', cell: (r) => (r.baseSales ? yen(r.baseSales) : '-'), total: yen(summary.baseSales), avg: '' },
+              { label: '総売上', group: true, cell: (r) => (r.totalSales ? yen(r.totalSales) : '-'), total: yen(summary.totalSales), avg: '' },
+              { label: 'シフト', group: true, cell: (r) => r.shiftCount || '-', total: num(summary.shiftCount), avg: '' },
+              { label: '出勤', cell: (r) => r.attendanceCount || '-', total: num(summary.attendanceCount), avg: '' },
+              { label: '出勤率', cell: (r) => pct(r.attendanceRate), total: pct(summary.attendanceRate), avg: '' },
+              { label: '会計数', group: true, cell: (r) => r.orderCount || '-', total: num(summary.orderCount), avg: businessDays > 0 ? Math.round(summary.orderCount / businessDays) : '-' },
+              { label: '来店人数', cell: (r) => r.guests || '-', total: num(summary.guests), avg: num(summary.avgDailyGuests) },
+              { label: '初回', cell: (r) => r.firstTimeGuests || '-', total: num(summary.firstTimeGuests), avg: '' },
+              { label: '再訪', cell: (r) => r.returnGuests || '-', total: num(summary.returnGuests), avg: '' },
+              { label: '常連', cell: (r) => r.regularGuests || '-', total: num(summary.regularGuests), avg: '' },
+              { label: 'LINE予定客数', group: true, cell: (r) => r.lineReservedGuests || '-', total: num(summary.lineReservedGuests), avg: summary.lineReservedGuests > 0 ? `達成${pct(summary.guests / summary.lineReservedGuests)}` : '-' },
+              { label: '客単価', group: true, cell: (r) => (r.avgSpend ? yen(r.avgSpend) : '-'), total: yen(summary.avgSpend), avg: '' },
+              { label: '人件費', group: true, cell: (r) => (r.laborCost ? yen(r.laborCost) : '-'), total: yen(summary.laborCost), avg: avgYen(summary.laborCost) },
+              { label: '人件費率', cell: (r) => pct(r.laborCostRate), total: pct(summary.laborCostRate), avg: '' },
+              { label: '経費', group: true, cell: (r) => (r.expense ? yen(r.expense) : '-'), total: yen(summary.expense), avg: avgYen(summary.expense) },
+              { label: '経費率', cell: (r) => pct(r.expenseRate), total: pct(summary.expenseRate), avg: '' },
+              { label: '粗利', group: true, cell: (r) => <span style={{ color: r.grossProfit < 0 ? '#dc2626' : '#15803d', fontWeight: 600 }}>{yen(r.grossProfit)}</span>, total: <span style={{ color: summary.grossProfit < 0 ? '#dc2626' : '#15803d' }}>{yen(summary.grossProfit)}</span>, avg: avgYen(summary.grossProfit) },
+            ]
+            return (
+              <table style={{ borderCollapse: 'collapse', fontSize: '12px', whiteSpace: 'nowrap', width: 'max-content' }}>
+                <thead>
+                  <tr>
+                    <th style={cornerHead}>指標＼日</th>
+                    {data.rows.map((r) => {
+                      const dow = dowOf(r.date)
+                      const c = dow === 0 || isHolidayDate(r.date) ? '#dc2626' : dow === 6 ? '#2563eb' : '#475569'
+                      return (
+                        <th key={r.date} style={{ ...dayHead, color: c }}>
+                          {r.day}
+                          <br />
+                          {WD[dow]}
+                        </th>
+                      )
+                    })}
+                    <th style={{ ...dayHead, background: '#f1f5f9' }}>合計</th>
+                    <th style={{ ...dayHead, background: '#f8fafc' }}>平均</th>
                   </tr>
-                )
-              })}
-            </tbody>
-            {summary && (
-              <tfoot>
-                <tr style={{ background: '#f1f5f9', fontWeight: 700, borderTop: '2px solid #cbd5e1' }}>
-                  <td style={{ ...tdDate, background: '#f1f5f9' }}>合計</td>
-                  <td style={td}></td>
-                  <td style={tdG}>{yen(summary.sales)}</td>
-                  <td style={td}>{yen(summary.cashSales)}</td>
-                  <td style={td}>{yen(summary.cardSales)}</td>
-                  <td style={td}>{yen(summary.otherSales)}</td>
-                  <td style={td}>{yen(summary.baseSales)}</td>
-                  <td style={tdG}>{yen(summary.totalSales)}</td>
-                  <td style={td}>{num(summary.orderCount)}</td>
-                  <td style={td}>{num(summary.guests)}</td>
-                  <td style={td}>{num(summary.firstTimeGuests)}</td>
-                  <td style={td}>{num(summary.returnGuests)}</td>
-                  <td style={td}>{num(summary.regularGuests)}</td>
-                  <td style={tdG}>{yen(summary.avgSpend)}</td>
-                  <td style={tdG}>{yen(summary.laborCost)}</td>
-                  <td style={td}>{pct(summary.laborCostRate)}</td>
-                  <td style={tdG}>{yen(summary.expense)}</td>
-                  <td style={td}>{pct(summary.expenseRate)}</td>
-                  <td style={{ ...tdG, color: summary.grossProfit < 0 ? '#dc2626' : '#15803d' }}>{yen(summary.grossProfit)}</td>
-                  <td style={tdG}>{num(summary.shiftCount)}</td>
-                  <td style={td}>{num(summary.attendanceCount)}</td>
-                  <td style={td}>{pct(summary.attendanceRate)}</td>
-                  <td style={tdG}>{num(summary.lineReservedGuests)}</td>
-                </tr>
-                <tr style={{ background: '#f8fafc', color: '#475569', borderTop: '1px solid #e2e8f0' }}>
-                  <td style={{ ...tdDate, background: '#f8fafc' }}>営業日平均</td>
-                  <td style={td}></td>
-                  <td style={tdG}>{yen(summary.avgDailySales)}</td>
-                  <td style={td}></td>
-                  <td style={td}></td>
-                  <td style={td}></td>
-                  <td style={td}></td>
-                  <td style={tdG}></td>
-                  <td style={td}>{businessDays > 0 ? Math.round(summary.orderCount / businessDays) : '-'}</td>
-                  <td style={td}>{num(summary.avgDailyGuests)}</td>
-                  <td style={td}></td>
-                  <td style={td}></td>
-                  <td style={td}></td>
-                  <td style={tdG}>{yen(summary.avgSpend)}</td>
-                  <td style={tdG}>{businessDays > 0 ? yen(Math.round(summary.laborCost / businessDays)) : '-'}</td>
-                  <td style={td}>{pct(summary.laborCostRate)}</td>
-                  <td style={tdG}>{businessDays > 0 ? yen(Math.round(summary.expense / businessDays)) : '-'}</td>
-                  <td style={td}>{pct(summary.expenseRate)}</td>
-                  <td style={tdG}>{businessDays > 0 ? yen(Math.round(summary.grossProfit / businessDays)) : '-'}</td>
-                  <td style={tdG}></td>
-                  <td style={td}></td>
-                  <td style={td}>{pct(summary.attendanceRate)}</td>
-                  <td style={tdG}></td>
-                </tr>
-              </tfoot>
-            )}
-          </table>
+                </thead>
+                <tbody>
+                  {metrics.map((m) => (
+                    <tr key={m.label} style={{ borderTop: m.group ? '2px solid #cbd5e1' : '1px solid #f1f5f9' }}>
+                      <td style={{ ...metricName, fontWeight: m.group ? 700 : 500 }}>{m.label}</td>
+                      {data.rows.map((r) => (
+                        <td key={r.date} style={metricCell}>
+                          {m.cell(r)}
+                        </td>
+                      ))}
+                      <td style={{ ...metricCell, background: '#f1f5f9', fontWeight: 700 }}>{m.total}</td>
+                      <td style={{ ...metricCell, background: '#f8fafc', color: '#475569' }}>{m.avg}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )
+          })()}
         </div>
       )}
 
@@ -301,6 +280,8 @@ function ManagementContent() {
         ※ 経費は現金経費(expenses・計上月ベース)。家賃やカード払い等の固定費は含みません。粗利＝総売上−人件費（経費は含めず）。<br />
         ※ 出勤率の合計は「営業が終わった日」のみで算出（未来のシフト予定は分母に含めません）。イベント列はマウスを乗せると詳細が出ます。
       </p>
+        </>
+      )}
 
       {showEventModal && (
         <EventModal
@@ -521,6 +502,108 @@ function EventModal({
   )
 }
 
+// ============================================================================
+// キャスト給与率ビュー
+// ============================================================================
+function CastWageView({ loading, data }: { loading: boolean; data: CastWageRateResponse | null }) {
+  const [sortKey, setSortKey] = useState<string>('castSales')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+  if (loading) return <LoadingSpinner />
+  if (!data || data.rows.length === 0) {
+    return <div style={{ textAlign: 'center', padding: '60px', color: '#94a3b8' }}>この月のデータがありません</div>
+  }
+  const axisLabel = data.axis === 'total_sales_receipt_based' ? '伝票小計' : '推し小計'
+  const rateColor = (r: number | null) => (r == null ? '#94a3b8' : r > 1 ? '#dc2626' : r > 0.6 ? '#d97706' : '#15803d')
+  const sum = (f: (r: CastWageRateRow) => number) => data.rows.reduce((s, r) => s + f(r), 0)
+  const tGross = sum((r) => r.gross)
+  const tSales = sum((r) => r.castSales)
+  const tHelp = sum((r) => r.helpSales)
+  const tTable = sum((r) => r.tableTotal)
+  const tShift = sum((r) => r.shiftDays)
+  const tAtt = sum((r) => r.attendedDays)
+  const tLine = sum((r) => r.lineReserved)
+  const tNom = sum((r) => r.nominatedGuests)
+  type Col = { key: string; label: string; num: (r: CastWageRateRow) => number; cell: (r: CastWageRateRow) => React.ReactNode; total: React.ReactNode }
+  const rateCell = (v: number | null) => <span style={{ color: rateColor(v), fontWeight: 700 }}>{pct(v)}</span>
+  const cols: Col[] = [
+    { key: 'gross', label: '総支給額', num: (r) => r.gross, cell: (r) => yen(r.gross), total: yen(tGross) },
+    { key: 'castSales', label: 'キャスト売上', num: (r) => r.castSales, cell: (r) => (r.castSales ? yen(r.castSales) : '-'), total: yen(tSales) },
+    { key: 'helpSales', label: 'ヘルプ', num: (r) => r.helpSales, cell: (r) => (r.helpSales ? yen(r.helpSales) : '-'), total: yen(tHelp) },
+    { key: 'rate1', label: '売上給与率', num: (r) => r.rate1 ?? -1, cell: (r) => rateCell(r.rate1), total: tSales > 0 ? pct(tGross / tSales) : '-' },
+    { key: 'tableTotal', label: '推し卓 会計総額', num: (r) => r.tableTotal, cell: (r) => (r.tableTotal ? yen(r.tableTotal) : '-'), total: yen(tTable) },
+    { key: 'rate2', label: '店舗貢献率', num: (r) => r.rate2 ?? -1, cell: (r) => rateCell(r.rate2), total: tTable > 0 ? pct(tGross / tTable) : '-' },
+    { key: 'shiftDays', label: 'シフト', num: (r) => r.shiftDays, cell: (r) => r.shiftDays || '-', total: num(tShift) },
+    { key: 'attendedDays', label: '出勤', num: (r) => r.attendedDays, cell: (r) => r.attendedDays || '-', total: num(tAtt) },
+    { key: 'attendanceRate', label: '出勤率', num: (r) => r.attendanceRate ?? -1, cell: (r) => pct(r.attendanceRate), total: tShift > 0 ? pct(tAtt / tShift) : '-' },
+    { key: 'lineReserved', label: 'LINE予定', num: (r) => r.lineReserved, cell: (r) => r.lineReserved || '-', total: num(tLine) },
+    { key: 'nominatedGuests', label: '実来店', num: (r) => r.nominatedGuests, cell: (r) => r.nominatedGuests || '-', total: num(tNom) },
+    { key: 'callRate', label: '呼べた率', num: (r) => r.callRate ?? -1, cell: (r) => pct(r.callRate), total: tLine > 0 ? pct(tNom / tLine) : '-' },
+  ]
+  const sorted = [...data.rows].sort((a, b) => {
+    const col = cols.find((c) => c.key === sortKey)
+    if (!col) return 0
+    return sortDir === 'desc' ? col.num(b) - col.num(a) : col.num(a) - col.num(b)
+  })
+  const onSort = (key: string) => {
+    if (sortKey === key) setSortDir((d) => (d === 'desc' ? 'asc' : 'desc'))
+    else {
+      setSortKey(key)
+      setSortDir('desc')
+    }
+  }
+  const arrow = (key: string) => (sortKey === key ? (sortDir === 'desc' ? ' ▼' : ' ▲') : '')
+  return (
+    <div>
+      <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '8px', background: '#fff', maxHeight: '72vh' }}>
+        <table style={{ borderCollapse: 'collapse', fontSize: '13px', whiteSpace: 'nowrap', width: 'max-content' }}>
+          <thead>
+            <tr>
+              <th style={{ ...cwHead, textAlign: 'left', left: 0, zIndex: 3 }}>キャスト</th>
+              {cols.map((c) => (
+                <th
+                  key={c.key}
+                  onClick={() => onSort(c.key)}
+                  style={{ ...cwHead, cursor: 'pointer', background: sortKey === c.key ? '#e0f2fe' : '#f8fafc' }}
+                >
+                  {c.label}
+                  {arrow(c.key)}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((r) => (
+              <tr key={r.castId} style={{ borderTop: '1px solid #f1f5f9' }}>
+                <td style={{ ...cwCell, textAlign: 'left', fontWeight: 600, position: 'sticky', left: 0, background: '#fff', zIndex: 1 }}>{r.castName}</td>
+                {cols.map((c) => (
+                  <td key={c.key} style={cwCell}>
+                    {c.cell(r)}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr style={{ background: '#f1f5f9', fontWeight: 700, borderTop: '2px solid #cbd5e1' }}>
+              <td style={{ ...cwCell, textAlign: 'left', position: 'sticky', left: 0, background: '#f1f5f9', zIndex: 1 }}>合計</td>
+              {cols.map((c) => (
+                <td key={c.key} style={cwCell}>
+                  {c.total}
+                </td>
+              ))}
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '12px', lineHeight: 1.6 }}>
+        ※ 売上給与率 = 総支給額 ÷ キャスト売上（{axisLabel}）／ 店舗貢献率 = 総支給額 ÷ 推し卓 会計総額。給与率が高い（赤）ほど採算が重い<br />
+        ※ ヘルプ = キャスト売上のうち、他の人の卓を手伝って上げた分（ヘルプした側）／ 出勤率 = 実出勤 ÷ シフト予定／ 呼べた率 = 推し卓の実来店 ÷ LINE予定客数<br />
+        ※ 列ヘッダをクリックで並べ替え（▼降順／▲昇順）。
+      </p>
+    </div>
+  )
+}
+
 function dowOf(date: string): number {
   const [y, m, d] = date.split('-').map(Number)
   return new Date(y, m - 1, d).getDay()
@@ -531,6 +614,16 @@ function isHolidayDate(date: string): boolean {
   return holiday_jp.isHoliday(new Date(y, m - 1, d))
 }
 
+const tabBtn = (active: boolean): React.CSSProperties => ({
+  padding: '8px 16px',
+  background: active ? '#3b82f6' : '#fff',
+  color: active ? '#fff' : '#475569',
+  border: `1px solid ${active ? '#3b82f6' : '#cbd5e1'}`,
+  borderRadius: '8px',
+  fontSize: '14px',
+  fontWeight: 600,
+  cursor: 'pointer',
+})
 const navBtn: React.CSSProperties = {
   padding: '8px 14px',
   backgroundColor: 'white',
@@ -577,8 +670,51 @@ const banner = (bg: string, border: string, color: string): React.CSSProperties 
   marginBottom: '16px',
 })
 
-const th: React.CSSProperties = {
-  padding: '10px 10px',
+// 転置テーブル用スタイル（行=指標、列=日付）
+const cornerHead: React.CSSProperties = {
+  padding: '8px 10px',
+  background: '#f8fafc',
+  color: '#475569',
+  fontWeight: 600,
+  textAlign: 'left',
+  borderBottom: '2px solid #e2e8f0',
+  position: 'sticky',
+  top: 0,
+  left: 0,
+  zIndex: 3,
+  minWidth: '84px',
+}
+const dayHead: React.CSSProperties = {
+  padding: '6px 8px',
+  background: '#f8fafc',
+  fontWeight: 600,
+  textAlign: 'center',
+  borderBottom: '2px solid #e2e8f0',
+  position: 'sticky',
+  top: 0,
+  zIndex: 2,
+  minWidth: '78px',
+  lineHeight: 1.3,
+}
+const metricName: React.CSSProperties = {
+  padding: '7px 10px',
+  textAlign: 'left',
+  color: '#334155',
+  background: '#fff',
+  position: 'sticky',
+  left: 0,
+  zIndex: 1,
+  minWidth: '84px',
+  borderRight: '1px solid #e2e8f0',
+}
+const metricCell: React.CSSProperties = {
+  padding: '7px 8px',
+  textAlign: 'right',
+  color: '#334155',
+  minWidth: '78px',
+}
+const cwHead: React.CSSProperties = {
+  padding: '10px 12px',
   background: '#f8fafc',
   color: '#475569',
   fontWeight: 600,
@@ -588,29 +724,8 @@ const th: React.CSSProperties = {
   top: 0,
   zIndex: 2,
 }
-const thG: React.CSSProperties = { ...th, borderLeft: '1px solid #e2e8f0' }
-const thDate: React.CSSProperties = {
-  padding: '10px 12px',
-  background: '#f8fafc',
-  color: '#475569',
-  fontWeight: 600,
-  textAlign: 'center',
-  borderBottom: '2px solid #e2e8f0',
-  position: 'sticky',
-  top: 0,
-  left: 0,
-  zIndex: 3,
-  minWidth: '64px',
-}
-const td: React.CSSProperties = { padding: '7px 10px', textAlign: 'right', color: '#334155' }
-const tdMuted: React.CSSProperties = { ...td, color: '#94a3b8' }
-const tdG: React.CSSProperties = { ...td, borderLeft: '1px solid #f1f5f9', color: '#334155' }
-const tdDate: React.CSSProperties = {
-  padding: '7px 12px',
-  textAlign: 'center',
-  position: 'sticky',
-  left: 0,
-  zIndex: 1,
-  background: '#fff',
-  minWidth: '64px',
+const cwCell: React.CSSProperties = {
+  padding: '8px 12px',
+  textAlign: 'right',
+  color: '#334155',
 }
