@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { format, addMonths, subMonths, startOfMonth, endOfMonth } from 'date-fns'
+import { ja } from 'date-fns/locale'
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 import type {
@@ -10,6 +12,7 @@ import type {
   PromotionAggregationType,
   PromotionRoundingMethod,
   Category,
+  ManagementEvent,
 } from '@/types/database'
 import {
   calculateAllAchievements,
@@ -63,11 +66,14 @@ const getNewPromotion = (storeId: number): Omit<EventPromotion, 'id' | 'created_
   rounding_position: 1,
   thresholds: [],
   is_active: true,
+  event_id: null,
 })
 
 export default function EventPromotionTab({ storeId, onReceiptClick }: EventPromotionTabProps) {
   // 状態
+  const [selectedMonth, setSelectedMonth] = useState(new Date())
   const [promotions, setPromotions] = useState<EventPromotion[]>([])
+  const [managementEvents, setManagementEvents] = useState<ManagementEvent[]>([])
   const [selectedPromotion, setSelectedPromotion] = useState<EventPromotion | null>(null)
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
@@ -118,13 +124,25 @@ export default function EventPromotionTab({ storeId, onReceiptClick }: EventProm
       if (categoriesError) throw categoriesError
       setCategories(categoriesData || [])
 
+      // 告知イベント（management_events）を API 経由で取得（RLS=service_role のため直接readは不可）
+      try {
+        const ym = format(selectedMonth, 'yyyy-MM')
+        const evRes = await fetch(`/api/management/events?store_id=${storeId}&year_month=${ym}`)
+        if (evRes.ok) {
+          const evJson = await evRes.json()
+          setManagementEvents(evJson.events ?? [])
+        }
+      } catch {
+        // 告知イベント取得失敗は致命的でない（特典単独でも動く）
+      }
+
     } catch (error) {
       console.error('データ取得エラー:', error)
       toast.error('データの取得に失敗しました')
     } finally {
       setLoading(false)
     }
-  }, [storeId])
+  }, [storeId, selectedMonth])
 
   useEffect(() => {
     loadData()
@@ -203,6 +221,7 @@ export default function EventPromotionTab({ storeId, onReceiptClick }: EventProm
       rounding_position: promotion.rounding_position,
       thresholds: promotion.thresholds || [],
       is_active: promotion.is_active,
+      event_id: promotion.event_id,
     })
     setIsCreating(false)
     loadAchievements(promotion)
@@ -212,6 +231,24 @@ export default function EventPromotionTab({ storeId, onReceiptClick }: EventProm
   const handleCreateNew = () => {
     setSelectedPromotion(null)
     setEditForm(getNewPromotion(storeId))
+    setIsCreating(true)
+    setAchievements([])
+    setStats(null)
+  }
+
+  // 告知イベントから特典を作成（name/期間をコピー + event_id 紐付け）
+  const handleCreateFromEvent = (eventId: number) => {
+    const ev = managementEvents.find((e) => e.id === eventId)
+    if (!ev) return
+    setSelectedPromotion(null)
+    setEditForm({
+      ...getNewPromotion(storeId),
+      name: ev.name,
+      description: ev.description,
+      start_date: ev.start_date,
+      end_date: ev.end_date,
+      event_id: ev.id,
+    })
     setIsCreating(true)
     setAchievements([])
     setStats(null)
@@ -547,33 +584,91 @@ export default function EventPromotionTab({ storeId, onReceiptClick }: EventProm
     return <LoadingSpinner />
   }
 
+  // 選択中の月の範囲
+  const monthStartStr = format(startOfMonth(selectedMonth), 'yyyy-MM-dd')
+  const monthEndStr = format(endOfMonth(selectedMonth), 'yyyy-MM-dd')
+  // その月に重なる特典イベント（独立 + 告知連動）
+  const monthPromotions = promotions.filter(
+    (p) => p.start_date <= monthEndStr && p.end_date >= monthStartStr
+  )
+  // まだ特典が紐付いていない告知イベント（managementEvents は当月分を取得済み）
+  const linkedEventIds = new Set(
+    promotions.map((p) => p.event_id).filter((v): v is number => v != null)
+  )
+  const unlinkedEvents = managementEvents.filter((e) => !linkedEventIds.has(e.id))
+
   return (
     <div style={styles.container}>
-      {/* ヘッダー */}
+      {/* ヘッダー: 月送り + 新規作成 */}
       <div style={styles.header}>
-        <select
-          style={styles.select}
-          value={selectedPromotion?.id || ''}
-          onChange={(e) => {
-            const id = parseInt(e.target.value)
-            const promo = promotions.find(p => p.id === id)
-            if (promo) handleSelectPromotion(promo)
-          }}
-        >
-          <option value="">イベントを選択...</option>
-          {promotions.map(p => (
-            <option key={p.id} value={p.id}>
-              {p.name} ({formatDate(p.start_date)} 〜 {formatDate(p.end_date)})
-            </option>
-          ))}
-        </select>
+        <button style={{ ...styles.button, ...styles.secondaryButton }} onClick={() => setSelectedMonth((p) => subMonths(p, 1))}>◀</button>
+        <span style={{ fontWeight: 'bold', minWidth: '110px', textAlign: 'center' }}>
+          {format(selectedMonth, 'yyyy年M月', { locale: ja })}
+        </span>
+        <button style={{ ...styles.button, ...styles.secondaryButton }} onClick={() => setSelectedMonth((p) => addMonths(p, 1))}>▶</button>
+        <button style={{ ...styles.button, ...styles.primaryButton }} onClick={handleCreateNew}>+ 独立特典を新規作成</button>
+      </div>
 
-        <button
-          style={{ ...styles.button, ...styles.primaryButton }}
-          onClick={handleCreateNew}
-        >
-          + 新規作成
-        </button>
+      {/* イベント一覧（その月） */}
+      <div style={styles.section}>
+        <div style={styles.sectionTitle}>イベント一覧（{format(selectedMonth, 'M月', { locale: ja })}）</div>
+        {monthPromotions.length === 0 && unlinkedEvents.length === 0 ? (
+          <div style={styles.emptyState}>この月のイベントはありません</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {monthPromotions.map((p) => (
+              <div
+                key={`p${p.id}`}
+                onClick={() => handleSelectPromotion(p)}
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '10px 14px',
+                  border: '1px solid #e5e7eb',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  backgroundColor: selectedPromotion?.id === p.id ? '#eff6ff' : '#fff',
+                }}
+              >
+                <div>
+                  <strong>{p.name}</strong>
+                  <span style={{ color: '#6b7280', fontSize: '12px', marginLeft: '10px' }}>
+                    {formatDate(p.start_date)}〜{formatDate(p.end_date)}
+                  </span>
+                  {p.event_id && (
+                    <span style={{ ...styles.achievedBadge, backgroundColor: '#8b5cf6', marginLeft: '8px' }}>告知連動</span>
+                  )}
+                </div>
+                <span style={styles.achievedBadge}>特典あり（{p.thresholds.length}段階）</span>
+              </div>
+            ))}
+            {unlinkedEvents.map((e) => (
+              <div
+                key={`e${e.id}`}
+                onClick={() => handleCreateFromEvent(e.id)}
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '10px 14px',
+                  border: '1px dashed #cbd5e1',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  backgroundColor: '#fafafa',
+                }}
+              >
+                <div>
+                  <strong>{e.name}</strong>
+                  <span style={{ color: '#6b7280', fontSize: '12px', marginLeft: '10px' }}>
+                    {formatDate(e.start_date)}〜{formatDate(e.end_date)}
+                  </span>
+                </div>
+                <span style={styles.notAchievedBadge}>特典なし → クリックで追加</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* 編集フォーム */}

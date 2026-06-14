@@ -1109,6 +1109,7 @@ export interface EventPromotion {
   rounding_position: number
   thresholds: PromotionThreshold[]
   is_active: boolean
+  event_id: number | null // 告知イベント(management_events)への紐付け。NULLなら独立した売上特典
   created_at: string
   updated_at: string
 }
@@ -1129,6 +1130,134 @@ export interface PromotionAchievement {
 // ============================================================================
 // Payslip Items (報酬明細商品明細)
 // ============================================================================
+// ============================================================================
+// Payslip (報酬明細・月次) — recalculate API が生成
+// ============================================================================
+// daily_details[] の1日分（recalculate/route.ts で生成。hourly_income / back は
+// 採用報酬形態non-aware の生値である点に注意）
+export interface PayslipDailyDetail {
+  date: string
+  hours: number
+  hourly_wage: number
+  hourly_income: number
+  sales: number
+  sales_item_based: number
+  sales_receipt_based: number
+  back: number
+  self_back: number
+  help_back: number
+  work_time_range: string
+  daily_payment: number
+  late_minutes: number
+}
+
+// compensation_breakdown[] の1要素（全報酬形態の試算結果。is_selected=true が採用形態）
+export interface CompensationBreakdownEntry {
+  id: number
+  name: string
+  use_wage: boolean
+  hourly_income: number
+  sales_back: number
+  product_back: number
+  fixed_amount: number
+  per_attendance_income: number
+  total_sales: number
+  gross_earnings: number
+  use_bonuses: boolean
+  bonus_amount: number
+  gross_with_bonus: number
+  is_selected: boolean
+}
+
+export interface Payslip {
+  id: number
+  cast_id: number
+  store_id: number
+  year_month: string
+  status: string
+  work_days: number
+  total_hours: number
+  average_hourly_wage: number
+  hourly_income: number
+  sales_back: number
+  product_back: number
+  fixed_amount: number
+  per_attendance_income: number
+  bonus_total: number
+  gross_total: number
+  daily_payment: number
+  withholding_tax: number
+  other_deductions: number
+  total_deduction: number
+  net_payment: number
+  daily_details: PayslipDailyDetail[] | null
+  compensation_breakdown: CompensationBreakdownEntry[] | null
+  product_back_details?: unknown
+  deduction_details?: unknown
+  bonus_details?: unknown
+  finalized_at?: string | null
+  created_at?: string
+  updated_at?: string
+}
+
+// ============================================================================
+// DailyReport (業務日報・手入力日次サマリ)
+// ============================================================================
+export interface DailyReport {
+  id: number
+  store_id: number
+  business_date: string
+  event_name: string | null
+  weather: string | null
+  total_sales: number | null
+  cash_sales: number | null
+  card_sales: number | null
+  other_sales: number | null
+  unknown_receipt: number | null
+  unknown_amount: number | null
+  unpaid_amount: number | null
+  expense_amount: number | null // 経費入金(レジ→小口現金の補充)。経費支出ではない
+  daily_payment_total: number | null
+  order_count: number | null
+  first_time_count: number | null
+  return_count: number | null
+  regular_count: number | null
+  staff_count: number | null
+  cast_count: number | null
+  remarks: string | null
+  created_at: string | null
+  updated_at: string | null
+}
+
+// ============================================================================
+// VisitorReservation (来店予約・公式LINE等から)
+// ============================================================================
+export interface VisitorReservation {
+  id: number
+  cast_id: number | null
+  store_id: number | null
+  date: string
+  time: string
+  guest_count: number
+  source: string | null // 'line' = 公式LINE経由
+  created_at: string | null
+}
+
+// ============================================================================
+// ManagementEvent (経営ダッシュボード用の告知イベント)
+// ============================================================================
+export interface ManagementEvent {
+  id: number
+  store_id: number
+  name: string
+  description: string | null
+  start_date: string // "YYYY-MM-DD"
+  end_date: string // "YYYY-MM-DD"
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
 export interface PayslipItem {
   id: number
   cast_id: number

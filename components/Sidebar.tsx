@@ -57,7 +57,7 @@ const mobileRestrictedPaths = [
 ]
 
 // モバイルで制限するグループ名
-const mobileRestrictedGroups = ['管理者専用', 'Twitter', '売上&経費', '報酬設定']
+const mobileRestrictedGroups = ['経営ダッシュボード', '管理者専用', 'Twitter', '売上&経費', '報酬設定']
 
 // メイン項目（常に表示）
 const mainItems: MenuItem[] = [
@@ -75,6 +75,14 @@ const mainItems: MenuItem[] = [
 
 // グループ化されたメニュー
 const menuGroups: MenuGroup[] = [
+  {
+    name: '経営ダッシュボード',
+    icon: 'chart',
+    superAdminOnly: true,
+    items: [
+      { name: '経営ダッシュボード', path: '/management', icon: 'chart' },
+    ]
+  },
   {
     name: '出勤表作成',
     icon: 'image',
