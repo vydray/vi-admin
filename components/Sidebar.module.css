@@ -1,0 +1,294 @@
+.sidebar {
+  --accent: #2dd4bf;
+  --accent-tint: rgba(45, 212, 191, 0.16);
+  --accent-tint-soft: rgba(45, 212, 191, 0.10);
+  --accent-rail: rgba(45, 212, 191, 0.45);
+  --txt: rgba(255, 255, 255, 0.74);
+  --txt-muted: rgba(255, 255, 255, 0.55);
+  --txt-strong: #ffffff;
+
+  width: 250px;
+  height: 100vh;
+  background: linear-gradient(180deg, #26384a 0%, #2d4154 100%);
+  color: var(--txt);
+  position: fixed;
+  left: 0;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 2px 0 16px rgba(0, 0, 0, 0.18);
+  z-index: 1000;
+}
+.sidebar.mobile {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  box-shadow: none;
+}
+
+/* ---------- header ---------- */
+.header {
+  padding: 26px 18px 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.mobile .header {
+  padding: 16px 14px;
+}
+.logo {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+.logoImage {
+  object-fit: contain;
+}
+.userInfo {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 16px;
+  padding: 11px 12px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 11px;
+}
+.userAvatar {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--accent-tint);
+  color: var(--accent);
+}
+.userMeta {
+  min-width: 0;
+}
+.username {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--txt-strong);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.role {
+  font-size: 11.5px;
+  color: var(--txt-muted);
+  margin-top: 1px;
+}
+.storeSelector {
+  margin-top: 10px;
+}
+.select {
+  width: 100%;
+  padding: 9px 12px;
+  font-size: 13.5px;
+  font-family: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.95);
+  color: #2c3e50;
+  cursor: pointer;
+}
+
+/* ---------- nav ---------- */
+.nav {
+  flex: 1;
+  padding: 12px 0 30px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+}
+.nav::-webkit-scrollbar {
+  width: 7px;
+}
+.nav::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 4px;
+}
+.nav::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+/* ---------- flat item / group header 共通の見た目 ---------- */
+.item,
+.groupHeader,
+.subItem,
+.logout {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: calc(100% - 16px);
+  margin: 0 8px;
+  padding: 10px 12px;
+  border: none;
+  background: transparent;
+  border-radius: 10px;
+  color: var(--txt);
+  font-family: inherit;
+  font-size: 14px;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.16s ease, color 0.16s ease;
+}
+.item:hover,
+.groupHeader:hover,
+.subItem:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--txt-strong);
+}
+.icon {
+  flex-shrink: 0;
+  display: flex;
+  color: var(--txt-muted);
+  transition: color 0.16s ease;
+}
+.item:hover .icon,
+.groupHeader:hover .icon,
+.subItem:hover .icon {
+  color: var(--txt-strong);
+}
+.label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* アクティブ（＝今いるページ）: Tealの背景ピル + 色付きアイコン + 左バー */
+.item.active,
+.subItem.active {
+  background: var(--accent-tint);
+  color: var(--txt-strong);
+  font-weight: 700;
+}
+.item.active .icon,
+.subItem.active .icon {
+  color: var(--accent);
+}
+.item.active::before,
+.subItem.active::before,
+.groupHeader.active::before {
+  content: '';
+  position: absolute;
+  left: -8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 58%;
+  background: var(--accent);
+  border-radius: 0 3px 3px 0;
+}
+
+/* ---------- group header ---------- */
+.group {
+  margin-top: 4px;
+}
+.groupHeader {
+  justify-content: space-between;
+  color: var(--txt-muted);
+  font-size: 13.5px;
+}
+.groupHeaderLeft {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+}
+/* 開いてる: ヘッダーが明るく + 背景うっすら浮く → 「開いてる」が一目で分かる */
+.groupHeader.open {
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.95);
+}
+.groupHeader.open .icon {
+  color: rgba(255, 255, 255, 0.95);
+}
+/* 中にいる（閉じてても）: Tealで「ここに居る」を示す */
+.groupHeader.active {
+  color: var(--accent);
+}
+.groupHeader.active .icon {
+  color: var(--accent);
+}
+.chevron {
+  flex-shrink: 0;
+  color: var(--txt-muted);
+  transition: transform 0.24s ease, color 0.16s ease;
+}
+.groupHeader.open .chevron {
+  transform: rotate(180deg);
+  color: rgba(255, 255, 255, 0.9);
+}
+.groupHeader.active .chevron {
+  color: var(--accent);
+}
+
+/* ---------- group body（開閉アニメ + Teal縦レール） ---------- */
+.groupBody {
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: max-height 0.28s ease, opacity 0.2s ease;
+}
+.groupBody.open {
+  max-height: 640px;
+  opacity: 1;
+}
+.subList {
+  margin: 4px 8px 6px 26px;
+  padding: 2px 0 2px 8px;
+  border-left: 2px solid var(--accent-rail);
+  background: rgba(0, 0, 0, 0.16);
+  border-radius: 0 10px 10px 0;
+}
+.subItem {
+  width: 100%;
+  margin: 0;
+  padding: 9px 12px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.66);
+}
+.subItem.active::before {
+  left: -10px;
+}
+.subIcon {
+  /* サブアイコンは少し小さめ */
+}
+
+/* ---------- logout ---------- */
+.logout {
+  margin: 14px 0 0;
+  color: var(--txt-muted);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0;
+  width: 100%;
+  padding: 14px 20px;
+}
+.logout:hover {
+  color: #fca5a5;
+  background: rgba(248, 113, 113, 0.1);
+}
+.logout:hover .icon {
+  color: #fca5a5;
+}
+
+/* ---------- mobile overlay 調整 ---------- */
+.mobile .item,
+.mobile .groupHeader {
+  padding: 13px 16px;
+  font-size: 15.5px;
+}
+.mobile .subItem {
+  padding: 11px 14px;
+  font-size: 14.5px;
+}
+.mobile .logout {
+  padding: 14px 16px;
+  font-size: 15.5px;
+  margin-bottom: 80px;
+}

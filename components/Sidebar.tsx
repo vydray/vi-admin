@@ -8,6 +8,8 @@ import { useStore } from '@/contexts/StoreContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { usePermissions } from '@/hooks/usePermissions'
 import { getPermissionKeyFromPath } from '@/lib/permissions'
+import Icon from './Icon'
+import styles from './Sidebar.module.css'
 
 interface MenuItem {
   name: string
@@ -21,6 +23,9 @@ interface MenuGroup {
   items: MenuItem[]
   superAdminOnly?: boolean
 }
+
+// className を結合するヘルパー（falsyは除外）
+const cx = (...args: (string | false | undefined)[]) => args.filter(Boolean).join(' ')
 
 // モバイルで制限するパス
 const mobileRestrictedPaths = [
@@ -52,96 +57,90 @@ const mobileRestrictedPaths = [
 ]
 
 // モバイルで制限するグループ名
-const mobileRestrictedGroups = ['管理者専用', 'Twitter', '売上&経費', '報酬設定', 'Webサイト']
+const mobileRestrictedGroups = ['管理者専用', 'Twitter', '売上&経費', '報酬設定']
 
 // メイン項目（常に表示）
 const mainItems: MenuItem[] = [
-  { name: 'ホーム', path: '/', icon: '🏠' },
-  { name: 'キャスト売上', path: '/cast-sales', icon: '💰' },
-  { name: '勤怠管理', path: '/attendance', icon: '⏰' },
-  { name: 'シフト管理', path: '/shifts/manage', icon: '📅' },
-  { name: '伝票管理', path: '/receipts', icon: '🧾' },
-  { name: '経費管理', path: '/expenses', icon: '💸' },
-  { name: '報酬明細一覧', path: '/payslip-list', icon: '📋' },
-  { name: 'キャスト管理', path: '/casts', icon: '👥' },
-  { name: 'オリシャン集計', path: '/orishan-report', icon: '🍾' },
+  { name: 'ホーム', path: '/', icon: 'home' },
+  { name: 'キャスト売上', path: '/cast-sales', icon: 'coins' },
+  { name: '勤怠管理', path: '/attendance', icon: 'clock' },
+  { name: 'シフト管理', path: '/shifts/manage', icon: 'calendar' },
+  { name: '伝票管理', path: '/receipts', icon: 'receipt' },
+  { name: '経費管理', path: '/expenses', icon: 'trending-down' },
+  { name: 'Webサイト', path: '/website-banners', icon: 'globe' },
+  { name: '報酬明細一覧', path: '/payslip-list', icon: 'file-text' },
+  { name: 'キャスト管理', path: '/casts', icon: 'users' },
+  { name: 'オリシャン集計', path: '/orishan-report', icon: 'bottle' },
 ]
 
 // グループ化されたメニュー
 const menuGroups: MenuGroup[] = [
   {
     name: '出勤表作成',
-    icon: '📸',
+    icon: 'image',
     items: [
-      { name: 'キャスト写真', path: '/schedule/photos', icon: '🖼️' },
-      { name: 'テンプレート', path: '/schedule/template', icon: '🎨' },
-      { name: '生成', path: '/schedule/generate', icon: '✨' },
+      { name: 'キャスト写真', path: '/schedule/photos', icon: 'image' },
+      { name: 'テンプレート', path: '/schedule/template', icon: 'template' },
+      { name: '生成', path: '/schedule/generate', icon: 'sparkles' },
     ]
   },
   {
     name: 'Twitter',
-    icon: '🐦',
+    icon: 'x',
     items: [
-      { name: '予約投稿', path: '/twitter-posts', icon: '📝' },
-      { name: '設定', path: '/twitter-settings', icon: '⚙️' },
+      { name: '予約投稿', path: '/twitter-posts', icon: 'edit' },
+      { name: '設定', path: '/twitter-settings', icon: 'settings' },
     ]
   },
   {
     name: '商品',
-    icon: '🛍️',
+    icon: 'bag',
     items: [
-      { name: 'カテゴリー管理', path: '/categories', icon: '📁' },
-      { name: '商品管理', path: '/products', icon: '🛍️' },
+      { name: 'カテゴリー管理', path: '/categories', icon: 'folder' },
+      { name: '商品管理', path: '/products', icon: 'tag' },
     ]
   },
   {
     name: '売上&経費',
-    icon: '💰',
+    icon: 'chart',
     items: [
-      { name: '売上設定', path: '/sales-settings', icon: '📊' },
+      { name: '売上設定', path: '/sales-settings', icon: 'sliders' },
     ]
   },
   {
     name: '報酬設定',
-    icon: '💳',
+    icon: 'card',
     items: [
-      { name: '報酬明細', path: '/payslip', icon: '📄' },
-      { name: '整合チェック', path: '/payslip-verify', icon: '🔍' },
-      { name: '報酬形態一覧', path: '/compensation-list', icon: '📋' },
-      { name: '報酬計算設定', path: '/compensation-settings', icon: '💳' },
-      { name: 'キャスト別時給設定', path: '/cast-wage-settings', icon: '👤' },
-      { name: '時給設定', path: '/wage-settings', icon: '⏱️' },
-      { name: 'バック設定', path: '/cast-back-rates', icon: '💵' },
-      { name: '控除設定', path: '/deduction-settings', icon: '➖' },
-      { name: '賞与設定', path: '/bonus-settings', icon: '🎁' },
-    ]
-  },
-  {
-    name: 'Webサイト',
-    icon: '🌐',
-    items: [
-      { name: 'イベントバナー', path: '/website-banners', icon: '🎉' },
+      { name: '報酬明細', path: '/payslip', icon: 'file-text' },
+      { name: '整合チェック', path: '/payslip-verify', icon: 'search' },
+      { name: '報酬形態一覧', path: '/compensation-list', icon: 'list' },
+      { name: '報酬計算設定', path: '/compensation-settings', icon: 'calculator' },
+      { name: 'キャスト別時給設定', path: '/cast-wage-settings', icon: 'user' },
+      { name: '時給設定', path: '/wage-settings', icon: 'clock' },
+      { name: 'バック設定', path: '/cast-back-rates', icon: 'percent' },
+      { name: '控除設定', path: '/deduction-settings', icon: 'minus-circle' },
+      { name: '賞与設定', path: '/bonus-settings', icon: 'gift' },
     ]
   },
   {
     name: '設定',
-    icon: '⚙️',
+    icon: 'settings',
     items: [
-      { name: 'BASE連携', path: '/base-settings', icon: '🛒' },
-      { name: '店舗設定', path: '/store-settings', icon: '🏪' },
-      { name: '設定', path: '/settings', icon: '⚙️' },
+      { name: 'BASE連携', path: '/base-settings', icon: 'cart' },
+      { name: '店舗設定', path: '/store-settings', icon: 'store' },
+      { name: '設定', path: '/settings', icon: 'settings' },
     ]
   },
   {
     name: '管理者専用',
-    icon: '🔐',
+    icon: 'shield',
     superAdminOnly: true,
     items: [
-      { name: '店舗管理', path: '/stores', icon: '🏢' },
-      { name: 'LINE設定', path: '/line-settings', icon: '💬' },
-      { name: 'LINE一斉送信', path: '/line-broadcast', icon: '📨' },
-      { name: 'AI統合設定', path: '/settings/ai', icon: '🤖' },
-      { name: 'デイリーチェック', path: '/daily-check-settings', icon: '🚨' },
+      { name: '店舗管理', path: '/stores', icon: 'building' },
+      { name: 'LINE設定', path: '/line-settings', icon: 'message' },
+      { name: 'LINE一斉送信', path: '/line-broadcast', icon: 'send' },
+      { name: 'AI統合設定', path: '/settings/ai', icon: 'cpu' },
+      { name: 'デイリーチェック', path: '/daily-check-settings', icon: 'alert' },
     ]
   },
 ]
@@ -192,65 +191,44 @@ export default function Sidebar({ isMobileOverlay = false }: SidebarProps) {
     return group.items.some(item => pathname === item.path)
   }
 
-  // モバイルオーバーレイ時はposition: fixedを解除し、コンパクトに
-  const sidebarStyle = isMobileOverlay
-    ? { ...styles.sidebar, position: 'relative' as const, width: '100%', height: '100%', padding: '0' }
-    : styles.sidebar
-
-  const mobileHeaderStyle = isMobileOverlay
-    ? { ...styles.header, padding: '16px 12px' }
-    : styles.header
-
-  const mobileNavItemStyle = isMobileOverlay
-    ? { ...styles.navItem, padding: '10px 14px', fontSize: '13px' }
-    : styles.navItem
+  const iconSize = isMobileOverlay ? 21 : 19
 
   return (
-    <div style={sidebarStyle}>
-      <div style={mobileHeaderStyle}>
-        <div style={styles.logoContainer}>
+    <div className={cx(styles.sidebar, isMobileOverlay && styles.mobile)}>
+      <div className={styles.header}>
+        <div className={styles.logo}>
           <Image
             src="/vi-admin_icon4.png"
             alt="VI Admin"
             width={isMobileOverlay ? 160 : 200}
             height={isMobileOverlay ? 40 : 50}
-            style={styles.logoImage}
+            className={styles.logoImage}
             priority
           />
         </div>
 
         {/* ユーザー情報 */}
         {user && (
-          <div style={{
-            ...styles.userInfo,
-            ...(isMobileOverlay ? { marginTop: '12px', padding: '12px', marginBottom: '8px' } : {})
-          }}>
-            <div style={{
-              ...styles.username,
-              ...(isMobileOverlay ? { fontSize: '15px' } : {})
-            }}>👤 {user.username}</div>
-            <div style={{
-              ...styles.role,
-              ...(isMobileOverlay ? { fontSize: '13px' } : {})
-            }}>
-              {user.role === 'super_admin' ? '全店舗管理者' : '店舗管理者'}
+          <div className={styles.userInfo}>
+            <span className={styles.userAvatar}>
+              <Icon name="user" size={18} />
+            </span>
+            <div className={styles.userMeta}>
+              <div className={styles.username}>{user.username}</div>
+              <div className={styles.role}>
+                {user.role === 'super_admin' ? '全店舗管理者' : '店舗管理者'}
+              </div>
             </div>
           </div>
         )}
 
         {/* 店舗選択（super_adminのみ表示） */}
         {isSuperAdmin && (
-          <div style={{
-            ...styles.storeSelector,
-            ...(isMobileOverlay ? { marginTop: '8px' } : {})
-          }}>
+          <div className={styles.storeSelector}>
             <select
               value={storeId}
               onChange={(e) => setStoreId(Number(e.target.value))}
-              style={{
-                ...styles.select,
-                ...(isMobileOverlay ? { padding: '10px 12px', fontSize: '15px' } : {})
-              }}
+              className={styles.select}
             >
               {stores.map((store) => (
                 <option key={store.id} value={store.id}>
@@ -262,34 +240,24 @@ export default function Sidebar({ isMobileOverlay = false }: SidebarProps) {
         )}
       </div>
 
-      <nav style={{
-        ...styles.nav,
-        ...(isMobileOverlay ? { padding: '12px 0', gap: '2px' } : {})
-      }}>
+      <nav className={styles.nav}>
         {/* メイン項目 */}
         {mainItems
           .filter(item => canAccessItem(item.path))
           .filter(item => !isMobileOverlay || !mobileRestrictedPaths.includes(item.path))
           .map((item) => {
-          const isActive = pathname === item.path
-          return (
-            <Link
-              key={item.path}
-              href={item.path}
-              style={{
-                ...styles.navItem,
-                ...(isActive ? styles.navItemActive : {}),
-                ...(isMobileOverlay ? { padding: '14px 16px', fontSize: '16px' } : {}),
-              }}
-            >
-              <span style={{
-                ...styles.icon,
-                ...(isMobileOverlay ? { fontSize: '18px', marginRight: '12px' } : {})
-              }}>{item.icon}</span>
-              <span>{item.name}</span>
-            </Link>
-          )
-        })}
+            const isActive = pathname === item.path
+            return (
+              <Link
+                key={item.path}
+                href={item.path}
+                className={cx(styles.item, isActive && styles.active)}
+              >
+                <span className={styles.icon}><Icon name={item.icon} size={iconSize} /></span>
+                <span className={styles.label}>{item.name}</span>
+              </Link>
+            )
+          })}
 
         {/* グループ化されたメニュー */}
         {menuGroups
@@ -303,225 +271,70 @@ export default function Sidebar({ isMobileOverlay = false }: SidebarProps) {
             // アクセス可能な項目がない場合はグループ自体を表示しない
             if (accessibleItems.length === 0) return null
 
+            // 中身が1つだけなら、開閉せず直リンク（クリック1回で済む）。
+            // 将来2つ目が足されたら自動でまたグループ表示に戻る。
+            if (accessibleItems.length === 1) {
+              const only = accessibleItems[0]
+              const isActive = pathname === only.path
+              return (
+                <Link
+                  key={group.name}
+                  href={only.path}
+                  className={cx(styles.item, isActive && styles.active)}
+                >
+                  <span className={styles.icon}><Icon name={group.icon} size={iconSize} /></span>
+                  <span className={styles.label}>{group.name}</span>
+                </Link>
+              )
+            }
+
             const isOpen = openGroups.has(group.name)
             const isActive = isGroupActive(group)
 
             return (
-              <div key={group.name}>
+              <div key={group.name} className={styles.group}>
                 <button
                   onClick={() => toggleGroup(group.name)}
-                  style={{
-                    ...styles.groupHeader,
-                    ...(isActive ? styles.groupHeaderActive : {}),
-                    ...(isMobileOverlay ? { padding: '14px 16px', marginTop: '6px', fontSize: '16px' } : {}),
-                  }}
+                  className={cx(
+                    styles.groupHeader,
+                    isOpen && styles.open,
+                    isActive && styles.active,
+                  )}
                 >
-                  <div style={styles.groupHeaderLeft}>
-                    <span style={{
-                      ...styles.icon,
-                      ...(isMobileOverlay ? { fontSize: '18px', marginRight: '12px' } : {})
-                    }}>{group.icon}</span>
-                    <span>{group.name}</span>
-                  </div>
-                  <span style={{
-                    ...styles.chevron,
-                    transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)',
-                  }}>
-                    ▼
+                  <span className={styles.groupHeaderLeft}>
+                    <span className={styles.icon}><Icon name={group.icon} size={iconSize} /></span>
+                    <span className={styles.label}>{group.name}</span>
                   </span>
+                  <span className={styles.chevron}><Icon name="chevron" size={15} /></span>
                 </button>
 
-                {isOpen && (
-                  <div style={styles.groupItems}>
+                <div className={cx(styles.groupBody, isOpen && styles.open)}>
+                  <div className={styles.subList}>
                     {accessibleItems.map((item) => {
                       const isItemActive = pathname === item.path
                       return (
                         <Link
                           key={item.path}
                           href={item.path}
-                          style={{
-                            ...styles.subNavItem,
-                            ...(isItemActive ? styles.subNavItemActive : {}),
-                            ...(isMobileOverlay ? { padding: '12px 16px 12px 36px', fontSize: '15px' } : {}),
-                          }}
+                          className={cx(styles.subItem, isItemActive && styles.active)}
                         >
-                          <span style={{
-                            ...styles.subIcon,
-                            ...(isMobileOverlay ? { fontSize: '16px', marginRight: '10px' } : {})
-                          }}>{item.icon}</span>
-                          <span>{item.name}</span>
+                          <span className={styles.icon}><Icon name={item.icon} size={isMobileOverlay ? 18 : 16} /></span>
+                          <span className={styles.label}>{item.name}</span>
                         </Link>
                       )
                     })}
                   </div>
-                )}
+                </div>
               </div>
             )
           })}
 
         {/* ログアウト */}
-        <button
-          onClick={logout}
-          style={{
-            ...styles.logoutButton,
-            ...(isMobileOverlay ? { padding: '14px 16px', fontSize: '16px', marginBottom: '80px' } : {})
-          }}
-        >
-          <span style={{
-            ...styles.icon,
-            ...(isMobileOverlay ? { fontSize: '18px', marginRight: '12px' } : {})
-          }}>🚪</span>
-          <span>ログアウト</span>
+        <button onClick={logout} className={styles.logout}>
+          <span className={styles.icon}><Icon name="logout" size={iconSize} /></span>
+          <span className={styles.label}>ログアウト</span>
         </button>
       </nav>
     </div>
   )
-}
-
-const styles: { [key: string]: React.CSSProperties } = {
-  sidebar: {
-    width: '250px',
-    height: '100vh',
-    background: 'linear-gradient(180deg, #2c3e50 0%, #34495e 100%)',
-    color: 'white',
-    position: 'fixed',
-    left: 0,
-    top: 0,
-    display: 'flex',
-    flexDirection: 'column',
-    boxShadow: '2px 0 10px rgba(0,0,0,0.1)',
-    zIndex: 1000,
-  },
-  header: {
-    padding: '30px 20px',
-    borderBottom: '1px solid rgba(255,255,255,0.1)',
-  },
-  logoContainer: {
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  logoImage: {
-    objectFit: 'contain' as const,
-  },
-  userInfo: {
-    marginTop: '15px',
-    padding: '12px',
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: '8px',
-    marginBottom: '10px',
-  },
-  username: {
-    fontSize: '14px',
-    fontWeight: '600',
-    marginBottom: '4px',
-  },
-  role: {
-    fontSize: '12px',
-    color: 'rgba(255,255,255,0.7)',
-  },
-  storeSelector: {
-    marginTop: '10px',
-  },
-  select: {
-    width: '100%',
-    padding: '8px 12px',
-    fontSize: '14px',
-    border: 'none',
-    borderRadius: '5px',
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    color: '#2c3e50',
-    cursor: 'pointer',
-  },
-  nav: {
-    flex: 1,
-    padding: '15px 0',
-    paddingBottom: '30px',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '2px',
-    overflowY: 'auto',
-  },
-  navItem: {
-    display: 'flex',
-    alignItems: 'center',
-    padding: '12px 20px',
-    color: 'white',
-    textDecoration: 'none',
-    transition: 'all 0.2s ease',
-    borderLeft: '3px solid transparent',
-  },
-  navItemActive: {
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderLeft: '3px solid #3498db',
-  },
-  icon: {
-    marginRight: '10px',
-    fontSize: '18px',
-  },
-  groupHeader: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    width: '100%',
-    padding: '12px 20px',
-    marginTop: '8px',
-    color: 'rgba(255,255,255,0.8)',
-    backgroundColor: 'transparent',
-    border: 'none',
-    borderLeft: '3px solid transparent',
-    cursor: 'pointer',
-    transition: 'all 0.2s ease',
-    textAlign: 'left',
-    fontSize: '14px',
-  },
-  groupHeaderActive: {
-    color: 'white',
-    borderLeft: '3px solid #3498db',
-    backgroundColor: 'rgba(255,255,255,0.05)',
-  },
-  groupHeaderLeft: {
-    display: 'flex',
-    alignItems: 'center',
-  },
-  chevron: {
-    fontSize: '10px',
-    transition: 'transform 0.2s ease',
-    color: 'rgba(255,255,255,0.5)',
-  },
-  groupItems: {
-    backgroundColor: 'rgba(0,0,0,0.15)',
-  },
-  subNavItem: {
-    display: 'flex',
-    alignItems: 'center',
-    padding: '10px 20px 10px 35px',
-    color: 'rgba(255,255,255,0.8)',
-    textDecoration: 'none',
-    transition: 'all 0.2s ease',
-    fontSize: '13px',
-  },
-  subNavItemActive: {
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    color: 'white',
-  },
-  subIcon: {
-    marginRight: '10px',
-    fontSize: '14px',
-  },
-  logoutButton: {
-    display: 'flex',
-    alignItems: 'center',
-    padding: '12px 20px',
-    marginTop: 'auto',
-    color: 'rgba(255,255,255,0.7)',
-    backgroundColor: 'transparent',
-    border: 'none',
-    borderTop: '1px solid rgba(255,255,255,0.1)',
-    cursor: 'pointer',
-    transition: 'all 0.2s ease',
-    textAlign: 'left',
-    fontSize: '14px',
-    width: '100%',
-  },
 }
