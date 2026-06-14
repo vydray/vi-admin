@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { recalculateForDate } from '@/lib/recalculateSales'
 import { getCurrentBusinessDay } from '@/lib/businessDay'
 import { withCronLock } from '@/lib/cronLock'
+import { isYearMonthLocked } from '@/lib/payslipLockDate'
 
 // Service Role Key でRLSをバイパス
 const supabaseAdmin = createClient(
@@ -95,6 +96,8 @@ async function executeRecalculateSales() {
         const uniqueDates = [...new Set(unprocessedDates.map(d => d.business_date))]
         for (const date of uniqueDates) {
           if (date) {
+            // ロック済み月(翌月6日以降=締め後)は再計算しない。payslips cron と同じ業務ルールで確定値を守る
+            if (isYearMonthLocked(date.slice(0, 7))) continue
             const pastResult = await recalculateForDate(store.id, date)
             results.push({ store_id: store.id, date, ...pastResult })
             datesAlreadyProcessed.add(date)
@@ -125,6 +128,7 @@ async function executeRecalculateSales() {
           const dateStr = `${yStr}-${mStr}-${String(d).padStart(2, '0')}`
           if (datesAlreadyProcessed.has(dateStr)) continue
           if (dateStr > today) continue  // 未来日は飛ばす
+          if (isYearMonthLocked(dateStr.slice(0, 7))) continue  // ロック済み月は再計算しない（確定値を守る）
           const r = await recalculateForDate(store.id, dateStr)
           results.push({ store_id: store.id, date: dateStr, ...r })
           datesAlreadyProcessed.add(dateStr)
