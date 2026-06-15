@@ -32,6 +32,8 @@ export type PermissionKey =
   | 'twitter'            // Twitter管理
   | 'orishan_report'     // オリシャン集計
   | 'website_banners'    // Webサイト・イベントバナー
+  | 'management'         // 経営ダッシュボード（既定OFF・opt-in）
+  | 'expenses'           // 経費管理
 
 export type Permissions = Partial<Record<PermissionKey, boolean>>
 

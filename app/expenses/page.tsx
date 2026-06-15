@@ -8,12 +8,17 @@ import { useIsMobile } from '@/hooks/useIsMobile'
 import { ExpenseCategory, Expense, ExpenseWithCategory, PettyCashTransaction, PettyCashCheck, PaymentMethod, PettyCashTransactionType } from '@/types'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
+import ProtectedPage from '@/components/ProtectedPage'
 import toast from 'react-hot-toast'
 import { format, addMonths, subMonths, startOfMonth, endOfMonth } from 'date-fns'
 import { ja } from 'date-fns/locale'
 
 export default function ExpensesPage() {
-  return <ExpensesPageContent />
+  return (
+    <ProtectedPage permissionKey="expenses">
+      <ExpensesPageContent />
+    </ProtectedPage>
+  )
 }
 
 function ExpensesPageContent() {

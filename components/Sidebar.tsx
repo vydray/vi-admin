@@ -78,7 +78,7 @@ const menuGroups: MenuGroup[] = [
   {
     name: '経営ダッシュボード',
     icon: 'chart',
-    superAdminOnly: true,
+    // 権限(management)で制御。既定OFFで、店舗adminは明示的に許可された場合のみ表示
     items: [
       { name: '経営ダッシュボード', path: '/management', icon: 'chart' },
     ]

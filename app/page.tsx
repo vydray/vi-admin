@@ -13,6 +13,8 @@ import Button from '@/components/Button'
 import MonthlyTargetCard from '@/components/MonthlyTargetCard'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import holidayJp from '@holiday-jp/holiday_jp'
+import EventModal from '@/components/EventModal'
+import type { ManagementEvent } from '@/types/database'
 
 interface DashboardData {
   todaySales: number
@@ -145,6 +147,8 @@ export default function Home() {
 
   // 業務日報モーダル
   const [showDailyReportModal, setShowDailyReportModal] = useState(false)
+  const [events, setEvents] = useState<ManagementEvent[]>([])
+  const [showEventModal, setShowEventModal] = useState(false)
   const [selectedDayData, setSelectedDayData] = useState<DailySalesData | null>(null)
 
   // 未設定アラート
@@ -250,8 +254,24 @@ export default function Home() {
       fetchDashboardData()
       checkMissingSettings()
       checkTwitterStatus()
+      loadEvents()
     }
   }, [storeId, selectedYear, selectedMonth, storeLoading])
+
+  // 告知イベント（management_events）を月で取得。日別データのイベント列・イベント管理モーダルで使用
+  const loadEvents = async () => {
+    if (!storeId) return
+    try {
+      const ym = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}`
+      const res = await fetch(`/api/management/events?store_id=${storeId}&year_month=${ym}`)
+      if (res.ok) {
+        const j = await res.json()
+        setEvents(j.events ?? [])
+      }
+    } catch (e) {
+      console.error('イベント取得エラー:', e)
+    }
+  }
 
   const checkTwitterStatus = async () => {
     if (!storeId) return
@@ -1356,10 +1376,19 @@ export default function Home() {
         ...styles.chartContainer,
         ...(isMobile ? { padding: '12px', marginTop: '12px' } : {})
       }}>
-        <h3 style={{
-          ...styles.chartTitle,
-          ...(isMobile ? { fontSize: '16px', marginBottom: '12px' } : {})
-        }}>日別データ</h3>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: isMobile ? '12px' : '16px' }}>
+          <h3 style={{
+            ...styles.chartTitle,
+            margin: 0,
+            ...(isMobile ? { fontSize: '16px' } : {})
+          }}>日別データ</h3>
+          <button
+            onClick={() => setShowEventModal(true)}
+            style={{ padding: '8px 16px', background: '#8b5cf6', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 500, cursor: 'pointer', whiteSpace: 'nowrap' }}
+          >
+            イベント管理
+          </button>
+        </div>
         <div style={{
           overflowX: 'auto',
           ...(isMobile ? { WebkitOverflowScrolling: 'touch', margin: '0 -12px', padding: '0 12px' } : {})
@@ -1381,6 +1410,7 @@ export default function Home() {
                     minWidth: '45px',
                   } : {})
                 }}>日付</th>
+                <th style={{ ...styles.dailyTableTh, textAlign: 'left', ...(isMobile ? { padding: '8px 6px' } : {}) }}>イベント</th>
                 <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>総売上</th>
                 <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>店舗売上</th>
                 <th style={{ ...styles.dailyTableTh, textAlign: 'right', ...(isMobile ? { padding: '8px 6px' } : {}) }}>会計数</th>
@@ -1433,6 +1463,15 @@ export default function Home() {
                       const isHoliday = holidayJp.isHoliday(d)
                       const color = d.getDay() === 0 || isHoliday ? '#dc2626' : d.getDay() === 6 ? '#2563eb' : undefined
                       return <span style={color ? { color } : undefined}>{day.day}({dow})</span>
+                    })()}
+                  </td>
+                  <td style={{ ...styles.dailyTableTd, ...(isMobile ? { padding: '8px 6px' } : {}), fontSize: '12px', color: '#7c3aed', maxWidth: '180px', whiteSpace: 'normal' }}>
+                    {(() => {
+                      const evs = events.filter(ev => day.date >= ev.start_date && day.date <= ev.end_date)
+                      if (!evs.length) return ''
+                      const names = evs.map(ev => ev.name).join('、')
+                      const desc = evs.map(ev => ev.description).filter(Boolean).join(' / ')
+                      return <span title={desc || names}>{names}</span>
                     })()}
                   </td>
                   <td style={{ ...styles.dailyTableTd, textAlign: 'right', fontWeight: 600, ...(isMobile ? { padding: '8px 6px' } : {}) }}>
@@ -1613,6 +1652,17 @@ export default function Home() {
       )}
 
       {/* 業務日報モーダル */}
+      {showEventModal && (
+        <EventModal
+          storeId={storeId}
+          storeName={storeName}
+          yearMonth={`${selectedYear}-${String(selectedMonth).padStart(2, '0')}`}
+          monthLabel={`${selectedYear}年${selectedMonth}月`}
+          events={events}
+          onClose={() => setShowEventModal(false)}
+          onChanged={loadEvents}
+        />
+      )}
       {showDailyReportModal && selectedDayData && (
         <>
           <div

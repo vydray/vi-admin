@@ -25,17 +25,23 @@ export const PERMISSION_CONFIG: Record<PermissionKey, { label: string; category:
   twitter: { label: 'Twitter管理', category: 'その他' },
   orishan_report: { label: 'オリシャン集計', category: 'キャスト' },
   website_banners: { label: 'Webサイト・バナー管理', category: 'その他' },
+  management: { label: '経営ダッシュボード', category: '経営' },
+  expenses: { label: '経費管理', category: 'その他' },
 }
 
-// カテゴリ順
-export const PERMISSION_CATEGORIES = ['キャスト', '設定', '商品', 'その他'] as const
+// カテゴリ順（経営は重要なので先頭）
+export const PERMISSION_CATEGORIES = ['経営', 'キャスト', '設定', '商品', 'その他'] as const
 
 // 全権限キーの一覧
 export const ALL_PERMISSION_KEYS: PermissionKey[] = Object.keys(PERMISSION_CONFIG) as PermissionKey[]
 
-// デフォルト権限（全て有効）
+// デフォルトOFF（明示的にtrueの時だけ許可）の権限キー。
+// 経営ダッシュボードは経営数値を扱うため、店舗adminには既定で見せない（opt-in）。
+export const OPT_IN_KEYS = new Set<PermissionKey>(['management'])
+
+// デフォルト権限（opt-inキー以外は有効）
 export const DEFAULT_PERMISSIONS: Permissions = ALL_PERMISSION_KEYS.reduce((acc, key) => {
-  acc[key] = true
+  acc[key] = !OPT_IN_KEYS.has(key)
   return acc
 }, {} as Permissions)
 
@@ -48,6 +54,12 @@ export function hasPermission(
   // super_adminは全権限あり
   if (role === 'super_admin') return true
 
+  // opt-inキー（経営ダッシュボード等）は明示的にtrueの時だけ許可。
+  // 後方互換の「未設定なら許可」を適用せず、既定OFFを担保する。
+  if (OPT_IN_KEYS.has(key)) {
+    return permissions?.[key] === true
+  }
+
   // permissionsが未定義または空の場合はデフォルトで許可（後方互換性）
   if (!permissions || Object.keys(permissions).length === 0) return true
 
@@ -58,6 +70,8 @@ export function hasPermission(
 // ページパスから権限キーを取得
 export function getPermissionKeyFromPath(path: string): PermissionKey | null {
   const pathMap: Record<string, PermissionKey> = {
+    '/management': 'management',
+    '/expenses': 'expenses',
     '/casts': 'casts',
     '/attendance': 'attendance',
     '/payslip': 'payslip',

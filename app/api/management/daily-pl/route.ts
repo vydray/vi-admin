@@ -33,14 +33,17 @@ export async function POST(request: NextRequest) {
   if (!sessionCookie) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  let session: { role?: string; store_id?: number | string }
+  let session: { role?: string; store_id?: number | string; permissions?: Record<string, boolean> }
   try {
     session = JSON.parse(sessionCookie.value)
   } catch {
     return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
   }
-  if (session.role !== 'super_admin') {
-    return NextResponse.json({ error: 'Forbidden: super_admin only' }, { status: 403 })
+  // super_admin か、経営ダッシュボード権限(management)を持つ store_admin のみ
+  const isSuperAdmin = session.role === 'super_admin'
+  const canManage = isSuperAdmin || session.permissions?.management === true
+  if (!canManage) {
+    return NextResponse.json({ error: 'Forbidden: 経営ダッシュボードの権限がありません' }, { status: 403 })
   }
 
   // ===== パラメータ =====
@@ -52,6 +55,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid store_id' }, { status: 400 })
     }
     storeId = body.store_id
+    // store_admin は自店のみ（body値を無視してセッションの店舗に強制）
+    if (!isSuperAdmin) {
+      storeId = Number(session.store_id)
+      if (!storeId || storeId <= 0) {
+        return NextResponse.json({ error: 'Forbidden: 店舗が特定できません' }, { status: 403 })
+      }
+    }
     const ymRegex = /^\d{4}-(0[1-9]|1[0-2])$/
     if (typeof body.year_month !== 'string' || !ymRegex.test(body.year_month)) {
       return NextResponse.json({ error: 'Invalid year_month (YYYY-MM)' }, { status: 400 })

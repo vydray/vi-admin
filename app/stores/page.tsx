@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import Button from '@/components/Button'
 import ProtectedPage from '@/components/ProtectedPage'
-import { PERMISSION_CONFIG, PERMISSION_CATEGORIES, ALL_PERMISSION_KEYS } from '@/lib/permissions'
+import { PERMISSION_CONFIG, PERMISSION_CATEGORIES, ALL_PERMISSION_KEYS, DEFAULT_PERMISSIONS } from '@/lib/permissions'
 import type { PermissionKey, Permissions } from '@/types'
 
 interface Store {
@@ -82,10 +82,7 @@ function StoresPageContent() {
   }>({
     username: '',
     password: '',
-    permissions: ALL_PERMISSION_KEYS.reduce((acc, key) => {
-      acc[key] = true
-      return acc
-    }, {} as Permissions)
+    permissions: { ...DEFAULT_PERMISSIONS }
   })
   const [newStore, setNewStore] = useState<NewStoreForm>({
     store_name: '',
@@ -338,11 +335,9 @@ function StoresPageContent() {
   }
 
   const startEditingPermissions = (adminUser: AdminUser) => {
-    // 全キーをtrueでデフォルト設定し、既存の権限をマージ（未定義のキーはtrueになる）
-    const defaultPermissions = ALL_PERMISSION_KEYS.reduce((acc, key) => {
-      acc[key] = true
-      return acc
-    }, {} as Permissions)
+    // 既定権限（opt-inキーはfalse）に既存の権限をマージ。
+    // 経営ダッシュボード等のopt-inキーは未設定ならfalseのまま（既定OFF）。
+    const defaultPermissions = { ...DEFAULT_PERMISSIONS }
 
     setEditingPermissions({
       userId: adminUser.id,
@@ -419,10 +414,7 @@ function StoresPageContent() {
         setNewUser({
           username: '',
           password: '',
-          permissions: ALL_PERMISSION_KEYS.reduce((acc, key) => {
-            acc[key] = true
-            return acc
-          }, {} as Permissions)
+          permissions: { ...DEFAULT_PERMISSIONS }
         })
         await loadCredentials(selectedStoreId)
       } else {

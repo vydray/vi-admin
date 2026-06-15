@@ -6,29 +6,16 @@ export const dynamic = 'force-dynamic'
 
 type AuthResult = { ok: true } | { ok: false; error: string; status: number }
 
-async function requireSuperAdmin(): Promise<AuthResult> {
-  const cookieStore = await cookies()
-  const c = cookieStore.get('admin_session')
-  if (!c) return { ok: false, error: 'Unauthorized', status: 401 }
-  try {
-    const s = JSON.parse(c.value)
-    if (s.role !== 'super_admin') return { ok: false, error: 'Forbidden: super_admin only', status: 403 }
-    return { ok: true }
-  } catch {
-    return { ok: false, error: 'Invalid session', status: 401 }
-  }
-}
-
-// 読み取り用: super_admin は全店、store_admin は自店のみ許可
-// （/receipts の特典タブ等、store_admin も告知イベントを参照するため）
-async function requireReadAccess(storeId: number): Promise<AuthResult> {
+// super_admin は全店、store_admin は自店のみ許可（閲覧・編集とも自店なら可）
+// 告知イベントは「自分の店舗であればどの権限でも追加/編集できる」方針（快晟確認済）
+async function requireStoreAccess(storeId: number): Promise<AuthResult> {
   const cookieStore = await cookies()
   const c = cookieStore.get('admin_session')
   if (!c) return { ok: false, error: 'Unauthorized', status: 401 }
   try {
     const s = JSON.parse(c.value)
     if (s.role === 'super_admin') return { ok: true }
-    if (Number(s.store_id) === storeId) return { ok: true }
+    if (Number(s.store_id) === Number(storeId)) return { ok: true }
     return { ok: false, error: 'Forbidden', status: 403 }
   } catch {
     return { ok: false, error: 'Invalid session', status: 401 }
@@ -42,7 +29,7 @@ export async function GET(request: NextRequest) {
   const yearMonth = searchParams.get('year_month')
   if (!storeId) return NextResponse.json({ error: 'store_id required' }, { status: 400 })
 
-  const auth = await requireReadAccess(storeId)
+  const auth = await requireStoreAccess(storeId)
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
   const supabase = getSupabaseServerClient()
@@ -63,11 +50,8 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({ events: data ?? [] })
 }
 
-// POST : 作成
+// POST : 作成（自店なら store_admin も可）
 export async function POST(request: NextRequest) {
-  const auth = await requireSuperAdmin()
-  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
-
   let body: { store_id?: number; name?: string; description?: string | null; start_date?: string; end_date?: string }
   try {
     body = await request.json()
@@ -78,6 +62,8 @@ export async function POST(request: NextRequest) {
   if (!store_id || !name || !start_date || !end_date) {
     return NextResponse.json({ error: 'store_id, name, start_date, end_date は必須' }, { status: 400 })
   }
+  const auth = await requireStoreAccess(store_id)
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   if (end_date < start_date) {
     return NextResponse.json({ error: '終了日は開始日以降にしてください' }, { status: 400 })
   }
@@ -92,11 +78,8 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({ event: data })
 }
 
-// PUT : 更新 (id 必須)
+// PUT : 更新 (id 必須・自店なら store_admin も可)
 export async function PUT(request: NextRequest) {
-  const auth = await requireSuperAdmin()
-  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
-
   let body: {
     id?: number
     name?: string
@@ -116,6 +99,17 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: '終了日は開始日以降にしてください' }, { status: 400 })
   }
 
+  const supabase = getSupabaseServerClient()
+  // 対象イベントの店舗を確認し、自店アクセス権をチェック
+  const { data: existing, error: findErr } = await supabase
+    .from('management_events')
+    .select('store_id')
+    .eq('id', id)
+    .single()
+  if (findErr || !existing) return NextResponse.json({ error: 'イベントが見つかりません' }, { status: 404 })
+  const auth = await requireStoreAccess(existing.store_id)
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
+
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() }
   if (name !== undefined) patch.name = name
   if (description !== undefined) patch.description = description
@@ -123,7 +117,6 @@ export async function PUT(request: NextRequest) {
   if (end_date !== undefined) patch.end_date = end_date
   if (is_active !== undefined) patch.is_active = is_active
 
-  const supabase = getSupabaseServerClient()
   const { data, error } = await supabase.from('management_events').update(patch).eq('id', id).select().single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
@@ -139,16 +132,22 @@ export async function PUT(request: NextRequest) {
   return NextResponse.json({ event: data })
 }
 
-// DELETE ?id=
+// DELETE ?id= （自店なら store_admin も可）
 export async function DELETE(request: NextRequest) {
-  const auth = await requireSuperAdmin()
-  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
-
   const { searchParams } = new URL(request.url)
   const id = Number(searchParams.get('id'))
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
 
   const supabase = getSupabaseServerClient()
+  const { data: existing, error: findErr } = await supabase
+    .from('management_events')
+    .select('store_id')
+    .eq('id', id)
+    .single()
+  if (findErr || !existing) return NextResponse.json({ error: 'イベントが見つかりません' }, { status: 404 })
+  const auth = await requireStoreAccess(existing.store_id)
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
+
   const { error } = await supabase.from('management_events').delete().eq('id', id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true })
