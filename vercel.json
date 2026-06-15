@@ -39,7 +39,7 @@
     },
     {
       "path": "/api/cron/refresh-base-tokens",
-      "schedule": "0 */12 * * *"
+      "schedule": "*/30 * * * *"
     },
     {
       "path": "/api/cron/sync-base-orders",
