@@ -162,21 +162,22 @@ function ManagementContent() {
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          {/* アクションは月送りの「左」に置き、月送り(◀年月▶)の位置をタブ間で常に最右に固定する */}
+          {view === 'daily' && (
+            <>
+              <button onClick={() => setShowEventModal(true)} style={{ ...actionBtn, background: '#8b5cf6' }}>
+                イベント管理
+              </button>
+              <button onClick={exportCsv} disabled={!data} style={{ ...actionBtn, opacity: data ? 1 : 0.5, marginRight: '12px' }}>
+                CSV
+              </button>
+            </>
+          )}
           <button onClick={() => setSelectedMonth((p) => subMonths(p, 1))} style={navBtn}>◀</button>
           <span style={{ fontSize: '18px', fontWeight: 600, minWidth: '120px', textAlign: 'center' }}>
             {format(selectedMonth, 'yyyy年M月', { locale: ja })}
           </span>
           <button onClick={() => setSelectedMonth((p) => addMonths(p, 1))} style={navBtn}>▶</button>
-          {view === 'daily' && (
-            <>
-              <button onClick={() => setShowEventModal(true)} style={{ ...actionBtn, background: '#8b5cf6', marginLeft: '12px' }}>
-                イベント管理
-              </button>
-              <button onClick={exportCsv} disabled={!data} style={{ ...actionBtn, opacity: data ? 1 : 0.5 }}>
-                CSV
-              </button>
-            </>
-          )}
         </div>
       </div>
 
@@ -319,6 +320,7 @@ function CastWageView({ loading, data }: { loading: boolean; data: CastWageRateR
   const tTable = sum((r) => r.tableTotal)
   const tShift = sum((r) => r.shiftDays)
   const tAtt = sum((r) => r.attendedDays)
+  const tAbsent = sum((r) => r.absentDays)
   const tLine = sum((r) => r.lineReserved)
   const tNom = sum((r) => r.nominatedGuests)
   type Col = { key: string; label: string; num: (r: CastWageRateRow) => number; cell: (r: CastWageRateRow) => React.ReactNode; total: React.ReactNode }
@@ -332,10 +334,11 @@ function CastWageView({ loading, data }: { loading: boolean; data: CastWageRateR
     { key: 'rate2', label: '店舗貢献率', num: (r) => r.rate2 ?? -1, cell: (r) => rateCell(r.rate2), total: tTable > 0 ? pct(tGross / tTable) : '-' },
     { key: 'shiftDays', label: 'シフト', num: (r) => r.shiftDays, cell: (r) => r.shiftDays || '-', total: num(tShift) },
     { key: 'attendedDays', label: '出勤', num: (r) => r.attendedDays, cell: (r) => r.attendedDays || '-', total: num(tAtt) },
+    { key: 'absentDays', label: '欠勤', num: (r) => r.absentDays, cell: (r) => (r.absentDays ? <span style={{ color: '#dc2626', fontWeight: 600 }}>{r.absentDays}</span> : '-'), total: num(tAbsent) },
     { key: 'attendanceRate', label: '出勤率', num: (r) => r.attendanceRate ?? -1, cell: (r) => pct(r.attendanceRate), total: tShift > 0 ? pct(tAtt / tShift) : '-' },
     { key: 'lineReserved', label: 'LINE予定', num: (r) => r.lineReserved, cell: (r) => r.lineReserved || '-', total: num(tLine) },
     { key: 'nominatedGuests', label: '実来店', num: (r) => r.nominatedGuests, cell: (r) => r.nominatedGuests || '-', total: num(tNom) },
-    { key: 'callRate', label: '呼べた率', num: (r) => r.callRate ?? -1, cell: (r) => pct(r.callRate), total: tLine > 0 ? pct(tNom / tLine) : '-' },
+    { key: 'callRate', label: '来店実現率', num: (r) => r.callRate ?? -1, cell: (r) => pct(r.callRate), total: tLine > 0 ? pct(tNom / tLine) : '-' },
   ]
   const sorted = [...data.rows].sort((a, b) => {
     const col = cols.find((c) => c.key === sortKey)
@@ -395,7 +398,7 @@ function CastWageView({ loading, data }: { loading: boolean; data: CastWageRateR
       </div>
       <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '12px', lineHeight: 1.6 }}>
         ※ 売上給与率 = 総支給額 ÷ キャスト売上（{axisLabel}）／ 店舗貢献率 = 総支給額 ÷ 推し卓 会計総額。給与率が高い（赤）ほど採算が重い<br />
-        ※ ヘルプ = キャスト売上のうち、他の人の卓を手伝って上げた分（ヘルプした側）／ 出勤率 = 実出勤 ÷ シフト予定／ 呼べた率 = 推し卓の実来店 ÷ LINE予定客数<br />
+        ※ ヘルプ = キャスト売上のうち、他の人の卓を手伝って上げた分（ヘルプした側）／ 出勤率 = 実出勤 ÷ シフト予定／ 来店実現率 = 推し卓の実来店 ÷ LINE予定客数<br />
         ※ 列ヘッダをクリックで並べ替え（▼降順／▲昇順）。
       </p>
     </div>

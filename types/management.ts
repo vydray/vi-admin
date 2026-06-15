@@ -112,12 +112,13 @@ export interface CastWageRateRow {
   tableTotal: number // ② 自分の卓の伝票合計（推しの卓の会計総額）
   rate1: number | null // gross / castSales
   rate2: number | null // gross / tableTotal
-  shiftDays: number // シフト予定日数
+  shiftDays: number // シフト予定日数（最終営業日まで・未来シフトは除外）
   attendedDays: number // 実出勤日数（出勤扱い）
+  absentDays: number // 欠勤日数（当欠・無連絡欠勤等）
   attendanceRate: number | null // attendedDays / shiftDays
   lineReserved: number // 公式LINE予定客数（月合計）
   nominatedGuests: number // 推し卓の実来店客数
-  callRate: number | null // nominatedGuests / lineReserved（呼べてる率）
+  callRate: number | null // 来店実現率 = nominatedGuests / lineReserved（LINE予定を実来店に変えられた率）
 }
 
 export interface CastWageRateResponse {

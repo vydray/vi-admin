@@ -17,6 +17,7 @@ interface OrderRow {
   staff_name: string | null
   total_incl_tax: number | null
   guest_count: number | null
+  order_date: string | null
 }
 const ABSENCE_CODES = new Set(['same_day_absence', 'advance_absence', 'no_call_no_show', 'excused'])
 
@@ -81,7 +82,7 @@ export async function POST(request: NextRequest) {
         .lte('date', monthEnd),
       supabase
         .from('orders')
-        .select('staff_name, total_incl_tax, guest_count')
+        .select('staff_name, total_incl_tax, guest_count, order_date')
         .eq('store_id', storeId)
         .gte('order_date', monthStart)
         .lte('order_date', monthEnd + 'T23:59:59')
@@ -157,9 +158,18 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // シフト予定日数（cast_id 別・distinct date）
+  // 最終営業日（売上のあった最後の日）= orders の最大 order_date。
+  // まだ営業していない未来日のシフトを出勤率の分母から外すために使う
+  let maxBusinessDate = monthStart
+  for (const o of (ordersRes.data ?? []) as OrderRow[]) {
+    const d = (o.order_date ?? '').slice(0, 10)
+    if (d && d > maxBusinessDate) maxBusinessDate = d
+  }
+
+  // シフト予定日数（cast_id 別・distinct date・最終営業日まで＝未来シフトは除外）
   const shiftDaysByCast = new Map<number, Set<string>>()
   for (const s of shiftsRes.data ?? []) {
+    if (s.date > maxBusinessDate) continue // まだ来ていない未来日のシフトは出勤率の分母に入れない
     if (!shiftDaysByCast.has(s.cast_id)) shiftDaysByCast.set(s.cast_id, new Set())
     shiftDaysByCast.get(s.cast_id)!.add(s.date)
   }
@@ -167,6 +177,10 @@ export async function POST(request: NextRequest) {
   // 出勤扱いステータス（欠勤系を除外）
   const workDayStatusIds = new Set(
     (attStatusRes.data ?? []).filter((s) => !ABSENCE_CODES.has(s.code ?? '')).map((s) => String(s.id))
+  )
+  // 欠勤系ステータス（当欠・無連絡欠勤等）
+  const absenceStatusIds = new Set(
+    (attStatusRes.data ?? []).filter((s) => ABSENCE_CODES.has(s.code ?? '')).map((s) => String(s.id))
   )
   // 実出勤日数（cast_name→cast_id・出勤扱い・distinct date）
   const attendedByCast = new Map<number, Set<string>>()
@@ -176,6 +190,15 @@ export async function POST(request: NextRequest) {
     if (id == null) continue
     if (!attendedByCast.has(id)) attendedByCast.set(id, new Set())
     attendedByCast.get(id)!.add(a.date)
+  }
+  // 欠勤日数（cast_name→cast_id・欠勤系・distinct date）
+  const absentByCast = new Map<number, Set<string>>()
+  for (const a of attendanceRes.data ?? []) {
+    if (!a.status_id || !absenceStatusIds.has(String(a.status_id))) continue
+    const id = nameToId.get(a.cast_name)
+    if (id == null) continue
+    if (!absentByCast.has(id)) absentByCast.set(id, new Set())
+    absentByCast.get(id)!.add(a.date)
   }
 
   // 公式LINE予定客数（cast_id 別）
@@ -200,6 +223,7 @@ export async function POST(request: NextRequest) {
       const tableTotal = tableByCast.get(id) ?? 0
       const shiftDays = shiftDaysByCast.get(id)?.size ?? 0
       const attendedDays = attendedByCast.get(id)?.size ?? 0
+      const absentDays = absentByCast.get(id)?.size ?? 0
       const lineReserved = lineByCast.get(id) ?? 0
       const nominatedGuests = nominatedGuestsByCast.get(id) ?? 0
       return {
@@ -213,6 +237,7 @@ export async function POST(request: NextRequest) {
         rate2: tableTotal > 0 ? gross / tableTotal : null,
         shiftDays,
         attendedDays,
+        absentDays,
         attendanceRate: shiftDays > 0 ? attendedDays / shiftDays : null,
         lineReserved,
         nominatedGuests,
