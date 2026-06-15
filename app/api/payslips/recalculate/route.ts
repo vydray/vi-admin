@@ -1029,9 +1029,12 @@ async function calculatePayslipForCast(
       const useGuaranteedOnly = (compType as { use_guaranteed_wage_only?: boolean }).use_guaranteed_wage_only === true
       const useUniformBased = (compType as { use_uniform_based_wage?: boolean }).use_uniform_based_wage === true
       const typeUseWage = typeHourlyRate > 0 || useGuaranteedOnly || useUniformBased
-      const typeFixedAmount = Number(compType.fixed_amount) || 0
       const typePerAttendanceAmount = Number(compType.per_attendance_amount) || 0
       const typeWorkDays = (dailyStats || []).filter((s: { work_hours?: number }) => (s.work_hours || 0) > 0).length
+      // 出勤実態(実働日数)が0の月は固定額を計上しない。
+      // 当欠のみ等で1日も出勤していないのに固定額が発生するのを防ぐ
+      // （出勤報酬 per_attendance は元々 ×typeWorkDays で0になるため、固定額の挙動を揃える）
+      const typeFixedAmount = typeWorkDays > 0 ? (Number(compType.fixed_amount) || 0) : 0
       const typePerAttendanceIncome = typePerAttendanceAmount * typeWorkDays
 
       // 報酬形態のsales_aggregationに基づいて売上を選択
