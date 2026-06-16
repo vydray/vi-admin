@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { getSupabaseServerClient } from '@/lib/supabase'
-import { fetchOrders, fetchOrderDetail, refreshAccessToken } from '@/lib/baseApi'
+import { fetchOrders, fetchOrderDetail } from '@/lib/baseApi'
 import { withCronLock } from '@/lib/cronLock'
+import { refreshBaseTokenIfNeeded } from '@/lib/baseTokenRefresh'
 import { recalculateForDate } from '@/lib/recalculateSales'
 import { calculateBusinessDay } from '@/lib/businessDay'
 import { notifyPendingForAllStores } from '@/lib/notifyBaseOrder'
@@ -67,85 +68,28 @@ async function executeSyncBaseOrders() {
       try {
         let accessToken = setting.access_token
 
-        // トークンの有効期限チェック
+        // トークンの有効期限チェック（残り0分=失効していればリフレッシュ）。
+        // 実際のリフレッシュは store 単位の分散ロックで直列化され、
+        // fast/refresh cron との rotating refresh_token 二重消費を防ぐ。
         if (setting.token_expires_at) {
           const expiresAt = new Date(setting.token_expires_at)
           if (expiresAt < new Date()) {
-            // トークンをリフレッシュ
-            if (setting.refresh_token && setting.client_id && setting.client_secret) {
-              try {
-                // Optimistic Locking: リフレッシュ前に再度有効期限をチェック
-                const { data: currentSetting } = await supabase
-                  .from('base_settings')
-                  .select('token_expires_at, access_token')
-                  .eq('store_id', setting.store_id)
-                  .single()
-
-                // 他のプロセスが既に更新した場合、最新のトークンを使用
-                if (currentSetting && currentSetting.token_expires_at !== setting.token_expires_at) {
-                  const currentExpiresAt = new Date(currentSetting.token_expires_at)
-                  if (currentExpiresAt >= new Date()) {
-                    // 既に有効なトークンがある
-                    accessToken = currentSetting.access_token
-                    console.log(`[BASE Sync] Store ${setting.store_id}: Token already refreshed by another process`)
-                  } else {
-                    // まだ期限切れのまま → リフレッシュ
-                    const newTokens = await refreshAccessToken(
-                      setting.client_id,
-                      setting.client_secret,
-                      setting.refresh_token
-                    )
-                    accessToken = newTokens.access_token
-                    const newExpiresAt = new Date(Date.now() + newTokens.expires_in * 1000)
-
-                    // Optimistic Locking: 元の有効期限が変わっていない場合のみ更新
-                    const { count } = await supabase
-                      .from('base_settings')
-                      .update({
-                        access_token: newTokens.access_token,
-                        refresh_token: newTokens.refresh_token,
-                        token_expires_at: newExpiresAt.toISOString(),
-                      })
-                      .eq('store_id', setting.store_id)
-                      .eq('token_expires_at', setting.token_expires_at)
-
-                    if (count === 0) {
-                      console.warn(`[BASE Sync] Store ${setting.store_id}: Token update conflict, using latest token`)
-                    }
-                  }
-                } else {
-                  // 変更なし → リフレッシュ実行
-                  const newTokens = await refreshAccessToken(
-                    setting.client_id,
-                    setting.client_secret,
-                    setting.refresh_token
-                  )
-                  accessToken = newTokens.access_token
-                  const newExpiresAt = new Date(Date.now() + newTokens.expires_in * 1000)
-
-                  await supabase
-                    .from('base_settings')
-                    .update({
-                      access_token: newTokens.access_token,
-                      refresh_token: newTokens.refresh_token,
-                      token_expires_at: newExpiresAt.toISOString(),
-                    })
-                    .eq('store_id', setting.store_id)
-                }
-
-              } catch (refreshError) {
-                results.push({
-                  store_id: setting.store_id,
-                  success: false,
-                  error: 'Token refresh failed',
-                })
-                continue
-              }
-            } else {
+            if (!setting.refresh_token || !setting.client_id || !setting.client_secret) {
               results.push({
                 store_id: setting.store_id,
                 success: false,
                 error: 'Token expired, cannot refresh',
+              })
+              continue
+            }
+            try {
+              const { accessToken: refreshed } = await refreshBaseTokenIfNeeded(setting, 0)
+              accessToken = refreshed
+            } catch (refreshError) {
+              results.push({
+                store_id: setting.store_id,
+                success: false,
+                error: 'Token refresh failed',
               })
               continue
             }

@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server'
 import { getSupabaseServerClient } from '@/lib/supabase'
-import { refreshAccessToken } from '@/lib/baseApi'
 import { withCronLock } from '@/lib/cronLock'
+import { refreshBaseTokenIfNeeded } from '@/lib/baseTokenRefresh'
 
 /**
  * BASEトークン自動リフレッシュ
- * Vercel Cron: 毎日12:00 UTC (21:00 JST)
+ * Vercel Cron: 30分毎
+ * 期限まで30分以内のトークンのみリフレッシュ（無駄なrotating token消費を防ぐ）
  */
 export async function GET(request: Request) {
   try {
@@ -52,7 +53,7 @@ async function executeRefreshBaseTokens() {
       return NextResponse.json({ error: 'Database error' }, { status: 500 })
     }
 
-    const results: { store_id: number; success: boolean; error?: string }[] = []
+    const results: { store_id: number; success: boolean; error?: string; skipped?: string }[] = []
 
     for (const setting of settings || []) {
       if (!setting.client_id || !setting.client_secret || !setting.refresh_token) {
@@ -65,24 +66,18 @@ async function executeRefreshBaseTokens() {
       }
 
       try {
-        const newTokens = await refreshAccessToken(
-          setting.client_id,
-          setting.client_secret,
-          setting.refresh_token
-        )
+        // 期限まで30分以上残っていればスキップ（無駄なrotating token消費を防ぐ）。
+        // 実際のリフレッシュは store 単位の分散ロックで直列化され、
+        // fast/slow cron との rotating refresh_token 二重消費を防ぐ。
+        const REFRESH_THRESHOLD_MS = 30 * 60 * 1000 // 30分
 
-        const expiresAt = new Date(Date.now() + newTokens.expires_in * 1000)
+        const { refreshed } = await refreshBaseTokenIfNeeded(setting, REFRESH_THRESHOLD_MS)
 
-        await supabase
-          .from('base_settings')
-          .update({
-            access_token: newTokens.access_token,
-            refresh_token: newTokens.refresh_token,
-            token_expires_at: expiresAt.toISOString(),
-          })
-          .eq('store_id', setting.store_id)
-
-        results.push({ store_id: setting.store_id, success: true })
+        results.push({
+          store_id: setting.store_id,
+          success: true,
+          ...(refreshed ? {} : { skipped: 'token still valid or refreshed by another process' }),
+        })
       } catch (refreshError) {
         console.error(`[BASE Token Refresh] Store ${setting.store_id}: Failed -`, refreshError)
         results.push({

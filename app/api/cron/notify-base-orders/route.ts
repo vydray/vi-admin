@@ -4,6 +4,7 @@ import { fetchOrders, fetchOrderDetail } from '@/lib/baseApi'
 import { withCronLock } from '@/lib/cronLock'
 import { calculateBusinessDay } from '@/lib/businessDay'
 import { notifyPendingForAllStores } from '@/lib/notifyBaseOrder'
+import { refreshBaseTokenIfNeeded } from '@/lib/baseTokenRefresh'
 
 /**
  * BASE注文 高速同期 + LINE通知 cron
@@ -47,7 +48,7 @@ async function executeFastSyncAndNotify() {
 
   const { data: settings, error: settingsError } = await supabase
     .from('base_settings')
-    .select('store_id, access_token, token_expires_at')
+    .select('store_id, access_token, refresh_token, client_id, client_secret, token_expires_at')
     .not('access_token', 'is', null)
 
   if (settingsError) {
@@ -59,16 +60,29 @@ async function executeFastSyncAndNotify() {
 
   for (const setting of settings || []) {
     try {
-      // トークン期限切れ時はスキップ(slow cronがリフレッシュ担当)
+      // --- トークン有効期限チェック（残り15分未満 or 失効 → fast cronでもリフレッシュ）---
+      // リフレッシュは store 単位の分散ロックで直列化され、rotating refresh_token の二重消費を防ぐ
+      const REFRESH_MARGIN_MS = 15 * 60 * 1000 // 15分
+      let accessToken = setting.access_token
       if (setting.token_expires_at) {
         const expiresAt = new Date(setting.token_expires_at)
-        if (expiresAt < new Date()) {
-          syncResults.push({ store_id: setting.store_id, success: true, skipped: 'token expired (awaiting slow cron refresh)' })
-          continue
+        if (expiresAt.getTime() - Date.now() < REFRESH_MARGIN_MS) {
+          if (!setting.refresh_token || !setting.client_id || !setting.client_secret) {
+            // refresh_token / client_id / client_secret が欠けている
+            syncResults.push({ store_id: setting.store_id, success: true, skipped: 'token expired, no refresh credentials' })
+            continue
+          }
+          try {
+            const { accessToken: refreshed } = await refreshBaseTokenIfNeeded(setting, REFRESH_MARGIN_MS)
+            accessToken = refreshed
+          } catch (refreshErr) {
+            const msg = refreshErr instanceof Error ? refreshErr.message : String(refreshErr)
+            console.error(`[Fast Sync] Store ${setting.store_id}: Token refresh failed:`, msg)
+            syncResults.push({ store_id: setting.store_id, success: false, skipped: `token refresh failed: ${msg}` })
+            continue
+          }
         }
       }
-
-      const accessToken = setting.access_token
 
       // 直近1時間をカバー: 昨日と今日と翌日までfetch(timezone安全マージン)
       const now = new Date()
