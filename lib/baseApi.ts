@@ -159,7 +159,12 @@ export async function refreshAccessToken(
   clientSecret: string,
   refreshToken: string
 ): Promise<BaseOAuthTokens> {
-  const response = await fetch(`${BASE_API_URL}/1/oauth/token`, {
+  // タイムアウト必須: rotating refresh_token は store 単位ロック(TTL 60秒)で直列化されるため、
+  // ここが無制限にハングするとロックがTTLで自動失効し、別cronが同じ refresh_token を
+  // 二重消費して invalid_grant → トークン取得不能(深夜の取り込み全停止)を再発させる。
+  // 必ず lockTTL(60秒) より十分短いタイムアウトで打ち切る。
+  const REFRESH_TIMEOUT_MS = 20000 // 20秒(< lockTTL 60秒)
+  const response = await fetchWithTimeout(`${BASE_API_URL}/1/oauth/token`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -170,7 +175,7 @@ export async function refreshAccessToken(
       client_secret: clientSecret,
       refresh_token: refreshToken,
     }),
-  })
+  }, REFRESH_TIMEOUT_MS)
 
   if (!response.ok) {
     const error = await response.text()

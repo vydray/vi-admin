@@ -1,6 +1,7 @@
 import { getSupabaseServerClient } from './supabase'
 import { refreshAccessToken } from './baseApi'
 import { acquireCronLock, releaseCronLock } from './cronLock'
+import { alertBaseTokenStuck } from './baseTokenAlert'
 
 /**
  * BASE access_token を必要に応じてリフレッシュし、有効な access_token を返す。
@@ -85,15 +86,29 @@ export async function refreshBaseTokenIfNeeded(input: {
       throw new Error('missing refresh_token')
     }
 
-    const newTokens = await refreshAccessToken(
-      input.client_id,
-      input.client_secret,
-      refreshToken
-    )
+    let newTokens
+    try {
+      newTokens = await refreshAccessToken(
+        input.client_id,
+        input.client_secret,
+        refreshToken
+      )
+    } catch (refreshErr) {
+      // invalid_grant = rotating refresh_token が失効。コードからは自己回復できず
+      // 再認証が必須なので、管理者へ警報して可視化する(1時間に1回スロットル)。
+      const msg = refreshErr instanceof Error ? refreshErr.message : String(refreshErr)
+      if (msg.includes('invalid_grant')) {
+        await alertBaseTokenStuck(input.store_id, msg)
+      }
+      throw refreshErr
+    }
     const newExpiresAt = new Date(Date.now() + newTokens.expires_in * 1000)
 
-    // ロック配下なので競合は起きないが、念のため CAS で書き戻す（count で成否判定）
-    const { count } = await supabase
+    // ロック配下なので競合は起きないが、念のため CAS で書き戻す（count で成否判定）。
+    // token_expires_at が NULL の場合 .eq(col, null) は SQL 上 col = NULL となり 0 行マッチ
+    // (= 新トークンが永久に保存されず、消費済み refresh_token が残って永久 stuck) になるため、
+    // NULL のときは .is(null) を使う。
+    const baseUpdate = supabase
       .from('base_settings')
       .update({
         access_token: newTokens.access_token,
@@ -101,7 +116,11 @@ export async function refreshBaseTokenIfNeeded(input: {
         token_expires_at: newExpiresAt.toISOString(),
       }, { count: 'exact' })
       .eq('store_id', input.store_id)
-      .eq('token_expires_at', current.token_expires_at)
+    const { count } = await (
+      current.token_expires_at === null
+        ? baseUpdate.is('token_expires_at', null)
+        : baseUpdate.eq('token_expires_at', current.token_expires_at)
+    )
 
     if (!count || count === 0) {
       // ロック配下では通常起きない。起きたらDBの最新を読み直して使う。

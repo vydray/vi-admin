@@ -5,6 +5,7 @@ import { withCronLock } from '@/lib/cronLock'
 import { calculateBusinessDay } from '@/lib/businessDay'
 import { notifyPendingForAllStores } from '@/lib/notifyBaseOrder'
 import { refreshBaseTokenIfNeeded } from '@/lib/baseTokenRefresh'
+import { matchCastByVariation } from '@/lib/castMatch'
 
 /**
  * BASE注文 高速同期 + LINE通知 cron
@@ -158,7 +159,7 @@ async function executeFastSyncAndNotify() {
           const customerNote = (orderDetail.remark || '').trim() || null
 
           for (const item of orderDetail.order_items || []) {
-            const cast = casts?.find(c => c.name === item.variation)
+            const cast = matchCastByVariation(casts, item.variation)
             const baseProduct = baseProducts?.find(p => p.base_product_name === item.title)
             const actualPrice = baseProduct?.store_price ?? null
 

@@ -6,6 +6,7 @@ import { refreshBaseTokenIfNeeded } from '@/lib/baseTokenRefresh'
 import { recalculateForDate } from '@/lib/recalculateSales'
 import { calculateBusinessDay } from '@/lib/businessDay'
 import { notifyPendingForAllStores } from '@/lib/notifyBaseOrder'
+import { matchCastByVariation } from '@/lib/castMatch'
 
 /**
  * BASE注文自動同期
@@ -214,7 +215,7 @@ async function executeSyncBaseOrders() {
             const customerNote = (orderDetail.remark || '').trim() || null
 
             for (const item of orderDetail.order_items || []) {
-              const cast = casts?.find(c => c.name === item.variation)
+              const cast = matchCastByVariation(casts, item.variation)
               let baseProduct = baseProducts?.find(p => p.base_product_name === item.title)
 
               // 未登録商品を自動追加（store_priceはnull＝管理画面で設定するまで売上に反映しない）

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseServerClient } from '@/lib/supabase'
-import { fetchItems, addItemVariation, deleteItemVariation, refreshAccessToken } from '@/lib/baseApi'
+import { fetchItems, addItemVariation, deleteItemVariation } from '@/lib/baseApi'
+import { refreshBaseTokenIfNeeded } from '@/lib/baseTokenRefresh'
 
 /**
  * BASE商品にバリエーションを同期
@@ -43,46 +44,24 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // トークンの有効期限をチェック
+    // トークンの有効期限をチェック(store単位ロックで直列化、cronとのrotating RT二重消費を防ぐ)
     let accessToken = settings.access_token
-    if (settings.token_expires_at) {
-      const expiresAt = new Date(settings.token_expires_at)
-      if (expiresAt < new Date()) {
-        // トークンを更新
-        if (!settings.refresh_token || !settings.client_id || !settings.client_secret) {
-          return NextResponse.json(
-            { error: 'Cannot refresh token - missing credentials' },
-            { status: 401 }
-          )
-        }
-
-        try {
-          const newTokens = await refreshAccessToken(
-            settings.client_id,
-            settings.client_secret,
-            settings.refresh_token
-          )
-
-          accessToken = newTokens.access_token
-          const newExpiresAt = new Date(Date.now() + newTokens.expires_in * 1000)
-
-          // 新しいトークンを保存
-          await supabase
-            .from('base_settings')
-            .update({
-              access_token: newTokens.access_token,
-              refresh_token: newTokens.refresh_token,
-              token_expires_at: newExpiresAt.toISOString(),
-            })
-            .eq('store_id', store_id)
-        } catch (refreshError) {
-          console.error('Token refresh failed:', refreshError)
-          return NextResponse.json(
-            { error: 'Token expired and refresh failed' },
-            { status: 401 }
-          )
-        }
-      }
+    try {
+      const { accessToken: refreshed } = await refreshBaseTokenIfNeeded({
+        store_id: settings.store_id,
+        access_token: settings.access_token,
+        refresh_token: settings.refresh_token,
+        client_id: settings.client_id,
+        client_secret: settings.client_secret,
+        token_expires_at: settings.token_expires_at,
+      }, 60_000)
+      accessToken = refreshed
+    } catch (refreshError) {
+      console.error('Token refresh failed:', refreshError)
+      return NextResponse.json(
+        { error: 'Token expired and refresh failed' },
+        { status: 401 }
+      )
     }
 
     // ローカルのBASE商品を取得
