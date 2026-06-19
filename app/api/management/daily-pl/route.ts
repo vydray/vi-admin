@@ -119,8 +119,8 @@ export async function POST(request: NextRequest) {
         .gte('business_date', monthStart)
         .lte('business_date', monthEnd),
       supabase.from('payslips').select('*').eq('store_id', storeId).eq('year_month', yearMonth),
-      // 日別売上目標（経営ダッシュボード）
-      supabase.from('daily_sales_targets').select('date, target_amount').eq('store_id', storeId).gte('date', monthStart).lte('date', monthEnd),
+      // 日別目標（売上/出勤/来客）
+      supabase.from('daily_targets').select('date, metric, value').eq('store_id', storeId).gte('date', monthStart).lte('date', monthEnd),
     ])
 
   const orders = (ordersRes.data ?? []) as unknown as OrderRow[]
@@ -180,10 +180,15 @@ export async function POST(request: NextRequest) {
     baseByDate.set(b.business_date, (baseByDate.get(b.business_date) ?? 0) + (b.base_price ?? 0) * (b.quantity ?? 1))
   }
 
-  // 日別売上目標（日次）
-  const targetByDate = new Map<string, number>()
+  // 日別目標（指標別・日次）
+  const salesTargetByDate = new Map<string, number>()
+  const attendanceTargetByDate = new Map<string, number>()
+  const guestsTargetByDate = new Map<string, number>()
   for (const t of targetsRes.data ?? []) {
-    targetByDate.set(t.date, Number(t.target_amount) || 0)
+    const v = Number(t.value) || 0
+    if (t.metric === 'sales') salesTargetByDate.set(t.date, v)
+    else if (t.metric === 'attendance') attendanceTargetByDate.set(t.date, v)
+    else if (t.metric === 'guests') guestsTargetByDate.set(t.date, v)
   }
 
   // 人件費（日次展開 + 突合検証）
@@ -205,7 +210,9 @@ export async function POST(request: NextRequest) {
     const orderCount = dayOrders.length
     const baseSales = baseByDate.get(date) ?? 0
     const totalSales = sales + baseSales
-    const target = targetByDate.get(date) ?? null
+    const target = salesTargetByDate.get(date) ?? null
+    const targetAttendance = attendanceTargetByDate.get(date) ?? null
+    const targetGuests = guestsTargetByDate.get(date) ?? null
     const laborCost = laborByDate.get(date) ?? 0
     const expense = expenseByDate.get(date) ?? 0
     const shiftCount = shiftByDate.get(date)?.size ?? 0
@@ -238,6 +245,10 @@ export async function POST(request: NextRequest) {
       lineReservedGuests: lineByDate.get(date) ?? 0,
       target,
       achievementRate: target && target > 0 ? totalSales / target : null,
+      targetAttendance,
+      achievementRateAttendance: targetAttendance && targetAttendance > 0 ? attendanceCount / targetAttendance : null,
+      targetGuests,
+      achievementRateGuests: targetGuests && targetGuests > 0 ? guests / targetGuests : null,
     }
   })
 
@@ -253,6 +264,8 @@ export async function POST(request: NextRequest) {
   const sShift = sumOf((r) => r.shiftCount)
   const sAtt = sumOf((r) => r.attendanceCount)
   const sTarget = sumOf((r) => r.target ?? 0)
+  const sTargetAtt = sumOf((r) => r.targetAttendance ?? 0)
+  const sTargetGuests = sumOf((r) => r.targetGuests ?? 0)
   // 出勤率の月合計は「営業が終わった日（売上のある日）」のみで算出
   // （未来のシフト予定が分母に入って率が薄まるのを防ぐ）
   const openRows = rows.filter((r) => r.sales > 0)
@@ -287,6 +300,10 @@ export async function POST(request: NextRequest) {
     avgDailyGuests: businessDays > 0 ? Math.round(sGuests / businessDays) : 0,
     targetTotal: sTarget,
     achievementRate: sTarget > 0 ? sTotal / sTarget : null,
+    targetAttendanceTotal: sTargetAtt,
+    achievementRateAttendance: sTargetAtt > 0 ? sAtt / sTargetAtt : null,
+    targetGuestsTotal: sTargetGuests,
+    achievementRateGuests: sTargetGuests > 0 ? sGuests / sTargetGuests : null,
   }
 
   const response: DailyPlResponse = {

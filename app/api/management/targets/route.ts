@@ -4,19 +4,20 @@ import { getSupabaseServerClient } from '@/lib/supabase'
 
 export const dynamic = 'force-dynamic'
 
+const METRICS = new Set(['sales', 'attendance', 'guests'])
+
 /**
- * 経営ダッシュボード: 日別売上目標の保存
- * POST /api/management/sales-targets
- * body: { store_id: number, targets: { date: 'YYYY-MM-DD', target_amount: number | null }[] }
- *   - target_amount = null/未指定 → その日の目標を削除（クリア）
- *   - それ以外 → upsert（store_id × date でユニーク）
+ * 経営ダッシュボード: 日別目標の保存（売上 / 出勤人数 / 来客数）
+ * POST /api/management/targets
+ * body: { store_id, targets: { date: 'YYYY-MM-DD', metric: 'sales'|'attendance'|'guests', value: number | null }[] }
+ *   - value = null/未指定 → その (date, metric) の目標を削除
+ *   - それ以外 → upsert（store_id × date × metric でユニーク）
  *
- * 認証: super_admin、または management 権限を持つ store_admin（自店のみ）。
- * daily_sales_targets は RLS 有効・ポリシー無し（anon全拒否）のため、
- * 書き込みは必ずこのサーバールート（service role）経由で行う。
+ * 認証: super_admin、または management 権限の store_admin（自店のみ）。
+ * daily_targets は RLS 有効・ポリシー無し（anon全拒否）のため、書き込みは必ずこのサーバールート（service role）経由。
  */
 export async function POST(request: NextRequest) {
-  // ===== 認証（daily-pl と同条件） =====
+  // ===== 認証 =====
   const cookieStore = await cookies()
   const sessionCookie = cookieStore.get('admin_session')
   if (!sessionCookie) {
@@ -36,14 +37,13 @@ export async function POST(request: NextRequest) {
 
   // ===== パラメータ =====
   let storeId: number
-  let targets: { date: string; target_amount: number | null }[]
+  let targets: { date: string; metric: string; value: number | null }[]
   try {
     const body = await request.json()
     if (typeof body.store_id !== 'number' || body.store_id <= 0) {
       return NextResponse.json({ error: 'Invalid store_id' }, { status: 400 })
     }
     storeId = body.store_id
-    // store_admin は自店のみ（セッションの店舗に強制）
     if (!isSuperAdmin) {
       storeId = Number(session.store_id)
       if (!storeId || storeId <= 0) {
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
     if (!Array.isArray(body.targets) || body.targets.length === 0) {
       return NextResponse.json({ error: 'targets is required' }, { status: 400 })
     }
-    if (body.targets.length > 60) {
+    if (body.targets.length > 200) {
       return NextResponse.json({ error: 'targets too many' }, { status: 400 })
     }
     const dateRegex = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/
@@ -63,17 +63,20 @@ export async function POST(request: NextRequest) {
       if (typeof t?.date !== 'string' || !dateRegex.test(t.date)) {
         return NextResponse.json({ error: `Invalid date: ${String(t?.date)}` }, { status: 400 })
       }
-      let amount: number | null
-      if (t.target_amount === null || t.target_amount === undefined || t.target_amount === '') {
-        amount = null
-      } else {
-        const n = Number(t.target_amount)
-        if (!Number.isFinite(n) || n < 0 || !Number.isInteger(n)) {
-          return NextResponse.json({ error: `Invalid target_amount for ${t.date}` }, { status: 400 })
-        }
-        amount = n
+      if (typeof t?.metric !== 'string' || !METRICS.has(t.metric)) {
+        return NextResponse.json({ error: `Invalid metric: ${String(t?.metric)}` }, { status: 400 })
       }
-      targets.push({ date: t.date, target_amount: amount })
+      let value: number | null
+      if (t.value === null || t.value === undefined || t.value === '') {
+        value = null
+      } else {
+        const n = Number(t.value)
+        if (!Number.isFinite(n) || n < 0 || !Number.isInteger(n)) {
+          return NextResponse.json({ error: `Invalid value for ${t.date}/${t.metric}` }, { status: 400 })
+        }
+        value = n
+      }
+      targets.push({ date: t.date, metric: t.metric, value })
     }
   } catch {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
@@ -81,29 +84,31 @@ export async function POST(request: NextRequest) {
 
   const supabase = getSupabaseServerClient()
 
-  const toDelete = targets.filter((t) => t.target_amount === null).map((t) => t.date)
   const toUpsert = targets
-    .filter((t) => t.target_amount !== null)
-    .map((t) => ({ store_id: storeId, date: t.date, target_amount: t.target_amount, updated_at: new Date().toISOString() }))
+    .filter((t) => t.value !== null)
+    .map((t) => ({ store_id: storeId, date: t.date, metric: t.metric, value: t.value, updated_at: new Date().toISOString() }))
+  const toDelete = targets.filter((t) => t.value === null)
 
   try {
     if (toUpsert.length > 0) {
       const { error } = await supabase
-        .from('daily_sales_targets')
-        .upsert(toUpsert, { onConflict: 'store_id,date' })
+        .from('daily_targets')
+        .upsert(toUpsert, { onConflict: 'store_id,date,metric' })
       if (error) throw error
     }
-    if (toDelete.length > 0) {
+    // 削除は (date, metric) 単位
+    for (const d of toDelete) {
       const { error } = await supabase
-        .from('daily_sales_targets')
+        .from('daily_targets')
         .delete()
         .eq('store_id', storeId)
-        .in('date', toDelete)
+        .eq('date', d.date)
+        .eq('metric', d.metric)
       if (error) throw error
     }
     return NextResponse.json({ success: true, upserted: toUpsert.length, deleted: toDelete.length })
   } catch (e) {
-    console.error('[sales-targets] save error:', e)
+    console.error('[targets] save error:', e)
     return NextResponse.json({ error: 'Database error' }, { status: 500 })
   }
 }

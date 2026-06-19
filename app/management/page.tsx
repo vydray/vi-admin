@@ -34,6 +34,22 @@ function achievementDisplay(rate: number | null): React.ReactNode {
   return <span style={{ color, fontWeight: 700 }}>{(rate * 100).toFixed(1)}%</span>
 }
 
+// 日別目標の指標メタ（売上/出勤/来客）
+type TargetMetric = 'sales' | 'attendance' | 'guests'
+const METRIC_META: Record<TargetMetric, { label: string; unit: string; fmt: (n: number) => string }> = {
+  sales: { label: '売上目標', unit: '円', fmt: (n) => yen(n) },
+  attendance: { label: '目標出勤人数', unit: '人', fmt: (n) => `${num(n)}人` },
+  guests: { label: '目標来客数', unit: '人', fmt: (n) => `${num(n)}人` },
+}
+
+// 目標セル（クリックで編集）。未設定は「悪」が分かるよう赤で強調
+function targetCell(value: number | null, metric: TargetMetric, onClick: () => void): React.ReactNode {
+  if (value == null) {
+    return <button onClick={onClick} style={targetBtnUnset} title="目標を設定">未設定</button>
+  }
+  return <button onClick={onClick} style={targetBtn} title="クリックして目標を編集">{METRIC_META[metric].fmt(value)}</button>
+}
+
 function ManagementContent() {
   const { storeId, storeName, isLoading: storeLoading } = useStore()
   const { isMobile } = useIsMobile()
@@ -45,11 +61,12 @@ function ManagementContent() {
   const [view, setView] = useState<'daily' | 'castWage'>('daily')
   const [castWage, setCastWage] = useState<CastWageRateResponse | null>(null)
   const [castWageLoading, setCastWageLoading] = useState(false)
-  // 売上目標 編集
-  const [targetModal, setTargetModal] = useState<{ date: string; current: number | null } | null>(null)
+  // 日別目標 編集
+  const [targetModal, setTargetModal] = useState<{ date: string; metric: TargetMetric; current: number | null } | null>(null)
   const [targetInput, setTargetInput] = useState('')
   const [targetSaving, setTargetSaving] = useState(false)
   const [bulkOpen, setBulkOpen] = useState(false)
+  const [bulkMetric, setBulkMetric] = useState<TargetMetric>('sales')
   const [bulkInput, setBulkInput] = useState('')
   const [bulkSaving, setBulkSaving] = useState(false)
 
@@ -105,9 +122,9 @@ function ManagementContent() {
     }
   }, [storeId, yearMonth])
 
-  const openTargetEdit = (date: string, current: number | null) => {
+  const openTargetEdit = (date: string, metric: TargetMetric, current: number | null) => {
     setTargetInput(current != null ? String(current) : '')
-    setTargetModal({ date, current })
+    setTargetModal({ date, metric, current })
   }
 
   const saveTarget = async () => {
@@ -122,10 +139,10 @@ function ManagementContent() {
     }
     setTargetSaving(true)
     try {
-      const res = await fetch('/api/management/sales-targets', {
+      const res = await fetch('/api/management/targets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ store_id: storeId, targets: [{ date: targetModal.date, target_amount: amount }] }),
+        body: JSON.stringify({ store_id: storeId, targets: [{ date: targetModal.date, metric: targetModal.metric, value: amount }] }),
       })
       if (!res.ok) throw new Error('failed')
       toast.success(amount === null ? '削除しました' : '保存しました')
@@ -145,8 +162,8 @@ function ManagementContent() {
     if (!data) return
     setBulkSaving(true)
     try {
-      const targets = data.rows.map((r) => ({ date: r.date, target_amount: n }))
-      const res = await fetch('/api/management/sales-targets', {
+      const targets = data.rows.map((r) => ({ date: r.date, metric: bulkMetric, value: n }))
+      const res = await fetch('/api/management/targets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ store_id: storeId, targets }),
@@ -185,13 +202,17 @@ function ManagementContent() {
       { label: 'BASE', fmt: (r) => String(r.baseSales) },
       { label: '総売上', fmt: (r) => String(r.totalSales) },
       { label: '売上目標', fmt: (r) => (r.target != null ? String(r.target) : '') },
-      { label: '達成率', fmt: (r) => (r.achievementRate == null ? '' : (r.achievementRate * 100).toFixed(1)) },
+      { label: '売上達成率', fmt: (r) => (r.achievementRate == null ? '' : (r.achievementRate * 100).toFixed(1)) },
       { label: 'シフト人数', fmt: (r) => String(r.shiftCount) },
       { label: '出勤人数', fmt: (r) => String(r.attendanceCount) },
+      { label: '目標出勤', fmt: (r) => (r.targetAttendance != null ? String(r.targetAttendance) : '') },
+      { label: '出勤達成率', fmt: (r) => (r.achievementRateAttendance == null ? '' : (r.achievementRateAttendance * 100).toFixed(1)) },
       { label: '出勤率', fmt: (r) => (r.attendanceRate == null ? '' : (r.attendanceRate * 100).toFixed(1)) },
       { label: 'LINE予定客数', fmt: (r) => String(r.lineReservedGuests) },
       { label: '会計数', fmt: (r) => String(r.orderCount) },
       { label: '来店人数', fmt: (r) => String(r.guests) },
+      { label: '目標来客', fmt: (r) => (r.targetGuests != null ? String(r.targetGuests) : '') },
+      { label: '来客達成率', fmt: (r) => (r.achievementRateGuests == null ? '' : (r.achievementRateGuests * 100).toFixed(1)) },
       { label: '初回', fmt: (r) => String(r.firstTimeGuests) },
       { label: '再訪', fmt: (r) => String(r.returnGuests) },
       { label: '常連', fmt: (r) => String(r.regularGuests) },
@@ -303,17 +324,17 @@ function ManagementContent() {
               { label: 'その他', cell: (r) => (r.otherSales ? yen(r.otherSales) : '-'), total: yen(summary.otherSales), avg: '' },
               { label: 'BASE', cell: (r) => (r.baseSales ? yen(r.baseSales) : '-'), total: yen(summary.baseSales), avg: '' },
               { label: '総売上', group: true, cell: (r) => (r.totalSales ? yen(r.totalSales) : '-'), total: yen(summary.totalSales), avg: '' },
-              { label: '売上目標', cell: (r) => (
-                <button onClick={() => openTargetEdit(r.date, r.target)} style={targetBtn} title="クリックして目標を設定">
-                  {r.target != null ? yen(r.target) : <span style={{ color: '#cbd5e1' }}>＋</span>}
-                </button>
-              ), total: summary.targetTotal > 0 ? yen(summary.targetTotal) : '-', avg: '' },
-              { label: '達成率', cell: (r) => achievementDisplay(r.achievementRate), total: achievementDisplay(summary.achievementRate), avg: '' },
+              { label: '売上目標', cell: (r) => targetCell(r.target, 'sales', () => openTargetEdit(r.date, 'sales', r.target)), total: summary.targetTotal > 0 ? yen(summary.targetTotal) : '-', avg: '' },
+              { label: '売上達成率', cell: (r) => achievementDisplay(r.achievementRate), total: achievementDisplay(summary.achievementRate), avg: '' },
               { label: 'シフト', group: true, cell: (r) => r.shiftCount || '-', total: num(summary.shiftCount), avg: '' },
               { label: '出勤', cell: (r) => r.attendanceCount || '-', total: num(summary.attendanceCount), avg: '' },
+              { label: '目標出勤', cell: (r) => targetCell(r.targetAttendance, 'attendance', () => openTargetEdit(r.date, 'attendance', r.targetAttendance)), total: summary.targetAttendanceTotal > 0 ? num(summary.targetAttendanceTotal) : '-', avg: '' },
+              { label: '出勤達成率', cell: (r) => achievementDisplay(r.achievementRateAttendance), total: achievementDisplay(summary.achievementRateAttendance), avg: '' },
               { label: '出勤率', cell: (r) => pct(r.attendanceRate), total: pct(summary.attendanceRate), avg: '' },
               { label: '会計数', group: true, cell: (r) => r.orderCount || '-', total: num(summary.orderCount), avg: businessDays > 0 ? Math.round(summary.orderCount / businessDays) : '-' },
               { label: '来店人数', cell: (r) => r.guests || '-', total: num(summary.guests), avg: num(summary.avgDailyGuests) },
+              { label: '目標来客', cell: (r) => targetCell(r.targetGuests, 'guests', () => openTargetEdit(r.date, 'guests', r.targetGuests)), total: summary.targetGuestsTotal > 0 ? num(summary.targetGuestsTotal) : '-', avg: '' },
+              { label: '来客達成率', cell: (r) => achievementDisplay(r.achievementRateGuests), total: achievementDisplay(summary.achievementRateGuests), avg: '' },
               { label: '初回', cell: (r) => r.firstTimeGuests || '-', total: num(summary.firstTimeGuests), avg: '' },
               { label: '再訪', cell: (r) => r.returnGuests || '-', total: num(summary.returnGuests), avg: '' },
               { label: '常連', cell: (r) => r.regularGuests || '-', total: num(summary.regularGuests), avg: '' },
@@ -385,25 +406,28 @@ function ManagementContent() {
         />
       )}
 
-      {/* 日別 売上目標 編集 */}
-      {targetModal && (
-        <Modal isOpen={true} onClose={() => !targetSaving && setTargetModal(null)} title={`${targetModal.date} の売上目標`} maxWidth="380px">
+      {/* 日別 目標 編集 */}
+      {targetModal && (() => {
+        const meta = METRIC_META[targetModal.metric]
+        const parsed = parseInt(targetInput.replace(/[,\s]/g, ''))
+        return (
+        <Modal isOpen={true} onClose={() => !targetSaving && setTargetModal(null)} title={`${targetModal.date} の${meta.label}`} maxWidth="380px">
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <label style={{ fontSize: '13px', color: '#555' }}>
-              目標金額 (円) ※空欄で保存すると削除
+              {meta.label} ({meta.unit}) ※空欄で保存すると削除
               <input
                 type="text"
                 inputMode="numeric"
                 value={targetInput}
                 onChange={(e) => setTargetInput(e.target.value)}
-                placeholder="例: 100000"
+                placeholder={meta.unit === '円' ? '例: 100000' : '例: 10'}
                 autoFocus
                 onKeyDown={(e) => { if (e.key === 'Enter' && !targetSaving) saveTarget() }}
                 style={targetInputStyle}
               />
             </label>
-            {targetInput && !isNaN(parseInt(targetInput.replace(/[,\s]/g, ''))) && (
-              <div style={{ fontSize: '13px', color: '#888' }}>= ¥{parseInt(targetInput.replace(/[,\s]/g, '')).toLocaleString()}</div>
+            {targetInput && !isNaN(parsed) && (
+              <div style={{ fontSize: '13px', color: '#888' }}>= {meta.fmt(parsed)}</div>
             )}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '8px' }}>
               <Button onClick={() => setTargetModal(null)} variant="secondary" disabled={targetSaving}>キャンセル</Button>
@@ -411,33 +435,56 @@ function ManagementContent() {
             </div>
           </div>
         </Modal>
-      )}
+        )
+      })()}
 
-      {/* 売上目標 一括設定 */}
-      {bulkOpen && (
-        <Modal isOpen={true} onClose={() => !bulkSaving && setBulkOpen(false)} title={`${format(selectedMonth, 'yyyy年M月', { locale: ja })} 目標を一括設定`} maxWidth="380px">
+      {/* 目標 一括設定 */}
+      {bulkOpen && (() => {
+        const meta = METRIC_META[bulkMetric]
+        const parsed = parseInt(bulkInput.replace(/[,\s]/g, ''))
+        const days = data?.rows.length ?? 0
+        return (
+        <Modal isOpen={true} onClose={() => !bulkSaving && setBulkOpen(false)} title={`${format(selectedMonth, 'yyyy年M月', { locale: ja })} 目標を一括設定`} maxWidth="400px">
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div style={{ display: 'flex', gap: '6px' }}>
+              {(['sales', 'attendance', 'guests'] as TargetMetric[]).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setBulkMetric(m)}
+                  style={{
+                    flex: 1,
+                    padding: '8px 4px',
+                    borderRadius: '8px',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    border: `1px solid ${bulkMetric === m ? '#0ea5e9' : '#cbd5e1'}`,
+                    background: bulkMetric === m ? '#0ea5e9' : '#fff',
+                    color: bulkMetric === m ? '#fff' : '#475569',
+                  }}
+                >
+                  {METRIC_META[m].label}
+                </button>
+              ))}
+            </div>
             <div style={{ fontSize: '13px', color: '#b45309', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '6px', padding: '8px' }}>
-              ⚠ この月の<strong>全日</strong>の目標を同じ金額で上書きします（個別に入れた目標も上書き）
+              ⚠ この月の<strong>全日</strong>の「{meta.label}」を同じ値で上書きします（個別に入れた分も上書き）
             </div>
             <label style={{ fontSize: '13px', color: '#555' }}>
-              1日あたりの目標金額 (円)
+              1日あたりの {meta.label} ({meta.unit})
               <input
                 type="text"
                 inputMode="numeric"
                 value={bulkInput}
                 onChange={(e) => setBulkInput(e.target.value)}
-                placeholder="例: 100000"
+                placeholder={meta.unit === '円' ? '例: 100000' : '例: 10'}
                 autoFocus
                 onKeyDown={(e) => { if (e.key === 'Enter' && !bulkSaving) saveBulk() }}
                 style={targetInputStyle}
               />
             </label>
-            {bulkInput && !isNaN(parseInt(bulkInput.replace(/[,\s]/g, ''))) && (
-              <div style={{ fontSize: '13px', color: '#888' }}>
-                各日 ¥{parseInt(bulkInput.replace(/[,\s]/g, '')).toLocaleString()} ×{data?.rows.length ?? 0}日
-                = 月合計 ¥{(parseInt(bulkInput.replace(/[,\s]/g, '')) * (data?.rows.length ?? 0)).toLocaleString()}
-              </div>
+            {bulkInput && !isNaN(parsed) && (
+              <div style={{ fontSize: '13px', color: '#888' }}>各日 {meta.fmt(parsed)} ×{days}日 = 月合計 {meta.fmt(parsed * days)}</div>
             )}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '8px' }}>
               <Button onClick={() => setBulkOpen(false)} variant="secondary" disabled={bulkSaving}>キャンセル</Button>
@@ -445,7 +492,8 @@ function ManagementContent() {
             </div>
           </div>
         </Modal>
-      )}
+        )
+      })()}
     </div>
   )
 }
@@ -565,7 +613,7 @@ function MobileDailyView({
 }: {
   data: DailyPlResponse
   events: ManagementEvent[]
-  openTargetEdit: (date: string, current: number | null) => void
+  openTargetEdit: (date: string, metric: TargetMetric, current: number | null) => void
 }) {
   const s = data.summary
   const achv = s.achievementRate
@@ -584,10 +632,14 @@ function MobileDailyView({
           <MStat label="総売上" value={yen(s.totalSales)} />
           <MStat label="売上目標" value={s.targetTotal > 0 ? yen(s.targetTotal) : '—'} />
           <MStat label="粗利" value={yen(s.grossProfit)} color={s.grossProfit < 0 ? '#dc2626' : '#15803d'} />
-          <MStat label="全体達成率" value={achv != null ? (achv * 100).toFixed(1) + '%' : '—'} color={barColor} />
+          <MStat label="売上達成率" value={achv != null ? (achv * 100).toFixed(1) + '%' : '—'} color={barColor} />
         </div>
-        <div style={{ height: '10px', background: '#f1f5f9', borderRadius: '5px', overflow: 'hidden', marginTop: '12px' }}>
+        <div style={{ height: '10px', background: '#f1f5f9', borderRadius: '5px', overflow: 'hidden', margin: '12px 0' }}>
           <div style={{ height: '100%', width: `${achvBarPct}%`, background: barColor, transition: 'width .3s ease' }} />
+        </div>
+        <div style={{ display: 'flex', gap: '16px', fontSize: '12px', color: '#475569', alignItems: 'center' }}>
+          <span>出勤達成 {achievementDisplay(s.achievementRateAttendance)}</span>
+          <span>来客達成 {achievementDisplay(s.achievementRateGuests)}</span>
         </div>
       </div>
 
@@ -598,30 +650,43 @@ function MobileDailyView({
         const ev = evOf(r.date)
         return (
           <div key={r.date} style={mCard}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
               <div style={{ fontWeight: 700, color: dcolor }}>
                 {r.day}日（{WD[dow]}）
                 {ev && <span style={{ color: '#7c3aed', fontSize: '12px', marginLeft: '6px' }}>{ev}</span>}
               </div>
-              <div style={{ fontSize: '14px' }}>{achievementDisplay(r.achievementRate)}</div>
+              <div style={{ fontSize: '13px', fontWeight: 700, color: r.grossProfit < 0 ? '#dc2626' : '#15803d' }}>粗利 {yen(r.grossProfit)}</div>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-              <MStat label="総売上" value={r.totalSales ? yen(r.totalSales) : '—'} />
-              <div>
-                <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '2px' }}>売上目標</div>
-                <button
-                  onClick={() => openTargetEdit(r.date, r.target)}
-                  style={{ fontSize: '15px', fontWeight: 700, color: '#0369a1', background: 'none', border: 'none', padding: 0, cursor: 'pointer', textDecoration: 'underline dotted', textUnderlineOffset: '2px' }}
-                >
-                  {r.target != null ? yen(r.target) : '＋ 設定'}
-                </button>
-              </div>
-              <MStat label="来店" value={r.guests ? `${r.guests}人` : '—'} />
-              <MStat label="粗利" value={yen(r.grossProfit)} color={r.grossProfit < 0 ? '#dc2626' : '#15803d'} />
+            <div style={{ display: 'grid', gridTemplateColumns: '42px minmax(0,1fr) minmax(0,1fr) 52px', gap: '8px', fontSize: '10px', color: '#94a3b8', paddingBottom: '2px' }}>
+              <div></div>
+              <div>実績</div>
+              <div>目標</div>
+              <div style={{ textAlign: 'right' }}>達成</div>
             </div>
+            <MTargetRow label="売上" actual={r.totalSales ? yen(r.totalSales) : '—'} value={r.target} metric="sales" achv={r.achievementRate} onEdit={() => openTargetEdit(r.date, 'sales', r.target)} />
+            <MTargetRow label="出勤" actual={`${r.attendanceCount}人`} value={r.targetAttendance} metric="attendance" achv={r.achievementRateAttendance} onEdit={() => openTargetEdit(r.date, 'attendance', r.targetAttendance)} />
+            <MTargetRow label="来客" actual={r.guests ? `${r.guests}人` : '—'} value={r.targetGuests} metric="guests" achv={r.achievementRateGuests} onEdit={() => openTargetEdit(r.date, 'guests', r.targetGuests)} />
           </div>
         )
       })}
+    </div>
+  )
+}
+
+function MTargetRow({ label, actual, value, metric, achv, onEdit }: {
+  label: string
+  actual: string
+  value: number | null
+  metric: TargetMetric
+  achv: number | null
+  onEdit: () => void
+}) {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '42px minmax(0,1fr) minmax(0,1fr) 52px', gap: '8px', alignItems: 'center', padding: '5px 0', borderTop: '1px solid #f1f5f9' }}>
+      <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>{label}</div>
+      <div style={{ fontSize: '14px', fontWeight: 700 }}>{actual}</div>
+      <div>{targetCell(value, metric, onEdit)}</div>
+      <div style={{ textAlign: 'right', fontSize: '13px' }}>{achievementDisplay(achv)}</div>
     </div>
   )
 }
@@ -694,6 +759,19 @@ const targetBtn: React.CSSProperties = {
   fontSize: '12px',
   textDecoration: 'underline dotted',
   textUnderlineOffset: '2px',
+}
+// 未設定の目標セル: 「悪」が一目で分かるよう赤で強調
+const targetBtnUnset: React.CSSProperties = {
+  background: '#fef2f2',
+  border: '1px solid #fecaca',
+  borderRadius: '4px',
+  padding: '2px 8px',
+  margin: 0,
+  cursor: 'pointer',
+  color: '#dc2626',
+  font: 'inherit',
+  fontSize: '11px',
+  fontWeight: 700,
 }
 const targetInputStyle: React.CSSProperties = {
   width: '100%',
