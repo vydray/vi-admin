@@ -7,6 +7,10 @@ import { useStore } from '@/contexts/StoreContext'
 import ProtectedPage from '@/components/ProtectedPage'
 import EventModal from '@/components/EventModal'
 import LoadingSpinner from '@/components/LoadingSpinner'
+import Modal from '@/components/Modal'
+import Button from '@/components/Button'
+import toast from 'react-hot-toast'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import holiday_jp from '@holiday-jp/holiday_jp'
 import type { DailyPlResponse, DailyPlRow, CastWageRateResponse, CastWageRateRow } from '@/types/management'
 import type { ManagementEvent } from '@/types/database'
@@ -23,9 +27,16 @@ const WD = ['日', '月', '火', '水', '木', '金', '土']
 const yen = (n: number) => '¥' + Math.round(n).toLocaleString('ja-JP')
 const num = (n: number) => n.toLocaleString('ja-JP')
 const pct = (n: number | null) => (n == null ? '-' : (n * 100).toFixed(1) + '%')
+// 達成率の色分け表示（緑=達成/青/橙/赤=未達）
+function achievementDisplay(rate: number | null): React.ReactNode {
+  if (rate == null) return <span style={{ color: '#cbd5e1' }}>-</span>
+  const color = rate >= 1 ? '#15803d' : rate >= 0.7 ? '#2563eb' : rate >= 0.4 ? '#d97706' : '#dc2626'
+  return <span style={{ color, fontWeight: 700 }}>{(rate * 100).toFixed(1)}%</span>
+}
 
 function ManagementContent() {
   const { storeId, storeName, isLoading: storeLoading } = useStore()
+  const { isMobile } = useIsMobile()
   const [selectedMonth, setSelectedMonth] = useState(new Date())
   const [data, setData] = useState<DailyPlResponse | null>(null)
   const [loading, setLoading] = useState(true)
@@ -34,6 +45,13 @@ function ManagementContent() {
   const [view, setView] = useState<'daily' | 'castWage'>('daily')
   const [castWage, setCastWage] = useState<CastWageRateResponse | null>(null)
   const [castWageLoading, setCastWageLoading] = useState(false)
+  // 売上目標 編集
+  const [targetModal, setTargetModal] = useState<{ date: string; current: number | null } | null>(null)
+  const [targetInput, setTargetInput] = useState('')
+  const [targetSaving, setTargetSaving] = useState(false)
+  const [bulkOpen, setBulkOpen] = useState(false)
+  const [bulkInput, setBulkInput] = useState('')
+  const [bulkSaving, setBulkSaving] = useState(false)
 
   const yearMonth = format(selectedMonth, 'yyyy-MM')
 
@@ -87,6 +105,63 @@ function ManagementContent() {
     }
   }, [storeId, yearMonth])
 
+  const openTargetEdit = (date: string, current: number | null) => {
+    setTargetInput(current != null ? String(current) : '')
+    setTargetModal({ date, current })
+  }
+
+  const saveTarget = async () => {
+    if (!targetModal) return
+    const raw = targetInput.replace(/[,\s]/g, '')
+    let amount: number | null
+    if (raw === '') amount = null // 空欄 = 削除
+    else {
+      const n = parseInt(raw)
+      if (isNaN(n) || n < 0) { toast.error('正の数値を入力してください'); return }
+      amount = n
+    }
+    setTargetSaving(true)
+    try {
+      const res = await fetch('/api/management/sales-targets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ store_id: storeId, targets: [{ date: targetModal.date, target_amount: amount }] }),
+      })
+      if (!res.ok) throw new Error('failed')
+      toast.success(amount === null ? '削除しました' : '保存しました')
+      setTargetModal(null)
+      await load()
+    } catch {
+      toast.error('保存に失敗しました')
+    } finally {
+      setTargetSaving(false)
+    }
+  }
+
+  const saveBulk = async () => {
+    const raw = bulkInput.replace(/[,\s]/g, '')
+    const n = parseInt(raw)
+    if (isNaN(n) || n < 0) { toast.error('正の数値を入力してください'); return }
+    if (!data) return
+    setBulkSaving(true)
+    try {
+      const targets = data.rows.map((r) => ({ date: r.date, target_amount: n }))
+      const res = await fetch('/api/management/sales-targets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ store_id: storeId, targets }),
+      })
+      if (!res.ok) throw new Error('failed')
+      toast.success('全日に設定しました')
+      setBulkOpen(false)
+      await load()
+    } catch {
+      toast.error('保存に失敗しました')
+    } finally {
+      setBulkSaving(false)
+    }
+  }
+
   useEffect(() => {
     load()
   }, [load])
@@ -109,6 +184,8 @@ function ManagementContent() {
       { label: 'その他', fmt: (r) => String(r.otherSales) },
       { label: 'BASE', fmt: (r) => String(r.baseSales) },
       { label: '総売上', fmt: (r) => String(r.totalSales) },
+      { label: '売上目標', fmt: (r) => (r.target != null ? String(r.target) : '') },
+      { label: '達成率', fmt: (r) => (r.achievementRate == null ? '' : (r.achievementRate * 100).toFixed(1)) },
       { label: 'シフト人数', fmt: (r) => String(r.shiftCount) },
       { label: '出勤人数', fmt: (r) => String(r.attendanceCount) },
       { label: '出勤率', fmt: (r) => (r.attendanceRate == null ? '' : (r.attendanceRate * 100).toFixed(1)) },
@@ -141,7 +218,7 @@ function ManagementContent() {
   const businessDays = summary?.businessDays ?? 0
 
   return (
-    <div style={{ padding: '24px' }}>
+    <div style={{ padding: isMobile ? '56px 12px 24px' : '24px' }}>
       {/* ヘッダ */}
       <div
         style={{
@@ -165,6 +242,9 @@ function ManagementContent() {
           {/* アクションは月送りの「左」に置き、月送り(◀年月▶)の位置をタブ間で常に最右に固定する */}
           {view === 'daily' && (
             <>
+              <button onClick={() => { setBulkInput(''); setBulkOpen(true) }} disabled={!data} style={{ ...actionBtn, background: '#0ea5e9', opacity: data ? 1 : 0.5 }}>
+                目標一括設定
+              </button>
               <button onClick={() => setShowEventModal(true)} style={{ ...actionBtn, background: '#8b5cf6' }}>
                 イベント管理
               </button>
@@ -201,6 +281,8 @@ function ManagementContent() {
         <LoadingSpinner />
       ) : !data || data.rows.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '60px', color: '#94a3b8' }}>データがありません</div>
+      ) : isMobile ? (
+        <MobileDailyView data={data} events={events} openTargetEdit={openTargetEdit} />
       ) : (
         <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '8px', background: '#fff', maxHeight: '78vh' }}>
           {summary && (() => {
@@ -221,6 +303,12 @@ function ManagementContent() {
               { label: 'その他', cell: (r) => (r.otherSales ? yen(r.otherSales) : '-'), total: yen(summary.otherSales), avg: '' },
               { label: 'BASE', cell: (r) => (r.baseSales ? yen(r.baseSales) : '-'), total: yen(summary.baseSales), avg: '' },
               { label: '総売上', group: true, cell: (r) => (r.totalSales ? yen(r.totalSales) : '-'), total: yen(summary.totalSales), avg: '' },
+              { label: '売上目標', cell: (r) => (
+                <button onClick={() => openTargetEdit(r.date, r.target)} style={targetBtn} title="クリックして目標を設定">
+                  {r.target != null ? yen(r.target) : <span style={{ color: '#cbd5e1' }}>＋</span>}
+                </button>
+              ), total: summary.targetTotal > 0 ? yen(summary.targetTotal) : '-', avg: '' },
+              { label: '達成率', cell: (r) => achievementDisplay(r.achievementRate), total: achievementDisplay(summary.achievementRate), avg: '' },
               { label: 'シフト', group: true, cell: (r) => r.shiftCount || '-', total: num(summary.shiftCount), avg: '' },
               { label: '出勤', cell: (r) => r.attendanceCount || '-', total: num(summary.attendanceCount), avg: '' },
               { label: '出勤率', cell: (r) => pct(r.attendanceRate), total: pct(summary.attendanceRate), avg: '' },
@@ -295,6 +383,68 @@ function ManagementContent() {
           onClose={() => setShowEventModal(false)}
           onChanged={loadEvents}
         />
+      )}
+
+      {/* 日別 売上目標 編集 */}
+      {targetModal && (
+        <Modal isOpen={true} onClose={() => !targetSaving && setTargetModal(null)} title={`${targetModal.date} の売上目標`} maxWidth="380px">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <label style={{ fontSize: '13px', color: '#555' }}>
+              目標金額 (円) ※空欄で保存すると削除
+              <input
+                type="text"
+                inputMode="numeric"
+                value={targetInput}
+                onChange={(e) => setTargetInput(e.target.value)}
+                placeholder="例: 100000"
+                autoFocus
+                onKeyDown={(e) => { if (e.key === 'Enter' && !targetSaving) saveTarget() }}
+                style={targetInputStyle}
+              />
+            </label>
+            {targetInput && !isNaN(parseInt(targetInput.replace(/[,\s]/g, ''))) && (
+              <div style={{ fontSize: '13px', color: '#888' }}>= ¥{parseInt(targetInput.replace(/[,\s]/g, '')).toLocaleString()}</div>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '8px' }}>
+              <Button onClick={() => setTargetModal(null)} variant="secondary" disabled={targetSaving}>キャンセル</Button>
+              <Button onClick={saveTarget} disabled={targetSaving}>{targetSaving ? '保存中...' : '保存'}</Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* 売上目標 一括設定 */}
+      {bulkOpen && (
+        <Modal isOpen={true} onClose={() => !bulkSaving && setBulkOpen(false)} title={`${format(selectedMonth, 'yyyy年M月', { locale: ja })} 目標を一括設定`} maxWidth="380px">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div style={{ fontSize: '13px', color: '#b45309', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '6px', padding: '8px' }}>
+              ⚠ この月の<strong>全日</strong>の目標を同じ金額で上書きします（個別に入れた目標も上書き）
+            </div>
+            <label style={{ fontSize: '13px', color: '#555' }}>
+              1日あたりの目標金額 (円)
+              <input
+                type="text"
+                inputMode="numeric"
+                value={bulkInput}
+                onChange={(e) => setBulkInput(e.target.value)}
+                placeholder="例: 100000"
+                autoFocus
+                onKeyDown={(e) => { if (e.key === 'Enter' && !bulkSaving) saveBulk() }}
+                style={targetInputStyle}
+              />
+            </label>
+            {bulkInput && !isNaN(parseInt(bulkInput.replace(/[,\s]/g, ''))) && (
+              <div style={{ fontSize: '13px', color: '#888' }}>
+                各日 ¥{parseInt(bulkInput.replace(/[,\s]/g, '')).toLocaleString()} ×{data?.rows.length ?? 0}日
+                = 月合計 ¥{(parseInt(bulkInput.replace(/[,\s]/g, '')) * (data?.rows.length ?? 0)).toLocaleString()}
+              </div>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '8px' }}>
+              <Button onClick={() => setBulkOpen(false)} variant="secondary" disabled={bulkSaving}>キャンセル</Button>
+              <Button onClick={saveBulk} disabled={bulkSaving}>{bulkSaving ? '保存中...' : '全日に設定'}</Button>
+            </div>
+          </div>
+        </Modal>
       )}
     </div>
   )
@@ -405,6 +555,94 @@ function CastWageView({ loading, data }: { loading: boolean; data: CastWageRateR
   )
 }
 
+// ============================================================================
+// モバイル版 日毎ビュー（横長テーブルの代わりに 月サマリー + 日ごとカード）
+// ============================================================================
+function MobileDailyView({
+  data,
+  events,
+  openTargetEdit,
+}: {
+  data: DailyPlResponse
+  events: ManagementEvent[]
+  openTargetEdit: (date: string, current: number | null) => void
+}) {
+  const s = data.summary
+  const achv = s.achievementRate
+  const achvBarPct = achv != null ? Math.min(achv * 100, 100) : 0
+  const barColor =
+    achv == null ? '#cbd5e1' : achv >= 1 ? '#10b981' : achv >= 0.7 ? '#3b82f6' : achv >= 0.4 ? '#f59e0b' : '#ef4444'
+  const evOf = (date: string) =>
+    events.filter((e) => e.start_date <= date && e.end_date >= date).map((e) => e.name).join('、')
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      {/* 月サマリー */}
+      <div style={mCard}>
+        <div style={{ fontSize: '13px', color: '#64748b', fontWeight: 700, marginBottom: '10px' }}>{data.yearMonth} サマリー</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+          <MStat label="総売上" value={yen(s.totalSales)} />
+          <MStat label="売上目標" value={s.targetTotal > 0 ? yen(s.targetTotal) : '—'} />
+          <MStat label="粗利" value={yen(s.grossProfit)} color={s.grossProfit < 0 ? '#dc2626' : '#15803d'} />
+          <MStat label="全体達成率" value={achv != null ? (achv * 100).toFixed(1) + '%' : '—'} color={barColor} />
+        </div>
+        <div style={{ height: '10px', background: '#f1f5f9', borderRadius: '5px', overflow: 'hidden', marginTop: '12px' }}>
+          <div style={{ height: '100%', width: `${achvBarPct}%`, background: barColor, transition: 'width .3s ease' }} />
+        </div>
+      </div>
+
+      {/* 日ごとカード */}
+      {data.rows.map((r) => {
+        const dow = dowOf(r.date)
+        const dcolor = dow === 0 || isHolidayDate(r.date) ? '#dc2626' : dow === 6 ? '#2563eb' : '#334155'
+        const ev = evOf(r.date)
+        return (
+          <div key={r.date} style={mCard}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+              <div style={{ fontWeight: 700, color: dcolor }}>
+                {r.day}日（{WD[dow]}）
+                {ev && <span style={{ color: '#7c3aed', fontSize: '12px', marginLeft: '6px' }}>{ev}</span>}
+              </div>
+              <div style={{ fontSize: '14px' }}>{achievementDisplay(r.achievementRate)}</div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+              <MStat label="総売上" value={r.totalSales ? yen(r.totalSales) : '—'} />
+              <div>
+                <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '2px' }}>売上目標</div>
+                <button
+                  onClick={() => openTargetEdit(r.date, r.target)}
+                  style={{ fontSize: '15px', fontWeight: 700, color: '#0369a1', background: 'none', border: 'none', padding: 0, cursor: 'pointer', textDecoration: 'underline dotted', textUnderlineOffset: '2px' }}
+                >
+                  {r.target != null ? yen(r.target) : '＋ 設定'}
+                </button>
+              </div>
+              <MStat label="来店" value={r.guests ? `${r.guests}人` : '—'} />
+              <MStat label="粗利" value={yen(r.grossProfit)} color={r.grossProfit < 0 ? '#dc2626' : '#15803d'} />
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function MStat({ label, value, color = '#1f2937' }: { label: string; value: string; color?: string }) {
+  return (
+    <div>
+      <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '2px' }}>{label}</div>
+      <div style={{ fontSize: '15px', fontWeight: 700, color }}>{value}</div>
+    </div>
+  )
+}
+
+const mCard: React.CSSProperties = {
+  background: '#fff',
+  border: '1px solid #e2e8f0',
+  borderRadius: '10px',
+  padding: '14px',
+  boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+}
+
 function dowOf(date: string): number {
   const [y, m, d] = date.split('-').map(Number)
   return new Date(y, m - 1, d).getDay()
@@ -443,6 +681,27 @@ const actionBtn: React.CSSProperties = {
   fontSize: '14px',
   fontWeight: 500,
   cursor: 'pointer',
+}
+// 売上目標セル（クリックで編集）
+const targetBtn: React.CSSProperties = {
+  background: 'none',
+  border: 'none',
+  padding: '2px 4px',
+  margin: 0,
+  cursor: 'pointer',
+  color: '#0369a1',
+  font: 'inherit',
+  fontSize: '12px',
+  textDecoration: 'underline dotted',
+  textUnderlineOffset: '2px',
+}
+const targetInputStyle: React.CSSProperties = {
+  width: '100%',
+  padding: '10px',
+  border: '1px solid #ddd',
+  borderRadius: '6px',
+  marginTop: '6px',
+  fontSize: '16px',
 }
 const banner = (bg: string, border: string, color: string): React.CSSProperties => ({
   padding: '12px 16px',

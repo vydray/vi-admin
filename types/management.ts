@@ -39,6 +39,9 @@ export interface DailyPlRow {
   attendanceRate: number | null // attendanceCount / shiftCount
   // 予約
   lineReservedGuests: number // 公式LINE予定客数
+  // 売上目標（日別・daily_sales_targets）
+  target: number | null // 日別売上目標（未設定=null）
+  achievementRate: number | null // 達成率 = totalSales / target（目標未設定/0=null）
 }
 
 export interface DailyPlSummary {
@@ -69,6 +72,9 @@ export interface DailyPlSummary {
   businessDays: number
   avgDailySales: number
   avgDailyGuests: number
+  // 売上目標（月合計・全体達成率）
+  targetTotal: number // Σ 日別目標
+  achievementRate: number | null // 全体達成率 = totalSales / targetTotal（目標合計0=null）
 }
 
 export interface LaborComponentRecon {
