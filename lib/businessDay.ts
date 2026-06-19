@@ -43,6 +43,22 @@ export function calculateBusinessDay(
 }
 
 /**
+ * 指定エポックミリ秒の「JST(日本時間)での暦日付」を YYYY-MM-DD で返す。
+ *
+ * BASE APIの取得範囲(start_ordered/end_ordered)用。
+ * UTC基準の `new Date(...).toISOString().split('T')[0]` を使うと、日本の深夜0〜9時
+ * (UTCではまだ前日)に当日(JST)の注文が範囲から漏れ、毎朝9時(=00:00 UTC)に一括取り込み
+ * される不具合が起きる。BASEはJSTのサービスなので、取得範囲は必ずJSTの暦日付で渡す。
+ *
+ * @param epochMs エポックミリ秒（例: Date.now()）
+ * @returns JST基準の YYYY-MM-DD
+ */
+export function jstDateString(epochMs: number): string {
+  // JST = UTC+9。9時間ずらした時刻のUTC日付部分 = JSTの暦日付
+  return new Date(epochMs + 9 * 60 * 60 * 1000).toISOString().split('T')[0]
+}
+
+/**
  * 営業日をISO 8601形式のタイムスタンプに変換する
  * @param businessDay 営業日（YYYY-MM-DD形式の文字列）
  * @returns ISO 8601形式のタイムスタンプ

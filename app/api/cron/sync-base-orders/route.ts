@@ -4,7 +4,7 @@ import { fetchOrders, fetchOrderDetail } from '@/lib/baseApi'
 import { withCronLock } from '@/lib/cronLock'
 import { refreshBaseTokenIfNeeded } from '@/lib/baseTokenRefresh'
 import { recalculateForDate } from '@/lib/recalculateSales'
-import { calculateBusinessDay } from '@/lib/businessDay'
+import { calculateBusinessDay, jstDateString } from '@/lib/businessDay'
 import { notifyPendingForAllStores } from '@/lib/notifyBaseOrder'
 import { matchCastByVariation } from '@/lib/castMatch'
 
@@ -98,11 +98,12 @@ async function executeSyncBaseOrders() {
         }
 
         // 過去3日分の注文を取得（ページネーション対応、月またぎにも対応）
-        // end_orderedは翌日を指定して、今日の全ての注文を含める
-        const tomorrow = new Date()
-        tomorrow.setDate(tomorrow.getDate() + 1)
-        const endDate = tomorrow.toISOString().split('T')[0]
-        const startDate = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+        // ※日付はJST基準で出す。UTCだと日本の深夜0〜9時(UTCは前日)に当日分が範囲から漏れ、
+        //   毎朝9時(00:00 UTC)に一括取り込みされる不具合が起きる。
+        //   end=JST翌日で当日分を確実に含め、start=4日前で旧UTC窓より広く取り取りこぼし防止。
+        const nowMs = Date.now()
+        const endDate = jstDateString(nowMs + 24 * 60 * 60 * 1000)
+        const startDate = jstDateString(nowMs - 4 * 24 * 60 * 60 * 1000)
 
         let allOrders: any[] = []
         let offset = 0
@@ -350,13 +351,12 @@ async function executeSyncBaseOrders() {
     for (const result of results) {
       if (!result.success || result.imported === 0) continue
 
-      // 過去3日分の日付を生成
-      const today = new Date()
+      // 過去3日分の日付を生成（JST基準。UTCだと深夜帯に当日(JST)の業務日が対象から漏れ、
+      // 取り込めても売上再計算が9時まで遅れる）
+      const recalcNowMs = Date.now()
       const dates: string[] = []
       for (let i = 0; i < 3; i++) {
-        const date = new Date(today)
-        date.setDate(date.getDate() - i)
-        dates.push(date.toISOString().split('T')[0])
+        dates.push(jstDateString(recalcNowMs - i * 24 * 60 * 60 * 1000))
       }
 
       // 各日付の売上を再計算（直接関数呼び出しでDeployment Protectionを回避）

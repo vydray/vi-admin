@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { getSupabaseServerClient } from '@/lib/supabase'
 import { fetchOrders, fetchOrderDetail } from '@/lib/baseApi'
 import { withCronLock } from '@/lib/cronLock'
-import { calculateBusinessDay } from '@/lib/businessDay'
+import { calculateBusinessDay, jstDateString } from '@/lib/businessDay'
 import { notifyPendingForAllStores } from '@/lib/notifyBaseOrder'
 import { refreshBaseTokenIfNeeded } from '@/lib/baseTokenRefresh'
 import { matchCastByVariation } from '@/lib/castMatch'
@@ -85,10 +85,12 @@ async function executeFastSyncAndNotify() {
         }
       }
 
-      // 直近1時間をカバー: 昨日と今日と翌日までfetch(timezone安全マージン)
-      const now = new Date()
-      const startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-      const endDate = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+      // 直近1時間をカバー: JST基準で前々日〜翌日をfetch。
+      // ※日付はUTCではなくJSTで出す。UTCだと日本の深夜0〜9時(UTCは前日)に当日分が
+      //   範囲から漏れ、毎朝9時(00:00 UTC)に一括取り込みされる不具合が起きるため。
+      const nowMs = Date.now()
+      const startDate = jstDateString(nowMs - 2 * 24 * 60 * 60 * 1000)
+      const endDate = jstDateString(nowMs + 24 * 60 * 60 * 1000)
 
       const ordersResponse = await fetchOrders(accessToken, {
         start_ordered: startDate,

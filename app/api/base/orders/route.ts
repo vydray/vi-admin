@@ -4,7 +4,7 @@ import { getSupabaseServerClient } from '@/lib/supabase'
 import { fetchOrders, fetchOrderDetail } from '@/lib/baseApi'
 import { refreshBaseTokenIfNeeded } from '@/lib/baseTokenRefresh'
 import { matchCastByVariation } from '@/lib/castMatch'
-import { calculateBusinessDay } from '@/lib/businessDay'
+import { calculateBusinessDay, jstDateString } from '@/lib/businessDay'
 
 /**
  * セッション検証関数
@@ -42,9 +42,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'store_id is required' }, { status: 400 })
     }
 
-    // 日付が指定されていない場合はデフォルトで過去30日
-    const defaultEndDate = new Date().toISOString().split('T')[0]
-    const defaultStartDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+    // 日付が指定されていない場合はデフォルトで過去30日（JST基準。end=JST翌日で当日分を確実に含める）
+    const defaultEndDate = jstDateString(Date.now() + 24 * 60 * 60 * 1000)
+    const defaultStartDate = jstDateString(Date.now() - 30 * 24 * 60 * 60 * 1000)
     const effectiveStartDate = start_date || defaultStartDate
     const effectiveEndDate = end_date || defaultEndDate
 
