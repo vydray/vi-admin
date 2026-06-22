@@ -90,6 +90,7 @@ const menuGroups: MenuGroup[] = [
       { name: 'キャスト写真', path: '/schedule/photos', icon: 'image' },
       { name: 'テンプレート', path: '/schedule/template', icon: 'template' },
       { name: '生成', path: '/schedule/generate', icon: 'sparkles' },
+      { name: 'カレンダー', path: '/schedule/calendar', icon: 'sparkles' },
     ]
   },
   {
