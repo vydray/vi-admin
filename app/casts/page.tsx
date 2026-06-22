@@ -94,7 +94,7 @@ function CastsPageContent() {
     setLoading(true)
     const { data, error } = await supabase
       .from('casts')
-      .select('id, name, employee_name, birthday, status, attributes, experience_date, hire_date, resignation_date, residence_record, attendance_certificate, contract_documents, twitter, password, instagram, password2, show_in_pos, is_active, is_admin, is_manager, display_order, primary_cast_id, mbti, one_word, slug')
+      .select('id, name, employee_name, birthday, status, attributes, experience_date, hire_date, resignation_date, residence_record, attendance_certificate, contract_documents, twitter, password, instagram, password2, tiktok, show_in_pos, is_active, is_admin, is_manager, display_order, primary_cast_id, mbti, one_word, slug')
       .eq('store_id', storeId)
       .order('display_order', { ascending: true, nullsFirst: false })
       .order('name')
@@ -428,6 +428,7 @@ function CastsPageContent() {
       twitter: null,
       password: null,
       instagram: null,
+      tiktok: null,
       password2: null,
       attendance_certificate: false,
       residence_record: false,
@@ -529,6 +530,7 @@ function CastsPageContent() {
           twitter: editingCast.twitter,
           password: editingCast.password,
           instagram: editingCast.instagram,
+          tiktok: editingCast.tiktok,
           password2: editingCast.password2,
           store_id: storeId,
           show_in_pos: editingCast.show_in_pos,
@@ -567,6 +569,7 @@ function CastsPageContent() {
           twitter: editingCast.twitter,
           password: editingCast.password,
           instagram: editingCast.instagram,
+          tiktok: editingCast.tiktok,
           password2: editingCast.password2,
           primary_cast_id: editingCast.primary_cast_id,
           show_in_pos: editingCast.show_in_pos,
@@ -1077,6 +1080,7 @@ function CastsPageContent() {
                 <th style={thStyleSticky}>契約書</th>
                 <th style={thStyleSticky}>Twitter</th>
                 <th style={thStyleSticky}>Instagram</th>
+                <th style={thStyleSticky}>TikTok</th>
                 <th style={thStyleSticky}>POS表示</th>
                 <th style={thStyleSticky}>シフトアプリ</th>
                 <th style={thStyleSticky}>管理者</th>
@@ -1196,6 +1200,7 @@ function CastsPageContent() {
                   <td style={tdStyle}>{renderToggle(cast.id, 'contract_documents', cast.contract_documents)}</td>
                   <td style={tdStyle}>{cast.twitter || '-'}</td>
                   <td style={tdStyle}>{cast.instagram || '-'}</td>
+                  <td style={tdStyle}>{cast.tiktok || '-'}</td>
                   <td style={tdStyle}>{renderToggle(cast.id, 'show_in_pos', cast.show_in_pos)}</td>
                   <td style={tdStyle}>{renderToggle(cast.id, 'is_active', cast.is_active)}</td>
                   <td style={tdStyle}>{renderToggle(cast.id, 'is_admin', cast.is_admin)}</td>
@@ -1431,6 +1436,17 @@ function CastsPageContent() {
                   type="text"
                   value={editingCast.instagram || ''}
                   onChange={(e) => handleFieldChange('instagram', e.target.value)}
+                  style={inputStyle}
+                  placeholder="@ユーザー名"
+                />
+              </div>
+
+              <div>
+                <label style={labelStyle}>TikTok</label>
+                <input
+                  type="text"
+                  value={editingCast.tiktok || ''}
+                  onChange={(e) => handleFieldChange('tiktok', e.target.value)}
                   style={inputStyle}
                   placeholder="@ユーザー名"
                 />

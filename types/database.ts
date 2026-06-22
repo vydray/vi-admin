@@ -10,6 +10,7 @@ export interface Cast {
   twitter: string | null
   password: string | null
   instagram: string | null
+  tiktok: string | null
   password2: string | null
   attendance_certificate: boolean | null
   residence_record: boolean | null
@@ -65,6 +66,7 @@ export interface CastListView {
   twitter: string | null
   password: string | null
   instagram: string | null
+  tiktok: string | null
   password2: string | null
   show_in_pos: boolean
   is_active: boolean
