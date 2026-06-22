@@ -1377,6 +1377,9 @@ function CastsPageContent() {
                 />
               </div>
 
+              {/* 退職日の右を空けてSNSを左寄せ（ハンドル＝左・パスワード＝右の対で並べる） */}
+              <div />
+
               <div>
                 <label style={labelStyle}>Twitter</label>
                 <input
@@ -1442,17 +1445,6 @@ function CastsPageContent() {
               </div>
 
               <div>
-                <label style={labelStyle}>TikTok</label>
-                <input
-                  type="text"
-                  value={editingCast.tiktok || ''}
-                  onChange={(e) => handleFieldChange('tiktok', e.target.value)}
-                  style={inputStyle}
-                  placeholder="@ユーザー名"
-                />
-              </div>
-
-              <div>
                 <label style={labelStyle}>Instagramパスワード</label>
                 <div style={{ position: 'relative' }}>
                   <input
@@ -1492,6 +1484,17 @@ function CastsPageContent() {
                     )}
                   </button>
                 </div>
+              </div>
+
+              <div>
+                <label style={labelStyle}>TikTok</label>
+                <input
+                  type="text"
+                  value={editingCast.tiktok || ''}
+                  onChange={(e) => handleFieldChange('tiktok', e.target.value)}
+                  style={inputStyle}
+                  placeholder="@ユーザー名"
+                />
               </div>
             </div>
 
