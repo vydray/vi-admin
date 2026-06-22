@@ -96,6 +96,7 @@ export function getPermissionKeyFromPath(path: string): PermissionKey | null {
     '/schedule/photos': 'schedule',
     '/schedule/template': 'schedule',
     '/schedule/generate': 'schedule',
+    '/schedule/calendar': 'schedule',
     // Twitter
     '/twitter-posts': 'twitter',
     '/twitter-settings': 'twitter',
