@@ -1,20 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
-import { renderMaryMareCalendar, type CalendarShift, type CalendarEvent } from '@/lib/scheduleCalendar/marymare'
+import { renderCalendar } from '@/lib/scheduleCalendar/render'
+import { STORE_CALENDARS } from '@/lib/scheduleCalendar/themes'
+import type { CalendarShift, CalendarEvent } from '@/lib/scheduleCalendar/types'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
   process.env.SUPABASE_SERVICE_ROLE_KEY || '',
 )
-
-// 店舗ごとのカレンダーデザイン定義。renderer未実装の店は準備中。
-const STORE_CALENDARS: Record<number, { name: string; render: typeof renderMaryMareCalendar }> = {
-  7: { name: 'MaryMare', render: renderMaryMareCalendar },
-}
-
-// MaryMareテーマのイベント帯色（management_eventsには色が無いので自動付与）
-const EVENT_STYLE = { bg: 'rgba(255, 79, 162, 0.92)', text: '#ffffff' }
 
 async function validateSession(): Promise<{ storeId: number; isAllStore: boolean } | null> {
   const cookieStore = await cookies()
@@ -22,7 +16,9 @@ async function validateSession(): Promise<{ storeId: number; isAllStore: boolean
   if (!sessionCookie) return null
   try {
     const session = JSON.parse(sessionCookie.value)
-    return { storeId: session.storeId, isAllStore: session.isAllStore || false }
+    // admin_session cookie は store_id(snake_case)で保存される（login参照）。
+    // storeId(camelCase)は常にundefinedになるので store_id を優先して読む。
+    return { storeId: session.store_id ?? session.storeId, isAllStore: session.isAllStore || false }
   } catch {
     return null
   }
@@ -115,7 +111,7 @@ export async function POST(request: NextRequest) {
     }
 
     // イベント取得（期間に重なる active なもの）
-    const { data: eventRows } = await supabase
+    const { data: eventRows, error: eventErr } = await supabase
       .from('management_events')
       .select('name, start_date, end_date')
       .eq('store_id', storeId)
@@ -123,17 +119,17 @@ export async function POST(request: NextRequest) {
       .lte('start_date', endDate)
       .gte('end_date', startDate)
 
+    if (eventErr) {
+      console.error('[calendar] events fetch error:', eventErr)
+      return NextResponse.json({ error: 'イベント取得に失敗しました' }, { status: 500 })
+    }
+
+    // イベント帯の色はテーマ既定を使う（management_eventsには色情報が無い）
     const events: CalendarEvent[] = (eventRows || [])
       .filter((e) => e.name && e.start_date && e.end_date)
-      .map((e) => ({
-        start: e.start_date,
-        end: e.end_date,
-        label: e.name,
-        bg: EVENT_STYLE.bg,
-        text: EVENT_STYLE.text,
-      }))
+      .map((e) => ({ start: e.start_date, end: e.end_date, label: e.name }))
 
-    const buffer = await calendar.render({ title, startDate, endDate, shifts, events })
+    const buffer = await renderCalendar({ title, startDate, endDate, shifts, events }, calendar.theme)
     const dataUrl = `data:image/png;base64,${buffer.toString('base64')}`
     const filename = `${month}月${halfLabel}${calendar.name}.png`
 

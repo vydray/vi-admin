@@ -1,75 +1,34 @@
 import path from 'path'
 import fs from 'fs'
 import { createCanvas, registerFont, loadImage } from 'canvas'
+import type { CalendarEvent, CalendarShift, CalendarTheme, RenderCalendarParams } from './types'
 
 /**
- * MaryMare(store7) 出勤表カレンダー画像の描画。
+ * 出勤表カレンダー画像の共通描画エンジン。
  *
- * 元は scripts/generate-marymare-shift.js（CLI）。本ファイルはそれをサーバ用に
- * 関数化したもの。世界観: ダークゴシック大聖堂 × ネオンピンク × 夢かわ。
- * 背景に大聖堂画像を敷き、その上にフロスト半透明カレンダーを重ねる。
- * フォントは M PLUS Rounded 1c（public/fonts、registerFontは一度だけ）。
+ * 元は scripts/generate-{marymare,mirage}-shift.js（CLI）。両者は構造が完全一致で、
+ * 違いは色・フォント・背景・グローのみ。それらを CalendarTheme に切り出し、
+ * 描画ロジックはこの一本に統合した。
  */
 
-export interface CalendarShift {
-  date: string // YYYY-MM-DD
-  cast_name: string
-  start_time: string // HH:MM(:SS)
-  display_order: number | null
-}
-
-export interface CalendarEvent {
-  start: string // YYYY-MM-DD
-  end: string // YYYY-MM-DD
-  label: string
-  bg: string
-  text: string
-}
-
-export interface RenderMaryMareParams {
-  title: string
-  startDate: string // YYYY-MM-DD
-  endDate: string // YYYY-MM-DD
-  shifts: CalendarShift[]
-  events: CalendarEvent[]
-}
-
-// ---------- フォント登録（一度だけ） ----------
-let fontsRegistered = false
-function ensureFonts() {
-  if (fontsRegistered) return
+// ---------- フォント登録（ファミリ単位で一度だけ） ----------
+const registeredFamilies = new Set<string>()
+function ensureFonts(theme: CalendarTheme) {
   const fontsDir = path.join(process.cwd(), 'public', 'fonts')
-  const reg = (file: string, family: string) => {
-    const p = path.join(fontsDir, file)
-    if (fs.existsSync(p)) registerFont(p, { family })
+  for (const f of theme.fontFiles) {
+    if (registeredFamilies.has(f.family)) continue
+    const p = path.join(fontsDir, f.file)
+    if (!fs.existsSync(p)) continue
+    if (f.weight) registerFont(p, { family: f.family, weight: f.weight })
+    else registerFont(p, { family: f.family })
+    registeredFamilies.add(f.family)
   }
-  reg('MPLUSRounded1c-Regular.ttf', 'Rounded Mplus 1c')
-  reg('MPLUSRounded1c-Bold.ttf', 'Rounded Mplus 1c Bold')
-  fontsRegistered = true
 }
 
-// ---------- 設定 ----------
+// ---------- レイアウト（全テーマ共通） ----------
 const DISPLAY_OPEN_TIME = '18:00'
 const DAYS = ['月', '火', '水', '木', '金', '土', '日']
 const JS_DAY_TO_COL = [6, 0, 1, 2, 3, 4, 5]
-
-// カラー（フロスト半透明：背景が透ける）
-const FALLBACK_BG = '#180b16'
-const TITLE_BG = 'rgba(20, 9, 16, 0.70)'
-const TITLE_TEXT = '#ff8ec6'
-const HEADER_BG = 'rgba(70, 22, 60, 0.66)'
-const HEADER_TEXT = '#ffd9ee'
-const DATE_ROW_BG = 'rgba(42, 15, 34, 0.68)'
-const CELL_BG = 'rgba(30, 14, 26, 0.60)'
-const BORDER = 'rgba(255, 111, 181, 0.45)'
-const DATE_COLOR = '#ffe7f3'
-const DATE_SAT = '#9ec5ff'
-const DATE_SUN = '#ff6fb5'
-const NAME_COLOR = '#ffffff'
-const TIME_COLOR = '#ffbfe0'
-const EMPTY_BG = 'rgba(0, 0, 0, 0)'
-
-// レイアウト
 const COL_W = 200
 const TITLE_H = 90
 const HEADER_H = 50
@@ -139,11 +98,12 @@ function drawCover(
 }
 
 /**
- * MaryMare カレンダー画像を生成して PNG Buffer を返す。
+ * カレンダー画像を生成して PNG Buffer を返す。
  */
-export async function renderMaryMareCalendar(params: RenderMaryMareParams): Promise<Buffer> {
-  ensureFonts()
+export async function renderCalendar(params: RenderCalendarParams, theme: CalendarTheme): Promise<Buffer> {
+  ensureFonts(theme)
   const { title, startDate, endDate, shifts, events } = params
+  const c = theme.colors
 
   // シフトを date キーでマップ化＋ソート（display_order昇順→start_time）
   const shiftsByDate = new Map<string, CalendarShift[]>()
@@ -189,45 +149,56 @@ export async function renderMaryMareCalendar(params: RenderMaryMareParams): Prom
   const canvas = createCanvas(CANVAS_W, CANVAS_H)
   const ctx = canvas.getContext('2d')
 
-  // 背景: 大聖堂画像 → 暗幕（可読性UP）。無ければ単色
-  const bgPath = path.join(process.cwd(), 'public', 'schedule-bg', 'marymare.jpg')
-  if (fs.existsSync(bgPath)) {
-    const bg = await loadImage(bgPath)
-    drawCover(ctx, bg, CANVAS_W, CANVAS_H)
-    ctx.fillStyle = 'rgba(20, 9, 16, 0.42)'
-    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H)
-  } else {
-    ctx.fillStyle = FALLBACK_BG
+  // ---------- 背景 ----------
+  const bg = theme.background
+  if (bg.type === 'image') {
+    const bgPath = path.join(process.cwd(), bg.path)
+    if (fs.existsSync(bgPath)) {
+      const img = await loadImage(bgPath)
+      drawCover(ctx, img, CANVAS_W, CANVAS_H)
+      if (bg.overlay) {
+        ctx.fillStyle = bg.overlay
+        ctx.fillRect(0, 0, CANVAS_W, CANVAS_H)
+      }
+    } else {
+      ctx.fillStyle = bg.fallback
+      ctx.fillRect(0, 0, CANVAS_W, CANVAS_H)
+    }
+  } else if (bg.type === 'color') {
+    ctx.fillStyle = bg.color
     ctx.fillRect(0, 0, CANVAS_W, CANVAS_H)
   }
+  // transparent: 何も塗らない
 
-  // タイトル（フロスト帯 + ネオングロー文字）
-  ctx.fillStyle = TITLE_BG
+  // ---------- タイトル ----------
+  ctx.fillStyle = c.titleBg
   ctx.fillRect(0, 0, CANVAS_W, TITLE_H)
-  ctx.save()
-  ctx.shadowColor = 'rgba(255, 111, 181, 0.95)'
-  ctx.shadowBlur = 26
-  ctx.fillStyle = TITLE_TEXT
-  ctx.font = 'bold 48px "Rounded Mplus 1c Bold", sans-serif'
+  if (theme.titleGlow) {
+    ctx.save()
+    ctx.shadowColor = theme.titleGlow.color
+    ctx.shadowBlur = theme.titleGlow.blur
+  }
+  ctx.fillStyle = c.titleText
+  ctx.font = `bold 48px "${theme.fonts.title}", sans-serif`
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
   ctx.fillText(title, CANVAS_W / 2, TITLE_H / 2)
-  ctx.restore()
+  if (theme.titleGlow) ctx.restore()
 
-  // 曜日ヘッダー
-  ctx.fillStyle = HEADER_BG
+  // ---------- 曜日ヘッダー ----------
+  ctx.fillStyle = c.headerBg
   ctx.fillRect(0, TITLE_H, CANVAS_W, HEADER_H)
-  ctx.font = 'bold 26px "Rounded Mplus 1c Bold", sans-serif'
+  ctx.font = `bold 26px "${theme.fonts.header}", sans-serif`
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
   for (let i = 0; i < 7; i++) {
-    if (i === 5) ctx.fillStyle = DATE_SAT
-    else if (i === 6) ctx.fillStyle = DATE_SUN
-    else ctx.fillStyle = HEADER_TEXT
+    if (i === 5) ctx.fillStyle = c.dateSat
+    else if (i === 6) ctx.fillStyle = c.dateSun
+    else ctx.fillStyle = c.headerText
     ctx.fillText(DAYS[i], i * COL_W + COL_W / 2, TITLE_H + HEADER_H / 2)
   }
 
-  // 各週
+  // ---------- 各週 ----------
   let rowY = TITLE_H + HEADER_H
   for (let w = 0; w < weeks.length; w++) {
     const week = weeks[w]
@@ -235,20 +206,20 @@ export async function renderMaryMareCalendar(params: RenderMaryMareParams): Prom
 
     // 日付行
     const dateRowY = rowY
-    ctx.fillStyle = DATE_ROW_BG
+    ctx.fillStyle = c.dateRowBg
     ctx.fillRect(0, dateRowY, CANVAS_W, DATE_ROW_H)
     for (let i = 0; i < 7; i++) {
       const x = i * COL_W
       const day = week[i]
-      ctx.strokeStyle = BORDER
+      ctx.strokeStyle = c.border
       ctx.lineWidth = 1
       ctx.strokeRect(x + 0.5, dateRowY + 0.5, COL_W - 1, DATE_ROW_H - 1)
       if (!day) continue
-      let dateColor = DATE_COLOR
-      if (i === 5) dateColor = DATE_SAT
-      if (i === 6) dateColor = DATE_SUN
+      let dateColor = c.dateColor
+      if (i === 5) dateColor = c.dateSat
+      if (i === 6) dateColor = c.dateSun
       ctx.fillStyle = dateColor
-      ctx.font = '24px "Rounded Mplus 1c", sans-serif'
+      ctx.font = `24px "${theme.fonts.date}", sans-serif`
       ctx.textAlign = 'center'
       ctx.textBaseline = 'middle'
       ctx.fillText(String(day.getDate()), x + COL_W / 2, dateRowY + DATE_ROW_H / 2)
@@ -261,17 +232,17 @@ export async function renderMaryMareCalendar(params: RenderMaryMareParams): Prom
       const day = week[i]
 
       if (!day) {
-        ctx.fillStyle = EMPTY_BG
+        ctx.fillStyle = c.emptyBg
         ctx.fillRect(x, cellY, COL_W, bodyH)
-        ctx.strokeStyle = BORDER
+        ctx.strokeStyle = c.border
         ctx.lineWidth = 1
         ctx.strokeRect(x + 0.5, cellY + 0.5, COL_W - 1, bodyH - 1)
         continue
       }
 
-      ctx.fillStyle = CELL_BG
+      ctx.fillStyle = c.cellBg
       ctx.fillRect(x, cellY, COL_W, bodyH)
-      ctx.strokeStyle = BORDER
+      ctx.strokeStyle = c.border
       ctx.lineWidth = 1
       ctx.strokeRect(x + 0.5, cellY + 0.5, COL_W - 1, bodyH - 1)
 
@@ -280,15 +251,15 @@ export async function renderMaryMareCalendar(params: RenderMaryMareParams): Prom
       let castStartY = cellY + 10
       if (ev) {
         const labelY = cellY + 6
-        ctx.fillStyle = ev.bg
+        ctx.fillStyle = ev.bg ?? theme.eventDefault.bg
         ctx.fillRect(x + 4, labelY, COL_W - 8, EVENT_LABEL_H)
-        ctx.fillStyle = ev.text
+        ctx.fillStyle = ev.text ?? theme.eventDefault.text
         const evMaxW = COL_W - 14
         let evFont = 22
-        ctx.font = `bold ${evFont}px "Rounded Mplus 1c Bold", sans-serif`
+        ctx.font = `bold ${evFont}px "${theme.fonts.event}", sans-serif`
         while (ctx.measureText(ev.label).width > evMaxW && evFont > 10) {
           evFont -= 1
-          ctx.font = `bold ${evFont}px "Rounded Mplus 1c Bold", sans-serif`
+          ctx.font = `bold ${evFont}px "${theme.fonts.event}", sans-serif`
         }
         ctx.textAlign = 'center'
         ctx.textBaseline = 'middle'
@@ -307,14 +278,14 @@ export async function renderMaryMareCalendar(params: RenderMaryMareParams): Prom
         let fontSize = 22
         let fit = false
         while (!fit && fontSize >= 14) {
-          ctx.font = `bold ${fontSize}px "Rounded Mplus 1c Bold", sans-serif`
+          ctx.font = `bold ${fontSize}px "${theme.fonts.name}", sans-serif`
           const nameW = ctx.measureText(name).width
           const timeW = ctx.measureText(' ' + tStr).width
           if (nameW + timeW <= nameMaxW) fit = true
           else fontSize -= 1
         }
 
-        ctx.font = `bold ${fontSize}px "Rounded Mplus 1c Bold", sans-serif`
+        ctx.font = `bold ${fontSize}px "${theme.fonts.name}", sans-serif`
         const nameW = ctx.measureText(name).width
         const totalW = nameW + ctx.measureText(' ' + tStr).width
         const startX = x + (COL_W - totalW) / 2
@@ -322,15 +293,16 @@ export async function renderMaryMareCalendar(params: RenderMaryMareParams): Prom
         ctx.textAlign = 'left'
         ctx.textBaseline = 'top'
 
-        // 文字に薄いグローを乗せて背景の上でも読めるように
-        ctx.save()
-        ctx.shadowColor = 'rgba(0, 0, 0, 0.55)'
-        ctx.shadowBlur = 4
-        ctx.fillStyle = NAME_COLOR
+        if (theme.nameGlow) {
+          ctx.save()
+          ctx.shadowColor = theme.nameGlow.color
+          ctx.shadowBlur = theme.nameGlow.blur
+        }
+        ctx.fillStyle = c.nameColor
         ctx.fillText(name, startX, castY)
-        ctx.fillStyle = TIME_COLOR
+        ctx.fillStyle = c.timeColor
         ctx.fillText(' ' + tStr, startX + nameW, castY)
-        ctx.restore()
+        if (theme.nameGlow) ctx.restore()
 
         castY += NAME_LINE_HEIGHT
       }

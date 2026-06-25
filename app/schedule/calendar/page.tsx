@@ -9,6 +9,7 @@ import { toast } from 'react-hot-toast'
 // カレンダーデザイン実装済みの店舗（順次追加）
 const SUPPORTED_STORES: Record<number, string> = {
   7: 'MaryMare',
+  2: 'MistressMirage',
 }
 
 const now = new Date()
@@ -85,7 +86,7 @@ function CalendarContent() {
 
       {!supported && (
         <div style={styles.warning}>
-          この店舗のカレンダーデザインは準備中です（現在は MaryMare のみ対応）。
+          この店舗のカレンダーデザインは準備中です（現在は {Object.values(SUPPORTED_STORES).join('・')} のみ対応）。
         </div>
       )}
 
