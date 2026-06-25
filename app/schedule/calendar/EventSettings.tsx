@@ -43,7 +43,7 @@ export default function EventSettings({
   return (
     <div style={styles.wrap}>
       <button onClick={() => setShowModal(true)} style={styles.btn}>
-        🎀 イベント設定（{month}月: {events.length}件）
+        イベント設定（{month}月: {events.length}件）
       </button>
       <span style={styles.hint}>イベントはカレンダーに色帯で表示されます</span>
 
