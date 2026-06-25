@@ -14,13 +14,12 @@ const ASSET_META: Record<AssetKind, { label: string; aspect: number; hint: strin
 
 interface Props {
   storeId: number
-  /** 背景アップロードを許可するか（フロスト対応テーマの店舗のみ）。false ならバナーのみ */
-  allowBg?: boolean
+  /** この店舗で使えるアセット種別（'bg' / 'banner'）。順番どおりに表示 */
+  kinds: AssetKind[]
   onChanged?: () => void
 }
 
-export default function AssetSettings({ storeId, allowBg = true, onChanged }: Props) {
-  const kinds: AssetKind[] = allowBg ? ['bg', 'banner'] : ['banner']
+export default function AssetSettings({ storeId, kinds, onChanged }: Props) {
   const [open, setOpen] = useState(false)
   const [assets, setAssets] = useState<{ bg: string | null; banner: string | null }>({ bg: null, banner: null })
   const [loading, setLoading] = useState(true)

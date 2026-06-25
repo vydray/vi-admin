@@ -7,6 +7,7 @@ export interface CalendarShift {
   date: string // YYYY-MM-DD
   cast_name: string
   start_time: string // HH:MM(:SS)
+  end_time?: string | null // HH:MM(:SS)。memorable(カード型)は時刻範囲を出すので使う
   display_order: number | null
 }
 

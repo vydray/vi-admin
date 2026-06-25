@@ -90,8 +90,45 @@ export const mirageTheme: CalendarTheme = {
   eventDefault: { bg: '#ddd6fe', text: '#5b21b6' },
 }
 
-/** 店舗ID → カレンダーデザイン。実装済みの店舗のみ。順次追加。 */
-export const STORE_CALENDARS: Record<number, { name: string; theme: CalendarTheme }> = {
+/**
+ * Memorable(store1) — 夢かわ・カード型。薄ピンク枠の白カード、M PLUS Rounded、
+ * 日付ヘッダーは曜日色分け（平日ピンク/日赤/土青）、時刻は小数範囲。タイトルはピンク＋白縁取り。
+ * （元: scripts/generate-shift-image.js。描画は lib/scheduleCalendar/memorable.ts）
+ */
+export const memorableTheme: CalendarTheme = {
+  fontFiles: [
+    { file: 'MPLUSRounded1c-Regular.ttf', family: 'Rounded Mplus 1c' },
+    { file: 'MPLUSRounded1c-Bold.ttf', family: 'Rounded Mplus 1c Bold' },
+  ],
+  fonts: {
+    title: 'Rounded Mplus 1c Bold',
+    header: 'Rounded Mplus 1c Bold', // 未使用
+    date: 'Rounded Mplus 1c', // 時刻(regular)に使用
+    event: 'Rounded Mplus 1c Bold', // 未使用
+    name: 'Rounded Mplus 1c Bold',
+  },
+  background: { type: 'transparent' }, // 実際はアップロード背景。未設定時は renderer が淡ピンクで塗る
+  colors: {
+    titleBg: '#ffffff', // 未使用
+    titleText: '#e75480',
+    headerBg: '#ffffff', // 未使用
+    headerText: '#888888', // 未使用
+    dateRowBg: '#ffffff', // 未使用
+    cellBg: '#ffffff',
+    border: '#f0d0dc',
+    dateColor: '#e75480',
+    dateSat: '#3498db',
+    dateSun: '#e74c3c',
+    nameColor: '#333333',
+    timeColor: '#888888',
+    emptyBg: 'rgba(0, 0, 0, 0)', // 未使用
+  },
+  eventDefault: { bg: '#f0d0dc', text: '#333333' }, // 未使用
+}
+
+/** 店舗ID → カレンダーデザイン。実装済みの店舗のみ。順次追加。layout 既定は 'grid'。 */
+export const STORE_CALENDARS: Record<number, { name: string; theme: CalendarTheme; layout?: 'grid' | 'card' }> = {
   7: { name: 'MaryMare', theme: marymareTheme },
   2: { name: 'MistressMirage', theme: mirageTheme },
+  1: { name: 'Memorable', theme: memorableTheme, layout: 'card' },
 }

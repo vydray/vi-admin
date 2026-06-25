@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import { renderCalendar } from '@/lib/scheduleCalendar/render'
+import { renderMemorableCalendar } from '@/lib/scheduleCalendar/memorable'
 import { STORE_CALENDARS } from '@/lib/scheduleCalendar/themes'
 import type { CalendarShift, CalendarEvent } from '@/lib/scheduleCalendar/types'
 
@@ -74,7 +75,9 @@ export async function POST(request: NextRequest) {
     const startDate = half === 'first' ? `${year}-${pad2(month)}-01` : `${year}-${pad2(month)}-16`
     const endDate = half === 'first' ? `${year}-${pad2(month)}-15` : `${year}-${pad2(month)}-${pad2(lastDay)}`
     const halfLabel = half === 'first' ? '前半' : '後半'
-    const title = `${month}月${halfLabel}キャスト出勤日`
+    const title = calendar.layout === 'card'
+      ? `${month}月${halfLabel}シフト`
+      : `${month}月${halfLabel}キャスト出勤日`
 
     // シフト取得
     const { data: shiftRows, error: shiftErr } = await supabase
@@ -115,6 +118,7 @@ export async function POST(request: NextRequest) {
         date: s.date,
         cast_name: cast.name,
         start_time: s.start_time,
+        end_time: s.end_time ?? null,
         display_order: cast.display_order,
       })
     }
@@ -141,16 +145,16 @@ export async function POST(request: NextRequest) {
     // アップロード済みの背景・上部バナー写真（任意）。
     // 背景はフロスト配色を持つテーマ（=mirage）のみ反映する。marymareは大聖堂背景前提で
     // フロスト化されないため、生写真で上書きすると可読性が崩れる。
-    const wantsBg = !!calendar.theme.frostedColors
+    const wantsBg = calendar.layout === 'card' || !!calendar.theme.frostedColors
     const [backgroundImage, bannerImage] = await Promise.all([
       wantsBg ? downloadCalendarAsset(storeId, 'bg') : Promise.resolve(null),
       downloadCalendarAsset(storeId, 'banner'),
     ])
 
-    const buffer = await renderCalendar(
-      { title, startDate, endDate, shifts, events, backgroundImage, bannerImage },
-      calendar.theme,
-    )
+    const renderParams = { title, startDate, endDate, shifts, events, backgroundImage, bannerImage }
+    const buffer = calendar.layout === 'card'
+      ? await renderMemorableCalendar(renderParams, calendar.theme)
+      : await renderCalendar(renderParams, calendar.theme)
     const dataUrl = `data:image/png;base64,${buffer.toString('base64')}`
     const filename = `${month}月${halfLabel}${calendar.name}.png`
 

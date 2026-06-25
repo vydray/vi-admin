@@ -12,11 +12,15 @@ import EventSettings from './EventSettings'
 const SUPPORTED_STORES: Record<number, string> = {
   7: 'MaryMare',
   2: 'MistressMirage',
+  1: 'Memorable',
 }
 
-// 背景アップロードに対応する店舗（フロスト配色を持つ＝mirage）。
-// marymareは大聖堂背景前提なので背景アップは出さない（バナーのみ）。
-const FROSTED_BG_STORES = new Set<number>([2])
+// 店舗ごとに使えるアセット種別（背景/バナー）。未掲載の店舗はアセット設定を出さない。
+// marymareは大聖堂背景が組み込みなのでアセット設定なし。
+const ASSET_KINDS: Record<number, ('bg' | 'banner')[]> = {
+  2: ['bg', 'banner'],
+  1: ['bg'],
+}
 
 const now = new Date()
 
@@ -154,8 +158,8 @@ function CalendarContent() {
         </button>
       </div>
 
-      {supported && storeId && (
-        <AssetSettings storeId={storeId} allowBg={FROSTED_BG_STORES.has(storeId)} />
+      {supported && storeId && ASSET_KINDS[storeId] && (
+        <AssetSettings storeId={storeId} kinds={ASSET_KINDS[storeId]} />
       )}
 
       {image && (
