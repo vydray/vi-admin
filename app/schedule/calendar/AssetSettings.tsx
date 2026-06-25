@@ -21,6 +21,7 @@ interface Props {
 
 export default function AssetSettings({ storeId, allowBg = true, onChanged }: Props) {
   const kinds: AssetKind[] = allowBg ? ['bg', 'banner'] : ['banner']
+  const [open, setOpen] = useState(false)
   const [assets, setAssets] = useState<{ bg: string | null; banner: string | null }>({ bg: null, banner: null })
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState<{ kind: AssetKind; src: string } | null>(null)
@@ -121,7 +122,13 @@ export default function AssetSettings({ storeId, allowBg = true, onChanged }: Pr
 
   return (
     <div style={styles.card}>
-      <h3 style={styles.heading}>背景・バナー設定</h3>
+      <button onClick={() => setOpen((o) => !o)} style={styles.headerToggle}>
+        <span style={styles.heading}>背景・バナー設定</span>
+        <span style={styles.chevron}>{open ? '▲ 閉じる' : '▼ 開く'}</span>
+      </button>
+
+      {open && (
+      <div style={styles.body}>
       <p style={styles.note}>設定すると、カレンダーが背景の上にすりガラスで重なります。変更後は再生成してください。</p>
 
       <input ref={fileInputRef} type="file" accept="image/*" onChange={onFileSelected} style={{ display: 'none' }} />
@@ -157,6 +164,8 @@ export default function AssetSettings({ storeId, allowBg = true, onChanged }: Pr
             </div>
           )
         })
+      )}
+      </div>
       )}
 
       {editing && (
@@ -204,7 +213,13 @@ const styles: Record<string, CSSProperties> = {
     backgroundColor: '#fff', border: '1px solid #e2e8f0', borderRadius: 12,
     padding: 20, marginBottom: 20, boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
   },
-  heading: { fontSize: 16, fontWeight: 700, color: '#1e293b', marginBottom: 4 },
+  headerToggle: {
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+    width: '100%', padding: 0, background: 'none', border: 'none', cursor: 'pointer',
+  },
+  chevron: { fontSize: 12, color: '#6366f1', fontWeight: 600 },
+  body: { marginTop: 14 },
+  heading: { fontSize: 16, fontWeight: 700, color: '#1e293b' },
   note: { fontSize: 12, color: '#64748b', marginBottom: 16 },
   loadingText: { padding: 16, textAlign: 'center', color: '#94a3b8', fontSize: 14 },
   assetRow: { display: 'flex', gap: 14, alignItems: 'center', padding: '12px 0', borderTop: '1px solid #f1f5f9' },
