@@ -92,18 +92,6 @@ function roundRect(
   ctx.quadraticCurveTo(x, y, x + r, y)
   ctx.closePath()
 }
-function drawCover(
-  ctx: ReturnType<ReturnType<typeof createCanvas>['getContext']>,
-  img: Awaited<ReturnType<typeof loadImage>>,
-  w: number, h: number,
-) {
-  const ir = img.width / img.height
-  const cr = w / h
-  let dw: number, dh: number, dx: number, dy: number
-  if (ir > cr) { dh = h; dw = h * ir; dx = (w - dw) / 2; dy = 0 }
-  else { dw = w; dh = w / ir; dx = 0; dy = (h - dh) / 2 }
-  ctx.drawImage(img, dx, dy, dw, dh)
-}
 
 export async function renderMemorableCalendar(
   params: RenderCalendarParams,
@@ -184,17 +172,22 @@ export async function renderMemorableCalendar(
 
   // 上部領域 = [余白][ロゴ(任意)][余白][タイトル帯]
   const titleAreaH = LOGO_TOP_PAD + (logoImg ? logoH + 16 : 0) + TITLE_BAND_H
-  const CANVAS_H = titleAreaH + gridH + BOTTOM_MARGIN
+  const contentH = titleAreaH + gridH + BOTTOM_MARGIN
+
+  // 背景は上端基準で全幅表示し、上の飾り(スカラップ等)を切らない（中央クロップしない）。
+  // キャンバス高は「背景全体が入る高さ」と「コンテンツ高」の大きい方。
+  const bgScaledH = bgImg ? Math.round(CANVAS_W * (bgImg.height / bgImg.width)) : 0
+  const CANVAS_H = Math.max(contentH, bgScaledH)
 
   const canvas = createCanvas(CANVAS_W, CANVAS_H)
   const ctx = canvas.getContext('2d')
 
   // ---------- 背景 ----------
+  ctx.fillStyle = theme.background.type === 'color' ? theme.background.color : '#fdeef4'
+  ctx.fillRect(0, 0, CANVAS_W, CANVAS_H)
   if (bgImg) {
-    drawCover(ctx, bgImg, CANVAS_W, CANVAS_H)
-  } else {
-    ctx.fillStyle = theme.background.type === 'color' ? theme.background.color : '#fdeef4'
-    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H)
+    // 上端から全幅で敷く（アスペクト維持・上下を切らない）
+    ctx.drawImage(bgImg, 0, 0, CANVAS_W, bgScaledH)
   }
 
   // ---------- ロゴ（上部中央・アスペクト維持） ----------
