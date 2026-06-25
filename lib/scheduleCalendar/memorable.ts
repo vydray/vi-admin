@@ -14,17 +14,17 @@ import type { CalendarShift, CalendarTheme, RenderCalendarParams } from './types
  * ロゴ・立ち絵・住所のドラッグ配置は Step2（別途）。
  */
 
-let fontsRegistered = false
+const registeredFamilies = new Set<string>()
 function ensureFonts(theme: CalendarTheme) {
-  if (fontsRegistered) return
   const fontsDir = path.join(process.cwd(), 'public', 'fonts')
   for (const f of theme.fontFiles) {
+    if (registeredFamilies.has(f.family)) continue
     const p = path.join(fontsDir, f.file)
     if (!fs.existsSync(p)) continue
     if (f.weight) registerFont(p, { family: f.family, weight: f.weight })
     else registerFont(p, { family: f.family })
+    registeredFamilies.add(f.family)
   }
-  fontsRegistered = true
 }
 
 const DAYS = ['日', '月', '火', '水', '木', '金', '土']
@@ -41,7 +41,8 @@ const CELL_PAD_TOP = 4
 const CELL_PAD_BOTTOM = 8
 const ROW_GAP = 30
 const MARGIN = 24
-const TITLE_AREA_H = 210 // 上部タイトル領域（ロゴはStep2）
+const LOGO_TOP_PAD = 36
+const TITLE_BAND_H = 120 // タイトル文字の帯高
 const BOTTOM_MARGIN = 40
 
 // ---------- ヘルパ ----------
@@ -109,7 +110,7 @@ export async function renderMemorableCalendar(
   theme: CalendarTheme,
 ): Promise<Buffer> {
   ensureFonts(theme)
-  const { title, startDate, endDate, shifts, backgroundImage } = params
+  const { title, startDate, endDate, shifts, backgroundImage, logoImage } = params
   const c = theme.colors
 
   // シフトを date キーでマップ化＋display_order昇順ソート
@@ -150,12 +151,8 @@ export async function renderMemorableCalendar(
     gridH += rowCellHeights[row] + BORDER * 2
     if (row < numRows - 1) gridH += ROW_GAP
   }
-  const CANVAS_H = TITLE_AREA_H + gridH + BOTTOM_MARGIN
 
-  const canvas = createCanvas(CANVAS_W, CANVAS_H)
-  const ctx = canvas.getContext('2d')
-
-  // ---------- 背景 ----------
+  // 背景・ロゴ画像を先に読み込む（壊れていたら無視してフォールバック）
   let bgImg: Awaited<ReturnType<typeof loadImage>> | null = null
   if (backgroundImage) {
     try {
@@ -165,6 +162,34 @@ export async function renderMemorableCalendar(
       bgImg = null
     }
   }
+  let logoImg: Awaited<ReturnType<typeof loadImage>> | null = null
+  let logoW = 0
+  let logoH = 0
+  if (logoImage) {
+    try {
+      logoImg = await loadImage(logoImage)
+      logoW = Math.round(CANVAS_W * 0.5)
+      logoH = Math.round(logoW * (logoImg.height / logoImg.width))
+      if (logoH > 320) {
+        logoH = 320
+        logoW = Math.round(logoH * (logoImg.width / logoImg.height))
+      }
+    } catch (e) {
+      console.error('[renderMemorable] ロゴ画像のデコード失敗、ロゴなしで継続:', e)
+      logoImg = null
+      logoW = 0
+      logoH = 0
+    }
+  }
+
+  // 上部領域 = [余白][ロゴ(任意)][余白][タイトル帯]
+  const titleAreaH = LOGO_TOP_PAD + (logoImg ? logoH + 16 : 0) + TITLE_BAND_H
+  const CANVAS_H = titleAreaH + gridH + BOTTOM_MARGIN
+
+  const canvas = createCanvas(CANVAS_W, CANVAS_H)
+  const ctx = canvas.getContext('2d')
+
+  // ---------- 背景 ----------
   if (bgImg) {
     drawCover(ctx, bgImg, CANVAS_W, CANVAS_H)
   } else {
@@ -172,12 +197,17 @@ export async function renderMemorableCalendar(
     ctx.fillRect(0, 0, CANVAS_W, CANVAS_H)
   }
 
+  // ---------- ロゴ（上部中央・アスペクト維持） ----------
+  if (logoImg) {
+    ctx.drawImage(logoImg, (CANVAS_W - logoW) / 2, LOGO_TOP_PAD, logoW, logoH)
+  }
+
   // ---------- タイトル（ピンク文字＋白縁取り） ----------
   ctx.font = `bold 84px "${theme.fonts.title}", sans-serif`
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
   const titleX = CANVAS_W / 2
-  const titleY = TITLE_AREA_H / 2 + 20
+  const titleY = LOGO_TOP_PAD + (logoImg ? logoH + 16 : 0) + TITLE_BAND_H / 2
   ctx.lineJoin = 'round'
   ctx.lineWidth = 14
   ctx.strokeStyle = '#ffffff'
@@ -186,7 +216,7 @@ export async function renderMemorableCalendar(
   ctx.fillText(title, titleX, titleY)
 
   // ---------- カードグリッド ----------
-  let y = TITLE_AREA_H
+  let y = titleAreaH
   for (let row = 0; row < numRows; row++) {
     const cellH = rowCellHeights[row]
     const cardH = cellH + BORDER * 2
@@ -225,22 +255,36 @@ export async function renderMemorableCalendar(
 
       // キャスト名＋時刻範囲
       let castY = cardY + BORDER + HEADER_H + CELL_PAD_TOP
-      for (const s of dayShifts) {
-        const name = s.cast_name
-        const timeStr = formatTimeRange(s.start_time, s.end_time)
+      const nameMaxW = INNER_W - 8
+      for (const sh of dayShifts) {
+        const name = sh.cast_name
+        const timeStr = formatTimeRange(sh.start_time, sh.end_time)
 
-        ctx.font = `bold 22px "${theme.fonts.name}", sans-serif`
-        const nameW = ctx.measureText(name).width
-        ctx.font = `18px "${theme.fonts.date}", sans-serif`
-        const timeW = ctx.measureText(timeStr).width
+        // 名前(bold22)＋時刻(regular18)。幅を超えたら等比縮小（下限はnameFont 14px相当）
+        let nameFont = 22
+        let timeFont = 18
+        ctx.font = `bold ${nameFont}px "${theme.fonts.name}", sans-serif`
+        let nameW = ctx.measureText(name).width
+        ctx.font = `${timeFont}px "${theme.fonts.date}", sans-serif`
+        let timeW = ctx.measureText(timeStr).width
+        if (nameW + timeW > nameMaxW) {
+          const scale = Math.max(nameMaxW / (nameW + timeW), 14 / 22)
+          nameFont = Math.round(22 * scale)
+          timeFont = Math.round(18 * scale)
+          ctx.font = `bold ${nameFont}px "${theme.fonts.name}", sans-serif`
+          nameW = ctx.measureText(name).width
+          ctx.font = `${timeFont}px "${theme.fonts.date}", sans-serif`
+          timeW = ctx.measureText(timeStr).width
+        }
         const totalW = nameW + timeW
-        const startX = cardX + BORDER + (INNER_W - totalW) / 2
+        // 左端を割らないようクランプ
+        const startX = Math.max(cardX + BORDER + 2, cardX + BORDER + (INNER_W - totalW) / 2)
 
-        ctx.font = `bold 22px "${theme.fonts.name}", sans-serif`
+        ctx.font = `bold ${nameFont}px "${theme.fonts.name}", sans-serif`
         ctx.fillStyle = c.nameColor
         ctx.fillText(name, startX, castY + 24)
 
-        ctx.font = `18px "${theme.fonts.date}", sans-serif`
+        ctx.font = `${timeFont}px "${theme.fonts.date}", sans-serif`
         ctx.fillStyle = c.timeColor
         ctx.fillText(timeStr, startX + nameW, castY + 24)
 

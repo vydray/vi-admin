@@ -11,7 +11,14 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY || '',
 )
 
-async function validateSession(): Promise<{ storeId: number; isAllStore: boolean } | null> {
+interface Session {
+  storeId: number
+  isAllStore: boolean
+  role: string
+  permissions: Record<string, boolean>
+}
+
+async function validateSession(): Promise<Session | null> {
   const cookieStore = await cookies()
   const sessionCookie = cookieStore.get('admin_session')
   if (!sessionCookie) return null
@@ -19,18 +26,28 @@ async function validateSession(): Promise<{ storeId: number; isAllStore: boolean
     const session = JSON.parse(sessionCookie.value)
     // admin_session cookie は store_id(snake_case)で保存される（login参照）。
     // storeId(camelCase)は常にundefinedになるので store_id を優先して読む。
-    return { storeId: session.store_id ?? session.storeId, isAllStore: session.isAllStore || false }
+    return {
+      storeId: session.store_id ?? session.storeId,
+      isAllStore: session.isAllStore || false,
+      role: session.role || '',
+      permissions: session.permissions || {},
+    }
   } catch {
     return null
   }
+}
+
+// 出勤表(schedule)権限を持つか（他の出勤表ページ・calendar-assets と同じ権限で制御）
+function canSchedule(session: Session): boolean {
+  return session.role === 'super_admin' || session.permissions?.schedule === true
 }
 
 function pad2(n: number): string {
   return String(n).padStart(2, '0')
 }
 
-// アップロード済みの背景/バナー画像をストレージから取得（無ければnull）
-async function downloadCalendarAsset(storeId: number, kind: 'bg' | 'banner'): Promise<Buffer | null> {
+// アップロード済みの背景/バナー/ロゴ画像をストレージから取得（無ければnull）
+async function downloadCalendarAsset(storeId: number, kind: 'bg' | 'banner' | 'logo'): Promise<Buffer | null> {
   const { data, error } = await supabase.storage
     .from('schedule-templates')
     .download(`${storeId}/calendar-${kind}.png`)
@@ -63,6 +80,9 @@ export async function POST(request: NextRequest) {
     // 自店以外は不可（super_adminのisAllStoreは全店OK）
     if (!session.isAllStore && session.storeId !== storeId) {
       return NextResponse.json({ error: 'この店舗を操作する権限がありません' }, { status: 403 })
+    }
+    if (!canSchedule(session)) {
+      return NextResponse.json({ error: '出勤表の権限がありません' }, { status: 403 })
     }
 
     const calendar = STORE_CALENDARS[storeId]
@@ -145,14 +165,16 @@ export async function POST(request: NextRequest) {
     // アップロード済みの背景・上部バナー写真（任意）。
     // 背景はフロスト配色を持つテーマ（=mirage）のみ反映する。marymareは大聖堂背景前提で
     // フロスト化されないため、生写真で上書きすると可読性が崩れる。
-    const wantsBg = calendar.layout === 'card' || !!calendar.theme.frostedColors
-    const [backgroundImage, bannerImage] = await Promise.all([
+    const isCard = calendar.layout === 'card'
+    const wantsBg = isCard || !!calendar.theme.frostedColors
+    const [backgroundImage, bannerImage, logoImage] = await Promise.all([
       wantsBg ? downloadCalendarAsset(storeId, 'bg') : Promise.resolve(null),
-      downloadCalendarAsset(storeId, 'banner'),
+      isCard ? Promise.resolve(null) : downloadCalendarAsset(storeId, 'banner'),
+      isCard ? downloadCalendarAsset(storeId, 'logo') : Promise.resolve(null),
     ])
 
-    const renderParams = { title, startDate, endDate, shifts, events, backgroundImage, bannerImage }
-    const buffer = calendar.layout === 'card'
+    const renderParams = { title, startDate, endDate, shifts, events, backgroundImage, bannerImage, logoImage }
+    const buffer = isCard
       ? await renderMemorableCalendar(renderParams, calendar.theme)
       : await renderCalendar(renderParams, calendar.theme)
     const dataUrl = `data:image/png;base64,${buffer.toString('base64')}`

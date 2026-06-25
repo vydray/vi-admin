@@ -5,11 +5,12 @@ import Cropper, { type Area } from 'react-easy-crop'
 import { toast } from 'react-hot-toast'
 import { getCroppedImg } from '@/lib/cropImage'
 
-type AssetKind = 'bg' | 'banner'
+type AssetKind = 'bg' | 'banner' | 'logo'
 
 const ASSET_META: Record<AssetKind, { label: string; aspect: number; hint: string }> = {
-  bg: { label: '背景画像', aspect: 0.6, hint: 'カレンダー全体の背景（縦長）。"Mistress Mirage" のサテン背景など' },
+  bg: { label: '背景画像', aspect: 0.6, hint: 'カレンダー全体の背景（縦長）。サテンやギンガムなど' },
   banner: { label: '上部バナー写真', aspect: 4, hint: '最上部の横帯（キャスト集合写真など）' },
+  logo: { label: 'ロゴ', aspect: 2.7, hint: '上部中央に表示する店舗ロゴ' },
 }
 
 interface Props {

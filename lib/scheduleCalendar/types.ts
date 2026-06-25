@@ -31,6 +31,8 @@ export interface RenderCalendarParams {
   backgroundImage?: Buffer | null
   /** アップロード上部バナー写真。指定時は最上部に横帯で配置し、その分キャンバスが縦に伸びる */
   bannerImage?: Buffer | null
+  /** アップロードロゴ画像（カード型/memorable）。上部中央にアスペクト維持で配置 */
+  logoImage?: Buffer | null
 }
 
 /** node-canvas に登録するフォント */

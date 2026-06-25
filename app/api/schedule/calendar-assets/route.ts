@@ -10,9 +10,9 @@ const supabase = createClient(
 const BUCKET = 'schedule-templates'
 const MAX_BYTES = 12 * 1024 * 1024 // 12MB
 
-type AssetKind = 'bg' | 'banner'
+type AssetKind = 'bg' | 'banner' | 'logo'
 function isKind(v: unknown): v is AssetKind {
-  return v === 'bg' || v === 'banner'
+  return v === 'bg' || v === 'banner' || v === 'logo'
 }
 function assetPath(storeId: number, kind: AssetKind) {
   return `${storeId}/calendar-${kind}.png`
