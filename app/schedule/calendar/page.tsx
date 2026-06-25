@@ -6,6 +6,7 @@ import { useIsMobile } from '@/hooks/useIsMobile'
 import ProtectedPage from '@/components/ProtectedPage'
 import { toast } from 'react-hot-toast'
 import AssetSettings from './AssetSettings'
+import EventSettings from './EventSettings'
 
 // カレンダーデザイン実装済みの店舗（順次追加）
 const SUPPORTED_STORES: Record<number, string> = {
@@ -145,6 +146,10 @@ function CalendarContent() {
             </button>
           </div>
         </div>
+
+        {supported && storeId && (
+          <EventSettings storeId={storeId} year={year} month={month} storeName={SUPPORTED_STORES[storeId]} />
+        )}
 
         <button
           onClick={handleGenerate}
