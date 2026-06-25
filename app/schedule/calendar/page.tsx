@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, type CSSProperties } from 'react'
+import { useState, useEffect, type CSSProperties } from 'react'
 import { useStore } from '@/contexts/StoreContext'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import ProtectedPage from '@/components/ProtectedPage'
@@ -19,8 +19,11 @@ const SUPPORTED_STORES: Record<number, string> = {
 // marymareは大聖堂背景が組み込みなのでアセット設定なし。
 const ASSET_KINDS: Record<number, ('bg' | 'banner' | 'logo')[]> = {
   2: ['bg', 'banner'],
-  1: ['bg', 'logo'],
+  1: ['bg'],
 }
+
+// カード型レイアウト（コンテンツ開始位置を調整できる店舗）
+const CARD_STORES = new Set<number>([1])
 
 const now = new Date()
 
@@ -44,6 +47,24 @@ function CalendarContent() {
   const [filename, setFilename] = useState('')
   const [info, setInfo] = useState<{ shiftCount: number; eventCount: number } | null>(null)
 
+  // カード型(memorable): 背景上部の飾りを避けるコンテンツ開始位置。店舗ごとにlocalStorage保存
+  const isCard = storeId != null && CARD_STORES.has(storeId)
+  const [contentTop, setContentTop] = useState<number>(40)
+
+  useEffect(() => {
+    if (storeId == null || typeof window === 'undefined') return
+    const saved = window.localStorage.getItem(`cal-contentTop-${storeId}`)
+    setContentTop(saved != null ? Number(saved) : 40)
+  }, [storeId])
+
+  const updateContentTop = (v: number) => {
+    const n = Number.isFinite(v) ? Math.max(0, v) : 0
+    setContentTop(n)
+    if (storeId != null && typeof window !== 'undefined') {
+      window.localStorage.setItem(`cal-contentTop-${storeId}`, String(n))
+    }
+  }
+
   const supported = storeId != null && SUPPORTED_STORES[storeId] != null
 
   const handleGenerate = async () => {
@@ -55,7 +76,7 @@ function CalendarContent() {
       const res = await fetch('/api/schedule/calendar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ storeId, year, month, half }),
+        body: JSON.stringify({ storeId, year, month, half, contentTop }),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -145,6 +166,21 @@ function CalendarContent() {
           </div>
         </div>
 
+        {isCard && (
+          <div style={{ ...styles.row, ...(isMobile ? styles.rowMobile : {}) }}>
+            <label style={styles.label}>上余白</label>
+            <input
+              type="number"
+              value={contentTop}
+              min={0}
+              step={10}
+              onChange={(e) => updateContentTop(Number(e.target.value))}
+              style={{ ...styles.select, width: 96 }}
+            />
+            <span style={styles.cardHint}>背景上部の飾り(ロゴ等)に被る時はこの数値を上げる（px）</span>
+          </div>
+        )}
+
         {supported && storeId && (
           <EventSettings storeId={storeId} year={year} month={month} storeName={SUPPORTED_STORES[storeId]} />
         )}
@@ -191,6 +227,7 @@ const styles: Record<string, CSSProperties> = {
   row: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' },
   rowMobile: { gap: 8 },
   label: { fontSize: 14, fontWeight: 600, color: '#475569', minWidth: 36 },
+  cardHint: { fontSize: 12, color: '#94a3b8' },
   select: {
     padding: '8px 12px', borderRadius: 8, border: '1px solid #cbd5e1',
     fontSize: 15, backgroundColor: '#fff', cursor: 'pointer',

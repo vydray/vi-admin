@@ -72,6 +72,8 @@ export async function POST(request: NextRequest) {
     const year = Number(body.year)
     const month = Number(body.month)
     const half: 'first' | 'second' = body.half === 'first' ? 'first' : 'second'
+    const contentTopRaw = Number(body.contentTop)
+    const contentTop = Number.isFinite(contentTopRaw) && contentTopRaw >= 0 ? contentTopRaw : undefined
 
     if (!storeId || !year || !month || month < 1 || month > 12) {
       return NextResponse.json({ error: 'storeId / year / month が不正です' }, { status: 400 })
@@ -173,7 +175,7 @@ export async function POST(request: NextRequest) {
       isCard ? downloadCalendarAsset(storeId, 'logo') : Promise.resolve(null),
     ])
 
-    const renderParams = { title, startDate, endDate, shifts, events, backgroundImage, bannerImage, logoImage }
+    const renderParams = { title, startDate, endDate, shifts, events, backgroundImage, bannerImage, logoImage, contentTop }
     const buffer = isCard
       ? await renderMemorableCalendar(renderParams, calendar.theme)
       : await renderCalendar(renderParams, calendar.theme)

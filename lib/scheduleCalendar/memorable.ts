@@ -98,8 +98,10 @@ export async function renderMemorableCalendar(
   theme: CalendarTheme,
 ): Promise<Buffer> {
   ensureFonts(theme)
-  const { title, startDate, endDate, shifts, backgroundImage, logoImage } = params
+  const { title, startDate, endDate, shifts, backgroundImage, logoImage, contentTop } = params
   const c = theme.colors
+  // コンテンツ開始位置（背景の上部装飾を避けるため下げられる。未指定は既定）
+  const topPad = contentTop != null && contentTop >= 0 ? contentTop : LOGO_TOP_PAD
 
   // シフトを date キーでマップ化＋display_order昇順ソート
   const shiftsByDate = new Map<string, CalendarShift[]>()
@@ -171,7 +173,7 @@ export async function renderMemorableCalendar(
   }
 
   // 上部領域 = [余白][ロゴ(任意)][余白][タイトル帯]
-  const titleAreaH = LOGO_TOP_PAD + (logoImg ? logoH + 16 : 0) + TITLE_BAND_H
+  const titleAreaH = topPad + (logoImg ? logoH + 16 : 0) + TITLE_BAND_H
   const contentH = titleAreaH + gridH + BOTTOM_MARGIN
 
   // 背景は上端基準で全幅表示し、上の飾り(スカラップ等)を切らない（中央クロップしない）。
@@ -192,7 +194,7 @@ export async function renderMemorableCalendar(
 
   // ---------- ロゴ（上部中央・アスペクト維持） ----------
   if (logoImg) {
-    ctx.drawImage(logoImg, (CANVAS_W - logoW) / 2, LOGO_TOP_PAD, logoW, logoH)
+    ctx.drawImage(logoImg, (CANVAS_W - logoW) / 2, topPad, logoW, logoH)
   }
 
   // ---------- タイトル（ピンク文字＋白縁取り） ----------
@@ -200,7 +202,7 @@ export async function renderMemorableCalendar(
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
   const titleX = CANVAS_W / 2
-  const titleY = LOGO_TOP_PAD + (logoImg ? logoH + 16 : 0) + TITLE_BAND_H / 2
+  const titleY = topPad + (logoImg ? logoH + 16 : 0) + TITLE_BAND_H / 2
   ctx.lineJoin = 'round'
   ctx.lineWidth = 14
   ctx.strokeStyle = '#ffffff'

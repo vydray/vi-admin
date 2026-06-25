@@ -33,6 +33,8 @@ export interface RenderCalendarParams {
   bannerImage?: Buffer | null
   /** アップロードロゴ画像（カード型/memorable）。上部中央にアスペクト維持で配置 */
   logoImage?: Buffer | null
+  /** カード型: コンテンツ(タイトル＋カード)の上開始位置(px)。背景上部の飾りを避けるため下げる */
+  contentTop?: number
 }
 
 /** node-canvas に登録するフォント */
