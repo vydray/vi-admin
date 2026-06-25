@@ -77,6 +77,15 @@ export const mirageTheme: CalendarTheme = {
     timeColor: '#7a7a7a',
     emptyBg: 'rgba(0, 0, 0, 0)',
   },
+  // アップロード背景がある時はこの半透明配色に切替（すりガラスのカレンダーが背景に浮く）。
+  // 帯類を半透明にして背景を覗かせ、空セルは透明で背景をそのまま見せる。
+  frostedColors: {
+    titleBg: 'rgba(122, 122, 122, 0.74)',
+    headerBg: 'rgba(200, 200, 200, 0.60)',
+    dateRowBg: 'rgba(220, 220, 220, 0.60)',
+    cellBg: 'rgba(255, 255, 255, 0.86)',
+    border: 'rgba(140, 140, 140, 0.50)',
+  },
   // titleGlow / nameGlow なし（フラット）
   eventDefault: { bg: '#ddd6fe', text: '#5b21b6' },
 }

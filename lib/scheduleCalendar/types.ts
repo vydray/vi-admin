@@ -26,6 +26,10 @@ export interface RenderCalendarParams {
   endDate: string // YYYY-MM-DD
   shifts: CalendarShift[]
   events: CalendarEvent[]
+  /** アップロード背景画像（全面cover）。指定時はテーマ既定の背景を上書きしフロスト表示にする */
+  backgroundImage?: Buffer | null
+  /** アップロード上部バナー写真。指定時は最上部に横帯で配置し、その分キャンバスが縦に伸びる */
+  bannerImage?: Buffer | null
 }
 
 /** node-canvas に登録するフォント */
@@ -47,6 +51,23 @@ export interface ThemeGlow {
   blur: number
 }
 
+/** カレンダーの配色 */
+export interface CalendarColors {
+  titleBg: string
+  titleText: string
+  headerBg: string
+  headerText: string
+  dateRowBg: string
+  cellBg: string
+  border: string
+  dateColor: string
+  dateSat: string // 土曜の日付/曜日色（ヘッダーと日付行で共用）
+  dateSun: string // 日曜の日付/曜日色
+  nameColor: string
+  timeColor: string
+  emptyBg: string
+}
+
 /**
  * 店舗ごとのカレンダー見た目。描画ロジックは共通で、ここだけ差し替える。
  */
@@ -62,21 +83,11 @@ export interface CalendarTheme {
     name: string // `bold Npx "<name>"`
   }
   background: ThemeBackground
-  colors: {
-    titleBg: string
-    titleText: string
-    headerBg: string
-    headerText: string
-    dateRowBg: string
-    cellBg: string
-    border: string
-    dateColor: string
-    dateSat: string // 土曜の日付/曜日色（ヘッダーと日付行で共用）
-    dateSun: string // 日曜の日付/曜日色
-    nameColor: string
-    timeColor: string
-    emptyBg: string
-  }
+  colors: CalendarColors
+  /** アップロード背景がある時に colors に上書き適用する半透明配色（フロスト表示用） */
+  frostedColors?: Partial<CalendarColors>
+  /** アップロード背景の上に重ねる可読性確保用オーバーレイ色（任意） */
+  uploadedBgOverlay?: string
   /** タイトル文字のグロー（無ければフラット） */
   titleGlow?: ThemeGlow
   /** キャスト名のグロー（無ければフラット） */

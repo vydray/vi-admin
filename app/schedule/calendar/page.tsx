@@ -5,12 +5,17 @@ import { useStore } from '@/contexts/StoreContext'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import ProtectedPage from '@/components/ProtectedPage'
 import { toast } from 'react-hot-toast'
+import AssetSettings from './AssetSettings'
 
 // カレンダーデザイン実装済みの店舗（順次追加）
 const SUPPORTED_STORES: Record<number, string> = {
   7: 'MaryMare',
   2: 'MistressMirage',
 }
+
+// 背景アップロードに対応する店舗（フロスト配色を持つ＝mirage）。
+// marymareは大聖堂背景前提なので背景アップは出さない（バナーのみ）。
+const FROSTED_BG_STORES = new Set<number>([2])
 
 const now = new Date()
 
@@ -149,6 +154,10 @@ function CalendarContent() {
           {generating ? '生成中...' : `${month}月${half === 'first' ? '前半' : '後半'} を生成`}
         </button>
       </div>
+
+      {supported && storeId && (
+        <AssetSettings storeId={storeId} allowBg={FROSTED_BG_STORES.has(storeId)} />
+      )}
 
       {image && (
         <div style={styles.card}>

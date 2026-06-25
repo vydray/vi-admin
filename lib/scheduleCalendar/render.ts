@@ -1,7 +1,7 @@
 import path from 'path'
 import fs from 'fs'
 import { createCanvas, registerFont, loadImage } from 'canvas'
-import type { CalendarEvent, CalendarShift, CalendarTheme, RenderCalendarParams } from './types'
+import type { CalendarColors, CalendarEvent, CalendarShift, CalendarTheme, RenderCalendarParams } from './types'
 
 /**
  * 出勤表カレンダー画像の共通描画エンジン。
@@ -9,6 +9,10 @@ import type { CalendarEvent, CalendarShift, CalendarTheme, RenderCalendarParams 
  * 元は scripts/generate-{marymare,mirage}-shift.js（CLI）。両者は構造が完全一致で、
  * 違いは色・フォント・背景・グローのみ。それらを CalendarTheme に切り出し、
  * 描画ロジックはこの一本に統合した。
+ *
+ * アップロード背景(backgroundImage)・上部バナー写真(bannerImage)を渡すと、
+ * 背景に画像を敷き、最上部に横帯で写真を載せ、テーマの frostedColors で半透明表示にする。
+ * いずれも未指定なら従来どおりの描画（バイト単位で同一）。
  */
 
 // ---------- フォント登録（ファミリ単位で一度だけ） ----------
@@ -36,6 +40,7 @@ const DATE_ROW_H = 42
 const ROW_MIN_H = 180
 const NAME_LINE_HEIGHT = 34
 const EVENT_LABEL_H = 32
+const BANNER_MAX_RATIO = 0.6 // バナー高さは横幅の最大60%まで
 
 // ---------- ヘルパ ----------
 function ymdToDate(s: string): Date {
@@ -73,7 +78,7 @@ function buildWeeks(startStr: string, endStr: string): (Date | null)[][] {
   if (current) weeks.push(current)
   return weeks
 }
-// 背景画像を canvas に cover フィット（アスペクト維持・はみ出しクロップ）
+// 背景画像を canvas に cover フィット（アスペクト維持・はみ出しクロップ）。全面用。
 function drawCover(
   ctx: ReturnType<ReturnType<typeof createCanvas>['getContext']>,
   img: Awaited<ReturnType<typeof loadImage>>,
@@ -96,14 +101,43 @@ function drawCover(
   }
   ctx.drawImage(img, dx, dy, dw, dh)
 }
+// 指定矩形に cover フィット（バナー帯用。矩形外をクリップ）
+function drawCoverRect(
+  ctx: ReturnType<ReturnType<typeof createCanvas>['getContext']>,
+  img: Awaited<ReturnType<typeof loadImage>>,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+) {
+  const ir = img.width / img.height
+  const cr = w / h
+  let dw: number, dh: number, dx: number, dy: number
+  if (ir > cr) {
+    dh = h
+    dw = h * ir
+    dx = x + (w - dw) / 2
+    dy = y
+  } else {
+    dw = w
+    dh = w / ir
+    dx = x
+    dy = y + (h - dh) / 2
+  }
+  ctx.save()
+  ctx.beginPath()
+  ctx.rect(x, y, w, h)
+  ctx.clip()
+  ctx.drawImage(img, dx, dy, dw, dh)
+  ctx.restore()
+}
 
 /**
  * カレンダー画像を生成して PNG Buffer を返す。
  */
 export async function renderCalendar(params: RenderCalendarParams, theme: CalendarTheme): Promise<Buffer> {
   ensureFonts(theme)
-  const { title, startDate, endDate, shifts, events } = params
-  const c = theme.colors
+  const { title, startDate, endDate, shifts, events, backgroundImage, bannerImage } = params
 
   // シフトを date キーでマップ化＋ソート（display_order昇順→start_time）
   const shiftsByDate = new Map<string, CalendarShift[]>()
@@ -144,35 +178,84 @@ export async function renderCalendar(params: RenderCalendarParams, theme: Calend
   const weekHeights = weeks.map(getWeekHeight)
   const totalRowH = weekHeights.reduce((s, h) => s + h + DATE_ROW_H, 0)
   const CANVAS_W = COL_W * 7
-  const CANVAS_H = TITLE_H + HEADER_H + totalRowH
+
+  // アップロード画像を先に読み込む。壊れていたら無視して通常描画にフォールバックする
+  // （shifts/eventsが正しいのに画像1枚で生成全体が落ちるのを防ぐ）。
+  let bgImg: Awaited<ReturnType<typeof loadImage>> | null = null
+  if (backgroundImage) {
+    try {
+      bgImg = await loadImage(backgroundImage)
+    } catch (e) {
+      console.error('[renderCalendar] 背景画像のデコード失敗、背景なしで継続:', e)
+      bgImg = null
+    }
+  }
+
+  // 上部バナー写真（cropされたアスペクトのまま横幅いっぱいに敷く。高さは比率から算出）
+  let bannerImg: Awaited<ReturnType<typeof loadImage>> | null = null
+  let bannerH = 0
+  if (bannerImage) {
+    try {
+      bannerImg = await loadImage(bannerImage)
+      bannerH = Math.min(
+        Math.round(CANVAS_W * (bannerImg.height / bannerImg.width)),
+        Math.round(CANVAS_W * BANNER_MAX_RATIO),
+      )
+    } catch (e) {
+      console.error('[renderCalendar] バナー画像のデコード失敗、バナーなしで継続:', e)
+      bannerImg = null
+      bannerH = 0
+    }
+  }
+  const top = bannerH
+
+  // 背景が実際に使える時だけフロスト配色に切替（デコード失敗時は通常配色のまま）
+  const c: CalendarColors = bgImg && theme.frostedColors
+    ? { ...theme.colors, ...theme.frostedColors }
+    : theme.colors
+
+  const CANVAS_H = bannerH + TITLE_H + HEADER_H + totalRowH
 
   const canvas = createCanvas(CANVAS_W, CANVAS_H)
   const ctx = canvas.getContext('2d')
 
   // ---------- 背景 ----------
-  const bg = theme.background
-  if (bg.type === 'image') {
-    const bgPath = path.join(process.cwd(), bg.path)
-    if (fs.existsSync(bgPath)) {
-      const img = await loadImage(bgPath)
-      drawCover(ctx, img, CANVAS_W, CANVAS_H)
-      if (bg.overlay) {
-        ctx.fillStyle = bg.overlay
-        ctx.fillRect(0, 0, CANVAS_W, CANVAS_H)
-      }
-    } else {
-      ctx.fillStyle = bg.fallback
+  if (bgImg) {
+    drawCover(ctx, bgImg, CANVAS_W, CANVAS_H)
+    if (theme.uploadedBgOverlay) {
+      ctx.fillStyle = theme.uploadedBgOverlay
       ctx.fillRect(0, 0, CANVAS_W, CANVAS_H)
     }
-  } else if (bg.type === 'color') {
-    ctx.fillStyle = bg.color
-    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H)
+  } else {
+    const bg = theme.background
+    if (bg.type === 'image') {
+      const bgPath = path.join(process.cwd(), bg.path)
+      if (fs.existsSync(bgPath)) {
+        const img = await loadImage(bgPath)
+        drawCover(ctx, img, CANVAS_W, CANVAS_H)
+        if (bg.overlay) {
+          ctx.fillStyle = bg.overlay
+          ctx.fillRect(0, 0, CANVAS_W, CANVAS_H)
+        }
+      } else {
+        ctx.fillStyle = bg.fallback
+        ctx.fillRect(0, 0, CANVAS_W, CANVAS_H)
+      }
+    } else if (bg.type === 'color') {
+      ctx.fillStyle = bg.color
+      ctx.fillRect(0, 0, CANVAS_W, CANVAS_H)
+    }
+    // transparent: 何も塗らない
   }
-  // transparent: 何も塗らない
+
+  // ---------- 上部バナー写真 ----------
+  if (bannerImg) {
+    drawCoverRect(ctx, bannerImg, 0, 0, CANVAS_W, bannerH)
+  }
 
   // ---------- タイトル ----------
   ctx.fillStyle = c.titleBg
-  ctx.fillRect(0, 0, CANVAS_W, TITLE_H)
+  ctx.fillRect(0, top, CANVAS_W, TITLE_H)
   if (theme.titleGlow) {
     ctx.save()
     ctx.shadowColor = theme.titleGlow.color
@@ -182,12 +265,12 @@ export async function renderCalendar(params: RenderCalendarParams, theme: Calend
   ctx.font = `bold 48px "${theme.fonts.title}", sans-serif`
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
-  ctx.fillText(title, CANVAS_W / 2, TITLE_H / 2)
+  ctx.fillText(title, CANVAS_W / 2, top + TITLE_H / 2)
   if (theme.titleGlow) ctx.restore()
 
   // ---------- 曜日ヘッダー ----------
   ctx.fillStyle = c.headerBg
-  ctx.fillRect(0, TITLE_H, CANVAS_W, HEADER_H)
+  ctx.fillRect(0, top + TITLE_H, CANVAS_W, HEADER_H)
   ctx.font = `bold 26px "${theme.fonts.header}", sans-serif`
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
@@ -195,11 +278,11 @@ export async function renderCalendar(params: RenderCalendarParams, theme: Calend
     if (i === 5) ctx.fillStyle = c.dateSat
     else if (i === 6) ctx.fillStyle = c.dateSun
     else ctx.fillStyle = c.headerText
-    ctx.fillText(DAYS[i], i * COL_W + COL_W / 2, TITLE_H + HEADER_H / 2)
+    ctx.fillText(DAYS[i], i * COL_W + COL_W / 2, top + TITLE_H + HEADER_H / 2)
   }
 
   // ---------- 各週 ----------
-  let rowY = TITLE_H + HEADER_H
+  let rowY = top + TITLE_H + HEADER_H
   for (let w = 0; w < weeks.length; w++) {
     const week = weeks[w]
     const bodyH = weekHeights[w]

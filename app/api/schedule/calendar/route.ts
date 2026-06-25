@@ -28,6 +28,15 @@ function pad2(n: number): string {
   return String(n).padStart(2, '0')
 }
 
+// アップロード済みの背景/バナー画像をストレージから取得（無ければnull）
+async function downloadCalendarAsset(storeId: number, kind: 'bg' | 'banner'): Promise<Buffer | null> {
+  const { data, error } = await supabase.storage
+    .from('schedule-templates')
+    .download(`${storeId}/calendar-${kind}.png`)
+  if (error || !data) return null
+  return Buffer.from(await data.arrayBuffer())
+}
+
 /**
  * 出勤表カレンダー画像を生成
  * POST /api/schedule/calendar
@@ -129,7 +138,19 @@ export async function POST(request: NextRequest) {
       .filter((e) => e.name && e.start_date && e.end_date)
       .map((e) => ({ start: e.start_date, end: e.end_date, label: e.name }))
 
-    const buffer = await renderCalendar({ title, startDate, endDate, shifts, events }, calendar.theme)
+    // アップロード済みの背景・上部バナー写真（任意）。
+    // 背景はフロスト配色を持つテーマ（=mirage）のみ反映する。marymareは大聖堂背景前提で
+    // フロスト化されないため、生写真で上書きすると可読性が崩れる。
+    const wantsBg = !!calendar.theme.frostedColors
+    const [backgroundImage, bannerImage] = await Promise.all([
+      wantsBg ? downloadCalendarAsset(storeId, 'bg') : Promise.resolve(null),
+      downloadCalendarAsset(storeId, 'banner'),
+    ])
+
+    const buffer = await renderCalendar(
+      { title, startDate, endDate, shifts, events, backgroundImage, bannerImage },
+      calendar.theme,
+    )
     const dataUrl = `data:image/png;base64,${buffer.toString('base64')}`
     const filename = `${month}月${halfLabel}${calendar.name}.png`
 
