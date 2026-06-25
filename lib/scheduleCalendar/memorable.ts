@@ -197,17 +197,27 @@ export async function renderMemorableCalendar(
     ctx.drawImage(logoImg, (CANVAS_W - logoW) / 2, topPad, logoW, logoH)
   }
 
-  // ---------- タイトル（ピンク文字＋白縁取り） ----------
+  // ---------- タイトル（ピンクグラデ塗り＋白縁＋外側に灰色縁の二重縁取り） ----------
   ctx.font = `bold 84px "${theme.fonts.title}", sans-serif`
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
   const titleX = CANVAS_W / 2
   const titleY = topPad + (logoImg ? logoH + 16 : 0) + TITLE_BAND_H / 2
   ctx.lineJoin = 'round'
-  ctx.lineWidth = 14
+  ctx.miterLimit = 2
+  // 外側: 灰色の太い縁
+  ctx.lineWidth = 26
+  ctx.strokeStyle = '#9b9097'
+  ctx.strokeText(title, titleX, titleY)
+  // 内側: 白い縁
+  ctx.lineWidth = 13
   ctx.strokeStyle = '#ffffff'
   ctx.strokeText(title, titleX, titleY)
-  ctx.fillStyle = c.titleText
+  // 塗り: 縦方向のピンクグラデーション（ロゴと同系）
+  const titleGrad = ctx.createLinearGradient(0, titleY - 46, 0, titleY + 46)
+  titleGrad.addColorStop(0, '#ffa9d4')
+  titleGrad.addColorStop(1, '#e24d92')
+  ctx.fillStyle = titleGrad
   ctx.fillText(title, titleX, titleY)
 
   // ---------- カードグリッド ----------
