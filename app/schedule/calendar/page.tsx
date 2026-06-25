@@ -90,12 +90,6 @@ function CalendarContent() {
     <div style={{ ...styles.container, ...(isMobile ? styles.containerMobile : {}) }}>
       <h1 style={{ ...styles.title, ...(isMobile ? styles.titleMobile : {}) }}>出勤表カレンダー</h1>
 
-      {!supported && (
-        <div style={styles.warning}>
-          この店舗のカレンダーデザインは準備中です（現在は {Object.values(SUPPORTED_STORES).join('・')} のみ対応）。
-        </div>
-      )}
-
       <div style={styles.card}>
         <div style={{ ...styles.row, ...(isMobile ? styles.rowMobile : {}) }}>
           <label style={styles.label}>年</label>
@@ -186,10 +180,6 @@ const styles: Record<string, CSSProperties> = {
   loadingText: { padding: 40, textAlign: 'center', color: '#64748b' },
   title: { fontSize: 26, fontWeight: 700, marginBottom: 20, color: '#1e293b' },
   titleMobile: { fontSize: 20, marginBottom: 14 },
-  warning: {
-    backgroundColor: '#fef3c7', border: '1px solid #fcd34d', color: '#92400e',
-    padding: '12px 16px', borderRadius: 8, marginBottom: 16, fontSize: 14,
-  },
   card: {
     backgroundColor: '#fff', border: '1px solid #e2e8f0', borderRadius: 12,
     padding: 20, marginBottom: 20, boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
