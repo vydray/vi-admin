@@ -190,7 +190,7 @@ function CastHistory() {
                         {pct == null ? '-' : (pct >= 0 ? '+' : '') + pct.toFixed(0) + '%'}
                       </td>
                       <td style={{ ...styles.td, textAlign: 'right', color: '#475569' }}>{yen(r.posSales)}</td>
-                      <td style={{ ...styles.td, textAlign: 'right', color: '#16a34a' }}>{r.baseSales > 0 ? yen(r.baseSales) : '-'}</td>
+                      <td style={{ ...styles.td, textAlign: 'right', color: '#475569' }}>{r.baseSales > 0 ? yen(r.baseSales) : '-'}</td>
                       <td style={{ ...styles.td, textAlign: 'right' }}>{r.nominations}本</td>
                       <td style={{ ...styles.td, textAlign: 'right' }}>{r.workDays}日</td>
                       <td style={{ ...styles.td, textAlign: 'right' }}>{r.workHours.toFixed(1)}h</td>
