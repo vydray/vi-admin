@@ -55,6 +55,39 @@ async function downloadCalendarAsset(storeId: number, kind: 'bg' | 'banner' | 'l
   return Buffer.from(await data.arrayBuffer())
 }
 
+// キャラ(立ち絵)の画像＋保存位置を取得
+async function downloadCharacters(
+  storeId: number,
+): Promise<{ image: Buffer; x: number; y: number; w: number }[]> {
+  const { data: posData } = await supabase.storage
+    .from('schedule-templates')
+    .download(`${storeId}/characters.json`)
+  if (!posData) return []
+  let list: { id: string; x: number; y: number; w: number }[] = []
+  try {
+    const arr = JSON.parse(await posData.text())
+    if (Array.isArray(arr)) list = arr
+  } catch {
+    return []
+  }
+  const out: { image: Buffer; x: number; y: number; w: number }[] = []
+  for (const c of list) {
+    if (typeof c.id !== 'string') continue
+    const { data } = await supabase.storage
+      .from('schedule-templates')
+      .download(`${storeId}/character-${c.id}.png`)
+    if (data) {
+      out.push({
+        image: Buffer.from(await data.arrayBuffer()),
+        x: Number(c.x) || 0,
+        y: Number(c.y) || 0,
+        w: Number(c.w) || 0.18,
+      })
+    }
+  }
+  return out
+}
+
 /**
  * 出勤表カレンダー画像を生成
  * POST /api/schedule/calendar
@@ -75,6 +108,7 @@ export async function POST(request: NextRequest) {
     const contentTopRaw = Number(body.contentTop)
     const contentTop = Number.isFinite(contentTopRaw) && contentTopRaw >= 0 ? contentTopRaw : undefined
     const address = typeof body.address === 'string' ? body.address.slice(0, 500) : undefined
+    const excludeCharacters = body.excludeCharacters === true // 配置エディタの背景プレビュー用
 
     if (!storeId || !year || !month || month < 1 || month > 12) {
       return NextResponse.json({ error: 'storeId / year / month が不正です' }, { status: 400 })
@@ -176,7 +210,9 @@ export async function POST(request: NextRequest) {
       isCard ? downloadCalendarAsset(storeId, 'logo') : Promise.resolve(null),
     ])
 
-    const renderParams = { title, startDate, endDate, shifts, events, backgroundImage, bannerImage, logoImage, contentTop, address }
+    const characters = isCard && !excludeCharacters ? await downloadCharacters(storeId) : []
+
+    const renderParams = { title, startDate, endDate, shifts, events, backgroundImage, bannerImage, logoImage, contentTop, address, characters }
     const buffer = isCard
       ? await renderMemorableCalendar(renderParams, calendar.theme)
       : await renderCalendar(renderParams, calendar.theme)

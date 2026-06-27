@@ -146,7 +146,7 @@ export async function renderMemorableCalendar(
   theme: CalendarTheme,
 ): Promise<Buffer> {
   ensureFonts(theme)
-  const { title, startDate, endDate, shifts, backgroundImage, logoImage, contentTop, address } = params
+  const { title, startDate, endDate, shifts, backgroundImage, logoImage, contentTop, address, characters } = params
   const c = theme.colors
   // コンテンツ開始位置（背景の上部装飾を避けるため下げられる。未指定は既定）
   const topPad = contentTop != null && contentTop >= 0 ? contentTop : LOGO_TOP_PAD
@@ -371,6 +371,20 @@ export async function renderMemorableCalendar(
     } else {
       const bandY = titleAreaH + gridH + BOTTOM_MARGIN
       drawAddress(ctx, theme, addrText, MARGIN, bandY, CANVAS_W - MARGIN * 2, addressBandH - 16)
+    }
+  }
+
+  // ---------- キャラ（立ち絵など。保存位置で最前面に合成） ----------
+  if (characters && characters.length > 0) {
+    for (const ch of characters) {
+      try {
+        const img = await loadImage(ch.image)
+        const cw = ch.w * CANVAS_W
+        const chh = cw * (img.height / img.width)
+        ctx.drawImage(img, ch.x * CANVAS_W, ch.y * CANVAS_H, cw, chh)
+      } catch (e) {
+        console.error('[renderMemorable] キャラ画像のデコード失敗、スキップ:', e)
+      }
     }
   }
 

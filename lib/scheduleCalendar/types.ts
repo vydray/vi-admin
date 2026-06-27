@@ -37,6 +37,16 @@ export interface RenderCalendarParams {
   contentTop?: number
   /** カード型: 住所等のテキスト(改行可)。最終行の右下の空き or 下帯に動的配置する */
   address?: string
+  /** カード型: 立ち絵などのキャラ画像。保存位置(比率)で最前面に合成する */
+  characters?: CalendarCharacter[]
+}
+
+/** 立ち絵などのキャラ。位置・幅はキャンバスに対する比率(0-1)で持つ（月で高さが変わっても追従） */
+export interface CalendarCharacter {
+  image: Buffer
+  x: number // 左位置（キャンバス幅比）
+  y: number // 上位置（キャンバス高比）
+  w: number // 幅（キャンバス幅比）。高さは画像アスペクトから算出
 }
 
 /** node-canvas に登録するフォント */

@@ -7,6 +7,7 @@ import ProtectedPage from '@/components/ProtectedPage'
 import { toast } from 'react-hot-toast'
 import AssetSettings from './AssetSettings'
 import EventSettings from './EventSettings'
+import CharacterEditor from './CharacterEditor'
 
 // カレンダーデザイン実装済みの店舗（順次追加）
 const SUPPORTED_STORES: Record<number, string> = {
@@ -225,6 +226,10 @@ function CalendarContent() {
 
       {supported && storeId && ASSET_KINDS[storeId] && (
         <AssetSettings storeId={storeId} kinds={ASSET_KINDS[storeId]} />
+      )}
+
+      {isCard && storeId && (
+        <CharacterEditor storeId={storeId} genParams={{ year, month, half, contentTop, address }} />
       )}
 
       {image && (
