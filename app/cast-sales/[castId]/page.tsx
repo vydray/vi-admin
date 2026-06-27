@@ -25,6 +25,12 @@ interface CastItem {
   id: number
   name: string
 }
+interface ProductRow {
+  name: string
+  category: string
+  qty: number
+  amt: number
+}
 
 // attendance.status の出勤カテゴリー（表示順）と短縮ラベル
 const ATT_CATS = ['出勤', 'リクエスト出勤', '遅刻', '早退', '当欠', '事前欠勤', '公欠'] as const
@@ -50,6 +56,7 @@ function CastHistory() {
   const [castName, setCastName] = useState('')
   const [rows, setRows] = useState<MonthRow[]>([])
   const [casts, setCasts] = useState<CastItem[]>([])
+  const [products, setProducts] = useState<ProductRow[]>([])
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(async () => {
@@ -131,6 +138,33 @@ function CastHistory() {
       const arr = [...map.values()]
       for (const m of arr) m.totalSales = m.posSales + m.baseSales
       setRows(arr.sort((a, b) => b.ym.localeCompare(a.ym)))
+
+      // 商品別（全期間, 1000行上限対策でページング取得）
+      const itemMap = new Map<string, ProductRow>()
+      const PAGE = 1000
+      for (let from = 0; from < 20000; from += PAGE) {
+        const { data: items, error } = await supabase
+          .from('cast_daily_items')
+          .select('product_name, category, quantity, subtotal')
+          .eq('cast_id', castId)
+          .eq('store_id', storeId)
+          .range(from, from + PAGE - 1)
+        if (error || !items || items.length === 0) break
+        for (const it of items) {
+          const name = (it.product_name as string) || '(不明)'
+          const cat = (it.category as string) || ''
+          const key = name + '|' + cat
+          let p = itemMap.get(key)
+          if (!p) {
+            p = { name, category: cat, qty: 0, amt: 0 }
+            itemMap.set(key, p)
+          }
+          p.qty += Number(it.quantity) || 0
+          p.amt += Number(it.subtotal) || 0
+        }
+        if (items.length < PAGE) break
+      }
+      setProducts([...itemMap.values()].sort((a, b) => b.amt - a.amt))
     } finally {
       setLoading(false)
     }
@@ -160,6 +194,7 @@ function CastHistory() {
     (a, r) => ({ totalSales: a.totalSales + r.totalSales, posSales: a.posSales + r.posSales, nominations: a.nominations + r.nominations, workDays: a.workDays + r.workDays, workHours: a.workHours + r.workHours }),
     { totalSales: 0, posSales: 0, nominations: 0, workDays: 0, workHours: 0 },
   )
+  const maxAmt = Math.max(1, ...products.map((p) => p.amt))
 
   return (
     <div style={styles.container}>
@@ -181,22 +216,6 @@ function CastHistory() {
             <div style={styles.sumCard}><div style={styles.sumLabel}>客単価</div><div style={styles.sumVal}>{sum.nominations > 0 ? yen(sum.posSales / sum.nominations) : '-'}</div></div>
             <div style={styles.sumCard}><div style={styles.sumLabel}>累計出勤</div><div style={styles.sumVal}>{sum.workDays}日</div></div>
             <div style={styles.sumCard}><div style={styles.sumLabel}>累計勤務</div><div style={styles.sumVal}>{sum.workHours.toFixed(1)}h</div></div>
-          </div>
-
-          <div style={styles.chartCard}>
-            <div style={styles.chartTitle}>月別 売上推移（店舗売上＋BASE）／指名</div>
-            <ResponsiveContainer width="100%" height={260}>
-              <ComposedChart data={chartData} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#eef2f7" vertical={false} />
-                <XAxis dataKey="month" tick={{ fontSize: 12, fill: '#64748b' }} />
-                <YAxis yAxisId="l" tickFormatter={(v: number) => (v >= 10000 ? Math.round(v / 10000) + '万' : String(v))} tick={{ fontSize: 11, fill: '#94a3b8' }} width={44} />
-                <YAxis yAxisId="r" orientation="right" tick={{ fontSize: 11, fill: '#94a3b8' }} width={28} allowDecimals={false} />
-                <Tooltip formatter={(value: number, name: string) => (name === '指名' ? [`${value}本`, name] : [yen(value), name])} />
-                <Bar yAxisId="l" dataKey="pos" stackId="s" fill="#6366f1" name="店舗売上" />
-                <Bar yAxisId="l" dataKey="base" stackId="s" fill="#22c55e" name="BASE" radius={[4, 4, 0, 0]} />
-                <Line yAxisId="r" dataKey="noms" stroke="#ec4899" strokeWidth={2} name="指名" dot={{ r: 3 }} />
-              </ComposedChart>
-            </ResponsiveContainer>
           </div>
 
           <div style={styles.tableWrap}>
@@ -243,6 +262,53 @@ function CastHistory() {
             </table>
           </div>
           <p style={styles.note}>総売上＝店舗売上(POS)＋BASE（ランキングと同じ集計方式）。前月比は総売上の対前月。シフト＝予定シフト数、その右は出勤カテゴリー(勤怠status)別の回数。</p>
+
+          <div style={styles.chartCard}>
+            <div style={styles.chartTitle}>月別 売上推移（店舗売上＋BASE）／指名</div>
+            <ResponsiveContainer width="100%" height={260}>
+              <ComposedChart data={chartData} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#eef2f7" vertical={false} />
+                <XAxis dataKey="month" tick={{ fontSize: 12, fill: '#64748b' }} />
+                <YAxis yAxisId="l" tickFormatter={(v: number) => (v >= 10000 ? Math.round(v / 10000) + '万' : String(v))} tick={{ fontSize: 11, fill: '#94a3b8' }} width={44} />
+                <YAxis yAxisId="r" orientation="right" tick={{ fontSize: 11, fill: '#94a3b8' }} width={28} allowDecimals={false} />
+                <Tooltip formatter={(value: number, name: string) => (name === '指名' ? [`${value}本`, name] : [yen(value), name])} />
+                <Bar yAxisId="l" dataKey="pos" stackId="s" fill="#6366f1" name="店舗売上" />
+                <Bar yAxisId="l" dataKey="base" stackId="s" fill="#22c55e" name="BASE" radius={[4, 4, 0, 0]} />
+                <Line yAxisId="r" dataKey="noms" stroke="#ec4899" strokeWidth={2} name="指名" dot={{ r: 3 }} />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+
+          {products.length > 0 && (
+            <div style={styles.prodCard}>
+              <div style={styles.chartTitle}>商品別 売上（全期間・明細小計）</div>
+              <div style={styles.prodTableWrap}>
+                <table style={styles.table2}>
+                  <thead>
+                    <tr>
+                      <th style={styles.th}>商品</th>
+                      <th style={styles.th}>カテゴリ</th>
+                      <th style={{ ...styles.th, textAlign: 'right' }}>数量</th>
+                      <th style={{ ...styles.th, textAlign: 'right' }}>売上</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {products.map((p) => (
+                      <tr key={p.name + '|' + p.category}>
+                        <td style={styles.tdName}>{p.name}</td>
+                        <td style={styles.td}><span style={styles.catTag}>{p.category || '-'}</span></td>
+                        <td style={{ ...styles.td, textAlign: 'right' }}>{p.qty}</td>
+                        <td style={{ ...styles.td, textAlign: 'right', position: 'relative', fontWeight: 600 }}>
+                          <div style={{ ...styles.bar, width: `${(p.amt / maxAmt) * 100}%` }} />
+                          <span style={{ position: 'relative' }}>{yen(p.amt)}</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>
@@ -328,6 +394,12 @@ const styles: Record<string, CSSProperties> = {
   sumVal: { fontSize: 20, fontWeight: 700, color: '#1e293b' },
   chartCard: { background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '16px 12px 12px', marginBottom: 20 },
   chartTitle: { fontSize: 13, fontWeight: 600, color: '#475569', margin: '0 0 8px 8px' },
+  prodCard: { background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '16px 4px 4px', marginBottom: 20 },
+  prodTableWrap: { maxHeight: 480, overflowY: 'auto' },
+  table2: { width: '100%', borderCollapse: 'collapse', fontSize: 14 },
+  tdName: { padding: '11px 14px', fontWeight: 600, color: '#1e293b', borderBottom: '1px solid #f1f5f9' },
+  catTag: { display: 'inline-block', padding: '2px 8px', borderRadius: 999, background: '#f1f5f9', color: '#64748b', fontSize: 12, whiteSpace: 'nowrap' },
+  bar: { position: 'absolute', right: 14, top: 6, bottom: 6, background: 'rgba(99,102,241,0.12)', borderRadius: 4 },
   tableWrap: { background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, overflowX: 'auto' },
   table: { width: '100%', borderCollapse: 'collapse', fontSize: 14, minWidth: 1080 },
   th: { padding: '12px 14px', textAlign: 'left', background: '#f8fafc', color: '#475569', fontWeight: 600, fontSize: 13, borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' },
