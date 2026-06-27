@@ -73,15 +73,17 @@ async function downloadCharacters(
   const out: { image: Buffer; x: number; y: number; w: number }[] = []
   for (const c of list) {
     if (typeof c.id !== 'string') continue
+    const id = c.id.replace(/[^a-z0-9-]/gi, '') // 書込側 safeId と同じ契約でサニタイズ
+    if (!id) continue
     const { data } = await supabase.storage
       .from('schedule-templates')
-      .download(`${storeId}/character-${c.id}.png`)
+      .download(`${storeId}/character-${id}.png`)
     if (data) {
       out.push({
         image: Buffer.from(await data.arrayBuffer()),
-        x: Number(c.x) || 0,
-        y: Number(c.y) || 0,
-        w: Number(c.w) || 0.18,
+        x: Number.isFinite(Number(c.x)) ? Number(c.x) : 0,
+        y: Number.isFinite(Number(c.y)) ? Number(c.y) : 0,
+        w: Number.isFinite(Number(c.w)) ? Number(c.w) : 0.18,
       })
     }
   }

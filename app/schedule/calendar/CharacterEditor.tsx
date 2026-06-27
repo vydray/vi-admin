@@ -36,6 +36,8 @@ export default function CharacterEditor({ storeId, genParams }: { storeId: numbe
   const wrapRef = useRef<HTMLDivElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const dragRef = useRef<{ id: string; mode: 'move' | 'resize'; sx: number; sy: number; ox: number; oy: number; ow: number } | null>(null)
+  const reqIdRef = useRef(0)
+  const abortRef = useRef<AbortController | null>(null)
 
   const fetchChars = useCallback(async () => {
     try {
@@ -48,28 +50,40 @@ export default function CharacterEditor({ storeId, genParams }: { storeId: numbe
   }, [storeId])
 
   const genBackdrop = useCallback(async () => {
+    abortRef.current?.abort()
+    const ac = new AbortController()
+    abortRef.current = ac
+    const myId = ++reqIdRef.current
     setLoadingBackdrop(true)
     try {
       const res = await fetch('/api/schedule/calendar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ storeId, ...genParams, excludeCharacters: true }),
+        signal: ac.signal,
       })
       const j = await res.json()
+      if (myId !== reqIdRef.current) return // 古いリクエストの結果は無視
       if (res.ok) setBackdrop(j.image)
       else toast.error(j.error || 'プレビュー生成に失敗しました')
     } catch (e) {
-      console.error(e)
+      if ((e as Error)?.name !== 'AbortError') console.error(e)
     } finally {
-      setLoadingBackdrop(false)
+      if (myId === reqIdRef.current) setLoadingBackdrop(false)
     }
   }, [storeId, genParams])
 
+  // キャラ一覧は開いた時/店舗変更時のみ取得
+  useEffect(() => {
+    if (open) fetchChars()
+  }, [open, fetchChars])
+
+  // 背景プレビューは年月/前後半/上余白/住所が変わった時に再生成（デバウンスして連打回避）
   useEffect(() => {
     if (!open) return
-    fetchChars()
-    genBackdrop()
-  }, [open, fetchChars, genBackdrop])
+    const t = setTimeout(() => genBackdrop(), 500)
+    return () => clearTimeout(t)
+  }, [open, genBackdrop])
 
   // ドラッグ／リサイズ
   useEffect(() => {

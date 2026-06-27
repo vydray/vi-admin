@@ -67,9 +67,9 @@ async function writePositions(storeId: number, list: CharPos[]) {
     { contentType: 'application/json', upsert: true },
   )
 }
-function clampNum(v: unknown, def: number): number {
+function clampRange(v: unknown, def: number, lo: number, hi: number): number {
   const n = Number(v)
-  return Number.isFinite(n) ? n : def
+  return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : def
 }
 
 /** GET ?storeId= : キャラ一覧（URL＋位置） */
@@ -145,7 +145,12 @@ export async function PUT(request: NextRequest) {
     const list: CharPos[] = (body.characters as unknown[])
       .map((c) => {
         const o = c as Record<string, unknown>
-        return { id: safeId(o.id), x: clampNum(o.x, 0), y: clampNum(o.y, 0), w: clampNum(o.w, 0.18) }
+        return {
+          id: safeId(o.id),
+          x: clampRange(o.x, 0, -0.5, 1.5),
+          y: clampRange(o.y, 0, -0.5, 1.5),
+          w: clampRange(o.w, 0.18, 0.03, 1.2),
+        }
       })
       .filter((c) => c.id && existing.has(c.id))
       .slice(0, MAX_CHARACTERS)
@@ -168,9 +173,10 @@ export async function DELETE(request: NextRequest) {
     if (!storeId || !id) return NextResponse.json({ error: 'storeId / id が必要です' }, { status: 400 })
     if (!authorize(session, storeId)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-    await supabase.storage.from(BUCKET).remove([imgPath(storeId, id)])
+    // 位置を先に書き換えてから画像削除（途中失敗でも宙ぶらりんの位置エントリを残さない）
     const list = (await readPositions(storeId)).filter((c) => c.id !== id)
     await writePositions(storeId, list)
+    await supabase.storage.from(BUCKET).remove([imgPath(storeId, id)])
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('[calendar-characters] DELETE error:', error)

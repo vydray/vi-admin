@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, type CSSProperties } from 'react'
+import { useState, useEffect, useMemo, type CSSProperties } from 'react'
 import { useStore } from '@/contexts/StoreContext'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import ProtectedPage from '@/components/ProtectedPage'
@@ -82,6 +82,12 @@ function CalendarContent() {
   }
 
   const supported = storeId != null && SUPPORTED_STORES[storeId] != null
+
+  // CharacterEditor の背景プレビュー生成が毎レンダー走らないよう参照を安定化
+  const genParams = useMemo(
+    () => ({ year, month, half, contentTop, address }),
+    [year, month, half, contentTop, address],
+  )
 
   const handleGenerate = async () => {
     if (!storeId) return
@@ -229,7 +235,7 @@ function CalendarContent() {
       )}
 
       {isCard && storeId && (
-        <CharacterEditor storeId={storeId} genParams={{ year, month, half, contentTop, address }} />
+        <CharacterEditor storeId={storeId} genParams={genParams} />
       )}
 
       {image && (
