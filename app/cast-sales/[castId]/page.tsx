@@ -18,10 +18,18 @@ interface MonthRow {
   nominations: number
   workDays: number
   workHours: number
+  shiftCount: number // 予定シフト数
+  att: Record<string, number> // 出勤カテゴリー(status)別の回数
 }
 interface CastItem {
   id: number
   name: string
+}
+
+// attendance.status の出勤カテゴリー（表示順）と短縮ラベル
+const ATT_CATS = ['出勤', 'リクエスト出勤', '遅刻', '早退', '当欠', '事前欠勤', '公欠'] as const
+const ATT_LABELS: Record<string, string> = {
+  出勤: '出勤', リクエスト出勤: 'ﾘｸｴｽﾄ', 遅刻: '遅刻', 早退: '早退', 当欠: '当欠', 事前欠勤: '事前欠', 公欠: '公欠',
 }
 
 const yen = (n: number) => '¥' + Math.round(n).toLocaleString('ja-JP')
@@ -60,7 +68,8 @@ function CastHistory() {
       const receipt = (settings?.published_aggregation ?? 'item_based') === 'receipt_based'
       const totalF = receipt ? 'total_sales_receipt_based' : 'total_sales_item_based'
 
-      const [{ data: cds }, { data: base }] = await Promise.all([
+      const castNm = cast?.name ?? '' // attendance は cast_name 紐付け
+      const [{ data: cds }, { data: base }, { data: shiftRows }, { data: attRows }] = await Promise.all([
         supabase
           .from('cast_daily_stats')
           .select(`date, ${totalF}, nomination_count, work_hours`)
@@ -71,13 +80,24 @@ function CastHistory() {
           .select('business_date, actual_price, quantity')
           .eq('cast_id', castId)
           .eq('store_id', storeId),
+        supabase
+          .from('shifts')
+          .select('date')
+          .eq('cast_id', castId)
+          .eq('store_id', storeId)
+          .eq('is_cancelled', false),
+        supabase
+          .from('attendance')
+          .select('date, status')
+          .eq('cast_name', castNm)
+          .eq('store_id', storeId),
       ])
 
       const map = new Map<string, MonthRow>()
       const get = (ym: string) => {
         let m = map.get(ym)
         if (!m) {
-          m = { ym, totalSales: 0, posSales: 0, baseSales: 0, nominations: 0, workDays: 0, workHours: 0 }
+          m = { ym, totalSales: 0, posSales: 0, baseSales: 0, nominations: 0, workDays: 0, workHours: 0, shiftCount: 0, att: {} }
           map.set(ym, m)
         }
         return m
@@ -94,6 +114,19 @@ function CastHistory() {
       for (const b of base ?? []) {
         if (!b.business_date) continue
         get(String(b.business_date).slice(0, 7)).baseSales += (Number(b.actual_price) || 0) * (Number(b.quantity) || 1)
+      }
+      for (const a of attRows ?? []) {
+        const ar = a as { date?: string | null; status?: string | null }
+        if (!ar.date) continue
+        const m = get(String(ar.date).slice(0, 7))
+        const st = ar.status || '未設定'
+        m.att[st] = (m.att[st] || 0) + 1
+      }
+      for (const s of shiftRows ?? []) {
+        const sr = s as { date?: string | null }
+        if (!sr.date) continue
+        const m = map.get(String(sr.date).slice(0, 7)) // 予定のみの未来月は作らず既存月だけ計上
+        if (m) m.shiftCount += 1
       }
       const arr = [...map.values()]
       for (const m of arr) m.totalSales = m.posSales + m.baseSales
@@ -177,8 +210,9 @@ function CastHistory() {
                   <th style={{ ...styles.th, textAlign: 'right' }}>BASE</th>
                   <th style={{ ...styles.th, textAlign: 'right' }}>指名</th>
                   <th style={{ ...styles.th, textAlign: 'right' }}>客単価</th>
-                  <th style={{ ...styles.th, textAlign: 'right' }}>出勤</th>
                   <th style={{ ...styles.th, textAlign: 'right' }}>勤務</th>
+                  <th style={styles.thCat}>シフト</th>
+                  {ATT_CATS.map((c) => (<th key={c} style={styles.thCat}>{ATT_LABELS[c]}</th>))}
                 </tr>
               </thead>
               <tbody>
@@ -195,15 +229,20 @@ function CastHistory() {
                       <td style={{ ...styles.td, textAlign: 'right', color: '#475569' }}>{r.baseSales > 0 ? yen(r.baseSales) : '-'}</td>
                       <td style={{ ...styles.td, textAlign: 'right' }}>{r.nominations}本</td>
                       <td style={{ ...styles.td, textAlign: 'right', color: '#475569' }}>{r.nominations > 0 ? yen(r.posSales / r.nominations) : '-'}</td>
-                      <td style={{ ...styles.td, textAlign: 'right' }}>{r.workDays}日</td>
                       <td style={{ ...styles.td, textAlign: 'right' }}>{r.workHours.toFixed(1)}h</td>
+                      <td style={styles.tdCat}>{r.shiftCount || '-'}</td>
+                      {ATT_CATS.map((c) => {
+                        const n = r.att[c] || 0
+                        const danger = c === '当欠' && n > 0
+                        return <td key={c} style={{ ...styles.tdCat, color: n === 0 ? '#cbd5e1' : danger ? '#dc2626' : '#334155', fontWeight: danger ? 700 : 400 }}>{n || '-'}</td>
+                      })}
                     </tr>
                   )
                 })}
               </tbody>
             </table>
           </div>
-          <p style={styles.note}>総売上＝店舗売上(POS)＋BASE（ランキングと同じ集計方式）。前月比は総売上の対前月。</p>
+          <p style={styles.note}>総売上＝店舗売上(POS)＋BASE（ランキングと同じ集計方式）。前月比は総売上の対前月。シフト＝予定シフト数、その右は出勤カテゴリー(勤怠status)別の回数。</p>
         </>
       )}
     </div>
@@ -290,8 +329,10 @@ const styles: Record<string, CSSProperties> = {
   chartCard: { background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '16px 12px 12px', marginBottom: 20 },
   chartTitle: { fontSize: 13, fontWeight: 600, color: '#475569', margin: '0 0 8px 8px' },
   tableWrap: { background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, overflowX: 'auto' },
-  table: { width: '100%', borderCollapse: 'collapse', fontSize: 14, minWidth: 720 },
+  table: { width: '100%', borderCollapse: 'collapse', fontSize: 14, minWidth: 1080 },
   th: { padding: '12px 14px', textAlign: 'left', background: '#f8fafc', color: '#475569', fontWeight: 600, fontSize: 13, borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' },
+  thCat: { padding: '12px 8px', textAlign: 'center', background: '#f8fafc', color: '#475569', fontWeight: 600, fontSize: 12, borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' },
+  tdCat: { padding: '12px 8px', textAlign: 'center', borderBottom: '1px solid #f1f5f9', color: '#334155', fontSize: 13, whiteSpace: 'nowrap' },
   tdMonth: { padding: '12px 14px', fontWeight: 600, color: '#1e293b', borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap' },
   td: { padding: '12px 14px', borderBottom: '1px solid #f1f5f9', color: '#334155', whiteSpace: 'nowrap' },
   note: { fontSize: 12, color: '#94a3b8', marginTop: 12 },
