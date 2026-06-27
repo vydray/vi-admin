@@ -31,6 +31,9 @@ interface ProductRow {
   qty: number
   amt: number
 }
+interface ProductYm extends ProductRow {
+  ym: string
+}
 
 // attendance.status の出勤カテゴリー（表示順）と短縮ラベル
 const ATT_CATS = ['出勤', 'リクエスト出勤', '遅刻', '早退', '当欠', '事前欠勤', '公欠'] as const
@@ -56,7 +59,9 @@ function CastHistory() {
   const [castName, setCastName] = useState('')
   const [rows, setRows] = useState<MonthRow[]>([])
   const [casts, setCasts] = useState<CastItem[]>([])
-  const [products, setProducts] = useState<ProductRow[]>([])
+  const [rawItems, setRawItems] = useState<ProductYm[]>([])
+  const [prodPeriod, setProdPeriod] = useState<string>('all') // 'all' | 'YYYY-MM'
+  const [prodSort, setProdSort] = useState<{ key: 'amt' | 'qty'; dir: 'desc' | 'asc' }>({ key: 'amt', dir: 'desc' })
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(async () => {
@@ -143,12 +148,12 @@ function CastHistory() {
       // 売上はランキング/月別と同じ集計方式の「推し(自分の卓)」分(self_sales_*)で集計し、
       // 店舗売上の推し部分と一致させる。ヘルプ分は明細に商品按分情報が無いため含めない。
       const selfF = receipt ? 'self_sales_receipt_based' : 'self_sales_item_based'
-      const itemMap = new Map<string, ProductRow>()
+      const itemMap = new Map<string, ProductYm>()
       const PAGE = 1000
       for (let from = 0; from < 20000; from += PAGE) {
         const { data: items, error } = await supabase
           .from('cast_daily_items')
-          .select(`product_name, category, quantity, ${selfF}`)
+          .select(`date, product_name, category, quantity, ${selfF}`)
           .eq('cast_id', castId)
           .eq('store_id', storeId)
           .range(from, from + PAGE - 1)
@@ -157,12 +162,13 @@ function CastHistory() {
           const row = it as Record<string, unknown>
           const amt = Number(row[selfF]) || 0
           if (amt <= 0) continue // 推し売上が無い行(ヘルプ等)は商品別から除外
+          const ym = String(row.date).slice(0, 7)
           const name = (row.product_name as string) || '(不明)'
           const cat = (row.category as string) || ''
-          const key = name + '|' + cat
+          const key = ym + '|' + name + '|' + cat
           let p = itemMap.get(key)
           if (!p) {
-            p = { name, category: cat, qty: 0, amt: 0 }
+            p = { ym, name, category: cat, qty: 0, amt: 0 }
             itemMap.set(key, p)
           }
           p.qty += Number(row.quantity) || 0
@@ -170,7 +176,7 @@ function CastHistory() {
         }
         if (items.length < PAGE) break
       }
-      setProducts([...itemMap.values()].sort((a, b) => b.amt - a.amt))
+      setRawItems([...itemMap.values()])
     } finally {
       setLoading(false)
     }
@@ -200,7 +206,27 @@ function CastHistory() {
     (a, r) => ({ totalSales: a.totalSales + r.totalSales, posSales: a.posSales + r.posSales, nominations: a.nominations + r.nominations, workDays: a.workDays + r.workDays, workHours: a.workHours + r.workHours }),
     { totalSales: 0, posSales: 0, nominations: 0, workDays: 0, workHours: 0 },
   )
-  const maxAmt = Math.max(1, ...products.map((p) => p.amt))
+  const displayProducts = useMemo(() => {
+    const m = new Map<string, ProductRow>()
+    for (const it of rawItems) {
+      if (prodPeriod !== 'all' && it.ym !== prodPeriod) continue
+      const key = it.name + '|' + it.category
+      let p = m.get(key)
+      if (!p) {
+        p = { name: it.name, category: it.category, qty: 0, amt: 0 }
+        m.set(key, p)
+      }
+      p.qty += it.qty
+      p.amt += it.amt
+    }
+    const arr = [...m.values()]
+    const { key, dir } = prodSort
+    arr.sort((a, b) => (dir === 'desc' ? b[key] - a[key] : a[key] - b[key]))
+    return arr
+  }, [rawItems, prodPeriod, prodSort])
+  const maxAmt = Math.max(1, ...displayProducts.map((p) => p.amt))
+  const toggleSort = (key: 'amt' | 'qty') =>
+    setProdSort((s) => (s.key === key ? { key, dir: s.dir === 'desc' ? 'asc' : 'desc' } : { key, dir: 'desc' }))
 
   return (
     <div style={styles.container}>
@@ -285,21 +311,40 @@ function CastHistory() {
             </ResponsiveContainer>
           </div>
 
-          {products.length > 0 && (
+          {rawItems.length > 0 && (
             <div style={styles.prodCard}>
-              <div style={styles.chartTitle}>商品別 売上（推し分・全期間）</div>
+              <div style={styles.prodHead}>
+                <div style={styles.chartTitle}>商品別 売上（推し分）</div>
+                <div style={styles.prodPeriodRow}>
+                  <button onClick={() => setProdPeriod('all')} style={prodPeriod === 'all' ? styles.periodBtnActive : styles.periodBtn}>全期間</button>
+                  {rows.map((r) => {
+                    const [yy, mm] = r.ym.split('-')
+                    return (
+                      <button key={r.ym} onClick={() => setProdPeriod(r.ym)} style={prodPeriod === r.ym ? styles.periodBtnActive : styles.periodBtn}>
+                        {`${yy.slice(2)}/${Number(mm)}`}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
               <div style={styles.prodTableWrap}>
                 <table style={styles.table2}>
                   <thead>
                     <tr>
                       <th style={styles.th}>商品</th>
                       <th style={styles.th}>カテゴリ</th>
-                      <th style={{ ...styles.th, textAlign: 'right' }}>数量</th>
-                      <th style={{ ...styles.th, textAlign: 'right' }}>売上</th>
+                      <th style={{ ...styles.th, textAlign: 'right', cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('qty')}>
+                        数量{prodSort.key === 'qty' ? (prodSort.dir === 'desc' ? ' ▼' : ' ▲') : ''}
+                      </th>
+                      <th style={{ ...styles.th, textAlign: 'right', cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('amt')}>
+                        売上{prodSort.key === 'amt' ? (prodSort.dir === 'desc' ? ' ▼' : ' ▲') : ''}
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {products.map((p) => (
+                    {displayProducts.length === 0 ? (
+                      <tr><td colSpan={4} style={{ ...styles.td, textAlign: 'center', color: '#94a3b8' }}>この期間の推し売上はありません</td></tr>
+                    ) : displayProducts.map((p) => (
                       <tr key={p.name + '|' + p.category}>
                         <td style={styles.tdName}>{p.name}</td>
                         <td style={styles.td}><span style={styles.catTag}>{p.category || '-'}</span></td>
@@ -401,6 +446,10 @@ const styles: Record<string, CSSProperties> = {
   chartCard: { background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '16px 12px 12px', marginBottom: 20 },
   chartTitle: { fontSize: 13, fontWeight: 600, color: '#475569', margin: '0 0 8px 8px' },
   prodCard: { background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '16px 4px 4px', marginBottom: 20 },
+  prodHead: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 10, margin: '0 10px 10px' },
+  prodPeriodRow: { display: 'flex', flexWrap: 'wrap', gap: 6 },
+  periodBtn: { padding: '4px 10px', borderRadius: 999, border: '1px solid #e2e8f0', background: '#fff', color: '#64748b', fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' },
+  periodBtnActive: { padding: '4px 10px', borderRadius: 999, border: '1px solid #6366f1', background: '#eef2ff', color: '#4338ca', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' },
   prodTableWrap: { maxHeight: 480, overflowY: 'auto' },
   table2: { width: '100%', borderCollapse: 'collapse', fontSize: 14 },
   tdName: { padding: '11px 14px', fontWeight: 600, color: '#1e293b', borderBottom: '1px solid #f1f5f9' },
