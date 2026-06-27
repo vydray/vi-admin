@@ -72,6 +72,13 @@ interface ProductSalesData {
   castSales: ProductCastSales[]
 }
 
+// 商品別ランキングの並び順: 推し → ヘルプ → BASE
+function productPrefixRank(key: string): number {
+  if (key.startsWith('推し ')) return 0
+  if (key.startsWith('ヘルプ ')) return 1
+  return 2 // BASE
+}
+
 
 export default function CastSalesPage() {
   return (
@@ -484,6 +491,45 @@ function CastSalesPageContent() {
             castSales.total += item.quantity
           })
         })
+      })
+
+      // BASE売上を商品別ランキングに第3カテゴリー(BASE)として追加。
+      // base_orders を直接集計（個数ベース）。cast_id→cast_name は loadedCasts から解決。
+      const castNameById = new Map<number, string>()
+      loadedCasts.forEach(c => castNameById.set(c.id, c.name))
+      const baseCategoryByName = new Map<string, string | null>()
+      products.forEach(p => baseCategoryByName.set(p.name, p.categoryName ?? null))
+
+      const { data: baseProdOrders } = await supabase
+        .from('base_orders')
+        .select('product_name, cast_id, quantity, business_date')
+        .eq('store_id', storeId)
+        .gte('business_date', startDate)
+        .lte('business_date', endDate)
+        .not('cast_id', 'is', null)
+
+      baseProdOrders?.forEach(o => {
+        const castName = o.cast_id != null ? castNameById.get(o.cast_id) : undefined
+        if (!castName || !o.product_name || !o.business_date) return
+        const qty = Number(o.quantity) || 0
+        if (qty <= 0) return
+        const productKey = `BASE ${o.product_name}`
+        let productData = productMap.get(productKey)
+        if (!productData) {
+          productData = {
+            productName: productKey,
+            category: baseCategoryByName.get(o.product_name) ?? null,
+            castSales: []
+          }
+          productMap.set(productKey, productData)
+        }
+        let castSales = productData.castSales.find(cs => cs.castName === castName)
+        if (!castSales) {
+          castSales = { castName, dailyQuantity: {}, total: 0 }
+          productData.castSales.push(castSales)
+        }
+        castSales.dailyQuantity[o.business_date] = (castSales.dailyQuantity[o.business_date] || 0) + qty
+        castSales.total += qty
       })
 
       // 各商品内でキャストを合計個数順にソート
@@ -924,9 +970,9 @@ function CastSalesPageContent() {
               >
                 {Array.from(productSalesData.entries())
                   .sort((a, b) => {
-                    const aIsSelf = a[0].startsWith('推し ')
-                    const bIsSelf = b[0].startsWith('推し ')
-                    if (aIsSelf !== bIsSelf) return aIsSelf ? -1 : 1
+                    const ra = productPrefixRank(a[0])
+                    const rb = productPrefixRank(b[0])
+                    if (ra !== rb) return ra - rb
                     const totalA = a[1].castSales.reduce((sum, cs) => sum + cs.total, 0)
                     const totalB = b[1].castSales.reduce((sum, cs) => sum + cs.total, 0)
                     return totalB - totalA
@@ -1790,10 +1836,10 @@ function CastSalesPageContent() {
             >
               {Array.from(productSalesData.entries())
                 .sort((a, b) => {
-                  // 推しを先に、ヘルプを後に
-                  const aIsSelf = a[0].startsWith('推し ')
-                  const bIsSelf = b[0].startsWith('推し ')
-                  if (aIsSelf !== bIsSelf) return aIsSelf ? -1 : 1
+                  // 推し → ヘルプ → BASE の順
+                  const ra = productPrefixRank(a[0])
+                  const rb = productPrefixRank(b[0])
+                  if (ra !== rb) return ra - rb
                   // 同じ種類なら合計数量順
                   const totalA = a[1].castSales.reduce((sum, cs) => sum + cs.total, 0)
                   const totalB = b[1].castSales.reduce((sum, cs) => sum + cs.total, 0)
