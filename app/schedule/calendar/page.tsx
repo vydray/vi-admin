@@ -25,6 +25,11 @@ const ASSET_KINDS: Record<number, ('bg' | 'banner' | 'logo')[]> = {
 // カード型レイアウト（コンテンツ開始位置を調整できる店舗）
 const CARD_STORES = new Set<number>([1])
 
+// 店舗ごとの住所デフォルト（未入力時に自動で入る）
+const DEFAULT_ADDRESS: Record<number, string> = {
+  1: '東京新宿区歌舞伎町2-23-12\nチェックメイトビル5階\n18:00〜24:00 (LO23:30)',
+}
+
 const now = new Date()
 
 export default function CalendarPage() {
@@ -56,7 +61,8 @@ function CalendarContent() {
     if (storeId == null || typeof window === 'undefined') return
     const savedTop = window.localStorage.getItem(`cal-contentTop-${storeId}`)
     setContentTop(savedTop != null ? Number(savedTop) : 40)
-    setAddress(window.localStorage.getItem(`cal-address-${storeId}`) ?? '')
+    const savedAddr = window.localStorage.getItem(`cal-address-${storeId}`)
+    setAddress(savedAddr && savedAddr.length > 0 ? savedAddr : (DEFAULT_ADDRESS[storeId] ?? ''))
   }, [storeId])
 
   const updateContentTop = (v: number) => {
