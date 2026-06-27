@@ -1058,7 +1058,7 @@ function CastSalesPageContent() {
                           zIndex: 5,
                           fontSize: '13px'
                         }}>
-                          {castSales.castName}
+                          <Link href={`/cast-sales/${castSales.castId}`} style={{ color: '#6366f1', textDecoration: 'none', fontWeight: 600 }}>{castSales.castName}</Link>
                         </td>
                         {days.map(day => {
                           const dateStr = format(day, 'yyyy-MM-dd')
@@ -1648,7 +1648,7 @@ function CastSalesPageContent() {
                       zIndex: 5,
                       boxShadow: '2px 0 4px rgba(0,0,0,0.05)'
                     }}>
-                      {castSales.castName}
+                      <Link href={`/cast-sales/${castSales.castId}`} style={{ color: '#6366f1', textDecoration: 'none', fontWeight: 600 }}>{castSales.castName}</Link>
                     </td>
                     {days.map(day => {
                       const dateStr = format(day, 'yyyy-MM-dd')
