@@ -196,7 +196,7 @@ function CalendarContent() {
             <textarea
               value={address}
               onChange={(e) => updateAddress(e.target.value)}
-              placeholder={'東京新宿区歌舞伎町2-23-12\nチェックメイトビル5階\n18:00〜24:00 (LO23:30)'}
+              placeholder={'ここに住所・営業時間などを入力（改行OK）'}
               rows={4}
               style={{ ...styles.select, flex: 1, minWidth: 280, resize: 'vertical', fontFamily: 'inherit' }}
             />
