@@ -203,7 +203,7 @@ function CastHistory() {
             <table style={styles.table}>
               <thead>
                 <tr>
-                  <th style={styles.th}>月</th>
+                  <th style={styles.thMonth}>月</th>
                   <th style={{ ...styles.th, textAlign: 'right' }}>総売上</th>
                   <th style={{ ...styles.th, textAlign: 'right' }}>前月比</th>
                   <th style={{ ...styles.th, textAlign: 'right' }}>店舗売上</th>
@@ -331,9 +331,10 @@ const styles: Record<string, CSSProperties> = {
   tableWrap: { background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, overflowX: 'auto' },
   table: { width: '100%', borderCollapse: 'collapse', fontSize: 14, minWidth: 1080 },
   th: { padding: '12px 14px', textAlign: 'left', background: '#f8fafc', color: '#475569', fontWeight: 600, fontSize: 13, borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' },
+  thMonth: { padding: '12px 14px', textAlign: 'left', background: '#f8fafc', color: '#475569', fontWeight: 600, fontSize: 13, borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap', position: 'sticky', left: 0, zIndex: 11, boxShadow: '2px 0 4px rgba(0,0,0,0.04)' },
   thCat: { padding: '12px 8px', textAlign: 'center', background: '#f8fafc', color: '#475569', fontWeight: 600, fontSize: 12, borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' },
   tdCat: { padding: '12px 8px', textAlign: 'center', borderBottom: '1px solid #f1f5f9', color: '#334155', fontSize: 13, whiteSpace: 'nowrap' },
-  tdMonth: { padding: '12px 14px', fontWeight: 600, color: '#1e293b', borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap' },
+  tdMonth: { padding: '12px 14px', fontWeight: 600, color: '#1e293b', borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap', position: 'sticky', left: 0, zIndex: 1, background: '#fff', boxShadow: '2px 0 4px rgba(0,0,0,0.04)' },
   td: { padding: '12px 14px', borderBottom: '1px solid #f1f5f9', color: '#334155', whiteSpace: 'nowrap' },
   note: { fontSize: 12, color: '#94a3b8', marginTop: 12 },
 }
