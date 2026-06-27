@@ -124,8 +124,8 @@ function CastHistory() {
     [rows],
   )
   const sum = rows.reduce(
-    (a, r) => ({ totalSales: a.totalSales + r.totalSales, nominations: a.nominations + r.nominations, workDays: a.workDays + r.workDays, workHours: a.workHours + r.workHours }),
-    { totalSales: 0, nominations: 0, workDays: 0, workHours: 0 },
+    (a, r) => ({ totalSales: a.totalSales + r.totalSales, posSales: a.posSales + r.posSales, nominations: a.nominations + r.nominations, workDays: a.workDays + r.workDays, workHours: a.workHours + r.workHours }),
+    { totalSales: 0, posSales: 0, nominations: 0, workDays: 0, workHours: 0 },
   )
 
   return (
@@ -145,6 +145,7 @@ function CastHistory() {
           <div style={styles.summary}>
             <div style={styles.sumCard}><div style={styles.sumLabel}>累計売上</div><div style={styles.sumVal}>{yen(sum.totalSales)}</div></div>
             <div style={styles.sumCard}><div style={styles.sumLabel}>累計指名</div><div style={styles.sumVal}>{sum.nominations}本</div></div>
+            <div style={styles.sumCard}><div style={styles.sumLabel}>客単価</div><div style={styles.sumVal}>{sum.nominations > 0 ? yen(sum.posSales / sum.nominations) : '-'}</div></div>
             <div style={styles.sumCard}><div style={styles.sumLabel}>累計出勤</div><div style={styles.sumVal}>{sum.workDays}日</div></div>
             <div style={styles.sumCard}><div style={styles.sumLabel}>累計勤務</div><div style={styles.sumVal}>{sum.workHours.toFixed(1)}h</div></div>
           </div>
@@ -175,6 +176,7 @@ function CastHistory() {
                   <th style={{ ...styles.th, textAlign: 'right' }}>店舗売上</th>
                   <th style={{ ...styles.th, textAlign: 'right' }}>BASE</th>
                   <th style={{ ...styles.th, textAlign: 'right' }}>指名</th>
+                  <th style={{ ...styles.th, textAlign: 'right' }}>客単価</th>
                   <th style={{ ...styles.th, textAlign: 'right' }}>出勤</th>
                   <th style={{ ...styles.th, textAlign: 'right' }}>勤務</th>
                 </tr>
@@ -192,6 +194,7 @@ function CastHistory() {
                       <td style={{ ...styles.td, textAlign: 'right', color: '#475569' }}>{yen(r.posSales)}</td>
                       <td style={{ ...styles.td, textAlign: 'right', color: '#475569' }}>{r.baseSales > 0 ? yen(r.baseSales) : '-'}</td>
                       <td style={{ ...styles.td, textAlign: 'right' }}>{r.nominations}本</td>
+                      <td style={{ ...styles.td, textAlign: 'right', color: '#475569' }}>{r.nominations > 0 ? yen(r.posSales / r.nominations) : '-'}</td>
                       <td style={{ ...styles.td, textAlign: 'right' }}>{r.workDays}日</td>
                       <td style={{ ...styles.td, textAlign: 'right' }}>{r.workHours.toFixed(1)}h</td>
                     </tr>
@@ -287,7 +290,7 @@ const styles: Record<string, CSSProperties> = {
   chartCard: { background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '16px 12px 12px', marginBottom: 20 },
   chartTitle: { fontSize: 13, fontWeight: 600, color: '#475569', margin: '0 0 8px 8px' },
   tableWrap: { background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, overflowX: 'auto' },
-  table: { width: '100%', borderCollapse: 'collapse', fontSize: 14, minWidth: 640 },
+  table: { width: '100%', borderCollapse: 'collapse', fontSize: 14, minWidth: 720 },
   th: { padding: '12px 14px', textAlign: 'left', background: '#f8fafc', color: '#475569', fontWeight: 600, fontSize: 13, borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' },
   tdMonth: { padding: '12px 14px', fontWeight: 600, color: '#1e293b', borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap' },
   td: { padding: '12px 14px', borderBottom: '1px solid #f1f5f9', color: '#334155', whiteSpace: 'nowrap' },
