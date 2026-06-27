@@ -26,7 +26,19 @@ const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v
  * 一度キャラ抜きでカレンダーを生成し、それを背景にキャラ画像をドラッグ＆リサイズで配置する。
  * 位置はキャンバスに対する比率で保存（生成時に最前面で合成される）。
  */
-export default function CharacterEditor({ storeId, genParams }: { storeId: number; genParams: GenParams }) {
+export default function CharacterEditor({
+  storeId,
+  genParams,
+  address,
+  addressPos,
+  onAddressPosChange,
+}: {
+  storeId: number
+  genParams: GenParams
+  address: string
+  addressPos: { x: number; y: number; w: number }
+  onAddressPosChange: (p: { x: number; y: number; w: number }) => void
+}) {
   const [open, setOpen] = useState(false)
   const [chars, setChars] = useState<Char[]>([])
   const [backdrop, setBackdrop] = useState<string | null>(null)
@@ -38,6 +50,8 @@ export default function CharacterEditor({ storeId, genParams }: { storeId: numbe
   const dragRef = useRef<{ id: string; mode: 'move' | 'resize'; sx: number; sy: number; ox: number; oy: number; ow: number } | null>(null)
   const reqIdRef = useRef(0)
   const abortRef = useRef<AbortController | null>(null)
+  const onAddrRef = useRef(onAddressPosChange)
+  onAddrRef.current = onAddressPosChange
 
   const fetchChars = useCallback(async () => {
     try {
@@ -59,7 +73,8 @@ export default function CharacterEditor({ storeId, genParams }: { storeId: numbe
       const res = await fetch('/api/schedule/calendar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ storeId, ...genParams, excludeCharacters: true }),
+        // 背景はキャラ・住所とも除外（どちらもエディタ上のドラッグ要素として重ねる）
+        body: JSON.stringify({ storeId, ...genParams, address: '', excludeCharacters: true }),
         signal: ac.signal,
       })
       const j = await res.json()
@@ -93,13 +108,21 @@ export default function CharacterEditor({ storeId, genParams }: { storeId: numbe
       const rect = wrapRef.current.getBoundingClientRect()
       const dx = (e.clientX - d.sx) / rect.width
       const dy = (e.clientY - d.sy) / rect.height
-      setChars((prev) =>
-        prev.map((c) => {
-          if (c.id !== d.id) return c
-          if (d.mode === 'move') return { ...c, x: clamp(d.ox + dx, -0.3, 1), y: clamp(d.oy + dy, -0.3, 1) }
-          return { ...c, w: clamp(d.ow + dx, 0.03, 1.2) }
-        }),
-      )
+      if (d.id === '__addr__') {
+        const np =
+          d.mode === 'move'
+            ? { x: clamp(d.ox + dx, -0.3, 1), y: clamp(d.oy + dy, -0.3, 1), w: d.ow }
+            : { x: d.ox, y: d.oy, w: clamp(d.ow + dx, 0.06, 1.2) }
+        onAddrRef.current(np)
+      } else {
+        setChars((prev) =>
+          prev.map((c) => {
+            if (c.id !== d.id) return c
+            if (d.mode === 'move') return { ...c, x: clamp(d.ox + dx, -0.3, 1), y: clamp(d.oy + dy, -0.3, 1) }
+            return { ...c, w: clamp(d.ow + dx, 0.03, 1.2) }
+          }),
+        )
+      }
     }
     const onUp = () => {
       dragRef.current = null
@@ -112,11 +135,11 @@ export default function CharacterEditor({ storeId, genParams }: { storeId: numbe
     }
   }, [])
 
-  const startDrag = (e: React.MouseEvent, c: Char, mode: 'move' | 'resize') => {
+  const startDrag = (e: React.MouseEvent, id: string, mode: 'move' | 'resize', pos: { x: number; y: number; w: number }) => {
     e.preventDefault()
     e.stopPropagation()
-    setSelectedId(c.id)
-    dragRef.current = { id: c.id, mode, sx: e.clientX, sy: e.clientY, ox: c.x, oy: c.y, ow: c.w }
+    setSelectedId(id)
+    dragRef.current = { id, mode, sx: e.clientX, sy: e.clientY, ox: pos.x, oy: pos.y, ow: pos.w }
   }
 
   const onUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -199,7 +222,7 @@ export default function CharacterEditor({ storeId, genParams }: { storeId: numbe
             <button onClick={onSave} disabled={saving} style={styles.saveBtn}>{saving ? '保存中...' : '位置を保存'}</button>
             <input ref={fileRef} type="file" accept="image/*" onChange={onUpload} style={{ display: 'none' }} />
           </div>
-          <p style={styles.note}>キャラをドラッグで移動、選択中の右下●でサイズ変更。保存後に生成で反映されます。</p>
+          <p style={styles.note}>キャラ・住所をドラッグで移動、選択中の右下●でサイズ変更。「位置を保存」後に生成で反映（住所はキャラより前面）。</p>
 
           <div ref={wrapRef} style={styles.stage} onMouseDown={() => setSelectedId(null)}>
             {loadingBackdrop && !backdrop ? (
@@ -214,7 +237,7 @@ export default function CharacterEditor({ storeId, genParams }: { storeId: numbe
             {chars.map((c) => (
               <div
                 key={c.id}
-                onMouseDown={(e) => startDrag(e, c, 'move')}
+                onMouseDown={(e) => startDrag(e, c.id, 'move', c)}
                 style={{
                   position: 'absolute',
                   left: `${c.x * 100}%`,
@@ -229,7 +252,7 @@ export default function CharacterEditor({ storeId, genParams }: { storeId: numbe
                 <img src={c.url} alt="キャラ" style={{ width: '100%', display: 'block', pointerEvents: 'none' }} draggable={false} />
                 {selectedId === c.id && (
                   <>
-                    <div onMouseDown={(e) => startDrag(e, c, 'resize')} style={styles.resizeHandle} />
+                    <div onMouseDown={(e) => startDrag(e, c.id, 'resize', c)} style={styles.resizeHandle} />
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
@@ -244,6 +267,27 @@ export default function CharacterEditor({ storeId, genParams }: { storeId: numbe
                 )}
               </div>
             ))}
+
+            {address.trim() && (
+              <div
+                onMouseDown={(e) => startDrag(e, '__addr__', 'move', addressPos)}
+                style={{
+                  position: 'absolute',
+                  left: `${addressPos.x * 100}%`,
+                  top: `${addressPos.y * 100}%`,
+                  width: `${addressPos.w * 100}%`,
+                  cursor: 'move',
+                  outline: selectedId === '__addr__' ? '2px solid #e3589e' : '1px dashed rgba(227,88,158,0.55)',
+                  zIndex: selectedId === '__addr__' ? 5 : 4,
+                  containerType: 'inline-size',
+                }}
+              >
+                <div style={styles.addrText}>{address}</div>
+                {selectedId === '__addr__' && (
+                  <div onMouseDown={(e) => startDrag(e, '__addr__', 'resize', addressPos)} style={styles.resizeHandle} />
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -280,6 +324,11 @@ const styles: Record<string, CSSProperties> = {
   },
   stageLoading: { padding: 60, textAlign: 'center', color: '#94a3b8', fontSize: 14 },
   backdrop: { width: '100%', display: 'block' },
+  addrText: {
+    textAlign: 'center', fontWeight: 700, color: '#e3589e', fontSize: '7cqw',
+    lineHeight: 1.3, whiteSpace: 'pre-line', pointerEvents: 'none',
+    WebkitTextStroke: '0.5px #fff', textShadow: '0 1px 2px #fff',
+  },
   resizeHandle: {
     position: 'absolute', right: -9, bottom: -9, width: 18, height: 18,
     backgroundColor: '#ec4899', border: '2px solid #fff', borderRadius: '50%', cursor: 'nwse-resize',

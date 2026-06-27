@@ -110,6 +110,14 @@ export async function POST(request: NextRequest) {
     const contentTopRaw = Number(body.contentTop)
     const contentTop = Number.isFinite(contentTopRaw) && contentTopRaw >= 0 ? contentTopRaw : undefined
     const address = typeof body.address === 'string' ? body.address.slice(0, 500) : undefined
+    const ap = body.addressPos
+    const addressPos = ap && typeof ap === 'object'
+      ? {
+          x: Number.isFinite(Number(ap.x)) ? Number(ap.x) : 0,
+          y: Number.isFinite(Number(ap.y)) ? Number(ap.y) : 0,
+          w: Number.isFinite(Number(ap.w)) ? Math.min(1.5, Math.max(0.05, Number(ap.w))) : 0.4,
+        }
+      : undefined
     const excludeCharacters = body.excludeCharacters === true // 配置エディタの背景プレビュー用
 
     if (!storeId || !year || !month || month < 1 || month > 12) {
@@ -214,7 +222,7 @@ export async function POST(request: NextRequest) {
 
     const characters = isCard && !excludeCharacters ? await downloadCharacters(storeId) : []
 
-    const renderParams = { title, startDate, endDate, shifts, events, backgroundImage, bannerImage, logoImage, contentTop, address, characters }
+    const renderParams = { title, startDate, endDate, shifts, events, backgroundImage, bannerImage, logoImage, contentTop, address, addressPos, characters }
     const buffer = isCard
       ? await renderMemorableCalendar(renderParams, calendar.theme)
       : await renderCalendar(renderParams, calendar.theme)

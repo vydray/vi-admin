@@ -30,6 +30,8 @@ const CARD_STORES = new Set<number>([1])
 const DEFAULT_ADDRESS: Record<number, string> = {
   1: '東京新宿区歌舞伎町2-23-12\nチェックメイトビル5階\n18:00〜24:00 (LO23:30)',
 }
+// 住所の配置デフォルト（右下）
+const DEFAULT_ADDR_POS = { x: 0.58, y: 0.84, w: 0.4 }
 
 const now = new Date()
 
@@ -57,6 +59,7 @@ function CalendarContent() {
   const isCard = storeId != null && CARD_STORES.has(storeId)
   const [contentTop, setContentTop] = useState<number>(40)
   const [address, setAddress] = useState<string>('')
+  const [addressPos, setAddressPos] = useState<{ x: number; y: number; w: number }>(DEFAULT_ADDR_POS)
 
   useEffect(() => {
     if (storeId == null || typeof window === 'undefined') return
@@ -64,7 +67,25 @@ function CalendarContent() {
     setContentTop(savedTop != null ? Number(savedTop) : 40)
     const savedAddr = window.localStorage.getItem(`cal-address-${storeId}`)
     setAddress(savedAddr && savedAddr.length > 0 ? savedAddr : (DEFAULT_ADDRESS[storeId] ?? ''))
+    const savedPos = window.localStorage.getItem(`cal-addressPos-${storeId}`)
+    if (savedPos) {
+      try {
+        const p = JSON.parse(savedPos)
+        setAddressPos({ x: Number(p.x) || 0, y: Number(p.y) || 0, w: Number(p.w) || DEFAULT_ADDR_POS.w })
+      } catch {
+        setAddressPos(DEFAULT_ADDR_POS)
+      }
+    } else {
+      setAddressPos(DEFAULT_ADDR_POS)
+    }
   }, [storeId])
+
+  const updateAddressPos = (p: { x: number; y: number; w: number }) => {
+    setAddressPos(p)
+    if (storeId != null && typeof window !== 'undefined') {
+      window.localStorage.setItem(`cal-addressPos-${storeId}`, JSON.stringify(p))
+    }
+  }
 
   const updateContentTop = (v: number) => {
     const n = Number.isFinite(v) ? Math.max(0, v) : 0
@@ -98,7 +119,7 @@ function CalendarContent() {
       const res = await fetch('/api/schedule/calendar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ storeId, year, month, half, contentTop, address }),
+        body: JSON.stringify({ storeId, year, month, half, contentTop, address, addressPos }),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -235,7 +256,13 @@ function CalendarContent() {
       )}
 
       {isCard && storeId && (
-        <CharacterEditor storeId={storeId} genParams={genParams} />
+        <CharacterEditor
+          storeId={storeId}
+          genParams={genParams}
+          address={address}
+          addressPos={addressPos}
+          onAddressPosChange={updateAddressPos}
+        />
       )}
 
       {image && (

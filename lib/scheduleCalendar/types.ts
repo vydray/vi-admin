@@ -35,8 +35,10 @@ export interface RenderCalendarParams {
   logoImage?: Buffer | null
   /** カード型: コンテンツ(タイトル＋カード)の上開始位置(px)。背景上部の飾りを避けるため下げる */
   contentTop?: number
-  /** カード型: 住所等のテキスト(改行可)。最終行の右下の空き or 下帯に動的配置する */
+  /** カード型: 住所等のテキスト(改行可) */
   address?: string
+  /** カード型: 住所の配置（左上x・上y・幅w、いずれもキャンバス比率）。未指定は既定の右下 */
+  addressPos?: { x: number; y: number; w: number }
   /** カード型: 立ち絵などのキャラ画像。保存位置(比率)で最前面に合成する */
   characters?: CalendarCharacter[]
 }

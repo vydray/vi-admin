@@ -93,37 +93,30 @@ function roundRect(
   ctx.closePath()
 }
 
-// 住所テキストを矩形領域に収めて描く（タイトルと同系: ピンクグラデ＋白縁＋灰外縁、複数行）
+// 住所テキストを (x,y) 左上・幅 w で描く（幅に合わせて自動サイズ）。タイトルと同系の配色。
 function drawAddress(
   ctx: ReturnType<ReturnType<typeof createCanvas>['getContext']>,
   theme: CalendarTheme,
   text: string,
-  rx: number,
-  ry: number,
-  rw: number,
-  rh: number,
+  x: number,
+  y: number,
+  w: number,
 ) {
   const lines = text.split('\n').map((l) => l.trim()).filter(Boolean)
   if (lines.length === 0) return
-  const maxW = rw - 24
-  const maxH = rh - 16
-  const lineRatio = 1.32
+  // 最長行が幅wにほぼ収まるようフォントサイズを決める
+  const refSize = 100
+  ctx.font = `bold ${refSize}px "${theme.fonts.title}", sans-serif`
+  const widest = Math.max(...lines.map((l) => ctx.measureText(l).width))
+  let fontSize = widest > 0 ? Math.round((refSize * w * 0.98) / widest) : 40
+  fontSize = Math.max(12, Math.min(fontSize, 200))
+  ctx.font = `bold ${fontSize}px "${theme.fonts.title}", sans-serif`
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
-  let fontSize = 48
-  const fits = () => {
-    ctx.font = `bold ${fontSize}px "${theme.fonts.title}", sans-serif`
-    const widest = Math.max(...lines.map((l) => ctx.measureText(l).width))
-    return widest <= maxW && lines.length * fontSize * lineRatio <= maxH
-  }
-  while (fontSize > 14 && !fits()) fontSize -= 2
-  ctx.font = `bold ${fontSize}px "${theme.fonts.title}", sans-serif`
-  const lineH = fontSize * lineRatio
-  const blockH = lines.length * lineH
-  const cx = rx + rw / 2
-  const blockTop = ry + (rh - blockH) / 2
-  let ly = blockTop + lineH / 2
-  const grad = ctx.createLinearGradient(0, blockTop, 0, blockTop + blockH)
+  const lineH = fontSize * 1.3
+  const cx = x + w / 2
+  let ly = y + lineH / 2
+  const grad = ctx.createLinearGradient(0, y, 0, y + lines.length * lineH)
   grad.addColorStop(0, '#ff93c4')
   grad.addColorStop(1, '#e3589e')
   ctx.lineJoin = 'round'
@@ -146,7 +139,7 @@ export async function renderMemorableCalendar(
   theme: CalendarTheme,
 ): Promise<Buffer> {
   ensureFonts(theme)
-  const { title, startDate, endDate, shifts, backgroundImage, logoImage, contentTop, address, characters } = params
+  const { title, startDate, endDate, shifts, backgroundImage, logoImage, contentTop, address, addressPos, characters } = params
   const c = theme.colors
   // コンテンツ開始位置（背景の上部装飾を避けるため下げられる。未指定は既定）
   const topPad = contentTop != null && contentTop >= 0 ? contentTop : LOGO_TOP_PAD
@@ -190,14 +183,8 @@ export async function renderMemorableCalendar(
     if (row < numRows - 1) gridH += ROW_GAP
   }
 
-  // 住所の配置を決める。最終行の右に空きセルが2列以上あればそこへ、無ければ下に帯を足す。
-  // 月でカード高が変わっても常にカードに追従する（bgに焼き込まないことで位置ズレを防ぐ）。
   const addrText = (address ?? '').trim()
   const hasAddress = addrText.length > 0
-  const lastRowH = rowCellHeights[numRows - 1] + BORDER * 2
-  const lastCol = (dates.length - 1 + startDow) % 7
-  const addrInLastRow = hasAddress && 6 - lastCol >= 2 && lastRowH >= 180
-  const addressBandH = hasAddress && !addrInLastRow ? 300 : 0
 
   // 背景・ロゴ画像を先に読み込む（壊れていたら無視してフォールバック）
   let bgImg: Awaited<ReturnType<typeof loadImage>> | null = null
@@ -231,10 +218,7 @@ export async function renderMemorableCalendar(
 
   // 上部領域 = [余白][ロゴ(任意)][余白][タイトル帯]
   const titleAreaH = topPad + (logoImg ? logoH + 16 : 0) + TITLE_BAND_H
-  // 最終行カードの上端Y（住所を右下の空きに置くため）
-  let lastRowTop = titleAreaH
-  for (let r = 0; r < numRows - 1; r++) lastRowTop += rowCellHeights[r] + BORDER * 2 + ROW_GAP
-  const contentH = titleAreaH + gridH + BOTTOM_MARGIN + addressBandH
+  const contentH = titleAreaH + gridH + BOTTOM_MARGIN
 
   // 背景は上端基準で全幅表示し、上の飾り(スカラップ等)を切らない（中央クロップしない）。
   // キャンバス高はコンテンツに合わせる＝下の余った空白を切り落とす。背景が下にはみ出す分は
@@ -362,19 +346,7 @@ export async function renderMemorableCalendar(
     y += cardH + ROW_GAP
   }
 
-  // ---------- 住所（右下の空き or 下帯に動的配置） ----------
-  if (hasAddress) {
-    if (addrInLastRow) {
-      const rx = MARGIN + (lastCol + 1) * (CARD_W + CARD_GAP)
-      const rw = CANVAS_W - MARGIN - rx
-      drawAddress(ctx, theme, addrText, rx, lastRowTop, rw, lastRowH)
-    } else {
-      const bandY = titleAreaH + gridH + BOTTOM_MARGIN
-      drawAddress(ctx, theme, addrText, MARGIN, bandY, CANVAS_W - MARGIN * 2, addressBandH - 16)
-    }
-  }
-
-  // ---------- キャラ（立ち絵など。保存位置で最前面に合成） ----------
+  // ---------- キャラ（立ち絵など。保存位置で合成。住所より下のレイヤー） ----------
   if (characters && characters.length > 0) {
     for (const ch of characters) {
       try {
@@ -386,6 +358,12 @@ export async function renderMemorableCalendar(
         console.error('[renderMemorable] キャラ画像のデコード失敗、スキップ:', e)
       }
     }
+  }
+
+  // ---------- 住所（自由配置・キャラより前面） ----------
+  if (hasAddress) {
+    const pos = addressPos ?? { x: 0.58, y: 0.84, w: 0.4 }
+    drawAddress(ctx, theme, addrText, pos.x * CANVAS_W, pos.y * CANVAS_H, pos.w * CANVAS_W)
   }
 
   return canvas.toBuffer('image/png')
