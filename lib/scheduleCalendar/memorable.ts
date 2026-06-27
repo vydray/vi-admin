@@ -177,9 +177,10 @@ export async function renderMemorableCalendar(
   const contentH = titleAreaH + gridH + BOTTOM_MARGIN
 
   // 背景は上端基準で全幅表示し、上の飾り(スカラップ等)を切らない（中央クロップしない）。
-  // キャンバス高は「背景全体が入る高さ」と「コンテンツ高」の大きい方。
+  // キャンバス高はコンテンツに合わせる＝下の余った空白を切り落とす。背景が下にはみ出す分は
+  // キャンバスでクリップされ、背景がコンテンツより短ければ下端はフォールバック色で埋める。
   const bgScaledH = bgImg ? Math.round(CANVAS_W * (bgImg.height / bgImg.width)) : 0
-  const CANVAS_H = Math.max(contentH, bgScaledH)
+  const CANVAS_H = contentH
 
   const canvas = createCanvas(CANVAS_W, CANVAS_H)
   const ctx = canvas.getContext('2d')
@@ -213,10 +214,11 @@ export async function renderMemorableCalendar(
   ctx.lineWidth = 13
   ctx.strokeStyle = '#ffffff'
   ctx.strokeText(title, titleX, titleY)
-  // 塗り: 縦方向のピンクグラデーション（ロゴと同系）
-  const titleGrad = ctx.createLinearGradient(0, titleY - 46, 0, titleY + 46)
-  titleGrad.addColorStop(0, '#ffa9d4')
-  titleGrad.addColorStop(1, '#e24d92')
+  // 塗り: 縦方向のピンクグラデーション（ロゴと同系。上が淡く下が濃いキャンディ調の3段）
+  const titleGrad = ctx.createLinearGradient(0, titleY - 52, 0, titleY + 52)
+  titleGrad.addColorStop(0, '#ffd9ee')
+  titleGrad.addColorStop(0.45, '#ff93c4')
+  titleGrad.addColorStop(1, '#e3589e')
   ctx.fillStyle = titleGrad
   ctx.fillText(title, titleX, titleY)
 
