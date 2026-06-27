@@ -139,28 +139,34 @@ function CastHistory() {
       for (const m of arr) m.totalSales = m.posSales + m.baseSales
       setRows(arr.sort((a, b) => b.ym.localeCompare(a.ym)))
 
-      // 商品別（全期間, 1000行上限対策でページング取得）
+      // 商品別（全期間, 1000行上限対策でページング取得）。
+      // 売上はランキング/月別と同じ集計方式の「推し(自分の卓)」分(self_sales_*)で集計し、
+      // 店舗売上の推し部分と一致させる。ヘルプ分は明細に商品按分情報が無いため含めない。
+      const selfF = receipt ? 'self_sales_receipt_based' : 'self_sales_item_based'
       const itemMap = new Map<string, ProductRow>()
       const PAGE = 1000
       for (let from = 0; from < 20000; from += PAGE) {
         const { data: items, error } = await supabase
           .from('cast_daily_items')
-          .select('product_name, category, quantity, subtotal')
+          .select(`product_name, category, quantity, ${selfF}`)
           .eq('cast_id', castId)
           .eq('store_id', storeId)
           .range(from, from + PAGE - 1)
         if (error || !items || items.length === 0) break
         for (const it of items) {
-          const name = (it.product_name as string) || '(不明)'
-          const cat = (it.category as string) || ''
+          const row = it as Record<string, unknown>
+          const amt = Number(row[selfF]) || 0
+          if (amt <= 0) continue // 推し売上が無い行(ヘルプ等)は商品別から除外
+          const name = (row.product_name as string) || '(不明)'
+          const cat = (row.category as string) || ''
           const key = name + '|' + cat
           let p = itemMap.get(key)
           if (!p) {
             p = { name, category: cat, qty: 0, amt: 0 }
             itemMap.set(key, p)
           }
-          p.qty += Number(it.quantity) || 0
-          p.amt += Number(it.subtotal) || 0
+          p.qty += Number(row.quantity) || 0
+          p.amt += amt
         }
         if (items.length < PAGE) break
       }
@@ -281,7 +287,7 @@ function CastHistory() {
 
           {products.length > 0 && (
             <div style={styles.prodCard}>
-              <div style={styles.chartTitle}>商品別 売上（全期間・明細小計）</div>
+              <div style={styles.chartTitle}>商品別 売上（推し分・全期間）</div>
               <div style={styles.prodTableWrap}>
                 <table style={styles.table2}>
                   <thead>
