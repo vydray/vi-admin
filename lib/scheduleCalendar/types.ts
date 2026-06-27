@@ -35,6 +35,8 @@ export interface RenderCalendarParams {
   logoImage?: Buffer | null
   /** カード型: コンテンツ(タイトル＋カード)の上開始位置(px)。背景上部の飾りを避けるため下げる */
   contentTop?: number
+  /** カード型: 住所等のテキスト(改行可)。最終行の右下の空き or 下帯に動的配置する */
+  address?: string
 }
 
 /** node-canvas に登録するフォント */

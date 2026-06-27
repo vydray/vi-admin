@@ -47,14 +47,16 @@ function CalendarContent() {
   const [filename, setFilename] = useState('')
   const [info, setInfo] = useState<{ shiftCount: number; eventCount: number } | null>(null)
 
-  // カード型(memorable): 背景上部の飾りを避けるコンテンツ開始位置。店舗ごとにlocalStorage保存
+  // カード型(memorable): 上余白・住所を店舗ごとにlocalStorage保存
   const isCard = storeId != null && CARD_STORES.has(storeId)
   const [contentTop, setContentTop] = useState<number>(40)
+  const [address, setAddress] = useState<string>('')
 
   useEffect(() => {
     if (storeId == null || typeof window === 'undefined') return
-    const saved = window.localStorage.getItem(`cal-contentTop-${storeId}`)
-    setContentTop(saved != null ? Number(saved) : 40)
+    const savedTop = window.localStorage.getItem(`cal-contentTop-${storeId}`)
+    setContentTop(savedTop != null ? Number(savedTop) : 40)
+    setAddress(window.localStorage.getItem(`cal-address-${storeId}`) ?? '')
   }, [storeId])
 
   const updateContentTop = (v: number) => {
@@ -62,6 +64,13 @@ function CalendarContent() {
     setContentTop(n)
     if (storeId != null && typeof window !== 'undefined') {
       window.localStorage.setItem(`cal-contentTop-${storeId}`, String(n))
+    }
+  }
+
+  const updateAddress = (v: string) => {
+    setAddress(v)
+    if (storeId != null && typeof window !== 'undefined') {
+      window.localStorage.setItem(`cal-address-${storeId}`, v)
     }
   }
 
@@ -76,7 +85,7 @@ function CalendarContent() {
       const res = await fetch('/api/schedule/calendar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ storeId, year, month, half, contentTop }),
+        body: JSON.stringify({ storeId, year, month, half, contentTop, address }),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -178,6 +187,20 @@ function CalendarContent() {
               style={{ ...styles.select, width: 96 }}
             />
             <span style={styles.cardHint}>背景上部の飾り(ロゴ等)に被る時はこの数値を上げる（px）</span>
+          </div>
+        )}
+
+        {isCard && (
+          <div style={{ ...styles.row, ...(isMobile ? styles.rowMobile : {}), alignItems: 'flex-start' }}>
+            <label style={styles.label}>住所等</label>
+            <textarea
+              value={address}
+              onChange={(e) => updateAddress(e.target.value)}
+              placeholder={'東京新宿区歌舞伎町2-23-12\nチェックメイトビル5階\n18:00〜24:00 (LO23:30)'}
+              rows={4}
+              style={{ ...styles.select, flex: 1, minWidth: 280, resize: 'vertical', fontFamily: 'inherit' }}
+            />
+            <span style={styles.cardHint}>カード下の空きに自動配置（改行OK）。背景には焼き込まないで</span>
           </div>
         )}
 
