@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback, type CSSProperties } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo, type CSSProperties } from 'react'
 import { toast } from 'react-hot-toast'
 
 interface Char {
@@ -16,7 +16,6 @@ export interface GenParams {
   month: number
   half: 'first' | 'second'
   contentTop: number
-  address: string
 }
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
@@ -52,6 +51,15 @@ export default function CharacterEditor({
   const abortRef = useRef<AbortController | null>(null)
   const onAddrRef = useRef(onAddressPosChange)
   onAddrRef.current = onAddressPosChange
+
+  // 住所のプレビュー文字サイズ。サーバ同様「最長行が箱幅に収まる」式に寄せる（全角=1/半角=0.5）
+  const addrFontCqw = useMemo(() => {
+    const lines = address.split('\n').map((l) => l.trim()).filter(Boolean)
+    if (!lines.length) return 7
+    const weighted = (s: string) => [...s].reduce((a, ch) => a + (ch.charCodeAt(0) < 0x100 ? 0.5 : 1), 0)
+    const widest = Math.max(...lines.map(weighted), 1)
+    return Math.max(2, Math.min(20, (100 * 0.98) / widest))
+  }, [address])
 
   const fetchChars = useCallback(async () => {
     try {
@@ -222,7 +230,7 @@ export default function CharacterEditor({
             <button onClick={onSave} disabled={saving} style={styles.saveBtn}>{saving ? '保存中...' : '位置を保存'}</button>
             <input ref={fileRef} type="file" accept="image/*" onChange={onUpload} style={{ display: 'none' }} />
           </div>
-          <p style={styles.note}>キャラ・住所をドラッグで移動、選択中の右下●でサイズ変更。「位置を保存」後に生成で反映（住所はキャラより前面）。</p>
+          <p style={styles.note}>キャラ・住所をドラッグで移動、右下●でサイズ変更。キャラは「位置を保存」、住所は自動保存（このブラウザ）。住所はキャラより前面。</p>
 
           <div ref={wrapRef} style={styles.stage} onMouseDown={() => setSelectedId(null)}>
             {loadingBackdrop && !backdrop ? (
@@ -282,7 +290,7 @@ export default function CharacterEditor({
                   containerType: 'inline-size',
                 }}
               >
-                <div style={styles.addrText}>{address}</div>
+                <div style={{ ...styles.addrText, fontSize: `${addrFontCqw}cqw` }}>{address}</div>
                 {selectedId === '__addr__' && (
                   <div onMouseDown={(e) => startDrag(e, '__addr__', 'resize', addressPos)} style={styles.resizeHandle} />
                 )}
@@ -325,7 +333,7 @@ const styles: Record<string, CSSProperties> = {
   stageLoading: { padding: 60, textAlign: 'center', color: '#94a3b8', fontSize: 14 },
   backdrop: { width: '100%', display: 'block' },
   addrText: {
-    textAlign: 'center', fontWeight: 700, color: '#e3589e', fontSize: '7cqw',
+    textAlign: 'center', fontWeight: 700, color: '#e3589e',
     lineHeight: 1.3, whiteSpace: 'pre-line', pointerEvents: 'none',
     WebkitTextStroke: '0.5px #fff', textShadow: '0 1px 2px #fff',
   },

@@ -71,7 +71,11 @@ function CalendarContent() {
     if (savedPos) {
       try {
         const p = JSON.parse(savedPos)
-        setAddressPos({ x: Number(p.x) || 0, y: Number(p.y) || 0, w: Number(p.w) || DEFAULT_ADDR_POS.w })
+        const cl = (v: unknown, lo: number, hi: number, d: number) => {
+          const n = Number(v)
+          return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d
+        }
+        setAddressPos({ x: cl(p.x, -0.3, 1, 0.58), y: cl(p.y, -0.3, 1, 0.84), w: cl(p.w, 0.06, 1.2, DEFAULT_ADDR_POS.w) })
       } catch {
         setAddressPos(DEFAULT_ADDR_POS)
       }
@@ -104,10 +108,11 @@ function CalendarContent() {
 
   const supported = storeId != null && SUPPORTED_STORES[storeId] != null
 
-  // CharacterEditor の背景プレビュー生成が毎レンダー走らないよう参照を安定化
+  // CharacterEditor の背景プレビュー生成が毎レンダー走らないよう参照を安定化。
+  // address は背景には不要（背景はaddress=''で生成）のため含めない＝住所入力での無駄な再生成を回避
   const genParams = useMemo(
-    () => ({ year, month, half, contentTop, address }),
-    [year, month, half, contentTop, address],
+    () => ({ year, month, half, contentTop }),
+    [year, month, half, contentTop],
   )
 
   const handleGenerate = async () => {

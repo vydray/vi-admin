@@ -101,15 +101,18 @@ function drawAddress(
   x: number,
   y: number,
   w: number,
+  maxBottom: number,
 ) {
   const lines = text.split('\n').map((l) => l.trim()).filter(Boolean)
   if (lines.length === 0) return
-  // 最長行が幅wにほぼ収まるようフォントサイズを決める
+  // 最長行が幅wにほぼ収まるようフォントサイズを決める。さらに下端(maxBottom)を超えないよう高さでもキャップ
   const refSize = 100
   ctx.font = `bold ${refSize}px "${theme.fonts.title}", sans-serif`
   const widest = Math.max(...lines.map((l) => ctx.measureText(l).width))
-  let fontSize = widest > 0 ? Math.round((refSize * w * 0.98) / widest) : 40
-  fontSize = Math.max(12, Math.min(fontSize, 200))
+  const byWidth = widest > 0 ? Math.round((refSize * w * 0.98) / widest) : 40
+  const byHeight = (maxBottom - y) / (lines.length * 1.3)
+  let fontSize = Math.min(byWidth, byHeight, 200)
+  fontSize = Math.max(12, fontSize)
   ctx.font = `bold ${fontSize}px "${theme.fonts.title}", sans-serif`
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
@@ -363,7 +366,7 @@ export async function renderMemorableCalendar(
   // ---------- 住所（自由配置・キャラより前面） ----------
   if (hasAddress) {
     const pos = addressPos ?? { x: 0.58, y: 0.84, w: 0.4 }
-    drawAddress(ctx, theme, addrText, pos.x * CANVAS_W, pos.y * CANVAS_H, pos.w * CANVAS_W)
+    drawAddress(ctx, theme, addrText, pos.x * CANVAS_W, pos.y * CANVAS_H, pos.w * CANVAS_W, CANVAS_H)
   }
 
   return canvas.toBuffer('image/png')

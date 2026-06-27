@@ -110,12 +110,13 @@ export async function POST(request: NextRequest) {
     const contentTopRaw = Number(body.contentTop)
     const contentTop = Number.isFinite(contentTopRaw) && contentTopRaw >= 0 ? contentTopRaw : undefined
     const address = typeof body.address === 'string' ? body.address.slice(0, 500) : undefined
+    // 欠損/範囲外は既定の右下(0.58,0.84,0.4)へ寄せる。x/y/wとも層をまたいで同じ範囲にクランプ
     const ap = body.addressPos
     const addressPos = ap && typeof ap === 'object'
       ? {
-          x: Number.isFinite(Number(ap.x)) ? Number(ap.x) : 0,
-          y: Number.isFinite(Number(ap.y)) ? Number(ap.y) : 0,
-          w: Number.isFinite(Number(ap.w)) ? Math.min(1.5, Math.max(0.05, Number(ap.w))) : 0.4,
+          x: Number.isFinite(Number(ap.x)) ? Math.min(1, Math.max(-0.3, Number(ap.x))) : 0.58,
+          y: Number.isFinite(Number(ap.y)) ? Math.min(1, Math.max(-0.3, Number(ap.y))) : 0.84,
+          w: Number.isFinite(Number(ap.w)) ? Math.min(1.2, Math.max(0.06, Number(ap.w))) : 0.4,
         }
       : undefined
     const excludeCharacters = body.excludeCharacters === true // 配置エディタの背景プレビュー用
