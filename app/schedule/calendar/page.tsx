@@ -37,6 +37,13 @@ const DEFAULT_MONTHLY_POS = { x: 0.03, y: 0.5, w: 0.24 }
 const clampN = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
 
 const now = new Date()
+// 出勤表は先の期間を作るので、既定を「次の半月」にする
+// 前半(1〜15日)にいる→同月の後半、後半にいる→翌月の前半
+const _isFirstHalf = now.getDate() <= 15
+const _nextHalfDate = new Date(now.getFullYear(), now.getMonth() + (_isFirstHalf ? 0 : 1), 1)
+const DEFAULT_YEAR = _nextHalfDate.getFullYear()
+const DEFAULT_MONTH = _nextHalfDate.getMonth() + 1
+const DEFAULT_HALF: 'first' | 'second' = _isFirstHalf ? 'second' : 'first'
 
 export default function CalendarPage() {
   return (
@@ -50,9 +57,9 @@ function CalendarContent() {
   const { storeId, isLoading: storeLoading } = useStore()
   const { isMobile } = useIsMobile()
 
-  const [year, setYear] = useState(now.getFullYear())
-  const [month, setMonth] = useState(now.getMonth() + 1)
-  const [half, setHalf] = useState<'first' | 'second'>(now.getDate() <= 15 ? 'first' : 'second')
+  const [year, setYear] = useState(DEFAULT_YEAR)
+  const [month, setMonth] = useState(DEFAULT_MONTH)
+  const [half, setHalf] = useState<'first' | 'second'>(DEFAULT_HALF)
   const [generating, setGenerating] = useState(false)
   const [image, setImage] = useState<string | null>(null)
   const [filename, setFilename] = useState('')
