@@ -16,6 +16,7 @@ interface CharPos {
   x: number
   y: number
   w: number
+  rot?: number
 }
 
 interface Session {
@@ -83,7 +84,7 @@ export async function GET(request: NextRequest) {
   const list = await readPositions(storeId)
   const characters = list.map((c) => {
     const { data } = supabase.storage.from(BUCKET).getPublicUrl(imgPath(storeId, c.id))
-    return { id: c.id, url: `${data.publicUrl}?v=${c.id}`, x: c.x, y: c.y, w: c.w }
+    return { id: c.id, url: `${data.publicUrl}?v=${c.id}`, x: c.x, y: c.y, w: c.w, rot: c.rot ?? 0 }
   })
   return NextResponse.json({ characters })
 }
@@ -116,7 +117,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'アップロードに失敗しました' }, { status: 500 })
     }
 
-    const newChar: CharPos = { id, x: 0.04, y: 0.04, w: 0.18 }
+    const newChar: CharPos = { id, x: 0.04, y: 0.04, w: 0.18, rot: 0 }
     list.push(newChar)
     await writePositions(storeId, list)
 
@@ -150,6 +151,7 @@ export async function PUT(request: NextRequest) {
           x: clampRange(o.x, 0, -0.5, 1.5),
           y: clampRange(o.y, 0, -0.5, 1.5),
           w: clampRange(o.w, 0.18, 0.03, 1.2),
+          rot: clampRange(o.rot, 0, -180, 180),
         }
       })
       .filter((c) => c.id && existing.has(c.id))

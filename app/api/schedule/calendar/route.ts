@@ -58,19 +58,19 @@ async function downloadCalendarAsset(storeId: number, kind: 'bg' | 'banner' | 'l
 // キャラ(立ち絵)の画像＋保存位置を取得
 async function downloadCharacters(
   storeId: number,
-): Promise<{ image: Buffer; x: number; y: number; w: number }[]> {
+): Promise<{ image: Buffer; x: number; y: number; w: number; rot: number }[]> {
   const { data: posData } = await supabase.storage
     .from('schedule-templates')
     .download(`${storeId}/characters.json`)
   if (!posData) return []
-  let list: { id: string; x: number; y: number; w: number }[] = []
+  let list: { id: string; x: number; y: number; w: number; rot?: number }[] = []
   try {
     const arr = JSON.parse(await posData.text())
     if (Array.isArray(arr)) list = arr
   } catch {
     return []
   }
-  const out: { image: Buffer; x: number; y: number; w: number }[] = []
+  const out: { image: Buffer; x: number; y: number; w: number; rot: number }[] = []
   for (const c of list) {
     if (typeof c.id !== 'string') continue
     const id = c.id.replace(/[^a-z0-9-]/gi, '') // 書込側 safeId と同じ契約でサニタイズ
@@ -84,6 +84,7 @@ async function downloadCharacters(
         x: Number.isFinite(Number(c.x)) ? Number(c.x) : 0,
         y: Number.isFinite(Number(c.y)) ? Number(c.y) : 0,
         w: Number.isFinite(Number(c.w)) ? Number(c.w) : 0.18,
+        rot: Number.isFinite(Number(c.rot)) ? Number(c.rot) : 0,
       })
     }
   }

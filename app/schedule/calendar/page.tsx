@@ -332,13 +332,15 @@ function CalendarContent() {
           <EventSettings storeId={storeId} year={year} month={month} storeName={SUPPORTED_STORES[storeId]} />
         )}
 
-        <button
-          onClick={handleGenerate}
-          disabled={generating || !supported}
-          style={{ ...styles.generateBtn, ...(generating || !supported ? styles.generateBtnDisabled : {}) }}
-        >
-          {generating ? '生成中...' : `${month}月${half === 'first' ? '前半' : '後半'} を生成`}
-        </button>
+        {!isCard && (
+          <button
+            onClick={handleGenerate}
+            disabled={generating || !supported}
+            style={{ ...styles.generateBtn, ...(generating || !supported ? styles.generateBtnDisabled : {}) }}
+          >
+            {generating ? '生成中...' : `${month}月${half === 'first' ? '前半' : '後半'} を生成`}
+          </button>
+        )}
       </div>
 
       {supported && storeId && ASSET_KINDS[storeId] && (
@@ -355,7 +357,7 @@ function CalendarContent() {
         />
       )}
 
-      {image && (
+      {!isCard && image && (
         <div style={styles.card}>
           <div style={styles.previewHeader}>
             <span style={styles.previewInfo}>

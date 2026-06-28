@@ -9,6 +9,7 @@ interface Char {
   x: number
   y: number
   w: number
+  rot: number
 }
 
 export interface GenParams {
@@ -38,7 +39,7 @@ export default function CharacterEditor({
   addressPos: { x: number; y: number; w: number }
   onAddressPosChange: (p: { x: number; y: number; w: number }) => void
 }) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(true)
   const [chars, setChars] = useState<Char[]>([])
   const [backdrop, setBackdrop] = useState<string | null>(null)
   const [loadingBackdrop, setLoadingBackdrop] = useState(false)
@@ -46,7 +47,7 @@ export default function CharacterEditor({
   const [saving, setSaving] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
-  const dragRef = useRef<{ id: string; mode: 'move' | 'resize'; sx: number; sy: number; ox: number; oy: number; ow: number } | null>(null)
+  const dragRef = useRef<{ id: string; mode: 'move' | 'resize' | 'rotate'; sx: number; sy: number; ox: number; oy: number; ow: number; cx?: number; cy?: number } | null>(null)
   const reqIdRef = useRef(0)
   const abortRef = useRef<AbortController | null>(null)
   const onAddrRef = useRef(onAddressPosChange)
@@ -81,8 +82,8 @@ export default function CharacterEditor({
       const res = await fetch('/api/schedule/calendar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // 背景はキャラ・住所とも除外（どちらもエディタ上のドラッグ要素として重ねる）
-        body: JSON.stringify({ storeId, ...genParams, address: '', excludeCharacters: true }),
+        // 住所は本番グラデで背景に焼く（透明枠でドラッグ）。キャラだけ除外しオーバーレイで重ねる
+        body: JSON.stringify({ storeId, ...genParams, address, addressPos, excludeCharacters: true }),
         signal: ac.signal,
       })
       const j = await res.json()
@@ -94,7 +95,7 @@ export default function CharacterEditor({
     } finally {
       if (myId === reqIdRef.current) setLoadingBackdrop(false)
     }
-  }, [storeId, genParams])
+  }, [storeId, genParams, address, addressPos])
 
   // キャラ一覧は開いた時/店舗変更時のみ取得
   useEffect(() => {
@@ -127,6 +128,10 @@ export default function CharacterEditor({
           prev.map((c) => {
             if (c.id !== d.id) return c
             if (d.mode === 'move') return { ...c, x: clamp(d.ox + dx, -0.3, 1), y: clamp(d.oy + dy, -0.3, 1) }
+            if (d.mode === 'rotate' && d.cx != null && d.cy != null) {
+              const ang = (Math.atan2(e.clientY - d.cy, e.clientX - d.cx) * 180) / Math.PI + 90
+              return { ...c, rot: Math.round(ang) }
+            }
             return { ...c, w: clamp(d.ow + dx, 0.03, 1.2) }
           }),
         )
@@ -148,6 +153,20 @@ export default function CharacterEditor({
     e.stopPropagation()
     setSelectedId(id)
     dragRef.current = { id, mode, sx: e.clientX, sy: e.clientY, ox: pos.x, oy: pos.y, ow: pos.w }
+  }
+
+  // 回転ハンドル: キャラdivの中心を回転軸に、マウス角度で rot を決める
+  const startRotate = (e: React.MouseEvent, id: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setSelectedId(id)
+    const div = (e.currentTarget as HTMLElement).parentElement
+    const rect = div?.getBoundingClientRect()
+    dragRef.current = {
+      id, mode: 'rotate', sx: e.clientX, sy: e.clientY, ox: 0, oy: 0, ow: 0,
+      cx: rect ? rect.left + rect.width / 2 : 0,
+      cy: rect ? rect.top + rect.height / 2 : 0,
+    }
   }
 
   const onUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -200,7 +219,7 @@ export default function CharacterEditor({
       const res = await fetch('/api/schedule/calendar-characters', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ storeId, characters: chars.map(({ id, x, y, w }) => ({ id, x, y, w })) }),
+        body: JSON.stringify({ storeId, characters: chars.map(({ id, x, y, w, rot }) => ({ id, x, y, w, rot })) }),
       })
       if (!res.ok) {
         const j = await res.json()
@@ -216,10 +235,42 @@ export default function CharacterEditor({
     }
   }
 
+  const onDownload = async () => {
+    setSaving(true)
+    try {
+      // 最新の位置・回転を保存してから最終生成（キャラ＋住所を焼き込み）
+      await fetch('/api/schedule/calendar-characters', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storeId, characters: chars.map(({ id, x, y, w, rot }) => ({ id, x, y, w, rot })) }),
+      })
+      const res = await fetch('/api/schedule/calendar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storeId, ...genParams, address, addressPos }),
+      })
+      const j = await res.json()
+      if (!res.ok) {
+        toast.error(j.error || '生成に失敗しました')
+        return
+      }
+      const a = document.createElement('a')
+      a.href = j.image
+      a.download = j.filename || 'calendar.png'
+      a.click()
+      toast.success('ダウンロードしました')
+    } catch (e) {
+      console.error(e)
+      toast.error('ダウンロードに失敗しました')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <div style={styles.card}>
       <button onClick={() => setOpen((o) => !o)} style={styles.headerToggle}>
-        <span style={styles.heading}>キャラ配置</span>
+        <span style={styles.heading}>プレビュー / キャラ・住所配置</span>
         <span style={styles.chevron}>{open ? '▲ 閉じる' : '▼ 開く'}</span>
       </button>
 
@@ -228,9 +279,10 @@ export default function CharacterEditor({
           <div style={styles.toolbar}>
             <button onClick={() => fileRef.current?.click()} style={styles.addBtn}>キャラ追加</button>
             <button onClick={onSave} disabled={saving} style={styles.saveBtn}>{saving ? '保存中...' : '位置を保存'}</button>
+            <button onClick={onDownload} disabled={saving} style={styles.dlBtn}>{saving ? '...' : 'ダウンロード'}</button>
             <input ref={fileRef} type="file" accept="image/*" onChange={onUpload} style={{ display: 'none' }} />
           </div>
-          <p style={styles.note}>キャラ・住所をドラッグで移動、右下●でサイズ変更。キャラは「位置を保存」、住所は自動保存（このブラウザ）。住所はキャラより前面。</p>
+          <p style={styles.note}>プレビュー上でキャラ・住所をドラッグで移動、右下●でサイズ、キャラ上の緑●で回転。位置・回転は「位置を保存」（ダウンロード時も自動保存）。</p>
 
           <div ref={wrapRef} style={styles.stage} onMouseDown={() => setSelectedId(null)}>
             {loadingBackdrop && !backdrop ? (
@@ -252,6 +304,8 @@ export default function CharacterEditor({
                   top: `${c.y * 100}%`,
                   width: `${c.w * 100}%`,
                   cursor: 'move',
+                  transform: `rotate(${c.rot || 0}deg)`,
+                  transformOrigin: 'center center',
                   outline: selectedId === c.id ? '2px solid #ec4899' : '1px dashed rgba(236,72,153,0.45)',
                   zIndex: selectedId === c.id ? 3 : 2,
                 }}
@@ -261,6 +315,7 @@ export default function CharacterEditor({
                 {selectedId === c.id && (
                   <>
                     <div onMouseDown={(e) => startDrag(e, c.id, 'resize', c)} style={styles.resizeHandle} />
+                    <div onMouseDown={(e) => startRotate(e, c.id)} style={styles.rotateHandle} title="回転" />
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
@@ -290,7 +345,9 @@ export default function CharacterEditor({
                   containerType: 'inline-size',
                 }}
               >
-                <div style={{ ...styles.addrText, fontSize: `${addrFontCqw}cqw` }}>{address}</div>
+                {/* 住所は本番グラデで背景に焼かれている。文字は非表示にして枠サイズ合わせのスペーサにする */}
+                <div style={{ ...styles.addrText, fontSize: `${addrFontCqw}cqw`, visibility: 'hidden' }}>{address}</div>
+                <span style={styles.addrTag}>住所</span>
                 {selectedId === '__addr__' && (
                   <div onMouseDown={(e) => startDrag(e, '__addr__', 'resize', addressPos)} style={styles.resizeHandle} />
                 )}
@@ -324,6 +381,10 @@ const styles: Record<string, CSSProperties> = {
     padding: '8px 16px', borderRadius: 8, border: 'none',
     backgroundColor: '#ec4899', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer',
   },
+  dlBtn: {
+    padding: '8px 16px', borderRadius: 8, border: 'none',
+    backgroundColor: '#22c55e', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer',
+  },
   note: { fontSize: 12, color: '#94a3b8', marginBottom: 12 },
   stage: {
     position: 'relative', width: '100%', maxWidth: 760, margin: '0 auto',
@@ -340,6 +401,14 @@ const styles: Record<string, CSSProperties> = {
   resizeHandle: {
     position: 'absolute', right: -9, bottom: -9, width: 18, height: 18,
     backgroundColor: '#ec4899', border: '2px solid #fff', borderRadius: '50%', cursor: 'nwse-resize',
+  },
+  rotateHandle: {
+    position: 'absolute', left: 'calc(50% - 9px)', top: -30, width: 18, height: 18,
+    backgroundColor: '#10b981', border: '2px solid #fff', borderRadius: '50%', cursor: 'grab',
+  },
+  addrTag: {
+    position: 'absolute', top: -2, left: -2, fontSize: 10, fontWeight: 700, color: '#fff',
+    background: '#e3589e', padding: '1px 5px', borderRadius: 4, pointerEvents: 'none', whiteSpace: 'nowrap',
   },
   delBtn: {
     position: 'absolute', top: -12, right: -12, width: 24, height: 24,

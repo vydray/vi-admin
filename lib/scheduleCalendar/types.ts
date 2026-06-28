@@ -52,6 +52,7 @@ export interface CalendarCharacter {
   x: number // 左位置（キャンバス幅比）
   y: number // 上位置（キャンバス高比）
   w: number // 幅（キャンバス幅比）。高さは画像アスペクトから算出
+  rot?: number // 回転角(度)。中心回りに回転。未指定=0
 }
 
 /** node-canvas に登録するフォント */

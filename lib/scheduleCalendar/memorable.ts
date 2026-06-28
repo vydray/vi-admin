@@ -356,7 +356,19 @@ export async function renderMemorableCalendar(
         const img = await loadImage(ch.image)
         const cw = ch.w * CANVAS_W
         const chh = cw * (img.height / img.width)
-        ctx.drawImage(img, ch.x * CANVAS_W, ch.y * CANVAS_H, cw, chh)
+        const cx = ch.x * CANVAS_W
+        const cy = ch.y * CANVAS_H
+        const rot = ch.rot ?? 0
+        if (rot) {
+          // 中心回りに回転（位置アンカーは未回転時の左上を保つ）
+          ctx.save()
+          ctx.translate(cx + cw / 2, cy + chh / 2)
+          ctx.rotate((rot * Math.PI) / 180)
+          ctx.drawImage(img, -cw / 2, -chh / 2, cw, chh)
+          ctx.restore()
+        } else {
+          ctx.drawImage(img, cx, cy, cw, chh)
+        }
       } catch (e) {
         console.error('[renderMemorable] キャラ画像のデコード失敗、スキップ:', e)
       }
