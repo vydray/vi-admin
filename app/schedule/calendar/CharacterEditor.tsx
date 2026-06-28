@@ -148,6 +148,17 @@ export default function CharacterEditor({
     }
   }, [])
 
+  // 本番canvasと同じ M PLUS Rounded をブラウザにも読み込む（住所フォント＝漢字の形と箱サイズを一致）
+  useEffect(() => {
+    const id = 'cal-mplus-rounded-bold'
+    if (document.getElementById(id)) return
+    const style = document.createElement('style')
+    style.id = id
+    style.textContent =
+      "@font-face{font-family:'MPlusRoundedBold';src:url('/fonts/MPLUSRounded1c-Bold.ttf') format('truetype');font-weight:700;font-display:swap;}"
+    document.head.appendChild(style)
+  }, [])
+
   const startDrag = (e: React.MouseEvent, id: string, mode: 'move' | 'resize', pos: { x: number; y: number; w: number }) => {
     e.preventDefault()
     e.stopPropagation()
@@ -392,8 +403,9 @@ const styles: Record<string, CSSProperties> = {
   stageLoading: { padding: 60, textAlign: 'center', color: '#94a3b8', fontSize: 14 },
   backdrop: { width: '100%', display: 'block' },
   addrText: {
-    // エディタ上は確実に読める単色ピンク＋白縁で位置決め用。実際のグラデは本番(ダウンロード)で出る
+    // 本番canvasと同じ M PLUS Rounded で表示し漢字の形・箱サイズを一致させる。単色ピンク＋白縁
     textAlign: 'center', fontWeight: 700, color: '#e3589e',
+    fontFamily: "'MPlusRoundedBold', sans-serif",
     lineHeight: 1.3, whiteSpace: 'pre-line', pointerEvents: 'none',
     WebkitTextStroke: '0.6px #fff', textShadow: '0 1px 2px rgba(155,144,151,0.5)',
   },
