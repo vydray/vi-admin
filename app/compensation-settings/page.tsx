@@ -2261,6 +2261,12 @@ function CompensationSettingsPageContent() {
         target_month: selectedMonth,
         enabled_deduction_ids: prevSettings.enabled_deduction_ids || [],
         enabled_bonus_ids: prevSettings.enabled_bonus_ids || [],
+        // 時給も引き継ぐ（stateToDbは時給フィールドを除外するため明示的にコピー）
+        status_id: prevSettings.status_id ?? null,
+        status_locked: prevSettings.status_locked ?? false,
+        hourly_wage_override: prevSettings.hourly_wage_override ?? null,
+        min_days_rule_enabled: prevSettings.min_days_rule_enabled ?? false,
+        first_month_exempt_override: prevSettings.first_month_exempt_override ?? false,
       }
 
       if (existingId) {
@@ -2356,6 +2362,12 @@ function CompensationSettingsPageContent() {
             target_month: selectedMonth,
             enabled_deduction_ids: prev.enabled_deduction_ids || [],
             enabled_bonus_ids: prev.enabled_bonus_ids || [],
+            // 時給も引き継ぐ（stateToDbは時給フィールドを除外するため明示的にコピー）
+            status_id: prev.status_id ?? null,
+            status_locked: prev.status_locked ?? false,
+            hourly_wage_override: prev.hourly_wage_override ?? null,
+            min_days_rule_enabled: prev.min_days_rule_enabled ?? false,
+            first_month_exempt_override: prev.first_month_exempt_override ?? false,
           }
 
           const existId = existingMap.get(prev.cast_id)
