@@ -88,6 +88,38 @@ export async function GET(request: NextRequest) {
     inserted = toInsert.length
   }
 
+  // ?fillJikyu=true: 当月に既に行があるが時給(status_id)未設定のキャストへ前月の時給を補充。
+  // 明示パラメータ時のみ実行。monthly cron(パラメータ無し)では走らせない＝意図的な時給外しを勝手に上書きしないため。
+  let filled = 0
+  if (url.searchParams.get('fillJikyu') === 'true') {
+    const prevWithJikyu = new Map<string, Record<string, unknown>>()
+    for (const row of (prevRows || []) as Record<string, unknown>[]) {
+      if (row.status_id != null) prevWithJikyu.set(`${row.store_id}:${row.cast_id}`, row)
+    }
+    const { data: curNullJikyu } = await supabase
+      .from('compensation_settings')
+      .select('id, store_id, cast_id')
+      .eq('target_year', year)
+      .eq('target_month', month)
+      .eq('is_active', true)
+      .is('status_id', null)
+    for (const cur of (curNullJikyu || []) as Record<string, unknown>[]) {
+      const prev = prevWithJikyu.get(`${cur.store_id}:${cur.cast_id}`)
+      if (!prev) continue
+      const { error: upErr } = await supabase
+        .from('compensation_settings')
+        .update({
+          status_id: prev.status_id,
+          status_locked: prev.status_locked ?? false,
+          hourly_wage_override: prev.hourly_wage_override ?? null,
+          min_days_rule_enabled: prev.min_days_rule_enabled ?? false,
+          first_month_exempt_override: prev.first_month_exempt_override ?? false,
+        })
+        .eq('id', cur.id)
+      if (!upErr) filled++
+    }
+  }
+
   const byStore: Record<number, number> = {}
   for (const c of toInsert) {
     const sid = Number(c.store_id)
@@ -101,6 +133,7 @@ export async function GET(request: NextRequest) {
     prevCount: prevRows?.length || 0,
     skippedExisting: (prevRows?.length || 0) - toInsert.length,
     inserted,
+    filled,
     byStore,
   })
 }
