@@ -412,10 +412,11 @@ export async function renderCalendar(params: RenderCalendarParams, theme: Calend
     const mw = (monthlyEventPos?.w ?? 0.26) * CANVAS_W
     const mx = (monthlyEventPos?.x ?? 0.03) * CANVAS_W
     const my = (monthlyEventPos?.y ?? 0.5) * CANVAS_H
-    const pad = Math.round(mw * 0.065)
-    const titleSize = Math.max(15, Math.round(mw * 0.082))
-    const lineSize = Math.max(12, Math.round(mw * 0.06))
-    const headerH = titleSize + Math.round(pad * 1.1)
+    const pad = Math.round(mw * 0.05)
+    // 幅に比例しすぎないよう上限キャップ（カレンダー本体の文字スケールに合わせる）
+    const titleSize = Math.min(28, Math.max(16, Math.round(mw * 0.06)))
+    const lineSize = Math.min(20, Math.max(13, Math.round(mw * 0.046)))
+    const headerH = titleSize + Math.round(pad * 1.0)
     const lineH = lineSize + Math.round(pad * 0.7)
     const mh = headerH + Math.round(pad * 0.6) + monthlyEvents.length * lineH + pad
     const r = Math.min(14, mw * 0.045)
