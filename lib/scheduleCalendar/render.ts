@@ -153,25 +153,22 @@ export async function renderCalendar(params: RenderCalendarParams, theme: Calend
     })
   }
 
-  const getEventFor = (dateStr: string): CalendarEvent | null => {
-    for (const e of events) {
-      if (dateStr >= e.start && dateStr <= e.end) return e
-    }
-    return null
-  }
+  const getEventsFor = (dateStr: string): CalendarEvent[] =>
+    events.filter((e) => dateStr >= e.start && dateStr <= e.end)
 
   const weeks = buildWeeks(startDate, endDate)
 
   const getWeekHeight = (week: (Date | null)[]): number => {
     let maxCount = 0
-    let hasEvent = false
+    let maxEvents = 0
     for (const day of week) {
       if (!day) continue
       const list = shiftsByDate.get(dateToYmd(day)) || []
       if (list.length > maxCount) maxCount = list.length
-      if (getEventFor(dateToYmd(day))) hasEvent = true
+      const evs = getEventsFor(dateToYmd(day)).length
+      if (evs > maxEvents) maxEvents = evs
     }
-    const base = 16 + (hasEvent ? EVENT_LABEL_H + 8 : 0) + maxCount * NAME_LINE_HEIGHT + 12
+    const base = 16 + (maxEvents > 0 ? maxEvents * (EVENT_LABEL_H + 4) + 8 : 0) + maxCount * NAME_LINE_HEIGHT + 12
     return Math.max(ROW_MIN_H, base)
   }
 
@@ -329,25 +326,28 @@ export async function renderCalendar(params: RenderCalendarParams, theme: Calend
       ctx.lineWidth = 1
       ctx.strokeRect(x + 0.5, cellY + 0.5, COL_W - 1, bodyH - 1)
 
-      // イベント帯
-      const ev = getEventFor(dateToYmd(day))
+      // イベント帯（同日に複数あれば縦に積む）
+      const evs = getEventsFor(dateToYmd(day))
       let castStartY = cellY + 10
-      if (ev) {
-        const labelY = cellY + 6
-        ctx.fillStyle = ev.bg ?? theme.eventDefault.bg
-        ctx.fillRect(x + 4, labelY, COL_W - 8, EVENT_LABEL_H)
-        ctx.fillStyle = ev.text ?? theme.eventDefault.text
-        const evMaxW = COL_W - 14
-        let evFont = 22
-        ctx.font = `bold ${evFont}px "${theme.fonts.event}", sans-serif`
-        while (ctx.measureText(ev.label).width > evMaxW && evFont > 10) {
-          evFont -= 1
+      if (evs.length > 0) {
+        let labelY = cellY + 6
+        for (const ev of evs) {
+          ctx.fillStyle = ev.bg ?? theme.eventDefault.bg
+          ctx.fillRect(x + 4, labelY, COL_W - 8, EVENT_LABEL_H)
+          ctx.fillStyle = ev.text ?? theme.eventDefault.text
+          const evMaxW = COL_W - 14
+          let evFont = 22
           ctx.font = `bold ${evFont}px "${theme.fonts.event}", sans-serif`
+          while (ctx.measureText(ev.label).width > evMaxW && evFont > 10) {
+            evFont -= 1
+            ctx.font = `bold ${evFont}px "${theme.fonts.event}", sans-serif`
+          }
+          ctx.textAlign = 'center'
+          ctx.textBaseline = 'middle'
+          ctx.fillText(ev.label, x + COL_W / 2, labelY + EVENT_LABEL_H / 2)
+          labelY += EVENT_LABEL_H + 4
         }
-        ctx.textAlign = 'center'
-        ctx.textBaseline = 'middle'
-        ctx.fillText(ev.label, x + COL_W / 2, labelY + EVENT_LABEL_H / 2)
-        castStartY = labelY + EVENT_LABEL_H + 8
+        castStartY = labelY + 4
       }
 
       // シフト名
