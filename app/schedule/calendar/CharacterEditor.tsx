@@ -82,8 +82,8 @@ export default function CharacterEditor({
       const res = await fetch('/api/schedule/calendar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // 住所は本番グラデで背景に焼く（透明枠でドラッグ）。キャラだけ除外しオーバーレイで重ねる
-        body: JSON.stringify({ storeId, ...genParams, address, addressPos, excludeCharacters: true }),
+        // キャラ・住所とも背景からは除外。住所は同じグラデのCSS文字でオーバーレイ＝住所変更で再生成しない（軽量）
+        body: JSON.stringify({ storeId, ...genParams, address: '', excludeCharacters: true }),
         signal: ac.signal,
       })
       const j = await res.json()
@@ -95,7 +95,7 @@ export default function CharacterEditor({
     } finally {
       if (myId === reqIdRef.current) setLoadingBackdrop(false)
     }
-  }, [storeId, genParams, address, addressPos])
+  }, [storeId, genParams])
 
   // キャラ一覧は開いた時/店舗変更時のみ取得
   useEffect(() => {
@@ -345,9 +345,7 @@ export default function CharacterEditor({
                   containerType: 'inline-size',
                 }}
               >
-                {/* 住所は本番グラデで背景に焼かれている。文字は非表示にして枠サイズ合わせのスペーサにする */}
-                <div style={{ ...styles.addrText, fontSize: `${addrFontCqw}cqw`, visibility: 'hidden' }}>{address}</div>
-                <span style={styles.addrTag}>住所</span>
+                <div style={{ ...styles.addrText, fontSize: `${addrFontCqw}cqw` }}>{address}</div>
                 {selectedId === '__addr__' && (
                   <div onMouseDown={(e) => startDrag(e, '__addr__', 'resize', addressPos)} style={styles.resizeHandle} />
                 )}
@@ -394,9 +392,14 @@ const styles: Record<string, CSSProperties> = {
   stageLoading: { padding: 60, textAlign: 'center', color: '#94a3b8', fontSize: 14 },
   backdrop: { width: '100%', display: 'block' },
   addrText: {
-    textAlign: 'center', fontWeight: 700, color: '#e3589e',
-    lineHeight: 1.3, whiteSpace: 'pre-line', pointerEvents: 'none',
-    WebkitTextStroke: '0.5px #fff', textShadow: '0 1px 2px #fff',
+    textAlign: 'center', fontWeight: 700, lineHeight: 1.3, whiteSpace: 'pre-line', pointerEvents: 'none',
+    // 本番canvasと同じ縦グラデ(#ff93c4→#e3589e)＋白縁。グラデはbackground-clipで文字に乗せる
+    color: '#e3589e',
+    background: 'linear-gradient(180deg, #ff93c4, #e3589e)',
+    WebkitBackgroundClip: 'text', backgroundClip: 'text',
+    WebkitTextFillColor: 'transparent',
+    WebkitTextStroke: '0.4px #fff',
+    filter: 'drop-shadow(0 0 1px rgba(155,144,151,0.9))',
   },
   resizeHandle: {
     position: 'absolute', right: -9, bottom: -9, width: 18, height: 18,
@@ -405,10 +408,6 @@ const styles: Record<string, CSSProperties> = {
   rotateHandle: {
     position: 'absolute', left: 'calc(50% - 9px)', top: -30, width: 18, height: 18,
     backgroundColor: '#10b981', border: '2px solid #fff', borderRadius: '50%', cursor: 'grab',
-  },
-  addrTag: {
-    position: 'absolute', top: -2, left: -2, fontSize: 10, fontWeight: 700, color: '#fff',
-    background: '#e3589e', padding: '1px 5px', borderRadius: 4, pointerEvents: 'none', whiteSpace: 'nowrap',
   },
   delBtn: {
     position: 'absolute', top: -12, right: -12, width: 24, height: 24,
