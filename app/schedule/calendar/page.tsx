@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo, type CSSProperties } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback, type CSSProperties } from 'react'
 import { useStore } from '@/contexts/StoreContext'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import ProtectedPage from '@/components/ProtectedPage'
@@ -8,7 +8,6 @@ import { toast } from 'react-hot-toast'
 import AssetSettings from './AssetSettings'
 import EventSettings from './EventSettings'
 import CharacterEditor from './CharacterEditor'
-import MonthlyEventEditor from './MonthlyEventEditor'
 
 // カレンダーデザイン実装済みの店舗（順次追加）
 const SUPPORTED_STORES: Record<number, string> = {
@@ -35,6 +34,7 @@ const DEFAULT_ADDRESS: Record<number, string> = {
 const DEFAULT_ADDR_POS = { x: 0.58, y: 0.84, w: 0.4 }
 // 月間イベント枠の配置デフォルト（左側）
 const DEFAULT_MONTHLY_POS = { x: 0.03, y: 0.5, w: 0.24 }
+const clampN = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
 
 const now = new Date()
 
@@ -56,7 +56,7 @@ function CalendarContent() {
   const [generating, setGenerating] = useState(false)
   const [image, setImage] = useState<string | null>(null)
   const [filename, setFilename] = useState('')
-  const [info, setInfo] = useState<{ shiftCount: number; eventCount: number } | null>(null)
+  const [info, setInfo] = useState<{ shiftCount: number; eventCount: number; monthlyEventCount: number } | null>(null)
 
   // カード型(memorable): 上余白・住所を店舗ごとにlocalStorage保存
   const isCard = storeId != null && CARD_STORES.has(storeId)
@@ -142,11 +142,14 @@ function CalendarContent() {
     [year, month, half, contentTop],
   )
 
-  const handleGenerate = async () => {
+  // silent=true はドラッグ後の静かな再生成（画像を消さずトーストも出さない）
+  const runGenerate = useCallback(async (silent: boolean) => {
     if (!storeId) return
     setGenerating(true)
-    setImage(null)
-    setInfo(null)
+    if (!silent) {
+      setImage(null)
+      setInfo(null)
+    }
     try {
       const res = await fetch('/api/schedule/calendar', {
         method: 'POST',
@@ -155,20 +158,75 @@ function CalendarContent() {
       })
       const data = await res.json()
       if (!res.ok) {
-        toast.error(data.error || '生成に失敗しました')
+        if (!silent) toast.error(data.error || '生成に失敗しました')
         return
       }
       setImage(data.image)
       setFilename(data.filename)
-      setInfo({ shiftCount: data.shiftCount, eventCount: data.eventCount })
-      toast.success('生成しました')
+      setInfo({ shiftCount: data.shiftCount, eventCount: data.eventCount, monthlyEventCount: data.monthlyEventCount ?? 0 })
+      if (!silent) toast.success('生成しました')
     } catch (e) {
       console.error(e)
-      toast.error('生成に失敗しました')
+      if (!silent) toast.error('生成に失敗しました')
     } finally {
       setGenerating(false)
     }
+  }, [storeId, year, month, half, contentTop, address, addressPos, monthlyEventPos])
+
+  const handleGenerate = () => runGenerate(false)
+
+  // メインプレビュー上で月間枠を直接ドラッグ移動／幅リサイズ
+  const previewWrapRef = useRef<HTMLDivElement>(null)
+  const dragRef = useRef<{ mode: 'move' | 'resize'; sx: number; sy: number; ox: number; oy: number; ow: number } | null>(null)
+  const [boxSelected, setBoxSelected] = useState(false)
+  const posRef = useRef(monthlyEventPos)
+  posRef.current = monthlyEventPos
+  const updatePosRef = useRef(updateMonthlyPos)
+  updatePosRef.current = updateMonthlyPos
+  const runGenRef = useRef(runGenerate)
+  runGenRef.current = runGenerate
+  const imageRef = useRef(image)
+  imageRef.current = image
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      const d = dragRef.current
+      if (!d || !previewWrapRef.current) return
+      const rect = previewWrapRef.current.getBoundingClientRect()
+      const dx = (e.clientX - d.sx) / rect.width
+      const dy = (e.clientY - d.sy) / rect.height
+      const np =
+        d.mode === 'move'
+          ? { x: clampN(d.ox + dx, -0.3, 1), y: clampN(d.oy + dy, -0.3, 1), w: d.ow }
+          : { x: d.ox, y: d.oy, w: clampN(d.ow + dx, 0.08, 1.2) }
+      updatePosRef.current(np)
+    }
+    const onUp = () => {
+      dragRef.current = null
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+  }, [])
+
+  const startBoxDrag = (e: React.MouseEvent, mode: 'move' | 'resize') => {
+    e.preventDefault()
+    e.stopPropagation()
+    setBoxSelected(true)
+    const p = posRef.current
+    dragRef.current = { mode, sx: e.clientX, sy: e.clientY, ox: p.x, oy: p.y, ow: p.w }
   }
+
+  // 枠位置が変わったら、生成済みプレビューを静かに再生成して反映（ドラッグをデバウンス）
+  useEffect(() => {
+    if (imageRef.current == null) return
+    if (storeId != null && CARD_STORES.has(storeId)) return
+    const t = setTimeout(() => runGenRef.current(true), 450)
+    return () => clearTimeout(t)
+  }, [monthlyEventPos, storeId])
 
   const handleDownload = () => {
     if (!image) return
@@ -297,15 +355,6 @@ function CalendarContent() {
         />
       )}
 
-      {supported && storeId && !isCard && (
-        <MonthlyEventEditor
-          storeId={storeId}
-          genParams={genParams}
-          monthlyEventPos={monthlyEventPos}
-          onPosChange={updateMonthlyPos}
-        />
-      )}
-
       {image && (
         <div style={styles.card}>
           <div style={styles.previewHeader}>
@@ -314,8 +363,37 @@ function CalendarContent() {
             </span>
             <button onClick={handleDownload} style={styles.downloadBtn}>ダウンロード</button>
           </div>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={image} alt="出勤表カレンダー" style={styles.preview} />
+          <div ref={previewWrapRef} style={styles.previewWrap} onMouseDown={() => setBoxSelected(false)}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={image} alt="出勤表カレンダー" style={styles.preview} draggable={false} />
+            {!isCard && (info?.monthlyEventCount ?? 0) > 0 && (
+              <div
+                onMouseDown={(e) => startBoxDrag(e, 'move')}
+                style={{
+                  position: 'absolute',
+                  left: `${monthlyEventPos.x * 100}%`,
+                  top: `${monthlyEventPos.y * 100}%`,
+                  width: `${monthlyEventPos.w * 100}%`,
+                  minHeight: 44,
+                  cursor: 'move',
+                  outline: boxSelected ? '2px solid #8b5cf6' : '1px dashed rgba(139,92,246,0.7)',
+                  background: 'rgba(139,92,246,0.08)',
+                  borderRadius: 6,
+                  zIndex: 5,
+                }}
+              >
+                <div style={styles.boxLabel}>月間イベント枠（ドラッグで移動・右下で幅）</div>
+                {boxSelected && <div onMouseDown={(e) => startBoxDrag(e, 'resize')} style={styles.resizeHandle} />}
+              </div>
+            )}
+          </div>
+          {!isCard && (
+            <p style={styles.previewHint}>
+              {(info?.monthlyEventCount ?? 0) > 0
+                ? '月間イベント枠はプレビュー上で直接ドラッグして配置（離すと自動で再生成）'
+                : '※期間全体にまたがる「月間イベント」があると、プレビュー上に動かせる枠が出ます'}
+            </p>
+          )}
         </div>
       )}
     </div>
@@ -362,5 +440,12 @@ const styles: Record<string, CSSProperties> = {
     backgroundColor: '#22c55e', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer',
     whiteSpace: 'nowrap',
   },
-  preview: { width: '100%', height: 'auto', borderRadius: 8, border: '1px solid #e2e8f0' },
+  preview: { width: '100%', height: 'auto', borderRadius: 8, border: '1px solid #e2e8f0', display: 'block' },
+  previewWrap: { position: 'relative', width: '100%', userSelect: 'none' },
+  boxLabel: { fontSize: 11, fontWeight: 700, color: '#6d28d9', padding: '3px 6px', whiteSpace: 'nowrap', pointerEvents: 'none' },
+  resizeHandle: {
+    position: 'absolute', right: -9, bottom: -9, width: 18, height: 18,
+    backgroundColor: '#8b5cf6', border: '2px solid #fff', borderRadius: '50%', cursor: 'nwse-resize',
+  },
+  previewHint: { fontSize: 12, color: '#94a3b8', marginTop: 8 },
 }

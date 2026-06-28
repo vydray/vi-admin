@@ -412,13 +412,13 @@ export async function renderCalendar(params: RenderCalendarParams, theme: Calend
     const mw = (monthlyEventPos?.w ?? 0.26) * CANVAS_W
     const mx = (monthlyEventPos?.x ?? 0.03) * CANVAS_W
     const my = (monthlyEventPos?.y ?? 0.5) * CANVAS_H
-    const pad = Math.round(mw * 0.07)
-    const titleSize = Math.max(14, Math.round(mw * 0.072))
-    const lineSize = Math.max(12, Math.round(mw * 0.064))
-    const titleAreaH = titleSize + Math.round(pad * 1.3)
-    const lineH = lineSize + Math.round(pad * 0.75)
-    const mh = titleAreaH + Math.round(pad * 0.5) + monthlyEvents.length * lineH + pad
-    const r = Math.min(16, mw * 0.05)
+    const pad = Math.round(mw * 0.065)
+    const titleSize = Math.max(15, Math.round(mw * 0.082))
+    const lineSize = Math.max(12, Math.round(mw * 0.06))
+    const headerH = titleSize + Math.round(pad * 1.1)
+    const lineH = lineSize + Math.round(pad * 0.7)
+    const mh = headerH + Math.round(pad * 0.6) + monthlyEvents.length * lineH + pad
+    const r = Math.min(14, mw * 0.045)
 
     const roundRectPath = (rx: number, ry: number, rw: number, rh: number, rad: number) => {
       ctx.beginPath()
@@ -427,6 +427,17 @@ export async function renderCalendar(params: RenderCalendarParams, theme: Calend
       ctx.arcTo(rx + rw, ry + rh, rx, ry + rh, rad)
       ctx.arcTo(rx, ry + rh, rx, ry, rad)
       ctx.arcTo(rx, ry, rx + rw, ry, rad)
+      ctx.closePath()
+    }
+    // 上だけ角丸（見出しバー用）
+    const roundTopPath = (rx: number, ry: number, rw: number, rh: number, rad: number) => {
+      ctx.beginPath()
+      ctx.moveTo(rx, ry + rh)
+      ctx.lineTo(rx, ry + rad)
+      ctx.arcTo(rx, ry, rx + rad, ry, rad)
+      ctx.lineTo(rx + rw - rad, ry)
+      ctx.arcTo(rx + rw, ry, rx + rw, ry + rad, rad)
+      ctx.lineTo(rx + rw, ry + rh)
       ctx.closePath()
     }
     const fillDiamond = (cx: number, cy: number, rr: number) => {
@@ -449,42 +460,26 @@ export async function renderCalendar(params: RenderCalendarParams, theme: Calend
     ctx.fill()
     ctx.restore()
 
-    // 枠線
+    // 見出しバー（本体タイトル「◯月◯半キャスト出勤日」と同じ配色＋明朝太字）
+    roundTopPath(mx, my, mw, headerH, r)
+    ctx.fillStyle = c.titleBg
+    ctx.fill()
+    ctx.fillStyle = c.titleText
+    ctx.font = `${titleSize}px "${theme.fonts.title}", sans-serif`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText('月間イベント', mx + mw / 2, my + Math.round(headerH / 2) + 1)
+
+    // 枠線（パネル全体）
     roundRectPath(mx, my, mw, mh, r)
     ctx.lineWidth = 1.5
     ctx.strokeStyle = box.border
     ctx.stroke()
 
-    // 見出し「月間イベント」＋左右の細線とダイヤ装飾
-    const hcy = my + Math.round(titleAreaH / 2) + 1
-    ctx.fillStyle = box.headerText
-    ctx.font = `${titleSize}px "${theme.fonts.event}", sans-serif`
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    const titleStr = '月間イベント'
-    ctx.fillText(titleStr, mx + mw / 2, hcy)
-    const tW = ctx.measureText(titleStr).width
-    const gap = 14
-    ctx.strokeStyle = box.accent
-    ctx.fillStyle = box.accent
-    ctx.lineWidth = 1
-    const lL = mx + pad
-    const lLend = mx + mw / 2 - tW / 2 - gap
-    if (lLend - 8 > lL) {
-      ctx.beginPath(); ctx.moveTo(lL, hcy); ctx.lineTo(lLend - 8, hcy); ctx.stroke()
-      fillDiamond(lLend - 3, hcy, 3)
-    }
-    const lRstart = mx + mw / 2 + tW / 2 + gap
-    const lR = mx + mw - pad
-    if (lR > lRstart + 8) {
-      ctx.beginPath(); ctx.moveTo(lRstart + 8, hcy); ctx.lineTo(lR, hcy); ctx.stroke()
-      fillDiamond(lRstart + 3, hcy, 3)
-    }
-
     // イベント名（ダイヤbullet ＋ 名前）
     ctx.textAlign = 'left'
     ctx.textBaseline = 'middle'
-    let ly = my + titleAreaH + Math.round(pad * 0.5)
+    let ly = my + headerH + Math.round(pad * 0.6)
     const textX = mx + pad + 16
     const maxW = mx + mw - pad - textX
     for (const ev of monthlyEvents) {

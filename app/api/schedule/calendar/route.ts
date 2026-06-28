@@ -239,11 +239,15 @@ export async function POST(request: NextRequest) {
     const dataUrl = `data:image/png;base64,${buffer.toString('base64')}`
     const filename = `${month}月${halfLabel}${calendar.name}.png`
 
+    // 表示期間の全日にまたがる=月間イベントの件数（プレビュー上の枠ハンドル表示判定に使う）
+    const monthlyEventCount = events.filter((e) => e.start <= startDate && e.end >= endDate).length
+
     return NextResponse.json({
       image: dataUrl,
       filename,
       shiftCount: shifts.length,
       eventCount: events.length,
+      monthlyEventCount,
     })
   } catch (error) {
     console.error('[calendar] error:', error)
