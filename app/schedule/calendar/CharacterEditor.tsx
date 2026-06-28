@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback, useMemo, type CSSProperties } from 'react'
+import { useState, useEffect, useRef, useCallback, type CSSProperties } from 'react'
 import { toast } from 'react-hot-toast'
 
 interface Char {
@@ -53,13 +53,32 @@ export default function CharacterEditor({
   const onAddrRef = useRef(onAddressPosChange)
   onAddrRef.current = onAddressPosChange
 
-  // 住所のプレビュー文字サイズ。サーバ同様「最長行が箱幅に収まる」式に寄せる（全角=1/半角=0.5）
-  const addrFontCqw = useMemo(() => {
-    const lines = address.split('\n').map((l) => l.trim()).filter(Boolean)
-    if (!lines.length) return 7
-    const weighted = (s: string) => [...s].reduce((a, ch) => a + (ch.charCodeAt(0) < 0x100 ? 0.5 : 1), 0)
-    const widest = Math.max(...lines.map(weighted), 1)
-    return Math.max(2, Math.min(20, (100 * 0.98) / widest))
+  // 住所のプレビュー文字サイズ(cqw)。本番canvas(drawAddress)と同じ「最長行が箱幅に収まる」式を
+  // 実フォントの measureText で再現＝折り返しまで一致させる。フォント読込後に測り直す。
+  const [addrFontCqw, setAddrFontCqw] = useState(7)
+  useEffect(() => {
+    let cancelled = false
+    const measure = () => {
+      const lines = address.split('\n').map((l) => l.trim()).filter(Boolean)
+      if (!lines.length) {
+        if (!cancelled) setAddrFontCqw(7)
+        return
+      }
+      const cv = document.createElement('canvas')
+      const cx2 = cv.getContext('2d')
+      if (!cx2) return
+      cx2.font = "700 100px 'MPlusRoundedBold', sans-serif"
+      const widest = Math.max(...lines.map((l) => cx2.measureText(l).width), 1)
+      // font = 0.98 * 箱幅 * 100 / 最長行幅(100px時) → cqw(=font/箱幅*100) = 9800 / 最長行幅
+      if (!cancelled) setAddrFontCqw(Math.max(2, Math.min(20, 9800 / widest)))
+    }
+    if (typeof document !== 'undefined' && document.fonts?.load) {
+      document.fonts.load("700 100px 'MPlusRoundedBold'").then(measure).catch(measure)
+    }
+    measure()
+    return () => {
+      cancelled = true
+    }
   }, [address])
 
   const fetchChars = useCallback(async () => {

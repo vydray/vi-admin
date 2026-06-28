@@ -340,8 +340,9 @@ export async function renderMemorableCalendar(
         evY += EVENT_LINE_H
       }
 
-      // キャスト名＋時刻範囲
-      let castY = cardY + BORDER + HEADER_H + dayEvents.length * EVENT_LINE_H + CELL_PAD_TOP
+      // キャスト名＋時刻範囲。行内は最大イベント数分のスペースを全カードで確保し、
+      // イベントの有無でキャスト開始位置がズレないよう揃える
+      let castY = cardY + BORDER + HEADER_H + maxEventsPerRow[row] * EVENT_LINE_H + CELL_PAD_TOP
       const nameMaxW = INNER_W - 8
       for (const sh of dayShifts) {
         const name = sh.cast_name
