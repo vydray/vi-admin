@@ -41,6 +41,14 @@ export const marymareTheme: CalendarTheme = {
   titleGlow: { color: 'rgba(255, 111, 181, 0.95)', blur: 26 },
   nameGlow: { color: 'rgba(0, 0, 0, 0.55)', blur: 4 },
   eventDefault: { bg: 'rgba(255, 79, 162, 0.92)', text: '#ffffff' },
+  monthlyBox: {
+    panel: 'rgba(28, 12, 24, 0.84)',
+    border: 'rgba(255, 111, 181, 0.65)',
+    headerText: '#ff9ed1',
+    bodyText: '#ffe7f3',
+    accent: '#ff6fb5',
+    shadow: 'rgba(0, 0, 0, 0.5)',
+  },
 }
 
 /**
@@ -88,6 +96,14 @@ export const mirageTheme: CalendarTheme = {
   },
   // titleGlow / nameGlow なし（フラット）
   eventDefault: { bg: '#ddd6fe', text: '#5b21b6' },
+  monthlyBox: {
+    panel: 'rgba(255, 255, 255, 0.95)',
+    border: 'rgba(150, 130, 200, 0.55)',
+    headerText: '#5b21b6',
+    bodyText: '#3a3550',
+    accent: '#9b87c4',
+    shadow: 'rgba(70, 55, 110, 0.22)',
+  },
 }
 
 /**

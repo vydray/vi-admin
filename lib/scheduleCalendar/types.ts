@@ -116,4 +116,13 @@ export interface CalendarTheme {
   nameGlow?: ThemeGlow
   /** イベント帯の色（管理イベントに色情報が無いため、ここで既定色を与える） */
   eventDefault: { bg: string; text: string }
+  /** グリッド型: 月間イベント枠の配色（未指定なら描画側の既定ラベンダー） */
+  monthlyBox?: {
+    panel: string // パネル背景
+    border: string // 枠線
+    headerText: string // 「月間イベント」見出し文字
+    bodyText: string // イベント名
+    accent: string // 装飾(細線・ダイヤ)の色
+    shadow: string // 影
+  }
 }

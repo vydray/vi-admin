@@ -401,37 +401,104 @@ export async function renderCalendar(params: RenderCalendarParams, theme: Calend
 
   // ---------- 月間イベント枠（表示期間の全日にまたがるイベントをまとめて配置） ----------
   if (monthlyEvents.length > 0) {
+    const box = theme.monthlyBox ?? {
+      panel: 'rgba(255,255,255,0.95)',
+      border: 'rgba(139,92,246,0.5)',
+      headerText: '#5b21b6',
+      bodyText: '#3f3a52',
+      accent: '#8b5cf6',
+      shadow: 'rgba(91,33,182,0.18)',
+    }
     const mw = (monthlyEventPos?.w ?? 0.26) * CANVAS_W
     const mx = (monthlyEventPos?.x ?? 0.03) * CANVAS_W
     const my = (monthlyEventPos?.y ?? 0.5) * CANVAS_H
-    const pad = Math.round(mw * 0.06)
-    const titleSize = Math.max(12, Math.round(mw * 0.11))
-    const lineSize = Math.max(11, Math.round(mw * 0.095))
-    const titleH = titleSize + 8
-    const lineH = lineSize + 10
-    const mh = pad + titleH + 4 + monthlyEvents.length * lineH + pad
+    const pad = Math.round(mw * 0.07)
+    const titleSize = Math.max(14, Math.round(mw * 0.072))
+    const lineSize = Math.max(12, Math.round(mw * 0.064))
+    const titleAreaH = titleSize + Math.round(pad * 1.3)
+    const lineH = lineSize + Math.round(pad * 0.75)
+    const mh = titleAreaH + Math.round(pad * 0.5) + monthlyEvents.length * lineH + pad
+    const r = Math.min(16, mw * 0.05)
 
-    ctx.fillStyle = theme.eventDefault.bg
-    ctx.fillRect(mx, my, mw, mh)
+    const roundRectPath = (rx: number, ry: number, rw: number, rh: number, rad: number) => {
+      ctx.beginPath()
+      ctx.moveTo(rx + rad, ry)
+      ctx.arcTo(rx + rw, ry, rx + rw, ry + rh, rad)
+      ctx.arcTo(rx + rw, ry + rh, rx, ry + rh, rad)
+      ctx.arcTo(rx, ry + rh, rx, ry, rad)
+      ctx.arcTo(rx, ry, rx + rw, ry, rad)
+      ctx.closePath()
+    }
+    const fillDiamond = (cx: number, cy: number, rr: number) => {
+      ctx.beginPath()
+      ctx.moveTo(cx, cy - rr)
+      ctx.lineTo(cx + rr, cy)
+      ctx.lineTo(cx, cy + rr)
+      ctx.lineTo(cx - rr, cy)
+      ctx.closePath()
+      ctx.fill()
+    }
 
+    // パネル（影＋フロスト）
+    ctx.save()
+    ctx.shadowColor = box.shadow
+    ctx.shadowBlur = 18
+    ctx.shadowOffsetY = 5
+    roundRectPath(mx, my, mw, mh, r)
+    ctx.fillStyle = box.panel
+    ctx.fill()
+    ctx.restore()
+
+    // 枠線
+    roundRectPath(mx, my, mw, mh, r)
+    ctx.lineWidth = 1.5
+    ctx.strokeStyle = box.border
+    ctx.stroke()
+
+    // 見出し「月間イベント」＋左右の細線とダイヤ装飾
+    const hcy = my + Math.round(titleAreaH / 2) + 1
+    ctx.fillStyle = box.headerText
+    ctx.font = `${titleSize}px "${theme.fonts.event}", sans-serif`
     ctx.textAlign = 'center'
-    ctx.textBaseline = 'top'
-    ctx.fillStyle = theme.eventDefault.text
-    ctx.font = `bold ${titleSize}px "${theme.fonts.event}", sans-serif`
-    ctx.fillText('月間イベント', mx + mw / 2, my + pad)
+    ctx.textBaseline = 'middle'
+    const titleStr = '月間イベント'
+    ctx.fillText(titleStr, mx + mw / 2, hcy)
+    const tW = ctx.measureText(titleStr).width
+    const gap = 14
+    ctx.strokeStyle = box.accent
+    ctx.fillStyle = box.accent
+    ctx.lineWidth = 1
+    const lL = mx + pad
+    const lLend = mx + mw / 2 - tW / 2 - gap
+    if (lLend - 8 > lL) {
+      ctx.beginPath(); ctx.moveTo(lL, hcy); ctx.lineTo(lLend - 8, hcy); ctx.stroke()
+      fillDiamond(lLend - 3, hcy, 3)
+    }
+    const lRstart = mx + mw / 2 + tW / 2 + gap
+    const lR = mx + mw - pad
+    if (lR > lRstart + 8) {
+      ctx.beginPath(); ctx.moveTo(lRstart + 8, hcy); ctx.lineTo(lR, hcy); ctx.stroke()
+      fillDiamond(lRstart + 3, hcy, 3)
+    }
 
+    // イベント名（ダイヤbullet ＋ 名前）
     ctx.textAlign = 'left'
-    let ly = my + pad + titleH + 4
-    const maxW = mw - pad * 2
+    ctx.textBaseline = 'middle'
+    let ly = my + titleAreaH + Math.round(pad * 0.5)
+    const textX = mx + pad + 16
+    const maxW = mx + mw - pad - textX
     for (const ev of monthlyEvents) {
+      const midY = ly + Math.round(lineH / 2)
+      ctx.fillStyle = box.accent
+      fillDiamond(mx + pad + 5, midY, 4)
+      ctx.fillStyle = box.bodyText
       let fs = lineSize
-      const label = '・' + ev.label
-      ctx.font = `bold ${fs}px "${theme.fonts.event}", sans-serif`
-      while (ctx.measureText(label).width > maxW && fs > 9) {
+      ctx.font = `${fs}px "${theme.fonts.event}", sans-serif`
+      while (ctx.measureText(ev.label).width > maxW && fs > 9) {
         fs -= 1
-        ctx.font = `bold ${fs}px "${theme.fonts.event}", sans-serif`
+        ctx.font = `${fs}px "${theme.fonts.event}", sans-serif`
       }
-      ctx.fillText(label, mx + pad, ly)
+      ctx.fillText(ev.label, textX, midY)
       ly += lineH
     }
   }
