@@ -393,13 +393,12 @@ const styles: Record<string, CSSProperties> = {
   backdrop: { width: '100%', display: 'block' },
   addrText: {
     textAlign: 'center', fontWeight: 700, lineHeight: 1.3, whiteSpace: 'pre-line', pointerEvents: 'none',
-    // 本番canvasと同じ縦グラデ(#ff93c4→#e3589e)＋白縁。グラデはbackground-clipで文字に乗せる
-    color: '#e3589e',
+    // 本番canvasと同じ縦グラデ(#ff93c4→#e3589e)を background-clip:text で文字に乗せる。
+    // text-stroke はグラデを潰すので使わず、白の text-shadow で縁取りにする
     background: 'linear-gradient(180deg, #ff93c4, #e3589e)',
     WebkitBackgroundClip: 'text', backgroundClip: 'text',
-    WebkitTextFillColor: 'transparent',
-    WebkitTextStroke: '0.4px #fff',
-    filter: 'drop-shadow(0 0 1px rgba(155,144,151,0.9))',
+    WebkitTextFillColor: 'transparent', color: 'transparent',
+    textShadow: '0 0 2px #fff, 0 0 3px #fff, 0 1px 1px rgba(155,144,151,0.6)',
   },
   resizeHandle: {
     position: 'absolute', right: -9, bottom: -9, width: 18, height: 18,
