@@ -392,13 +392,10 @@ const styles: Record<string, CSSProperties> = {
   stageLoading: { padding: 60, textAlign: 'center', color: '#94a3b8', fontSize: 14 },
   backdrop: { width: '100%', display: 'block' },
   addrText: {
-    textAlign: 'center', fontWeight: 700, lineHeight: 1.3, whiteSpace: 'pre-line', pointerEvents: 'none',
-    // 本番canvasと同じ縦グラデ(#ff93c4→#e3589e)を background-clip:text で文字に乗せる。
-    // text-stroke はグラデを潰すので使わず、白の text-shadow で縁取りにする
-    background: 'linear-gradient(180deg, #ff93c4, #e3589e)',
-    WebkitBackgroundClip: 'text', backgroundClip: 'text',
-    WebkitTextFillColor: 'transparent', color: 'transparent',
-    textShadow: '0 0 2px #fff, 0 0 3px #fff, 0 1px 1px rgba(155,144,151,0.6)',
+    // エディタ上は確実に読める単色ピンク＋白縁で位置決め用。実際のグラデは本番(ダウンロード)で出る
+    textAlign: 'center', fontWeight: 700, color: '#e3589e',
+    lineHeight: 1.3, whiteSpace: 'pre-line', pointerEvents: 'none',
+    WebkitTextStroke: '0.6px #fff', textShadow: '0 1px 2px rgba(155,144,151,0.5)',
   },
   resizeHandle: {
     position: 'absolute', right: -9, bottom: -9, width: 18, height: 18,
