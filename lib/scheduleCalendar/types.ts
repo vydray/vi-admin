@@ -41,6 +41,9 @@ export interface RenderCalendarParams {
   addressPos?: { x: number; y: number; w: number }
   /** カード型: 立ち絵などのキャラ画像。保存位置(比率)で最前面に合成する */
   characters?: CalendarCharacter[]
+  /** グリッド型: 月間イベント枠の配置（左上x・上y・幅w、キャンバス比率）。未指定は既定位置。
+   * 表示期間の全日にまたがるイベント(月間扱い)をまとめて描く枠 */
+  monthlyEventPos?: { x: number; y: number; w: number }
 }
 
 /** 立ち絵などのキャラ。位置・幅はキャンバスに対する比率(0-1)で持つ（月で高さが変わっても追従） */

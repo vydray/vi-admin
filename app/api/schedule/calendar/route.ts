@@ -119,6 +119,15 @@ export async function POST(request: NextRequest) {
           w: Number.isFinite(Number(ap.w)) ? Math.min(1.2, Math.max(0.06, Number(ap.w))) : 0.4,
         }
       : undefined
+    // 月間イベント枠の配置（グリッド型）。欠損/範囲外は既定の左側へ寄せる
+    const mp = body.monthlyEventPos
+    const monthlyEventPos = mp && typeof mp === 'object'
+      ? {
+          x: Number.isFinite(Number(mp.x)) ? Math.min(1, Math.max(-0.3, Number(mp.x))) : 0.03,
+          y: Number.isFinite(Number(mp.y)) ? Math.min(1, Math.max(-0.3, Number(mp.y))) : 0.5,
+          w: Number.isFinite(Number(mp.w)) ? Math.min(1.2, Math.max(0.08, Number(mp.w))) : 0.24,
+        }
+      : undefined
     const excludeCharacters = body.excludeCharacters === true // 配置エディタの背景プレビュー用
 
     if (!storeId || !year || !month || month < 1 || month > 12) {
@@ -223,7 +232,7 @@ export async function POST(request: NextRequest) {
 
     const characters = isCard && !excludeCharacters ? await downloadCharacters(storeId) : []
 
-    const renderParams = { title, startDate, endDate, shifts, events, backgroundImage, bannerImage, logoImage, contentTop, address, addressPos, characters }
+    const renderParams = { title, startDate, endDate, shifts, events, backgroundImage, bannerImage, logoImage, contentTop, address, addressPos, characters, monthlyEventPos }
     const buffer = isCard
       ? await renderMemorableCalendar(renderParams, calendar.theme)
       : await renderCalendar(renderParams, calendar.theme)

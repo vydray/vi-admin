@@ -137,7 +137,7 @@ function drawCoverRect(
  */
 export async function renderCalendar(params: RenderCalendarParams, theme: CalendarTheme): Promise<Buffer> {
   ensureFonts(theme)
-  const { title, startDate, endDate, shifts, events, backgroundImage, bannerImage } = params
+  const { title, startDate, endDate, shifts, events, backgroundImage, bannerImage, monthlyEventPos } = params
 
   // シフトを date キーでマップ化＋ソート（display_order昇順→start_time）
   const shiftsByDate = new Map<string, CalendarShift[]>()
@@ -153,8 +153,13 @@ export async function renderCalendar(params: RenderCalendarParams, theme: Calend
     })
   }
 
+  // 表示期間の全日にまたがるイベントは「月間」として別枠にまとめる（毎日のセルには出さない）
+  const isMonthlyEvent = (e: CalendarEvent) => e.start <= startDate && e.end >= endDate
+  const monthlyEvents = events.filter(isMonthlyEvent)
+  const dayEvents = events.filter((e) => !isMonthlyEvent(e))
+
   const getEventsFor = (dateStr: string): CalendarEvent[] =>
-    events.filter((e) => dateStr >= e.start && dateStr <= e.end)
+    dayEvents.filter((e) => dateStr >= e.start && dateStr <= e.end)
 
   const weeks = buildWeeks(startDate, endDate)
 
@@ -392,6 +397,43 @@ export async function renderCalendar(params: RenderCalendarParams, theme: Calend
     }
 
     rowY += DATE_ROW_H + bodyH
+  }
+
+  // ---------- 月間イベント枠（表示期間の全日にまたがるイベントをまとめて配置） ----------
+  if (monthlyEvents.length > 0) {
+    const mw = (monthlyEventPos?.w ?? 0.26) * CANVAS_W
+    const mx = (monthlyEventPos?.x ?? 0.03) * CANVAS_W
+    const my = (monthlyEventPos?.y ?? 0.5) * CANVAS_H
+    const pad = Math.round(mw * 0.06)
+    const titleSize = Math.max(12, Math.round(mw * 0.11))
+    const lineSize = Math.max(11, Math.round(mw * 0.095))
+    const titleH = titleSize + 8
+    const lineH = lineSize + 10
+    const mh = pad + titleH + 4 + monthlyEvents.length * lineH + pad
+
+    ctx.fillStyle = theme.eventDefault.bg
+    ctx.fillRect(mx, my, mw, mh)
+
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'top'
+    ctx.fillStyle = theme.eventDefault.text
+    ctx.font = `bold ${titleSize}px "${theme.fonts.event}", sans-serif`
+    ctx.fillText('月間イベント', mx + mw / 2, my + pad)
+
+    ctx.textAlign = 'left'
+    let ly = my + pad + titleH + 4
+    const maxW = mw - pad * 2
+    for (const ev of monthlyEvents) {
+      let fs = lineSize
+      const label = '・' + ev.label
+      ctx.font = `bold ${fs}px "${theme.fonts.event}", sans-serif`
+      while (ctx.measureText(label).width > maxW && fs > 9) {
+        fs -= 1
+        ctx.font = `bold ${fs}px "${theme.fonts.event}", sans-serif`
+      }
+      ctx.fillText(label, mx + pad, ly)
+      ly += lineH
+    }
   }
 
   return canvas.toBuffer('image/png')

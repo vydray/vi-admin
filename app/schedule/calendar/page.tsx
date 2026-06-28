@@ -8,6 +8,7 @@ import { toast } from 'react-hot-toast'
 import AssetSettings from './AssetSettings'
 import EventSettings from './EventSettings'
 import CharacterEditor from './CharacterEditor'
+import MonthlyEventEditor from './MonthlyEventEditor'
 
 // カレンダーデザイン実装済みの店舗（順次追加）
 const SUPPORTED_STORES: Record<number, string> = {
@@ -32,6 +33,8 @@ const DEFAULT_ADDRESS: Record<number, string> = {
 }
 // 住所の配置デフォルト（右下）
 const DEFAULT_ADDR_POS = { x: 0.58, y: 0.84, w: 0.4 }
+// 月間イベント枠の配置デフォルト（左側）
+const DEFAULT_MONTHLY_POS = { x: 0.03, y: 0.5, w: 0.24 }
 
 const now = new Date()
 
@@ -60,6 +63,7 @@ function CalendarContent() {
   const [contentTop, setContentTop] = useState<number>(40)
   const [address, setAddress] = useState<string>('')
   const [addressPos, setAddressPos] = useState<{ x: number; y: number; w: number }>(DEFAULT_ADDR_POS)
+  const [monthlyEventPos, setMonthlyEventPos] = useState<{ x: number; y: number; w: number }>(DEFAULT_MONTHLY_POS)
 
   useEffect(() => {
     if (storeId == null || typeof window === 'undefined') return
@@ -82,12 +86,35 @@ function CalendarContent() {
     } else {
       setAddressPos(DEFAULT_ADDR_POS)
     }
+
+    const savedMonthly = window.localStorage.getItem(`cal-monthlyPos-${storeId}`)
+    if (savedMonthly) {
+      try {
+        const p = JSON.parse(savedMonthly)
+        const cl = (v: unknown, lo: number, hi: number, d: number) => {
+          const n = Number(v)
+          return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d
+        }
+        setMonthlyEventPos({ x: cl(p.x, -0.3, 1, 0.03), y: cl(p.y, -0.3, 1, 0.5), w: cl(p.w, 0.08, 1.2, DEFAULT_MONTHLY_POS.w) })
+      } catch {
+        setMonthlyEventPos(DEFAULT_MONTHLY_POS)
+      }
+    } else {
+      setMonthlyEventPos(DEFAULT_MONTHLY_POS)
+    }
   }, [storeId])
 
   const updateAddressPos = (p: { x: number; y: number; w: number }) => {
     setAddressPos(p)
     if (storeId != null && typeof window !== 'undefined') {
       window.localStorage.setItem(`cal-addressPos-${storeId}`, JSON.stringify(p))
+    }
+  }
+
+  const updateMonthlyPos = (p: { x: number; y: number; w: number }) => {
+    setMonthlyEventPos(p)
+    if (storeId != null && typeof window !== 'undefined') {
+      window.localStorage.setItem(`cal-monthlyPos-${storeId}`, JSON.stringify(p))
     }
   }
 
@@ -124,7 +151,7 @@ function CalendarContent() {
       const res = await fetch('/api/schedule/calendar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ storeId, year, month, half, contentTop, address, addressPos }),
+        body: JSON.stringify({ storeId, year, month, half, contentTop, address, addressPos, monthlyEventPos }),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -267,6 +294,15 @@ function CalendarContent() {
           address={address}
           addressPos={addressPos}
           onAddressPosChange={updateAddressPos}
+        />
+      )}
+
+      {supported && storeId && !isCard && (
+        <MonthlyEventEditor
+          storeId={storeId}
+          genParams={genParams}
+          monthlyEventPos={monthlyEventPos}
+          onPosChange={updateMonthlyPos}
         />
       )}
 
