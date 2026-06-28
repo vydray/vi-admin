@@ -42,6 +42,15 @@ async function recalculateDate(storeId: number, date: string): Promise<{ success
   return response.json()
 }
 
+// 合計(出勤日数)に数えるステータス。出勤系=出勤/リクエスト出勤/遅刻/早退のみ。
+// 欠勤系(当欠/事前欠勤/無欠/公欠)は除外。is_work_dayフラグがあればそれを優先（将来のUI用）。
+const WORK_DAY_STATUS_NAMES = new Set(['出勤', 'リクエスト出勤', '遅刻', '早退'])
+const isWorkDayStatus = (status?: { name: string; is_work_day?: boolean } | null): boolean => {
+  if (!status) return false
+  if (typeof status.is_work_day === 'boolean') return status.is_work_day
+  return WORK_DAY_STATUS_NAMES.has(status.name)
+}
+
 export default function AttendancePage() {
   return (
     <ProtectedPage permissionKey="attendance">
@@ -795,10 +804,9 @@ function AttendancePageContent() {
       for (const s of usedStatuses) {
         counts[s.id] = castAttendances.filter(a => a.status_id === s.id).length
       }
-      const total = castAttendances.filter(a => {
-        const status = attendanceStatuses.find(s => s.id === a.status_id)
-        return status?.is_work_day ?? status?.is_active ?? false
-      }).length
+      const total = castAttendances.filter(a =>
+        isWorkDayStatus(attendanceStatuses.find(s => s.id === a.status_id))
+      ).length
       return { name: cast.name, counts, total }
     })
 
@@ -1252,9 +1260,8 @@ function AttendancePageContent() {
                   }}>
                     {attendances.filter(a => {
                       if (a.cast_name !== cast.name) return false
-                      // 勤怠ステータスの is_work_day フラグで判定（なければis_activeで判定）
-                      const status = attendanceStatuses.find(s => s.id === a.status_id)
-                      return status?.is_work_day ?? status?.is_active ?? false
+                      // 出勤系(出勤/リクエスト出勤/遅刻/早退)のみカウント。欠勤系は除外
+                      return isWorkDayStatus(attendanceStatuses.find(s => s.id === a.status_id))
                     }).length}日
                     {(() => {
                       const totalDailyPayment = attendances
