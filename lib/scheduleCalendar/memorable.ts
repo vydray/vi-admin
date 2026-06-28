@@ -1,7 +1,7 @@
 import path from 'path'
 import fs from 'fs'
 import { createCanvas, registerFont, loadImage } from 'canvas'
-import type { CalendarShift, CalendarTheme, RenderCalendarParams } from './types'
+import type { CalendarEvent, CalendarShift, CalendarTheme, RenderCalendarParams } from './types'
 
 /**
  * Memorable(store1) カード型シフト画像の描画。
@@ -37,6 +37,7 @@ const CARD_GAP = 8
 const CORNER_R = 8
 const HEADER_H = 56
 const CAST_LINE_H = 34
+const EVENT_LINE_H = 30 // イベント帯1行の高さ
 const CELL_PAD_TOP = 4
 const CELL_PAD_BOTTOM = 8
 const ROW_GAP = 30
@@ -142,7 +143,11 @@ export async function renderMemorableCalendar(
   theme: CalendarTheme,
 ): Promise<Buffer> {
   ensureFonts(theme)
-  const { title, startDate, endDate, shifts, backgroundImage, logoImage, contentTop, address, addressPos, characters } = params
+  const { title, startDate, endDate, shifts, events, backgroundImage, logoImage, contentTop, address, addressPos, characters } = params
+
+  // その日にかかるイベント（複数日イベントは各日に表示）
+  const eventsForDate = (dateStr: string): CalendarEvent[] =>
+    (events ?? []).filter((e) => dateStr >= e.start && dateStr <= e.end)
   const c = theme.colors
   // コンテンツ開始位置（背景の上部装飾を避けるため下げられる。未指定は既定）
   const topPad = contentTop != null && contentTop >= 0 ? contentTop : LOGO_TOP_PAD
@@ -167,17 +172,23 @@ export async function renderMemorableCalendar(
 
   // 各行の最大キャスト数（最低3）
   const maxCastsPerRow: number[] = []
+  const maxEventsPerRow: number[] = []
   for (let row = 0; row < numRows; row++) {
     let maxInRow = 0
+    let maxEv = 0
     for (let col = 0; col < 7; col++) {
       const idx = row * 7 + col - startDow
       if (idx >= 0 && idx < dates.length) {
         maxInRow = Math.max(maxInRow, (shiftsByDate.get(dates[idx]) || []).length)
+        maxEv = Math.max(maxEv, eventsForDate(dates[idx]).length)
       }
     }
     maxCastsPerRow.push(Math.max(maxInRow, 3))
+    maxEventsPerRow.push(maxEv)
   }
-  const rowCellHeights = maxCastsPerRow.map((n) => HEADER_H + CELL_PAD_TOP + n * CAST_LINE_H + CELL_PAD_BOTTOM)
+  const rowCellHeights = maxCastsPerRow.map(
+    (n, i) => HEADER_H + CELL_PAD_TOP + maxEventsPerRow[i] * EVENT_LINE_H + n * CAST_LINE_H + CELL_PAD_BOTTOM,
+  )
 
   const CANVAS_W = MARGIN * 2 + 7 * CARD_W + 6 * CARD_GAP
   let gridH = 0
@@ -307,8 +318,30 @@ export async function renderMemorableCalendar(
       const hw = ctx.measureText(dayLabel).width
       ctx.fillText(dayLabel, cardX + BORDER + (INNER_W - hw) / 2, cardY + BORDER + 40)
 
+      // イベント帯（日付ヘッダーの下・シフトの上。複数日イベントは各日に表示）
+      const dayEvents = eventsForDate(dateStr)
+      let evY = cardY + BORDER + HEADER_H
+      for (const ev of dayEvents) {
+        const bandX = cardX + BORDER + 4
+        const bandW = INNER_W - 8
+        ctx.fillStyle = ev.bg ?? theme.eventDefault.bg
+        roundRect(ctx, bandX, evY + 2, bandW, EVENT_LINE_H - 6, 6)
+        ctx.fill()
+        ctx.fillStyle = ev.text ?? theme.eventDefault.text
+        let evFont = 22
+        ctx.font = `bold ${evFont}px "${theme.fonts.title}", sans-serif`
+        while (ctx.measureText(ev.label).width > bandW - 10 && evFont > 11) {
+          evFont -= 1
+          ctx.font = `bold ${evFont}px "${theme.fonts.title}", sans-serif`
+        }
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        ctx.fillText(ev.label, cardX + BORDER + INNER_W / 2, evY + 2 + (EVENT_LINE_H - 6) / 2)
+        evY += EVENT_LINE_H
+      }
+
       // キャスト名＋時刻範囲
-      let castY = cardY + BORDER + HEADER_H + CELL_PAD_TOP
+      let castY = cardY + BORDER + HEADER_H + dayEvents.length * EVENT_LINE_H + CELL_PAD_TOP
       const nameMaxW = INNER_W - 8
       for (const sh of dayShifts) {
         const name = sh.cast_name
