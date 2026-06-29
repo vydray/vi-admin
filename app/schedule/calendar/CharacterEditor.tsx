@@ -101,6 +101,7 @@ export default function CharacterEditor({
       const res = await fetch('/api/schedule/calendar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        cache: 'no-store',
         // キャラ・住所とも背景からは除外。住所は同じグラデのCSS文字でオーバーレイ＝住所変更で再生成しない（軽量）
         body: JSON.stringify({ storeId, ...genParams, address: '', excludeCharacters: true }),
         signal: ac.signal,
@@ -308,6 +309,7 @@ export default function CharacterEditor({
         <div style={styles.body}>
           <div style={styles.toolbar}>
             <button onClick={() => fileRef.current?.click()} style={styles.addBtn}>キャラ追加</button>
+            <button onClick={() => genBackdrop()} disabled={loadingBackdrop} style={styles.refreshBtn}>{loadingBackdrop ? '更新中...' : 'プレビュー更新'}</button>
             <button onClick={onSave} disabled={saving} style={styles.saveBtn}>{saving ? '保存中...' : '位置を保存'}</button>
             <button onClick={onDownload} disabled={saving} style={styles.dlBtn}>{saving ? '...' : 'ダウンロード'}</button>
             <input ref={fileRef} type="file" accept="image/*" onChange={onUpload} style={{ display: 'none' }} />
@@ -412,6 +414,10 @@ const styles: Record<string, CSSProperties> = {
   dlBtn: {
     padding: '8px 16px', borderRadius: 8, border: 'none',
     backgroundColor: '#22c55e', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer',
+  },
+  refreshBtn: {
+    padding: '8px 16px', borderRadius: 8, border: '1px solid #6366f1',
+    backgroundColor: '#eef2ff', color: '#4338ca', fontSize: 14, fontWeight: 700, cursor: 'pointer',
   },
   note: { fontSize: 12, color: '#94a3b8', marginBottom: 12 },
   stage: {
