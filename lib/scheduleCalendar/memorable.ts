@@ -340,6 +340,12 @@ export async function renderMemorableCalendar(
         evY += EVENT_LINE_H
       }
 
+      // イベント帯描画で textAlign/textBaseline を center/middle にしているので、
+      // キャスト名は左寄せ・alphabetic 前提で描く（startX を左端として扱う）ため必ず戻す。
+      // 戻さないとイベントがある日だけ名前/時刻が中央寄せになりズレる。
+      ctx.textAlign = 'left'
+      ctx.textBaseline = 'alphabetic'
+
       // キャスト名＋時刻範囲。行内は最大イベント数分のスペースを全カードで確保し、
       // イベントの有無でキャスト開始位置がズレないよう揃える
       let castY = cardY + BORDER + HEADER_H + maxEventsPerRow[row] * EVENT_LINE_H + CELL_PAD_TOP
