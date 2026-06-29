@@ -437,8 +437,15 @@ const styles: Record<string, CSSProperties> = {
     backgroundImage: 'linear-gradient(180deg, #ff93c4 0%, #e3589e 100%)',
     WebkitBackgroundClip: 'text', backgroundClip: 'text',
     WebkitTextFillColor: 'transparent', color: 'transparent',
-    WebkitTextStroke: '0.8px #fff', paintOrder: 'stroke fill',
-    filter: 'drop-shadow(0 1px 1.5px rgba(155,144,151,0.55))',
+    // 白縁(text-stroke)＋グレー外縁(8方向drop-shadow)＋影で、本番の二重縁(白→グレー)を近似。
+    // strokeを太くしすぎるとグラデ塗りを潰すので白は2px止まり、グレーはshadowで外周に出す。
+    WebkitTextStroke: '2px #fff', paintOrder: 'stroke fill',
+    filter:
+      'drop-shadow(1.3px 0 0 #9b9097) drop-shadow(-1.3px 0 0 #9b9097) ' +
+      'drop-shadow(0 1.3px 0 #9b9097) drop-shadow(0 -1.3px 0 #9b9097) ' +
+      'drop-shadow(0.9px 0.9px 0 #9b9097) drop-shadow(-0.9px 0.9px 0 #9b9097) ' +
+      'drop-shadow(0.9px -0.9px 0 #9b9097) drop-shadow(-0.9px -0.9px 0 #9b9097) ' +
+      'drop-shadow(0 1.5px 1.5px rgba(120,110,116,0.4))',
   },
   resizeHandle: {
     position: 'absolute', right: -9, bottom: -9, width: 18, height: 18,
