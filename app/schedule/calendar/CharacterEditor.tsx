@@ -428,11 +428,17 @@ const styles: Record<string, CSSProperties> = {
   stageLoading: { padding: 60, textAlign: 'center', color: '#94a3b8', fontSize: 14 },
   backdrop: { width: '100%', display: 'block' },
   addrText: {
-    // 本番canvasと同じ M PLUS Rounded で表示し漢字の形・箱サイズを一致させる。単色ピンク＋白縁
-    textAlign: 'center', fontWeight: 700, color: '#e3589e',
+    // 本番canvas(drawAddress)と同じ M PLUS Rounded＋縦グラデ(#ff93c4→#e3589e)で表示し、
+    // 漢字の形・箱サイズ・色味を一致させる。グラデは background-clip:text で文字に焼き、
+    // paint-order:stroke fill で白strokeを下に敷いてグラデを隠さない（白縁＋グレー外縁の近似）。
+    textAlign: 'center', fontWeight: 700,
     fontFamily: "'MPlusRoundedBold', sans-serif",
     lineHeight: 1.3, whiteSpace: 'pre-line', pointerEvents: 'none',
-    WebkitTextStroke: '0.6px #fff', textShadow: '0 1px 2px rgba(155,144,151,0.5)',
+    backgroundImage: 'linear-gradient(180deg, #ff93c4 0%, #e3589e 100%)',
+    WebkitBackgroundClip: 'text', backgroundClip: 'text',
+    WebkitTextFillColor: 'transparent', color: 'transparent',
+    WebkitTextStroke: '0.8px #fff', paintOrder: 'stroke fill',
+    filter: 'drop-shadow(0 1px 1.5px rgba(155,144,151,0.55))',
   },
   resizeHandle: {
     position: 'absolute', right: -9, bottom: -9, width: 18, height: 18,
