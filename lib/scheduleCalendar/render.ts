@@ -178,6 +178,17 @@ export async function renderCalendar(params: RenderCalendarParams, theme: Calend
   }
 
   const weekHeights = weeks.map(getWeekHeight)
+  // 週ごとの最大イベント数。イベント帯の有無でキャスト開始位置がズレないよう、
+  // 行内の全セルでこの数ぶんのスペースを確保してキャスト名の段を揃える。
+  const weekMaxEvents = weeks.map((week) => {
+    let m = 0
+    for (const day of week) {
+      if (!day) continue
+      const n = getEventsFor(dateToYmd(day)).length
+      if (n > m) m = n
+    }
+    return m
+  })
   const totalRowH = weekHeights.reduce((s, h) => s + h + DATE_ROW_H, 0)
   const CANVAS_W = COL_W * 7
 
@@ -331,9 +342,11 @@ export async function renderCalendar(params: RenderCalendarParams, theme: Calend
       ctx.lineWidth = 1
       ctx.strokeRect(x + 0.5, cellY + 0.5, COL_W - 1, bodyH - 1)
 
-      // イベント帯（同日に複数あれば縦に積む）
+      // イベント帯（同日に複数あれば縦に積む）。
+      // キャスト開始Yは行内の最大イベント数ぶんを全セルで確保＝イベントの有無で段がズレないよう揃える。
+      // （無し日は weekMaxEvents=0 のとき従来どおり cellY + 10）
       const evs = getEventsFor(dateToYmd(day))
-      let castStartY = cellY + 10
+      const castStartY = cellY + 10 + weekMaxEvents[w] * (EVENT_LABEL_H + 4)
       if (evs.length > 0) {
         let labelY = cellY + 6
         for (const ev of evs) {
@@ -352,7 +365,6 @@ export async function renderCalendar(params: RenderCalendarParams, theme: Calend
           ctx.fillText(ev.label, x + COL_W / 2, labelY + EVENT_LABEL_H / 2)
           labelY += EVENT_LABEL_H + 4
         }
-        castStartY = labelY + 4
       }
 
       // シフト名
