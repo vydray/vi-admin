@@ -6,6 +6,10 @@ import { useStore } from '@/contexts/StoreContext'
 import ProtectedPage from '@/components/ProtectedPage'
 import { toast } from 'react-hot-toast'
 import { INTERVIEW_QUESTIONS, INTERVIEW_BLOCKS, type InterviewAnswers } from '@/lib/interviewQuestions'
+import type { CastWageRateRow } from '@/types/management'
+
+const yen = (n: number) => '¥' + Math.round(n || 0).toLocaleString('ja-JP')
+const pct = (r: number | null) => (r == null ? '—' : (r * 100).toFixed(1) + '%')
 
 // ── デザイントークン（プロデュース卓 / 制作管制室）──────────────
 const T = {
@@ -86,6 +90,7 @@ function InterviewContent() {
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [dirty, setDirty] = useState(false)
   const [showDetail, setShowDetail] = useState(true)
+  const [wage, setWage] = useState<CastWageRateRow | null>(null)
 
   const selected = casts.find((c) => c.id === selectedId) || null
   const skipAutosave = useRef(true)
@@ -104,6 +109,29 @@ function InterviewContent() {
       setCasts((data as CastRow[]) ?? [])
     })()
   }, [storeId])
+
+  // 給率KPI: 経営ダッシュと同じ cast-wage-rate API を叩く（自前計算しない＝数字ズレ0）。
+  // 面談日の月を対象に、選択キャストの行だけ取り出す。
+  useEffect(() => {
+    if (selectedId == null || storeId == null) { setWage(null); return }
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch('/api/management/cast-wage-rate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ store_id: storeId, year_month: interviewDate.slice(0, 7) }),
+        })
+        if (!res.ok) { if (!cancelled) setWage(null); return }
+        const j = await res.json()
+        const row = (j.rows ?? []).find((r: CastWageRateRow) => r.castId === selectedId) ?? null
+        if (!cancelled) setWage(row)
+      } catch {
+        if (!cancelled) setWage(null)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [selectedId, storeId, interviewDate])
 
   const loadInterviews = useCallback(async (castId: number, date: string) => {
     skipAutosave.current = true
@@ -250,6 +278,26 @@ function InterviewContent() {
             </div>
           </div>
 
+          {/* 給率KPIバンド（経営ダッシュ cast-wage-rate と同値＝数字ズレ0） */}
+          {wage && (
+            <div style={S.kpiBand}>
+              <span style={S.kpiMonth}>{interviewDate.slice(0, 7).replace('-', '/')}</span>
+              {([
+                { label: '総支給額', value: yen(wage.gross) },
+                { label: 'キャスト売上', value: yen(wage.castSales) },
+                { label: 'ヘルプ', value: yen(wage.helpSales) },
+                { label: '売上給与率', value: pct(wage.rate1), color: T.pink },
+                { label: '推し卓 会計総額', value: yen(wage.tableTotal) },
+                { label: '店舗貢献率', value: pct(wage.rate2), color: T.gold },
+              ] as { label: string; value: string; color?: string }[]).map((m) => (
+                <div key={m.label} style={S.kpiCard}>
+                  <div style={S.kpiLabel}>{m.label}</div>
+                  <div style={{ ...S.kpiValue, color: m.color ?? T.ink }}>{m.value}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* 売上(iframe) ／ 面談ノート */}
           <div style={S.body}>
             {/* DOMから消すと再生成でbfcache復元バグが出るため display で出し入れ */}
@@ -347,7 +395,13 @@ const S: Record<string, CSSProperties> = {
   noSns: { fontSize: 12, color: T.faint },
   snsChip: { padding: '5px 12px', borderRadius: 999, border: `1.5px solid ${T.mint}`, color: T.mint, fontSize: 12, fontWeight: 800, textDecoration: 'none', letterSpacing: 0.3, whiteSpace: 'nowrap' },
 
-  body: { display: 'flex', gap: 14, alignItems: 'stretch', height: 'calc(100vh - 240px)', minHeight: 520 },
+  kpiBand: { display: 'flex', alignItems: 'stretch', gap: 10, flexWrap: 'wrap', marginBottom: 14 },
+  kpiMonth: { alignSelf: 'center', fontSize: 12, fontWeight: 800, color: T.faint, fontFamily: T.mono, letterSpacing: 0.5, marginRight: 2 },
+  kpiCard: { flex: '1 1 auto', minWidth: 130, background: T.card, border: `1px solid ${T.line}`, borderRadius: 12, padding: '10px 14px' },
+  kpiLabel: { fontSize: 11, fontWeight: 700, color: T.sub, marginBottom: 3, whiteSpace: 'nowrap' },
+  kpiValue: { fontSize: 20, fontWeight: 800, fontFamily: T.mono, letterSpacing: 0.3, fontVariantNumeric: 'tabular-nums' },
+
+  body: { display: 'flex', gap: 14, alignItems: 'stretch', height: 'calc(100vh - 320px)', minHeight: 460 },
   salesPane: { flex: '1 1 56%', display: 'flex', flexDirection: 'column', background: T.card, border: `1px solid ${T.line}`, borderRadius: 14, overflow: 'hidden' },
   paneHead: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderBottom: `1px solid ${T.line}` },
   paneTitle: { fontSize: 14, fontWeight: 800, color: T.ink },
