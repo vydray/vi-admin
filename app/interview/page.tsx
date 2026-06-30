@@ -10,6 +10,11 @@ import type { CastWageRateRow } from '@/types/management'
 
 const yen = (n: number) => '¥' + Math.round(n || 0).toLocaleString('ja-JP')
 const pct = (r: number | null) => (r == null ? '—' : (r * 100).toFixed(1) + '%')
+const shiftMonth = (ym: string, delta: number) => {
+  const [y, m] = ym.split('-').map(Number)
+  const d = new Date(y, m - 1 + delta, 1)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
 
 // ── デザイントークン（プロデュース卓 / 制作管制室）──────────────
 const T = {
@@ -91,6 +96,8 @@ function InterviewContent() {
   const [dirty, setDirty] = useState(false)
   const [showDetail, setShowDetail] = useState(true)
   const [wage, setWage] = useState<CastWageRateRow | null>(null)
+  // 給率の対象月。既定は面談日の前月（直近の確定実績）。月セレクタで前後できる。
+  const [kpiMonth, setKpiMonth] = useState<string>(() => shiftMonth(todayStr().slice(0, 7), -1))
 
   const selected = casts.find((c) => c.id === selectedId) || null
   const skipAutosave = useRef(true)
@@ -110,8 +117,11 @@ function InterviewContent() {
     })()
   }, [storeId])
 
+  // 面談日を変えたら給率の対象月を「その前月」に合わせる
+  useEffect(() => { setKpiMonth(shiftMonth(interviewDate.slice(0, 7), -1)) }, [interviewDate])
+
   // 給率KPI: 経営ダッシュと同じ cast-wage-rate API を叩く（自前計算しない＝数字ズレ0）。
-  // 面談日の月を対象に、選択キャストの行だけ取り出す。
+  // kpiMonth を対象に、選択キャストの行だけ取り出す。
   useEffect(() => {
     if (selectedId == null || storeId == null) { setWage(null); return }
     let cancelled = false
@@ -120,7 +130,7 @@ function InterviewContent() {
         const res = await fetch('/api/management/cast-wage-rate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ store_id: storeId, year_month: interviewDate.slice(0, 7) }),
+          body: JSON.stringify({ store_id: storeId, year_month: kpiMonth }),
         })
         if (!res.ok) { if (!cancelled) setWage(null); return }
         const j = await res.json()
@@ -131,7 +141,7 @@ function InterviewContent() {
       }
     })()
     return () => { cancelled = true }
-  }, [selectedId, storeId, interviewDate])
+  }, [selectedId, storeId, kpiMonth])
 
   const loadInterviews = useCallback(async (castId: number, date: string) => {
     skipAutosave.current = true
@@ -279,10 +289,14 @@ function InterviewContent() {
           </div>
 
           {/* 給率KPIバンド（経営ダッシュ cast-wage-rate と同値＝数字ズレ0） */}
-          {wage && (
-            <div style={S.kpiBand}>
-              <span style={S.kpiMonth}>{interviewDate.slice(0, 7).replace('-', '/')}</span>
-              {([
+          <div style={S.kpiBand}>
+            <div style={S.monthSel}>
+              <button onClick={() => setKpiMonth(shiftMonth(kpiMonth, -1))} style={S.monthBtn}>‹</button>
+              <span style={S.kpiMonth}>{kpiMonth.replace('-', '/')}</span>
+              <button onClick={() => setKpiMonth(shiftMonth(kpiMonth, 1))} style={S.monthBtn}>›</button>
+            </div>
+            {wage ? (
+              ([
                 { label: '総支給額', value: yen(wage.gross) },
                 { label: 'キャスト売上', value: yen(wage.castSales) },
                 { label: 'ヘルプ', value: yen(wage.helpSales) },
@@ -294,9 +308,11 @@ function InterviewContent() {
                   <div style={S.kpiLabel}>{m.label}</div>
                   <div style={{ ...S.kpiValue, color: m.color ?? T.ink }}>{m.value}</div>
                 </div>
-              ))}
-            </div>
-          )}
+              ))
+            ) : (
+              <span style={S.kpiEmpty}>{kpiMonth.replace('-', '/')} の実績データなし（‹ › で月を切替）</span>
+            )}
+          </div>
 
           {/* 売上(iframe) ／ 面談ノート */}
           <div style={S.body}>
@@ -396,7 +412,10 @@ const S: Record<string, CSSProperties> = {
   snsChip: { padding: '5px 12px', borderRadius: 999, border: `1.5px solid ${T.mint}`, color: T.mint, fontSize: 12, fontWeight: 800, textDecoration: 'none', letterSpacing: 0.3, whiteSpace: 'nowrap' },
 
   kpiBand: { display: 'flex', alignItems: 'stretch', gap: 10, flexWrap: 'wrap', marginBottom: 14 },
-  kpiMonth: { alignSelf: 'center', fontSize: 12, fontWeight: 800, color: T.faint, fontFamily: T.mono, letterSpacing: 0.5, marginRight: 2 },
+  monthSel: { display: 'flex', alignItems: 'center', gap: 2, alignSelf: 'center' },
+  monthBtn: { width: 26, height: 26, borderRadius: 7, border: `1px solid ${T.line}`, background: T.card, color: T.sub, fontSize: 14, fontWeight: 800, cursor: 'pointer', lineHeight: 1 },
+  kpiMonth: { fontSize: 13, fontWeight: 800, color: T.ink, fontFamily: T.mono, letterSpacing: 0.5, minWidth: 58, textAlign: 'center' },
+  kpiEmpty: { alignSelf: 'center', fontSize: 13, color: T.faint, padding: '8px 4px' },
   kpiCard: { flex: '1 1 auto', minWidth: 130, background: T.card, border: `1px solid ${T.line}`, borderRadius: 12, padding: '10px 14px' },
   kpiLabel: { fontSize: 11, fontWeight: 700, color: T.sub, marginBottom: 3, whiteSpace: 'nowrap' },
   kpiValue: { fontSize: 20, fontWeight: 800, fontFamily: T.mono, letterSpacing: 0.3, fontVariantNumeric: 'tabular-nums' },
