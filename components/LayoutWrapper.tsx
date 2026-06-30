@@ -62,12 +62,17 @@ export default function LayoutWrapper({ children }: { children: ReactNode }) {
     setIsSidebarOpen(false)
   }, [pathname])
 
-  // 埋め込みモード判定（マウント後にURLクエリから。useSearchParams不使用でビルド安全）
+  // 埋め込みモード判定: iframe内で開かれていれば枠を出さない。
+  // ?embed=1 クエリだと内部ナビで引き継がれず壊れるため「iframe内か(window.self!==window.top)」で判定。
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      setIsEmbed(new URLSearchParams(window.location.search).get('embed') === '1')
+      try {
+        setIsEmbed(window.self !== window.top)
+      } catch {
+        setIsEmbed(true) // クロスオリジンで参照不可=iframe内とみなす
+      }
     }
-  }, [pathname])
+  }, [])
 
   // ローディング中
   if (isLoading || mobileLoading) {

@@ -252,15 +252,14 @@ function InterviewContent() {
 
           {/* 売上(iframe) ／ 面談ノート */}
           <div style={S.body}>
-            {showDetail && (
-              <div style={S.salesPane}>
-                <div style={S.paneHead}>
-                  <span style={S.paneTitle}>売上 <span style={S.paneEn}>SALES</span></span>
-                  <button onClick={() => setShowDetail(false)} style={S.collapseBtn}>隠す ›</button>
-                </div>
-                <iframe key={selected.id} src={`/cast-sales/${selected.id}?embed=1`} style={S.iframe} title="キャスト売上" />
+            {/* DOMから消すと再生成でbfcache復元バグが出るため display で出し入れ */}
+            <div style={{ ...S.salesPane, ...(showDetail ? {} : { display: 'none' }) }}>
+              <div style={S.paneHead}>
+                <span style={S.paneTitle}>売上 <span style={S.paneEn}>SALES</span></span>
+                <button onClick={() => setShowDetail(false)} style={S.collapseBtn}>隠す ›</button>
               </div>
-            )}
+              <iframe key={selected.id} src={`/cast-sales/${selected.id}?embed=1`} style={S.iframe} title="キャスト売上" />
+            </div>
 
             <div style={S.formPane}>
               {!showDetail && (
