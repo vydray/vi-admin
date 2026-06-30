@@ -1,6 +1,6 @@
 'use client'
 
-import { usePathname } from 'next/navigation'
+import { usePathname, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import Sidebar from '@/components/Sidebar'
 import LoadingSpinner from '@/components/LoadingSpinner'
@@ -32,6 +32,9 @@ const mobileRestrictedPaths = [
 
 export default function LayoutWrapper({ children }: { children: ReactNode }) {
   const pathname = usePathname()
+  const searchParams = useSearchParams()
+  // ?embed=1 のときはサイドバー・余白なしで中身だけ描画（面談ページが売上ページをiframe埋め込みする用）
+  const isEmbed = searchParams.get('embed') === '1'
   const { isAuthenticated, isLoading } = useAuth()
   const router = useRouter()
   const { isMobile, isLoading: mobileLoading } = useIsMobile()
@@ -71,6 +74,11 @@ export default function LayoutWrapper({ children }: { children: ReactNode }) {
   // 未認証の場合は何も表示しない（リダイレクト処理が行われる）
   if (!isAuthenticated) {
     return null
+  }
+
+  // 埋め込みモード（認証は通すが枠は出さない）
+  if (isEmbed) {
+    return <main style={{ minHeight: '100vh' }}>{children}</main>
   }
 
   // モバイルで制限されたページかチェック

@@ -27,6 +27,7 @@ export const PERMISSION_CONFIG: Record<PermissionKey, { label: string; category:
   website_banners: { label: 'Webサイト・バナー管理', category: 'その他' },
   management: { label: '経営ダッシュボード', category: '経営' },
   expenses: { label: '経費管理', category: 'その他' },
+  interview: { label: 'キャスト面談', category: 'キャスト' },
 }
 
 // カテゴリ順（経営は重要なので先頭）
@@ -37,7 +38,7 @@ export const ALL_PERMISSION_KEYS: PermissionKey[] = Object.keys(PERMISSION_CONFI
 
 // デフォルトOFF（明示的にtrueの時だけ許可）の権限キー。
 // 経営ダッシュボードは経営数値を扱うため、店舗adminには既定で見せない（opt-in）。
-export const OPT_IN_KEYS = new Set<PermissionKey>(['management'])
+export const OPT_IN_KEYS = new Set<PermissionKey>(['management', 'interview'])
 
 // デフォルト権限（opt-inキー以外は有効）
 export const DEFAULT_PERMISSIONS: Permissions = ALL_PERMISSION_KEYS.reduce((acc, key) => {
@@ -72,6 +73,7 @@ export function getPermissionKeyFromPath(path: string): PermissionKey | null {
   const pathMap: Record<string, PermissionKey> = {
     '/management': 'management',
     '/expenses': 'expenses',
+    '/interview': 'interview',
     '/casts': 'casts',
     '/attendance': 'attendance',
     '/payslip': 'payslip',
