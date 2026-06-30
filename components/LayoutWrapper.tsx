@@ -1,6 +1,6 @@
 'use client'
 
-import { usePathname, useSearchParams } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import Sidebar from '@/components/Sidebar'
 import LoadingSpinner from '@/components/LoadingSpinner'
@@ -32,9 +32,10 @@ const mobileRestrictedPaths = [
 
 export default function LayoutWrapper({ children }: { children: ReactNode }) {
   const pathname = usePathname()
-  const searchParams = useSearchParams()
-  // ?embed=1 のときはサイドバー・余白なしで中身だけ描画（面談ページが売上ページをiframe埋め込みする用）
-  const isEmbed = searchParams.get('embed') === '1'
+  // ?embed=1 のときはサイドバー・余白なしで中身だけ描画（面談ページが売上ページをiframe埋め込みする用）。
+  // useSearchParams はルートレイアウトで使うと全ページがCSR bailoutしビルドが落ちるため、
+  // マウント後に window から読む（埋め込みはiframe内なので初回の一瞬の枠表示は許容）。
+  const [isEmbed, setIsEmbed] = useState(false)
   const { isAuthenticated, isLoading } = useAuth()
   const router = useRouter()
   const { isMobile, isLoading: mobileLoading } = useIsMobile()
@@ -59,6 +60,13 @@ export default function LayoutWrapper({ children }: { children: ReactNode }) {
   // ページ遷移時にサイドバーを閉じる
   useEffect(() => {
     setIsSidebarOpen(false)
+  }, [pathname])
+
+  // 埋め込みモード判定（マウント後にURLクエリから。useSearchParams不使用でビルド安全）
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setIsEmbed(new URLSearchParams(window.location.search).get('embed') === '1')
+    }
   }, [pathname])
 
   // ローディング中
