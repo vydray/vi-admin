@@ -223,7 +223,9 @@ function InterviewContent() {
     const tt = snsUrl('tiktok', selected.tiktok); if (tt) sns.push({ label: 'TikTok', url: tt })
   }
 
-  const filtered = casts.filter((c) => !search.trim() || c.name.includes(search.trim()))
+  // 選択直後(検索文字=選択中の名前)は全員表示。1文字でも打ち変えたら絞り込む＝開き直しても全員見える
+  const selectedName = selected?.name ?? ''
+  const filtered = casts.filter((c) => !search.trim() || search === selectedName || c.name.includes(search.trim()))
   const saveText = saveState === 'saving' ? '保存中…' : saveState === 'saved' ? '保存済み' : saveState === 'error' ? '保存エラー' : dirty ? '自動下書き待ち' : ''
 
   return (
