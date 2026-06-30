@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
 import { getSupabaseServerClient } from '@/lib/supabase'
+import { validateAdminSession } from '@/lib/adminSession'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,16 +18,14 @@ const METRICS = new Set(['sales', 'attendance', 'guests'])
  */
 export async function POST(request: NextRequest) {
   // ===== 認証 =====
-  const cookieStore = await cookies()
-  const sessionCookie = cookieStore.get('admin_session')
-  if (!sessionCookie) {
+  const adminSession = await validateAdminSession()
+  if (!adminSession) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  let session: { role?: string; store_id?: number | string; permissions?: Record<string, boolean> }
-  try {
-    session = JSON.parse(sessionCookie.value)
-  } catch {
-    return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
+  const session: { role?: string; store_id?: number | string; permissions?: Record<string, boolean> } = {
+    role: adminSession.role,
+    store_id: adminSession.storeId,
+    permissions: adminSession.permissions,
   }
   const isSuperAdmin = session.role === 'super_admin'
   const canManage = isSuperAdmin || session.permissions?.management === true

@@ -1,26 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
+import { validateAdminSession } from '@/lib/adminSession'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-function getSession(sessionCookie: { value: string } | undefined) {
-  if (!sessionCookie) return null
-  try {
-    return JSON.parse(sessionCookie.value)
-  } catch {
-    return null
-  }
-}
-
 export async function GET(request: NextRequest) {
   // 認証チェック
-  const cookieStore = await cookies()
-  const sessionCookie = cookieStore.get('admin_session')
-  if (!sessionCookie) {
+  const session = await validateAdminSession()
+  if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -240,8 +230,7 @@ export async function GET(request: NextRequest) {
 
 // DELETE: バッチ削除（super_adminのみ）
 export async function DELETE(request: NextRequest) {
-  const cookieStore = await cookies()
-  const session = getSession(cookieStore.get('admin_session'))
+  const session = await validateAdminSession()
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }

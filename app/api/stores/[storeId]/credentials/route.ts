@@ -1,32 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseServerClient } from '@/lib/supabase'
 import bcrypt from 'bcryptjs'
-import { cookies } from 'next/headers'
+import { validateAdminSession, requireSuperAdmin, type AdminSession } from '@/lib/adminSession'
 
-// 認証と店舗アクセス権限をチェック
-async function validateStoreAccess(storeId: string): Promise<{ session: any; hasAccess: boolean }> {
-  const cookieStore = await cookies()
-  const sessionCookie = cookieStore.get('admin_session')
-  if (!sessionCookie) return { session: null, hasAccess: false }
+// 認証と店舗アクセス権限をチェック。
+// このエンドポイントは admin_users / POSユーザーの作成・更新(=ユーザー管理)なのでオーナー(super_admin)限定。
+// 旧コードは store_admin を session.storeId(旧cookieでは未設定でundefined)で照合し実質ロックアウトしており
+// de-facto super_admin限定だった。挙動保存かつ「ユーザー管理=オーナーのみ」の設計方針に合わせ明示化する。
+async function validateStoreAccess(_storeId: string): Promise<{ session: AdminSession | null; hasAccess: boolean }> {
+  const session = await validateAdminSession()
+  if (!session) return { session: null, hasAccess: false }
 
-  try {
-    const session = JSON.parse(sessionCookie.value)
-    const targetStoreId = parseInt(storeId)
-
-    // super_admin は全店舗アクセス可能
-    if (session.role === 'super_admin') {
-      return { session, hasAccess: true }
-    }
-
-    // store_admin は自店舗のみアクセス可能
-    if (session.role === 'store_admin' && session.storeId === targetStoreId) {
-      return { session, hasAccess: true }
-    }
-
-    return { session, hasAccess: false }
-  } catch {
-    return { session: null, hasAccess: false }
-  }
+  return { session, hasAccess: requireSuperAdmin(session) }
 }
 
 // GET: 店舗のユーザー情報を取得

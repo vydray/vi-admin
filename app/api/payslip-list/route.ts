@@ -1,31 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
 import { getSupabaseServerClient } from '@/lib/supabase'
+import { validateAdminSession } from '@/lib/adminSession'
 import { format, startOfMonth, endOfMonth } from 'date-fns'
 
 // セッション検証（store_idオーバーライド対応）
 async function validateSession(requestedStoreId?: number): Promise<{ storeId: number } | null> {
-  const cookieStore = await cookies()
-  const sessionCookie = cookieStore.get('admin_session')
-  if (!sessionCookie) return null
+  const session = await validateAdminSession()
+  if (!session) return null
 
-  try {
-    const session = JSON.parse(sessionCookie.value)
+  // super_adminの場合、リクエストされたstore_idを使用可能
+  if (requestedStoreId && session.isAllStore) {
+    return { storeId: requestedStoreId }
+  }
 
-    // super_adminの場合、リクエストされたstore_idを使用可能
-    if (requestedStoreId && session.isAllStore) {
-      return { storeId: requestedStoreId }
-    }
-
-    // store_adminの場合、自分のstore_idのみ使用可能
-    if (requestedStoreId && requestedStoreId !== session.store_id && !session.isAllStore) {
-      return null
-    }
-
-    return { storeId: requestedStoreId || session.store_id }
-  } catch {
+  // store_adminの場合、自分のstore_idのみ使用可能
+  if (requestedStoreId && requestedStoreId !== session.storeId && !session.isAllStore) {
     return null
   }
+
+  return { storeId: requestedStoreId || session.storeId }
 }
 
 interface PayslipSummary {

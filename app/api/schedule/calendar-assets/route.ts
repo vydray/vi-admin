@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
+import { validateAdminSession } from '@/lib/adminSession'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -26,20 +26,13 @@ interface Session {
 }
 
 async function validateSession(): Promise<Session | null> {
-  const cookieStore = await cookies()
-  const sessionCookie = cookieStore.get('admin_session')
-  if (!sessionCookie) return null
-  try {
-    const session = JSON.parse(sessionCookie.value)
-    // cookie は store_id(snake_case) で保存される
-    return {
-      storeId: session.store_id ?? session.storeId,
-      isAllStore: session.isAllStore || false,
-      role: session.role || '',
-      permissions: session.permissions || {},
-    }
-  } catch {
-    return null
+  const s = await validateAdminSession()
+  if (!s) return null
+  return {
+    storeId: s.storeId,
+    isAllStore: s.isAllStore,
+    role: s.role,
+    permissions: s.permissions,
   }
 }
 

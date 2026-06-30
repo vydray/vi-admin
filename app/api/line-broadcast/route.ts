@@ -1,15 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { validateAdminSession, canAccessStore } from '@/lib/adminSession'
 
 export async function POST(request: NextRequest) {
   try {
     // 認証チェック
-    const sessionCookie = request.cookies.get('admin_session')?.value
-    if (!sessionCookie) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const session = JSON.parse(sessionCookie)
+    const session = await validateAdminSession()
     if (!session?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -18,6 +14,12 @@ export async function POST(request: NextRequest) {
 
     if (!store_id) {
       return NextResponse.json({ error: 'store_id is required' }, { status: 400 })
+    }
+
+    // 店舗アクセス権チェック: 自店以外への配信(他店LINE設定/キャストへの外部送信)を弾く。
+    // super_admin/isAllStore は全店OK、store_admin は自店のみ。
+    if (!canAccessStore(session, store_id)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
     const hasMessage = typeof message === 'string' && message.trim().length > 0

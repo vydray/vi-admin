@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
+import { revokeAdminSession } from '@/lib/adminSession'
 
 export async function POST() {
   try {
-    const cookieStore = await cookies()
-    cookieStore.delete('admin_session')
+    // 現在のセッションtokenをDBでrevoke＋cookie削除
+    await revokeAdminSession()
 
     return NextResponse.json({ success: true })
   } catch (error) {

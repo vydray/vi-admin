@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
 import crypto from 'crypto'
 import sharp from 'sharp'
+import { validateAdminSession, canAccessStore } from '@/lib/adminSession'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -12,25 +12,8 @@ const supabase = createClient(
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
 const MAX_FILE_SIZE = 4 * 1024 * 1024 // 4MB（Vercel Route Handler の body 4.5MB 上限内に収める）
 
-// セッション検証関数
-async function validateSession(): Promise<{ storeId: number; isAllStore: boolean } | null> {
-  const cookieStore = await cookies()
-  const sessionCookie = cookieStore.get('admin_session')
-  if (!sessionCookie) return null
-
-  try {
-    const session = JSON.parse(sessionCookie.value)
-    return {
-      storeId: session.storeId,
-      isAllStore: session.isAllStore || false
-    }
-  } catch {
-    return null
-  }
-}
-
 export async function POST(request: NextRequest) {
-  const session = await validateSession()
+  const session = await validateAdminSession()
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -45,6 +28,12 @@ export async function POST(request: NextRequest) {
         { error: 'ファイルとstore_idは必須です' },
         { status: 400 }
       )
+    }
+
+    // 対象店舗(formData.storeId)へのアクセス権をセッションと照合。
+    // super_admin/isAllStore は全店OK、store_admin は自店のみ(他店namespaceへの書込を弾く)。
+    if (!canAccessStore(session, Number(storeId))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
     // ファイルタイプチェック
@@ -120,7 +109,7 @@ export async function POST(request: NextRequest) {
 
 // 画像削除API
 export async function DELETE(request: NextRequest) {
-  const session = await validateSession()
+  const session = await validateAdminSession()
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -134,6 +123,13 @@ export async function DELETE(request: NextRequest) {
         { error: 'pathは必須です' },
         { status: 400 }
       )
+    }
+
+    // Storage の path は POST 側で `${storeId}/twitter/...` 形式で発行される。
+    // 先頭セグメントが対象店舗ID。これをセッションと照合し、他店namespaceのファイル削除を弾く。
+    const targetStoreId = Number(path.split('/')[0])
+    if (!Number.isFinite(targetStoreId) || !canAccessStore(session, targetStoreId)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
     const { error } = await supabase.storage

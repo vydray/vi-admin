@@ -1,22 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
 import { getSupabaseServerClient } from '@/lib/supabase'
+import { validateAdminSession } from '@/lib/adminSession'
 
 async function validateSession(): Promise<{ storeId: number; isAllStore: boolean; role: string } | null> {
-  const cookieStore = await cookies()
-  const sessionCookie = cookieStore.get('admin_session')
-  if (!sessionCookie) return null
-
-  try {
-    const session = JSON.parse(sessionCookie.value)
-    if (!session?.id) return null
-    return {
-      storeId: session.store_id || session.storeId,
-      isAllStore: session.isAllStore || false,
-      role: session.role || '',
-    }
-  } catch {
-    return null
+  const s = await validateAdminSession()
+  if (!s) return null
+  return {
+    storeId: s.storeId,
+    isAllStore: s.isAllStore,
+    role: s.role,
   }
 }
 

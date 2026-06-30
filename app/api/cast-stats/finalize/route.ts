@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
+import { validateAdminSession, canAccessStore } from '@/lib/adminSession'
 
 // Service Role Key でRLSをバイパス
 const supabaseAdmin = createClient(
@@ -8,26 +8,9 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-// セッション検証
-async function validateSession(): Promise<{ storeId: number; isAllStore: boolean } | null> {
-  const cookieStore = await cookies()
-  const sessionCookie = cookieStore.get('admin_session')
-  if (!sessionCookie) return null
-
-  try {
-    const session = JSON.parse(sessionCookie.value)
-    return {
-      storeId: session.storeId,
-      isAllStore: session.isAllStore || false
-    }
-  } catch {
-    return null
-  }
-}
-
 // POST: 指定期間のデータを確定
 export async function POST(request: NextRequest) {
-  const session = await validateSession()
+  const session = await validateAdminSession()
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -37,6 +20,12 @@ export async function POST(request: NextRequest) {
     const { store_id, year_month, date_from, date_to, unfinalize } = body
 
     const storeId = store_id || session.storeId
+
+    // 操作対象店舗へのアクセス権を照合（super_adminは全店OK、store_adminは自店のみ）
+    if (!canAccessStore(session, storeId)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
     const isUnfinalize = unfinalize === true
 
     let startDate: string

@@ -1,23 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
 import { getSupabaseServerClient } from '@/lib/supabase'
+import { validateAdminSession } from '@/lib/adminSession'
 
 async function validateSession(): Promise<{ id: string; storeId: number; isAllStore: boolean; role: string } | null> {
-  const cookieStore = await cookies()
-  const sessionCookie = cookieStore.get('admin_session')
-  if (!sessionCookie) return null
-
-  try {
-    const session = JSON.parse(sessionCookie.value)
-    if (!session?.id) return null
-    return {
-      id: session.id,
-      storeId: session.store_id || session.storeId,
-      isAllStore: session.isAllStore || false,
-      role: session.role || '',
-    }
-  } catch {
-    return null
+  const s = await validateAdminSession()
+  if (!s) return null
+  return {
+    id: String(s.id),
+    storeId: s.storeId,
+    isAllStore: s.isAllStore,
+    role: s.role,
   }
 }
 
@@ -81,7 +73,7 @@ export async function POST(request: NextRequest) {
       case 'load_base_items_sync':
         return await handleLoadBaseItemsSync(supabase, store_id, body)
       case 'delete_cast_data':
-        return await handleDeleteCastData(supabase, store_id, body)
+        return await handleDeleteCastData(supabase, session, body)
       default:
         return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 })
     }
@@ -435,11 +427,33 @@ async function handleLoadBaseItemsSync(supabase: any, storeId: number, body: {
   return NextResponse.json({ addedProducts, addedVariations })
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function handleDeleteCastData(supabase: any, storeId: number, body: {
-  cast_id: number
-}) {
+async function handleDeleteCastData(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: any,
+  session: { storeId: number; isAllStore: boolean },
+  body: {
+    cast_id: number
+  },
+) {
   const { cast_id } = body
+
+  // 削除は cast_id だけで base_variations / base_orders を消すため、body.store_id では
+  // なく対象 cast 自身の store_id でアクセス照合する（他店 cast_id を渡して他店データを
+  // 消す穴を塞ぐ）。
+  const { data: cast, error: castError } = await supabase
+    .from('casts')
+    .select('store_id')
+    .eq('id', cast_id)
+    .maybeSingle()
+
+  if (castError) throw castError
+  if (!cast) {
+    return NextResponse.json({ error: 'Cast not found' }, { status: 404 })
+  }
+
+  if (!checkStoreAccess(session, cast.store_id)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   await Promise.all([
     supabase.from('base_variations').delete().eq('cast_id', cast_id),

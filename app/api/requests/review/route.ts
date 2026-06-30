@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { cookies } from 'next/headers';
+import { validateAdminSession, canAccessStore } from '@/lib/adminSession';
+import type { AdminSession } from '@/lib/adminSession';
 import { notifyApproval, notifyRejection, sendDiscordNotification } from '@/lib/notifications';
 import type { ReviewRequestInput } from '@/types/ai';
 
@@ -33,21 +34,9 @@ function validateShiftTime(shiftTime: string | undefined): { start: string; end:
   return { start, end };
 }
 
-// セッション検証関数
-async function validateSession(): Promise<{ storeId: number; isAllStore: boolean } | null> {
-  const cookieStore = await cookies()
-  const sessionCookie = cookieStore.get('admin_session')
-  if (!sessionCookie) return null
-
-  try {
-    const session = JSON.parse(sessionCookie.value)
-    return {
-      storeId: session.storeId,
-      isAllStore: session.isAllStore || false
-    }
-  } catch {
-    return null
-  }
+// セッション検証関数（店舗照合に role/storeId/isAllStore が必要なので AdminSession をそのまま返す）
+async function validateSession(): Promise<AdminSession | null> {
+  return await validateAdminSession()
 }
 
 export async function POST(request: NextRequest) {
@@ -85,6 +74,13 @@ export async function POST(request: NextRequest) {
         { error: 'Request not found' },
         { status: 404 }
       );
+    }
+
+    // 店舗照合: 操作対象は「対象 request 行の store_id」。ログイン中セッションが
+    // その店舗にアクセス権を持たない場合は弾く（他店申請の承認/却下・通知送信を防ぐ）。
+    // super_admin/isAllStore は canAccessStore が true を返すので全店操作を維持。
+    if (!canAccessStore(session, requestData.store_id)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
     // 既に処理済みかチェック

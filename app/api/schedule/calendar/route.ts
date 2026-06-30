@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
+import { validateAdminSession } from '@/lib/adminSession'
 import { renderCalendar } from '@/lib/scheduleCalendar/render'
 import { renderMemorableCalendar } from '@/lib/scheduleCalendar/memorable'
 import { STORE_CALENDARS } from '@/lib/scheduleCalendar/themes'
@@ -19,21 +19,13 @@ interface Session {
 }
 
 async function validateSession(): Promise<Session | null> {
-  const cookieStore = await cookies()
-  const sessionCookie = cookieStore.get('admin_session')
-  if (!sessionCookie) return null
-  try {
-    const session = JSON.parse(sessionCookie.value)
-    // admin_session cookie は store_id(snake_case)で保存される（login参照）。
-    // storeId(camelCase)は常にundefinedになるので store_id を優先して読む。
-    return {
-      storeId: session.store_id ?? session.storeId,
-      isAllStore: session.isAllStore || false,
-      role: session.role || '',
-      permissions: session.permissions || {},
-    }
-  } catch {
-    return null
+  const s = await validateAdminSession()
+  if (!s) return null
+  return {
+    storeId: s.storeId,
+    isAllStore: s.isAllStore,
+    role: s.role,
+    permissions: s.permissions,
   }
 }
 

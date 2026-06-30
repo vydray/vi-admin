@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { verifyTwitterCredentials, getTwitterAppCreds } from '@/lib/twitterOAuth'
+import { validateAdminSession, canAccessStore } from '@/lib/adminSession'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -8,17 +9,15 @@ const supabase = createClient(
 )
 
 export async function POST(request: NextRequest) {
-  const sessionCookie = request.cookies.get('admin_session')?.value
-  if (!sessionCookie) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  try {
-    const session = JSON.parse(sessionCookie)
-    if (!session?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  } catch {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const session = await validateAdminSession()
+  if (!session?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { store_id } = await request.json()
   if (!store_id) return NextResponse.json({ error: 'store_id required' }, { status: 400 })
+
+  if (!canAccessStore(session, store_id)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   const { data: tokens } = await supabase
     .from('store_twitter_settings')

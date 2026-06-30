@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
 import { processChatMessage } from '@/lib/ai/claude';
 import { createClient } from '@supabase/supabase-js';
+import { validateAdminSession, canAccessStore } from '@/lib/adminSession';
 
 // Supabase Admin Client
 const supabase = createClient(
@@ -9,25 +9,8 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 );
 
-// セッション検証関数
-async function validateSession(): Promise<{ storeId: number; isAllStore: boolean } | null> {
-  const cookieStore = await cookies()
-  const sessionCookie = cookieStore.get('admin_session')
-  if (!sessionCookie) return null
-
-  try {
-    const session = JSON.parse(sessionCookie.value)
-    return {
-      storeId: session.storeId,
-      isAllStore: session.isAllStore || false
-    }
-  } catch {
-    return null
-  }
-}
-
 export async function POST(request: NextRequest) {
-  const session = await validateSession()
+  const session = await validateAdminSession()
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -40,6 +23,12 @@ export async function POST(request: NextRequest) {
         { error: 'Missing required parameters' },
         { status: 400 }
       );
+    }
+
+    // 操作対象店舗(body.storeId)へのアクセス権をセッションで照合。
+    // super_admin/isAllStore は全店OK、store_admin は自店のみ。他店storeIdは403で弾く。
+    if (!canAccessStore(session, storeId)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
     // キャスト情報を取得

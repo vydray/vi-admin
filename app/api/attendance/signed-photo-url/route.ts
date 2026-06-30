@@ -1,25 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
 import { getSupabaseServerClient } from '@/lib/supabase'
+import { validateAdminSession } from '@/lib/adminSession'
 
 const BUCKET = 'attendance-photos'
 const SIGNED_URL_TTL_SECONDS = 300 // 5分
 
 async function validateSession(): Promise<{ id: string; storeId: number; isAllStore: boolean } | null> {
-  const cookieStore = await cookies()
-  const sessionCookie = cookieStore.get('admin_session')
-  if (!sessionCookie) return null
-
-  try {
-    const session = JSON.parse(sessionCookie.value)
-    if (!session?.id) return null
-    return {
-      id: session.id,
-      storeId: session.store_id || session.storeId,
-      isAllStore: session.isAllStore || false,
-    }
-  } catch {
-    return null
+  const s = await validateAdminSession()
+  if (!s) return null
+  return {
+    id: String(s.id),
+    storeId: s.storeId,
+    isAllStore: s.isAllStore,
   }
 }
 

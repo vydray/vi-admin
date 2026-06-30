@@ -1,29 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
 import crypto from 'crypto'
 import { getTwitterAppCreds } from '@/lib/twitterOAuth'
+import { validateAdminSession, canAccessStore, type AdminSession } from '@/lib/adminSession'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-// セッション検証関数
-async function validateSession(): Promise<{ storeId: number; isAllStore: boolean } | null> {
-  const cookieStore = await cookies()
-  const sessionCookie = cookieStore.get('admin_session')
-  if (!sessionCookie) return null
-
-  try {
-    const session = JSON.parse(sessionCookie.value)
-    return {
-      storeId: session.storeId,
-      isAllStore: session.isAllStore || false
-    }
-  } catch {
-    return null
-  }
+// セッション検証関数（共通ヘルパ validateAdminSession に委譲）
+async function validateSession(): Promise<AdminSession | null> {
+  return await validateAdminSession()
 }
 
 // OAuth 1.0a署名生成
@@ -223,6 +211,12 @@ export async function POST(request: NextRequest) {
 
     if (postError || !post) {
       return NextResponse.json({ error: 'Post not found' }, { status: 404 })
+    }
+
+    // 操作対象店舗は投稿行の store_id。セッションがその店舗にアクセス権を持つか照合
+    // （super_admin は全店OK、store_admin は自店のみ。他店投稿の代理送信を防ぐ）
+    if (!canAccessStore(session, post.store_id)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
     // 設定を取得

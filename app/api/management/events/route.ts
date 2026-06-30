@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
 import { getSupabaseServerClient } from '@/lib/supabase'
+import { validateAdminSession, canAccessStore } from '@/lib/adminSession'
 
 export const dynamic = 'force-dynamic'
 
@@ -9,17 +9,10 @@ type AuthResult = { ok: true } | { ok: false; error: string; status: number }
 // super_admin は全店、store_admin は自店のみ許可（閲覧・編集とも自店なら可）
 // 告知イベントは「自分の店舗であればどの権限でも追加/編集できる」方針（快晟確認済）
 async function requireStoreAccess(storeId: number): Promise<AuthResult> {
-  const cookieStore = await cookies()
-  const c = cookieStore.get('admin_session')
-  if (!c) return { ok: false, error: 'Unauthorized', status: 401 }
-  try {
-    const s = JSON.parse(c.value)
-    if (s.role === 'super_admin') return { ok: true }
-    if (Number(s.store_id) === Number(storeId)) return { ok: true }
-    return { ok: false, error: 'Forbidden', status: 403 }
-  } catch {
-    return { ok: false, error: 'Invalid session', status: 401 }
-  }
+  const session = await validateAdminSession()
+  if (!session) return { ok: false, error: 'Unauthorized', status: 401 }
+  if (canAccessStore(session, storeId)) return { ok: true }
+  return { ok: false, error: 'Forbidden', status: 403 }
 }
 
 // GET ?store_id=&year_month= : その月に重なる告知イベント一覧

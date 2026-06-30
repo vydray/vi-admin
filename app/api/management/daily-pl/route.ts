@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
 import { getSupabaseServerClient } from '@/lib/supabase'
+import { validateAdminSession } from '@/lib/adminSession'
 import { computeDailyLaborCost } from '@/lib/laborCostDaily'
 import type { Payslip } from '@/types/database'
 import type { DailyPlResponse, DailyPlRow, DailyPlSummary } from '@/types/management'
@@ -28,16 +28,15 @@ const pickPayment = (o: OrderRow): PaymentRow | undefined =>
 
 export async function POST(request: NextRequest) {
   // ===== 認証: super_admin 専用 =====
-  const cookieStore = await cookies()
-  const sessionCookie = cookieStore.get('admin_session')
-  if (!sessionCookie) {
+  const adminSession = await validateAdminSession()
+  if (!adminSession) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  let session: { role?: string; store_id?: number | string; permissions?: Record<string, boolean> }
-  try {
-    session = JSON.parse(sessionCookie.value)
-  } catch {
-    return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
+  // 既存の呼び出し側コードの形(role / store_id / permissions)を保ったまま委譲
+  const session: { role?: string; store_id?: number | string; permissions?: Record<string, boolean> } = {
+    role: adminSession.role,
+    store_id: adminSession.storeId,
+    permissions: adminSession.permissions,
   }
   // super_admin か、経営ダッシュボード権限(management)を持つ store_admin のみ
   const isSuperAdmin = session.role === 'super_admin'

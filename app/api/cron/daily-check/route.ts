@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
 import { getSupabaseServerClient } from '@/lib/supabase'
+import { validateAdminSession, requireSuperAdmin } from '@/lib/adminSession'
 import { runDailyCheck, type DailyCheckReport } from '@/lib/dailyCheck'
 
 function validateCronRequest(request: NextRequest): boolean {
@@ -14,15 +14,8 @@ function validateCronRequest(request: NextRequest): boolean {
 }
 
 async function validateSuperAdmin(): Promise<boolean> {
-  const cookieStore = await cookies()
-  const sessionCookie = cookieStore.get('admin_session')
-  if (!sessionCookie) return false
-  try {
-    const session = JSON.parse(sessionCookie.value)
-    return !!session?.id && (session.isAllStore || session.role === 'super_admin')
-  } catch {
-    return false
-  }
+  const session = await validateAdminSession()
+  return requireSuperAdmin(session)
 }
 
 // Discord 用にレポートを整形（その店の findings のみ含まれている前提）

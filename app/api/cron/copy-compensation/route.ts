@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
 import { getSupabaseServerClient } from '@/lib/supabase'
+import { validateAdminSession, requireSuperAdmin } from '@/lib/adminSession'
 
 export const dynamic = 'force-dynamic'
 
@@ -12,15 +12,8 @@ function validateCron(request: NextRequest): boolean {
 }
 
 async function validateSuperAdmin(): Promise<boolean> {
-  const cookieStore = await cookies()
-  const c = cookieStore.get('admin_session')
-  if (!c) return false
-  try {
-    const s = JSON.parse(c.value)
-    return !!s?.id && (s.isAllStore || s.role === 'super_admin')
-  } catch {
-    return false
-  }
+  const s = await validateAdminSession()
+  return requireSuperAdmin(s)
 }
 
 // 報酬形態(compensation_settings)を前月から当月へ自動コピー。

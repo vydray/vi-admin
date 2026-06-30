@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { cookies } from 'next/headers';
+import { validateAdminSession, canAccessStore } from '@/lib/adminSession';
+import type { AdminSession } from '@/lib/adminSession';
 import { checkRequestValidity } from '@/lib/ai/claude';
 import { notifyNewRequest } from '@/lib/notifications';
 import type { RequestType, RequestData } from '@/types/ai';
@@ -34,21 +35,9 @@ function validateShiftTime(shiftTime: string | undefined): { start: string; end:
   return { start, end };
 }
 
-// セッション検証関数
-async function validateSession(): Promise<{ storeId: number; isAllStore: boolean } | null> {
-  const cookieStore = await cookies()
-  const sessionCookie = cookieStore.get('admin_session')
-  if (!sessionCookie) return null
-
-  try {
-    const session = JSON.parse(sessionCookie.value)
-    return {
-      storeId: session.storeId,
-      isAllStore: session.isAllStore || false
-    }
-  } catch {
-    return null
-  }
+// セッション検証関数（店舗照合に role 等も使うため AdminSession 全体を返す）
+async function validateSession(): Promise<AdminSession | null> {
+  return await validateAdminSession()
 }
 
 export async function POST(request: NextRequest) {
@@ -69,6 +58,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: 'Missing required parameters' },
         { status: 400 }
+      );
+    }
+
+    // 店舗アクセス権の照合: store_admin は自店の storeId 以外を弾く（super_admin/全店は許可）
+    if (!canAccessStore(session, storeId)) {
+      return NextResponse.json(
+        { error: 'Forbidden' },
+        { status: 403 }
       );
     }
 

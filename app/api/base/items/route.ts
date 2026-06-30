@@ -1,25 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
 import { getSupabaseServerClient } from '@/lib/supabase'
 import { fetchItems } from '@/lib/baseApi'
 import { refreshBaseTokenIfNeeded } from '@/lib/baseTokenRefresh'
+import { validateAdminSession } from '@/lib/adminSession'
 
 /**
  * セッション検証関数
  */
 async function validateSession(): Promise<{ storeId: number; isAllStore: boolean } | null> {
-  const cookieStore = await cookies()
-  const sessionCookie = cookieStore.get('admin_session')
-  if (!sessionCookie) return null
-
-  try {
-    const session = JSON.parse(sessionCookie.value)
-    return {
-      storeId: session.storeId,
-      isAllStore: session.isAllStore || false
-    }
-  } catch {
-    return null
+  const session = await validateAdminSession()
+  if (!session) return null
+  return {
+    storeId: session.storeId,
+    isAllStore: session.isAllStore
   }
 }
 

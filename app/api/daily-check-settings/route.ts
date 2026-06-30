@@ -1,17 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
 import { getSupabaseServerClient } from '@/lib/supabase'
+import { validateAdminSession, requireSuperAdmin } from '@/lib/adminSession'
 
 async function validateSuperAdmin(): Promise<boolean> {
-  const cookieStore = await cookies()
-  const sessionCookie = cookieStore.get('admin_session')
-  if (!sessionCookie) return false
-  try {
-    const session = JSON.parse(sessionCookie.value)
-    return !!session?.id && (session.isAllStore || session.role === 'super_admin')
-  } catch {
-    return false
-  }
+  const session = await validateAdminSession()
+  return requireSuperAdmin(session)
 }
 
 /**

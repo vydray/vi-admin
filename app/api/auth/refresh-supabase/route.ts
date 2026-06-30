@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
+import { validateAdminSession } from '@/lib/adminSession'
 import { getSupabaseAuthClient } from '@/lib/supabase'
 
 /**
@@ -14,20 +14,12 @@ import { getSupabaseAuthClient } from '@/lib/supabase'
  * Supabase Auth セッションも admin_session に追従させる。
  */
 export async function POST() {
-  const cookieStore = await cookies()
-  const sessionCookie = cookieStore.get('admin_session')
-  if (!sessionCookie) {
+  // opaque sessionをDB照合して本人のadmin_user_idを得る。
+  // (旧実装はcookieのJSON.parse結果のidをそのまま使い、id差し替えで他人のRLS用JWTを
+  //  取得できる権限昇格の穴があった。validateAdminSessionでDB真実源に置換し封鎖)
+  const session = await validateAdminSession()
+  if (!session) {
     return NextResponse.json({ error: 'No admin session' }, { status: 401 })
-  }
-
-  let session: { id?: number } = {}
-  try {
-    session = JSON.parse(sessionCookie.value)
-  } catch {
-    return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
-  }
-  if (!session.id) {
-    return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
   }
 
   const authSecret = process.env.SUPABASE_AUTH_SECRET

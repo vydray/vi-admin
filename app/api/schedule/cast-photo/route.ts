@@ -1,27 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { cookies } from 'next/headers';
+import { validateAdminSession, canAccessStore, type AdminSession } from '@/lib/adminSession';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
   process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 );
 
-// セッション検証関数
-async function validateSession(): Promise<{ storeId: number; isAllStore: boolean } | null> {
-  const cookieStore = await cookies()
-  const sessionCookie = cookieStore.get('admin_session')
-  if (!sessionCookie) return null
-
-  try {
-    const session = JSON.parse(sessionCookie.value)
-    return {
-      storeId: session.storeId,
-      isAllStore: session.isAllStore || false
-    }
-  } catch {
-    return null
-  }
+// セッション検証関数（共通ヘルパに委譲）
+async function validateSession(): Promise<AdminSession | null> {
+  return await validateAdminSession()
 }
 
 // photo_cropの型定義
@@ -56,6 +44,11 @@ export async function POST(request: NextRequest) {
         { error: 'Missing required parameters' },
         { status: 400 }
       );
+    }
+
+    // 操作対象店舗へのアクセス権を照合（他店データの書込防止）
+    if (!canAccessStore(session, parseInt(storeId))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     // ファイルサイズチェック
@@ -180,6 +173,11 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
+    // 操作対象店舗へのアクセス権を照合（他店データの書込防止）
+    if (!canAccessStore(session, storeId)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     // castsテーブルのphoto_cropを更新
     const { error: updateError } = await supabase
       .from('casts')
@@ -225,6 +223,11 @@ export async function DELETE(request: NextRequest) {
         { error: 'Missing required parameters' },
         { status: 400 }
       );
+    }
+
+    // 操作対象店舗へのアクセス権を照合（他店データの削除防止）
+    if (!canAccessStore(session, parseInt(storeId))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     const fileName = `${storeId}/${castId}.jpg`;

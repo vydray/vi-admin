@@ -1,30 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import bcrypt from 'bcryptjs'
-import { cookies } from 'next/headers'
+import { validateAdminSession, bumpSessionVersion, createAdminSession } from '@/lib/adminSession'
 
 export async function POST(request: NextRequest) {
   try {
-    // セッションからユーザー情報を取得
-    const cookieStore = await cookies()
-    const sessionCookie = cookieStore.get('admin_session')
+    // セッションからユーザー情報を取得（opaque token cookie をDBで突合）
+    const session = await validateAdminSession()
 
-    if (!sessionCookie) {
+    if (!session) {
       return NextResponse.json(
         { error: '認証されていません' },
         { status: 401 }
       )
     }
 
-    let session
-    try {
-      session = JSON.parse(sessionCookie.value)
-    } catch {
-      return NextResponse.json(
-        { error: 'セッション情報が不正です' },
-        { status: 401 }
-      )
-    }
     const { currentPassword, newPassword, confirmPassword } = await request.json()
 
     // バリデーション
@@ -94,18 +84,11 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 自分自身のセッションを更新（ログアウトされないように）
-    const updatedSession = {
-      ...session,
-      session_created_at: new Date().toISOString(),
-    }
-    cookieStore.set('admin_session', JSON.stringify(updatedSession), {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 60 * 60 * 24, // 1日間（セキュリティ強化）
-      path: '/',
-    })
+    // パスワード変更で全セッションを失効(session_version bump＋既存revoke)させ、
+    // 現在の端末だけ新しいセッションを再発行する＝他端末はログアウト・本人は維持。
+    // (旧実装は auth/session の updated_at 比較で他端末を失効させていた挙動の置換)
+    await bumpSessionVersion(session.id)
+    await createAdminSession(session.id, session.authMethod === 'line' ? 'line' : 'password')
 
     return NextResponse.json({
       success: true,

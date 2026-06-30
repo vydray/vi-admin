@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
 import { getSupabaseServerClient } from '@/lib/supabase'
+import { validateAdminSession } from '@/lib/adminSession'
 import type { CastWageRateResponse, CastWageRateRow } from '@/types/management'
 
 export const dynamic = 'force-dynamic'
@@ -23,14 +23,13 @@ const ABSENCE_CODES = new Set(['same_day_absence', 'advance_absence', 'no_call_n
 
 export async function POST(request: NextRequest) {
   // ===== 認証: super_admin 専用 =====
-  const cookieStore = await cookies()
-  const sc = cookieStore.get('admin_session')
-  if (!sc) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  let session: { role?: string; store_id?: number | string; permissions?: Record<string, boolean> }
-  try {
-    session = JSON.parse(sc.value)
-  } catch {
-    return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
+  const adminSession = await validateAdminSession()
+  if (!adminSession) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  // 旧 cookie JSON と同じ形に寄せて以降のロジックを温存（role/store_id/permissions）
+  const session: { role?: string; store_id?: number | string; permissions?: Record<string, boolean> } = {
+    role: adminSession.role,
+    store_id: adminSession.storeId,
+    permissions: adminSession.permissions,
   }
   // super_admin か、経営ダッシュボード権限(management)を持つ store_admin のみ
   const isSuperAdmin = session.role === 'super_admin'

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseServerClient, getSupabaseAuthClient } from '@/lib/supabase'
 import bcrypt from 'bcryptjs'
-import { cookies } from 'next/headers'
+import { createAdminSession } from '@/lib/adminSession'
 
 export async function POST(request: NextRequest) {
   try {
@@ -124,13 +124,12 @@ export async function POST(request: NextRequest) {
       session_created_at: new Date().toISOString(), // パスワード変更検知用
     }
 
-    const cookieStore = await cookies()
-    cookieStore.set('admin_session', JSON.stringify(sessionData), {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 60 * 60 * 24, // 1日間（セキュリティ強化）
-      path: '/',
+    // 平文JSON cookieを廃止し、opaque token cookie(DBが真実源)を発行する。
+    // role/store_id/permissions はcookieに入れず、各APIは validateAdminSession で
+    // 毎回DBから読む。返す user は画面表示用(セキュリティ判定には使わない)。
+    await createAdminSession(user.id, 'password', {
+      userAgent: request.headers.get('user-agent'),
+      ip: request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null,
     })
 
     return NextResponse.json({

@@ -1,26 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { cookies } from 'next/headers';
+import { validateAdminSession, canAccessStore } from '@/lib/adminSession';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
   process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 );
 
-// セッション検証関数
+// セッション検証関数（共通ヘルパに委譲）
 async function validateSession(): Promise<{ storeId: number; isAllStore: boolean } | null> {
-  const cookieStore = await cookies()
-  const sessionCookie = cookieStore.get('admin_session')
-  if (!sessionCookie) return null
-
-  try {
-    const session = JSON.parse(sessionCookie.value)
-    return {
-      storeId: session.storeId,
-      isAllStore: session.isAllStore || false
-    }
-  } catch {
-    return null
+  const session = await validateAdminSession()
+  if (!session) return null
+  return {
+    storeId: session.storeId,
+    isAllStore: session.isAllStore
   }
 }
 
@@ -68,7 +61,7 @@ export async function GET(request: NextRequest) {
 
 // POST: テンプレート画像をアップロード
 export async function POST(request: NextRequest) {
-  const session = await validateSession()
+  const session = await validateAdminSession()
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -84,6 +77,11 @@ export async function POST(request: NextRequest) {
         { error: 'Missing required parameters' },
         { status: 400 }
       );
+    }
+
+    // 操作対象店舗へのアクセス権を照合（store_admin は自店のみ）
+    if (!canAccessStore(session, parseInt(storeId))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
@@ -131,7 +129,7 @@ export async function POST(request: NextRequest) {
 
 // PUT: テンプレート設定を更新
 export async function PUT(request: NextRequest) {
-  const session = await validateSession()
+  const session = await validateAdminSession()
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -154,6 +152,11 @@ export async function PUT(request: NextRequest) {
         { error: 'Invalid storeId format' },
         { status: 400 }
       );
+    }
+
+    // 操作対象店舗へのアクセス権を照合（store_admin は自店のみ）
+    if (!canAccessStore(session, storeId)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
     // name の型チェック（任意）

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
+import { validateAdminSession, canAccessStore, type AdminSession } from '@/lib/adminSession'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -8,20 +8,8 @@ const supabase = createClient(
 )
 
 // セッション検証関数
-async function validateSession(): Promise<{ storeId: number; isAllStore: boolean } | null> {
-  const cookieStore = await cookies()
-  const sessionCookie = cookieStore.get('admin_session')
-  if (!sessionCookie) return null
-
-  try {
-    const session = JSON.parse(sessionCookie.value)
-    return {
-      storeId: session.storeId,
-      isAllStore: session.isAllStore || false
-    }
-  } catch {
-    return null
-  }
+async function validateSession(): Promise<AdminSession | null> {
+  return await validateAdminSession()
 }
 
 // 許可されたファイル拡張子とMIMEタイプ
@@ -46,6 +34,12 @@ export async function POST(request: NextRequest) {
         { error: 'Missing required parameters' },
         { status: 400 }
       )
+    }
+
+    // 店舗アクセス権チェック: リクエスト入力の storeId をセッションと照合
+    // (super_admin/isAllStore は全店OK、store_admin は自店のみ)
+    if (!canAccessStore(session, parseInt(storeId))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
     // ファイルサイズチェック
@@ -147,6 +141,12 @@ export async function DELETE(request: NextRequest) {
         { error: 'Missing required parameters' },
         { status: 400 }
       )
+    }
+
+    // 店舗アクセス権チェック: query の storeId をセッションと照合
+    // (super_admin/isAllStore は全店OK、store_admin は自店のみ)
+    if (!canAccessStore(session, parseInt(storeId))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
     // まず現在のreceipt_pathを取得

@@ -1,22 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
+import { validateAdminSession, canAccessStore, type AdminSession } from '@/lib/adminSession'
 import { recalculateForDate } from '@/lib/recalculateSales'
 
-// セッション検証
-async function validateSession(): Promise<{ storeId: number; isAllStore: boolean } | null> {
-  const cookieStore = await cookies()
-  const sessionCookie = cookieStore.get('admin_session')
-  if (!sessionCookie) return null
-
-  try {
-    const session = JSON.parse(sessionCookie.value)
-    return {
-      storeId: session.storeId,
-      isAllStore: session.isAllStore || false
-    }
-  } catch {
-    return null
-  }
+// セッション検証（共通ヘルパに委譲）
+async function validateSession(): Promise<AdminSession | null> {
+  return validateAdminSession()
 }
 
 // 日付をYYYY-MM-DD形式に変換
@@ -31,7 +19,7 @@ export async function POST(request: NextRequest) {
   const isCronRequest = cronSecret === process.env.CRON_SECRET
 
   // Cron以外の場合はセッション検証
-  let session: { storeId: number; isAllStore: boolean } | null = null
+  let session: AdminSession | null = null
   if (!isCronRequest) {
     session = await validateSession()
     if (!session) {
@@ -71,6 +59,13 @@ export async function POST(request: NextRequest) {
     }
 
     const storeId = store_id || session?.storeId
+
+    // 店舗アクセス権チェック（Cron経路は全店処理が仕様なので対象外）
+    // store_id を body から信用せず、ログイン中セッションが対象店舗にアクセスできるか照合する。
+    // super_admin/isAllStore は全店OK、store_admin は自店のみ。
+    if (!isCronRequest && !canAccessStore(session, storeId)) {
+      return NextResponse.json({ error: 'Forbidden: no access to this store' }, { status: 403 })
+    }
 
     // 日付範囲が指定されている場合
     if (date_from && date_to) {

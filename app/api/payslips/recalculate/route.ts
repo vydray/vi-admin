@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns'
 import { randomUUID } from 'crypto'
 import { calculateCastSalesByPublishedMethod } from '@/lib/salesCalculation'
@@ -8,6 +7,7 @@ import { isYearMonthLocked } from '@/lib/payslipLockDate'
 import { recalculateForDate } from '@/lib/recalculateSales'
 import type { SalesSettings } from '@/types/database'
 import { getSalesSettingsForMonth } from '@/lib/salesSettings'
+import { validateAdminSession } from '@/lib/adminSession'
 
 // Vercel 関数タイムアウトを明示（cron 全店舗実行が 60s デフォルトを超えるため）
 export const maxDuration = 600 // 10分
@@ -1945,23 +1945,15 @@ export async function POST(request: NextRequest) {
 
     // 手動実行時の権限チェック
     if (targetStoreId && !isCron) {
-      const cookieStore = await cookies()
-      const sessionCookie = cookieStore.get('admin_session')
+      // 共通ヘルパに委譲: cookie は opaque token で、DB から role/store_id を引く
+      const session = await validateAdminSession()
 
-      if (!sessionCookie) {
+      if (!session) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
       }
 
-      let session
-      try {
-        session = JSON.parse(sessionCookie.value)
-      } catch {
-        return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
-      }
-
       // super_adminは全店舗にアクセス可能、それ以外は自店舗のみ
-      // セッションのstore_idはアンダースコア形式
-      if (session.role !== 'super_admin' && Number(session.store_id) !== Number(targetStoreId)) {
+      if (session.role !== 'super_admin' && Number(session.storeId) !== Number(targetStoreId)) {
         return NextResponse.json(
           { error: 'Forbidden: You can only recalculate payslips for your own store' },
           { status: 403 }

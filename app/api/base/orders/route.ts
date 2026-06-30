@@ -1,28 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
 import { getSupabaseServerClient } from '@/lib/supabase'
 import { fetchOrders, fetchOrderDetail } from '@/lib/baseApi'
 import { refreshBaseTokenIfNeeded } from '@/lib/baseTokenRefresh'
 import { matchCastByVariation } from '@/lib/castMatch'
 import { calculateBusinessDay, jstDateString } from '@/lib/businessDay'
+import { validateAdminSession, canAccessStore } from '@/lib/adminSession'
 
 /**
  * セッション検証関数
  */
-async function validateSession(): Promise<{ storeId: number; isAllStore: boolean } | null> {
-  const cookieStore = await cookies()
-  const sessionCookie = cookieStore.get('admin_session')
-  if (!sessionCookie) return null
-
-  try {
-    const session = JSON.parse(sessionCookie.value)
-    return {
-      storeId: session.storeId,
-      isAllStore: session.isAllStore || false
-    }
-  } catch {
-    return null
-  }
+async function validateSession() {
+  return await validateAdminSession()
 }
 
 /**
@@ -40,6 +28,11 @@ export async function POST(request: NextRequest) {
 
     if (!store_id) {
       return NextResponse.json({ error: 'store_id is required' }, { status: 400 })
+    }
+
+    // 対象店舗へのアクセス権を照合（super_adminは全店OK、store_adminは自店のみ）
+    if (!canAccessStore(session, store_id)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
     // 日付が指定されていない場合はデフォルトで過去30日（JST基準。end=JST翌日で当日分を確実に含める）

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
+import { validateAdminSession } from '@/lib/adminSession'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -13,18 +13,12 @@ const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 const MAX_FILE_SIZE = 4 * 1024 * 1024 // 4MB (Vercel Route Handler の 4.5MB 上限内)
 
 async function validateSession(): Promise<{ storeId: number; isAllStore: boolean; role: string } | null> {
-  const cookieStore = await cookies()
-  const sessionCookie = cookieStore.get('admin_session')
-  if (!sessionCookie) return null
-  try {
-    const session = JSON.parse(sessionCookie.value)
-    return {
-      storeId: session.store_id,
-      isAllStore: session.isAllStore || false,
-      role: session.role,
-    }
-  } catch {
-    return null
+  const s = await validateAdminSession()
+  if (!s) return null
+  return {
+    storeId: s.storeId,
+    isAllStore: s.isAllStore,
+    role: s.role,
   }
 }
 
