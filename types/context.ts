@@ -20,12 +20,13 @@ export type PermissionKey =
   | 'compensation_settings' // 手当設定
   | 'compensation_list'  // 報酬形態一覧
   | 'deduction_settings' // 控除設定
+  | 'bonus_settings'     // 賞与設定
   | 'sales_settings'     // 売上設定
   | 'products'           // 商品管理
   | 'categories'         // カテゴリ管理
   | 'receipts'           // レシート設定
   | 'store_settings'     // 店舗設定
-  | 'settings'           // システム設定
+  | 'settings'           // アカウント設定
   | 'shifts'             // シフト管理
   | 'base_settings'      // BASE連携設定
   | 'schedule'           // 出勤表作成

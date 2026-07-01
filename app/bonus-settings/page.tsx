@@ -24,7 +24,7 @@ interface ProductOption {
 
 export default function BonusSettingsPage() {
   return (
-    <ProtectedPage permissionKey="deduction_settings">
+    <ProtectedPage permissionKey="bonus_settings">
       <BonusSettingsContent />
     </ProtectedPage>
   )

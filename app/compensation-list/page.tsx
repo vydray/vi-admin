@@ -25,7 +25,7 @@ interface CastWithCompensation {
 
 export default function CompensationListPage() {
   return (
-    <ProtectedPage permissionKey="compensation_settings">
+    <ProtectedPage permissionKey="compensation_list">
       <CompensationListContent />
     </ProtectedPage>
   )

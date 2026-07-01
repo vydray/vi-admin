@@ -35,7 +35,7 @@ interface PayslipSummary {
 
 export default function PayslipListPage() {
   return (
-    <ProtectedPage permissionKey="payslip">
+    <ProtectedPage permissionKey="payslip_list">
       <PayslipListContent />
     </ProtectedPage>
   )
