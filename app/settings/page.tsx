@@ -58,7 +58,7 @@ function SettingsPageContent() {
 
   return (
     <div>
-      <h1 style={styles.title}>設定</h1>
+      <h1 style={styles.title}>アカウント設定</h1>
 
       <div style={styles.card}>
         <h2 style={styles.cardTitle}>アカウント情報</h2>

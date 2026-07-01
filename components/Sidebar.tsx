@@ -138,7 +138,7 @@ const menuGroups: MenuGroup[] = [
     items: [
       { name: 'BASE連携', path: '/base-settings', icon: 'cart' },
       { name: '店舗設定', path: '/store-settings', icon: 'store' },
-      { name: '設定', path: '/settings', icon: 'settings' },
+      { name: 'アカウント設定', path: '/settings', icon: 'settings' },
     ]
   },
   {
