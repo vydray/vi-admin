@@ -55,9 +55,18 @@ export default function CastPhotosPage() {
   // フィルター用state
   const [searchName, setSearchName] = useState('')
   const [photoFilter, setPhotoFilter] = useState<PhotoFilter>('all')
+  // 在籍状況フィルター（既定=在籍のみ）
+  const [statusFilter, setStatusFilter] = useState<'active' | 'inactive' | 'all'>('active')
+
+  // 在籍状況で絞った母集団（写真フィルターの件数もこれを基準にする）
+  const statusScopedCasts = casts.filter((cast) => {
+    if (statusFilter === 'active') return cast.is_active
+    if (statusFilter === 'inactive') return !cast.is_active
+    return true
+  })
 
   // フィルター適用後のキャスト一覧
-  const filteredCasts = casts.filter((cast) => {
+  const filteredCasts = statusScopedCasts.filter((cast) => {
     // 名前フィルター
     if (searchName && !cast.name.toLowerCase().includes(searchName.toLowerCase())) {
       return false
@@ -116,7 +125,6 @@ export default function CastPhotosPage() {
       .from('casts')
       .select('id, name, photo_path, photo_crop, is_active')
       .eq('store_id', storeId)
-      .eq('is_active', true)
       .order('display_order', { ascending: true, nullsFirst: false })
       .order('name')
 
@@ -482,6 +490,40 @@ export default function CastPhotosPage() {
           onChange={(e) => setSearchName(e.target.value)}
           style={styles.searchInput}
         />
+        {/* 在籍状況フィルター（既定=在籍） */}
+        <div style={styles.filterButtons}>
+          <button
+            onClick={() => setStatusFilter('active')}
+            style={{
+              ...styles.filterButton,
+              backgroundColor: statusFilter === 'active' ? '#3b82f6' : '#e2e8f0',
+              color: statusFilter === 'active' ? '#fff' : '#333',
+            }}
+          >
+            在籍 ({casts.filter(c => c.is_active).length})
+          </button>
+          <button
+            onClick={() => setStatusFilter('inactive')}
+            style={{
+              ...styles.filterButton,
+              backgroundColor: statusFilter === 'inactive' ? '#64748b' : '#e2e8f0',
+              color: statusFilter === 'inactive' ? '#fff' : '#333',
+            }}
+          >
+            退店 ({casts.filter(c => !c.is_active).length})
+          </button>
+          <button
+            onClick={() => setStatusFilter('all')}
+            style={{
+              ...styles.filterButton,
+              backgroundColor: statusFilter === 'all' ? '#8b5cf6' : '#e2e8f0',
+              color: statusFilter === 'all' ? '#fff' : '#333',
+            }}
+          >
+            全員 ({casts.length})
+          </button>
+        </div>
+        {/* 写真登録状況フィルター（件数は在籍フィルター適用後の母集団基準） */}
         <div style={styles.filterButtons}>
           <button
             onClick={() => setPhotoFilter('all')}
@@ -491,7 +533,7 @@ export default function CastPhotosPage() {
               color: photoFilter === 'all' ? '#fff' : '#333',
             }}
           >
-            全て ({casts.length})
+            全て ({statusScopedCasts.length})
           </button>
           <button
             onClick={() => setPhotoFilter('registered')}
@@ -501,7 +543,7 @@ export default function CastPhotosPage() {
               color: photoFilter === 'registered' ? '#fff' : '#333',
             }}
           >
-            登録済み ({casts.filter(c => c.photo_path).length})
+            登録済み ({statusScopedCasts.filter(c => c.photo_path).length})
           </button>
           <button
             onClick={() => setPhotoFilter('unregistered')}
@@ -511,7 +553,7 @@ export default function CastPhotosPage() {
               color: photoFilter === 'unregistered' ? '#fff' : '#333',
             }}
           >
-            未登録 ({casts.filter(c => !c.photo_path).length})
+            未登録 ({statusScopedCasts.filter(c => !c.photo_path).length})
           </button>
         </div>
       </div>
@@ -535,7 +577,10 @@ export default function CastPhotosPage() {
                   </div>
                 )}
               </div>
-              <div style={styles.castName}>{cast.name}</div>
+              <div style={styles.castName}>
+                {cast.name}
+                {!cast.is_active && <span style={styles.inactiveBadge}>退店</span>}
+              </div>
             </div>
           )
         })}
@@ -1069,6 +1114,16 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '14px',
     fontWeight: '500',
     transition: 'all 0.2s',
+  },
+  inactiveBadge: {
+    marginLeft: '6px',
+    fontSize: '11px',
+    fontWeight: 600,
+    color: '#64748b',
+    backgroundColor: '#e2e8f0',
+    borderRadius: '4px',
+    padding: '1px 6px',
+    whiteSpace: 'nowrap' as const,
   },
   loading: {
     textAlign: 'center',
