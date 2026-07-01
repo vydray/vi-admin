@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
 
   const supabase = getSupabaseServerClient()
 
-  const [payslipsRes, statsRes, ordersRes, castsRes, settingsRes, shiftsRes, attendanceRes, attStatusRes, reservationsRes, itemsRes] =
+  const [payslipsRes, statsRes, ordersRes, castsRes, settingsRes, shiftsRes, attendanceRes, attStatusRes, reservationsRes, itemsRes, baseOrdersRes] =
     await Promise.all([
       supabase.from('payslips').select('cast_id, gross_total').eq('store_id', storeId).eq('year_month', yearMonth),
       supabase
@@ -107,6 +107,14 @@ export async function POST(request: NextRequest) {
         .lte('date', monthEnd)
         .not('help_cast_id', 'is', null)
         .range(0, 9999),
+      // BASE(物販)売上。キャスト売上と同じ集計(actual_price×quantity)で cast_id 別に合算し推し卓会計総額に足す
+      supabase
+        .from('base_orders')
+        .select('cast_id, actual_price, quantity')
+        .eq('store_id', storeId)
+        .gte('business_date', monthStart)
+        .lte('business_date', monthEnd)
+        .not('actual_price', 'is', null),
     ])
 
   const itemAxis = settingsRes.data?.published_aggregation === 'receipt_based'
@@ -129,6 +137,15 @@ export async function POST(request: NextRequest) {
   for (const it of (itemsRes.data ?? []) as { help_cast_id: number | null; subtotal: number | null }[]) {
     if (it.help_cast_id != null) {
       helpByCast.set(it.help_cast_id, (helpByCast.get(it.help_cast_id) ?? 0) + (Number(it.subtotal) || 0))
+    }
+  }
+
+  // BASE(物販)売上（cast_id 別）。「推し卓 会計総額」= 店内伝票の総会計 + BASE で、そのキャストの
+  // 店舗への総貢献を表す（BASEは伝票を通らない別売上のため足す）。式はキャスト売上のBASE分と同一。
+  const baseByCast = new Map<number, number>()
+  for (const b of (baseOrdersRes.data ?? []) as { cast_id: number | null; actual_price: number | null; quantity: number | null }[]) {
+    if (b.cast_id != null) {
+      baseByCast.set(b.cast_id, (baseByCast.get(b.cast_id) ?? 0) + (Number(b.actual_price) || 0) * (Number(b.quantity) || 0))
     }
   }
 
@@ -211,6 +228,7 @@ export async function POST(request: NextRequest) {
     ...grossByCast.keys(),
     ...salesByCast.keys(),
     ...tableByCast.keys(),
+    ...baseByCast.keys(),
     ...shiftDaysByCast.keys(),
     ...lineByCast.keys(),
   ])
@@ -219,7 +237,7 @@ export async function POST(request: NextRequest) {
       const gross = grossByCast.get(id) ?? 0
       const castSales = salesByCast.get(id) ?? 0
       const helpSales = helpByCast.get(id) ?? 0
-      const tableTotal = tableByCast.get(id) ?? 0
+      const tableTotal = (tableByCast.get(id) ?? 0) + (baseByCast.get(id) ?? 0) // 店内伝票の総会計 + BASE(物販)
       const shiftDays = shiftDaysByCast.get(id)?.size ?? 0
       const attendedDays = attendedByCast.get(id)?.size ?? 0
       const absentDays = absentByCast.get(id)?.size ?? 0
