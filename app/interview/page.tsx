@@ -303,7 +303,7 @@ function InterviewContent() {
                 { label: 'キャスト売上', value: yen(wage.castSales) },
                 { label: 'ヘルプ', value: yen(wage.helpSales) },
                 { label: '売上給与率', value: pct(wage.rate1), color: T.pink },
-                { label: '推し卓 会計総額', value: yen(wage.tableTotal) },
+                { label: '貢献売上', value: yen(wage.tableTotal) },
                 { label: '店舗貢献率', value: pct(wage.rate2), color: T.gold },
               ] as { label: string; value: string; color?: string }[]).map((m) => (
                 <div key={m.label} style={S.kpiCard}>

@@ -526,7 +526,7 @@ function CastWageView({ loading, data }: { loading: boolean; data: CastWageRateR
     { key: 'castSales', label: 'キャスト売上', num: (r) => r.castSales, cell: (r) => (r.castSales ? yen(r.castSales) : '-'), total: yen(tSales) },
     { key: 'helpSales', label: 'ヘルプ', num: (r) => r.helpSales, cell: (r) => (r.helpSales ? yen(r.helpSales) : '-'), total: yen(tHelp) },
     { key: 'rate1', label: '売上給与率', num: (r) => r.rate1 ?? -1, cell: (r) => rateCell(r.rate1), total: tSales > 0 ? pct(tGross / tSales) : '-' },
-    { key: 'tableTotal', label: '推し卓 会計総額', num: (r) => r.tableTotal, cell: (r) => (r.tableTotal ? yen(r.tableTotal) : '-'), total: yen(tTable) },
+    { key: 'tableTotal', label: '貢献売上', num: (r) => r.tableTotal, cell: (r) => (r.tableTotal ? yen(r.tableTotal) : '-'), total: yen(tTable) },
     { key: 'rate2', label: '店舗貢献率', num: (r) => r.rate2 ?? -1, cell: (r) => rateCell(r.rate2), total: tTable > 0 ? pct(tGross / tTable) : '-' },
     { key: 'shiftDays', label: 'シフト', num: (r) => r.shiftDays, cell: (r) => r.shiftDays || '-', total: num(tShift) },
     { key: 'attendedDays', label: '出勤', num: (r) => r.attendedDays, cell: (r) => r.attendedDays || '-', total: num(tAtt) },
@@ -593,7 +593,8 @@ function CastWageView({ loading, data }: { loading: boolean; data: CastWageRateR
         </table>
       </div>
       <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '12px', lineHeight: 1.6 }}>
-        ※ 売上給与率 = 総支給額 ÷ キャスト売上（{axisLabel}）／ 店舗貢献率 = 総支給額 ÷ 推し卓 会計総額。給与率が高い（赤）ほど採算が重い<br />
+        ※ 売上給与率 = 総支給額 ÷ キャスト売上（{axisLabel}）／ 店舗貢献率 = 総支給額 ÷ 貢献売上。給与率が高い（赤）ほど採算が重い<br />
+        ※ 貢献売上 = 担当した卓の会計総額（税込）＋ BASE物販。そのキャストが店舗に上げた総売上<br />
         ※ ヘルプ = キャスト売上のうち、他の人の卓を手伝って上げた分（ヘルプした側）／ 出勤率 = 実出勤 ÷ シフト予定／ 来店実現率 = 推し卓の実来店 ÷ LINE予定客数<br />
         ※ 列ヘッダをクリックで並べ替え（▼降順／▲昇順）。
       </p>
