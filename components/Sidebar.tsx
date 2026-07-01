@@ -70,7 +70,7 @@ const mainItems: MenuItem[] = [
   { name: 'Webサイト', path: '/website-banners', icon: 'globe' },
   { name: '報酬明細一覧', path: '/payslip-list', icon: 'file-text' },
   { name: 'キャスト管理', path: '/casts', icon: 'users' },
-  { name: 'キャスト面談', path: '/interview', icon: 'users' },
+  { name: 'キャスト面談', path: '/interview', icon: 'message' },
   { name: 'オリシャン集計', path: '/orishan-report', icon: 'bottle' },
 ]
 
