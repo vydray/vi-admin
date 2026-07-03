@@ -169,7 +169,9 @@ function EntryBonusContent() {
               const edit = edits[r.cast_id] ?? { pay_ym: '', is_paid: false }
               const dirty =
                 (edit.pay_ym || '') !== (r.record?.pay_ym ?? '') ||
-                edit.is_paid !== (r.record?.is_paid ?? false)
+                edit.is_paid !== (r.record?.is_paid ?? false) ||
+                // 保存済み額がライブ判定額とズレてる場合も再保存可能に（過去に誤額で保存した分の是正）
+                (r.record != null && r.record.amount !== (e?.amount ?? 0))
               return (
                 <tr key={r.cast_id} style={{ borderTop: '1px solid #f1f5f9', backgroundColor: edit.is_paid ? '#f8fafc' : '#fff' }}>
                   <td style={{ ...td, fontWeight: 600 }}>{r.cast_name}</td>

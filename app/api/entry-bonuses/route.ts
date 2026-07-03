@@ -59,21 +59,32 @@ export async function GET() {
     return NextResponse.json({ error: 'DB error' }, { status: 500 })
   }
 
-  // 月売上（store7全キャスト、日別→月別に集計）。件数が多いので range で全件取得。
-  const { data: stats, error: statErr } = await supabase
-    .from('cast_daily_stats')
-    .select(`cast_id, date, ${SALES_COL}`)
-    .eq('store_id', STORE_ID)
-    .gte('date', STATS_FROM)
-    .range(0, 99999)
-  if (statErr) {
-    console.error('[entry-bonuses] stats error:', statErr)
-    return NextResponse.json({ error: 'DB error' }, { status: 500 })
+  // 月売上（store7全キャスト、日別→月別に集計）。
+  // Supabase は1リクエスト最大1000行(db-max-rows)のため、ページングで全件取得する。
+  // ※ .range(0,99999) は上限に掛かって truncate され、後半月(6月後半以降)が欠落するので不可。
+  const stats: Array<Record<string, unknown>> = []
+  const PAGE = 1000
+  for (let offset = 0; ; offset += PAGE) {
+    const { data, error: statErr } = await supabase
+      .from('cast_daily_stats')
+      .select(`cast_id, date, ${SALES_COL}`)
+      .eq('store_id', STORE_ID)
+      .gte('date', STATS_FROM)
+      .order('cast_id', { ascending: true })
+      .order('date', { ascending: true })
+      .range(offset, offset + PAGE - 1)
+    if (statErr) {
+      console.error('[entry-bonuses] stats error:', statErr)
+      return NextResponse.json({ error: 'DB error' }, { status: 500 })
+    }
+    if (!data || data.length === 0) break
+    stats.push(...(data as Array<Record<string, unknown>>))
+    if (data.length < PAGE) break
   }
 
   // cast_id -> { 'YYYY-MM' -> 月売上 }
   const salesByCast = new Map<number, Record<string, number>>()
-  for (const row of (stats ?? []) as Array<Record<string, unknown>>) {
+  for (const row of stats) {
     const castId = Number(row.cast_id)
     const ym = String(row.date).slice(0, 7)
     const sales = Number(row[SALES_COL] ?? 0)
