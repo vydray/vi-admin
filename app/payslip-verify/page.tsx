@@ -64,7 +64,7 @@ interface PayslipRow {
   total_deduction: number | null
   net_payment: number | null
   product_back_details: Array<{
-    sales_type: 'self' | 'help'
+    sales_type: 'self' | 'help' | 'table_help'
     back_amount: number
     subtotal?: number
   }> | null
@@ -303,8 +303,9 @@ function PayslipVerifyContent() {
     if (!selectedCastId) return null
 
     const pbd = payslip?.product_back_details || []
+    // 卓内ヘルプ(table_help)は cast_id ベースで推しバケット扱い
     const pbdSelf = pbd
-      .filter((d) => d.sales_type === 'self')
+      .filter((d) => d.sales_type === 'self' || d.sales_type === 'table_help')
       .reduce((s, d) => s + (d.back_amount || 0), 0)
     const pbdHelp = pbd
       .filter((d) => d.sales_type === 'help')
