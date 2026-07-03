@@ -147,6 +147,7 @@ const menuGroups: MenuGroup[] = [
     superAdminOnly: true,
     items: [
       { name: '店舗管理', path: '/stores', icon: 'building' },
+      { name: '入店祝い金', path: '/entry-bonus', icon: 'gift' },
       { name: 'LINE設定', path: '/line-settings', icon: 'message' },
       { name: 'LINE一斉送信', path: '/line-broadcast', icon: 'send' },
       { name: 'AI統合設定', path: '/settings/ai', icon: 'cpu' },
