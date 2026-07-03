@@ -37,6 +37,16 @@ interface PayslipRow {
     help_back?: number
     hours?: number
   }> | null
+  compensation_breakdown: Array<{ is_selected?: boolean; product_back: number }> | null
+}
+
+// 採用中の報酬形態(compensation_breakdown の is_selected 行)が商品バック不支給(product_back===0)か判定。
+// breakdown が無い/空/選択行なしのキャストは従来通り(false=raw も判定に含める)。page.tsx の同名関数と同じ規約
+function isBackDisabled(breakdown: PayslipRow['compensation_breakdown'] | undefined): boolean {
+  if (!breakdown || breakdown.length === 0) return false
+  const selected = breakdown.find((c) => c.is_selected)
+  if (!selected) return false
+  return selected.product_back === 0
 }
 
 interface DailyOrderRow {
@@ -91,7 +101,7 @@ export async function GET(req: NextRequest) {
   const [payslips, pdoRows, cdiRows, compRows] = await Promise.all([
     fetchAll<PayslipRow>(supabase, (q) =>
       q
-        .select('cast_id, total_hours, product_back_details, daily_details')
+        .select('cast_id, total_hours, product_back_details, daily_details, compensation_breakdown')
         .eq('store_id', storeId)
         .eq('year_month', yearMonth),
       'payslips',
@@ -245,11 +255,20 @@ export async function GET(req: NextRequest) {
       .filter((i) => i.help_cast_id === castId && i.cast_id !== castId)
       .reduce((s, i) => s + (Number(i.help_back_amount) || 0), 0)
 
+    // バック不支給キャスト（採用形態の product_back===0）は raw(cast_daily_items) を判定から除外し、
+    // snapshot 系（pbd/dd/pdo）同士のみで一致を見る。page.tsx の checkRow と同じ規約
+    const backDisabled = isBackDisabled(ps?.compensation_breakdown)
+
     // チェック対象（page.tsx と同じ rows）
     const checks: Array<{ vals: number[]; tol: number }> = [
-      { vals: [pbdSelf, ddSelfBack, pdoSelfBack, rawSelfBack], tol: 1 },
-      { vals: [pbdHelp, ddHelpBack, pdoHelpBack, rawHelpBack], tol: 1 },
-      { vals: [pbdSelf + pbdHelp, ddBack, pdoSelfBack + pdoHelpBack, rawSelfBack + rawHelpBack], tol: 1 },
+      { vals: backDisabled ? [pbdSelf, ddSelfBack, pdoSelfBack] : [pbdSelf, ddSelfBack, pdoSelfBack, rawSelfBack], tol: 1 },
+      { vals: backDisabled ? [pbdHelp, ddHelpBack, pdoHelpBack] : [pbdHelp, ddHelpBack, pdoHelpBack, rawHelpBack], tol: 1 },
+      {
+        vals: backDisabled
+          ? [pbdSelf + pbdHelp, ddBack, pdoSelfBack + pdoHelpBack]
+          : [pbdSelf + pbdHelp, ddBack, pdoSelfBack + pdoHelpBack, rawSelfBack + rawHelpBack],
+        tol: 1,
+      },
       { vals: [pdoSelfSales, rawSelfSales], tol: 1 },
       { vals: [pdoHelpSales, rawHelpSales], tol: 1 },
       { vals: [pdoSelfSales + pdoHelpSales, rawSelfSales + rawHelpSales], tol: 1 },

@@ -112,6 +112,18 @@ interface CompRow {
   values: Partial<Record<SourceKey, number | null>>
   type?: 'currency' | 'hours'
   note?: string
+  // true の場合、判定(✓/✗)から raw(cast_daily_items) を除外する。
+  // 採用形態が商品バック不支給のキャストは snapshot 系が意図的に 0 になるため
+  excludeRawFromCheck?: boolean
+}
+
+// 採用中の報酬形態(compensation_breakdown の is_selected 行)が商品バック不支給(product_back===0)か判定。
+// breakdown が無い/空/選択行なしのキャストは従来通り(false=raw も判定に含める)
+function isBackDisabled(breakdown: CompensationBreakdownItem[] | null | undefined): boolean {
+  if (!breakdown || breakdown.length === 0) return false
+  const selected = breakdown.find((c) => c.is_selected)
+  if (!selected) return false
+  return selected.product_back === 0
 }
 
 // shift-app での用途を主表示にする
@@ -374,16 +386,19 @@ function PayslipVerifyContent() {
 
   const rows: CompRow[] = useMemo(() => {
     if (!agg) return []
+    const backDisabled = isBackDisabled(payslip?.compensation_breakdown)
     return [
       {
         label: '推し商品バック',
         values: { pbd: agg.pbdSelf, dd: agg.ddSelfBack, pdo: agg.pdoSelfBack, raw: agg.rawSelfBack },
         type: 'currency',
+        excludeRawFromCheck: backDisabled,
       },
       {
         label: 'ヘルプ商品バック',
         values: { pbd: agg.pbdHelp, dd: agg.ddHelpBack, pdo: agg.pdoHelpBack, raw: agg.rawHelpBack },
         type: 'currency',
+        excludeRawFromCheck: backDisabled,
       },
       {
         label: '商品バック合計（raw）',
@@ -395,6 +410,7 @@ function PayslipVerifyContent() {
         },
         type: 'currency',
         note: 'raw データ（実際に発生した商品バック）。報酬形態に商品バックが含まれていれば payslips.product_back と一致するが、含まない形態（売上バックのみ等）が選ばれてる場合 payslips.product_back は 0 になる',
+        excludeRawFromCheck: backDisabled,
       },
       {
         label: '推し売上',
@@ -432,10 +448,12 @@ function PayslipVerifyContent() {
         note: 'cast_daily_stats.wage_amount の合計。報酬形態に時給が含まれない場合 0 になる（時給形態を選ぶと出る）',
       },
     ]
-  }, [agg])
+  }, [agg, payslip])
 
   const checkRow = (row: CompRow): { ok: boolean; nonNullCount: number } => {
-    const vals = SOURCE_ORDER.map((k) => row.values[k]).filter(
+    // バック不支給キャストは raw(cast_daily_items) を判定から除外し、snapshot 系同士のみで一致を見る
+    const keys = row.excludeRawFromCheck ? SOURCE_ORDER.filter((k) => k !== 'raw') : SOURCE_ORDER
+    const vals = keys.map((k) => row.values[k]).filter(
       (v): v is number => v !== null && v !== undefined,
     )
     if (vals.length < 2) return { ok: true, nonNullCount: vals.length }
@@ -1439,6 +1457,8 @@ function PayslipVerifyContent() {
                           </td>
                           {SOURCE_ORDER.map((k) => {
                             const v = row.values[k]
+                            // バック不支給キャストの raw 列は判定対象外＝参考表示にとどめる
+                            const isRefOnly = k === 'raw' && row.excludeRawFromCheck
                             return (
                               <td
                                 key={k}
@@ -1447,10 +1467,13 @@ function PayslipVerifyContent() {
                                   padding: '12px 16px',
                                   fontFamily: 'ui-monospace, monospace',
                                   fontVariantNumeric: 'tabular-nums',
-                                  color: v == null ? COLORS.textMuted : COLORS.text,
+                                  color: v == null || isRefOnly ? COLORS.textMuted : COLORS.text,
                                 }}
                               >
                                 {fmt(v, row.type)}
+                                {isRefOnly && v != null && (
+                                  <span style={{ marginLeft: '4px', fontSize: '9px' }}>(参考)</span>
+                                )}
                               </td>
                             )
                           })}
@@ -1544,6 +1567,11 @@ function PayslipVerifyContent() {
                     /payslip
                   </a>
                   ）を試すか、bucketing 規約違反の可能性。
+                </li>
+                <li>
+                  採用中の報酬形態が商品バック不支給のキャストは、商品バック系の行で
+                  <span style={{ fontFamily: 'ui-monospace, monospace' }}>元データ</span>列がグレー表示＋
+                  <span style={{ fontFamily: 'ui-monospace, monospace' }}>(参考)</span>になります。この列は判定に使われず、snapshot 系（商品別ダイアログ／日別表／日別ダイアログ）同士の一致だけで判定します。
                 </li>
               </ul>
             </div>
