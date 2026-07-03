@@ -114,6 +114,7 @@ export function computeEntryBonus(
         reason: 'after_window',
         windowStartYm,
         windowEndYm,
+        months,
       }
     }
   }
@@ -127,5 +128,6 @@ export function computeEntryBonus(
     reason: 'none',
     windowStartYm,
     windowEndYm,
+    months,
   }
 }
