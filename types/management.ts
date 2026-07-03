@@ -135,6 +135,7 @@ export interface CastWageRateRow {
   callRate: number | null // 来店実現率 = nominatedGuests / lineReserved（LINE予定を実来店に変えられた率）
   cumulativeHours: number // 累計出勤時間（全期間・月フィルタなし）。保証時給の閾値到達判定用
   hasGuaranteedType: boolean // 保証時給の報酬形態（use_guaranteed_wage_only）を持っているか
+  hireDate: string | null // 入社日 casts.hire_date
 }
 
 export interface CastWageRateResponse {

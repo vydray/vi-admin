@@ -541,6 +541,17 @@ function CastWageView({ loading, data }: { loading: boolean; data: CastWageRateR
   if (typeof threshold === 'number' && threshold > 0) {
     cols.push(
       {
+        key: 'hireDate',
+        label: '入社日',
+        num: (r) => (r.hireDate ? Number(r.hireDate.replace(/-/g, '')) : 0),
+        cell: (r) => {
+          if (!r.hireDate) return '-'
+          const [y, m, d] = r.hireDate.split('-')
+          return `${y.slice(2)}/${Number(m)}/${Number(d)}`
+        },
+        total: '',
+      },
+      {
         key: 'cumulativeHours',
         label: '累計時間',
         num: (r) => r.cumulativeHours,

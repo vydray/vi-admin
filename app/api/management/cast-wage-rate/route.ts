@@ -111,7 +111,7 @@ export async function POST(request: NextRequest) {
         .gte('order_date', monthStart)
         .lte('order_date', monthEnd + 'T23:59:59')
         .is('deleted_at', null),
-      supabase.from('casts').select('id, name').eq('store_id', storeId),
+      supabase.from('casts').select('id, name, hire_date').eq('store_id', storeId),
       supabase.from('sales_settings').select('published_aggregation').eq('store_id', storeId).maybeSingle(),
       supabase.from('shifts').select('cast_id, date').eq('store_id', storeId).gte('date', monthStart).lte('date', monthEnd),
       supabase.from('attendance').select('cast_name, date, status_id').eq('store_id', storeId).gte('date', monthStart).lte('date', monthEnd),
@@ -180,12 +180,14 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // cast_id <-> cast_name
+  // cast_id <-> cast_name、cast_id -> 入社日
   const nameToId = new Map<string, number>()
   const idToName = new Map<number, string>()
+  const hireDateById = new Map<number, string | null>()
   for (const c of castsRes.data ?? []) {
     nameToId.set(c.name, c.id)
     idToName.set(c.id, c.name)
+    hireDateById.set(c.id, c.hire_date ?? null)
   }
 
   // ② 推し卓の伝票合計 + 実来店客数（orders.staff_name にそのキャストが含まれる卓）
@@ -310,6 +312,7 @@ export async function POST(request: NextRequest) {
         callRate: lineReserved > 0 ? nominatedGuests / lineReserved : null,
         cumulativeHours: cumulativeHoursByCast.get(id) ?? 0,
         hasGuaranteedType: hasGuaranteedTypeByCast.get(id) ?? false,
+        hireDate: hireDateById.get(id) ?? null,
       }
     })
     .sort((a, b) => b.castSales - a.castSales)
