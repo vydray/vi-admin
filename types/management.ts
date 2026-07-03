@@ -133,6 +133,8 @@ export interface CastWageRateRow {
   lineReserved: number // 公式LINE予定客数（月合計）
   nominatedGuests: number // 推し卓の実来店客数
   callRate: number | null // 来店実現率 = nominatedGuests / lineReserved（LINE予定を実来店に変えられた率）
+  cumulativeHours: number // 累計出勤時間（全期間・月フィルタなし）。保証時給の閾値到達判定用
+  hasGuaranteedType: boolean // 保証時給の報酬形態（use_guaranteed_wage_only）を持っているか
 }
 
 export interface CastWageRateResponse {
@@ -140,4 +142,5 @@ export interface CastWageRateResponse {
   yearMonth: string
   axis: 'total_sales_item_based' | 'total_sales_receipt_based'
   rows: CastWageRateRow[]
+  guaranteedThresholdHours: number | null // 保証時給の閾値（店舗単位・時間）。null=保証運用なし
 }

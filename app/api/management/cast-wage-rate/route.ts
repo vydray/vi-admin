@@ -19,6 +19,16 @@ interface OrderRow {
   guest_count: number | null
   order_date: string | null
 }
+// 全期間の累計出勤時間集計用（保証時給の閾値到達判定）
+interface CumulativeStatRow {
+  cast_id: number
+  work_hours: number | null
+}
+// 保証時給形態の判定用（compensation_types の一部フィールドのみ）
+interface CompTypeRow {
+  cast_id: number
+  compensation_types: { use_guaranteed_wage_only?: boolean }[] | null
+}
 const ABSENCE_CODES = new Set(['same_day_absence', 'advance_absence', 'no_call_no_show', 'excused'])
 
 export async function POST(request: NextRequest) {
@@ -70,7 +80,22 @@ export async function POST(request: NextRequest) {
 
   const supabase = getSupabaseServerClient()
 
-  const [payslipsRes, statsRes, ordersRes, castsRes, settingsRes, shiftsRes, attendanceRes, attStatusRes, reservationsRes, itemsRes, baseOrdersRes] =
+  const [
+    payslipsRes,
+    statsRes,
+    ordersRes,
+    castsRes,
+    settingsRes,
+    shiftsRes,
+    attendanceRes,
+    attStatusRes,
+    reservationsRes,
+    itemsRes,
+    baseOrdersRes,
+    cumulativeStatsRes,
+    wageSettingsRes,
+    compTypesRes,
+  ] =
     await Promise.all([
       supabase.from('payslips').select('cast_id, gross_total').eq('store_id', storeId).eq('year_month', yearMonth),
       supabase
@@ -115,6 +140,12 @@ export async function POST(request: NextRequest) {
         .gte('business_date', monthStart)
         .lte('business_date', monthEnd)
         .not('actual_price', 'is', null),
+      // 累計出勤時間（保証時給の閾値到達判定用）。月フィルタなし・全期間
+      supabase.from('cast_daily_stats').select('cast_id, work_hours').eq('store_id', storeId).range(0, 49999),
+      // 保証時給の閾値（店舗単位）。null の店は保証時給運用なし
+      supabase.from('store_wage_settings').select('guaranteed_wage_threshold_hours').eq('store_id', storeId).maybeSingle(),
+      // 各キャストが保証時給形態を持つか判定用
+      supabase.from('compensation_settings').select('cast_id, compensation_types').eq('store_id', storeId),
     ])
 
   const itemAxis = settingsRes.data?.published_aggregation === 'receipt_based'
@@ -224,6 +255,24 @@ export async function POST(request: NextRequest) {
     lineByCast.set(r.cast_id, (lineByCast.get(r.cast_id) ?? 0) + (Number(r.guest_count) || 0))
   }
 
+  // 累計出勤時間（全期間・cast_id別合計）。保証時給の閾値到達判定用
+  const cumulativeHoursByCast = new Map<number, number>()
+  for (const s of (cumulativeStatsRes.data ?? []) as CumulativeStatRow[]) {
+    cumulativeHoursByCast.set(s.cast_id, (cumulativeHoursByCast.get(s.cast_id) ?? 0) + (Number(s.work_hours) || 0))
+  }
+
+  // 保証時給の閾値（store_wage_settings.guaranteed_wage_threshold_hours）。null=保証運用なし
+  const guaranteedThresholdHours: number | null = wageSettingsRes.data?.guaranteed_wage_threshold_hours ?? null
+
+  // 保証時給形態を持つキャスト（compensation_types のいずれか1行でも use_guaranteed_wage_only===true なら true）
+  const hasGuaranteedTypeByCast = new Map<number, boolean>()
+  for (const cs of (compTypesRes.data ?? []) as CompTypeRow[]) {
+    const types = Array.isArray(cs.compensation_types) ? cs.compensation_types : []
+    const has = types.some((t) => t?.use_guaranteed_wage_only === true)
+    if (has) hasGuaranteedTypeByCast.set(cs.cast_id, true)
+    else if (!hasGuaranteedTypeByCast.has(cs.cast_id)) hasGuaranteedTypeByCast.set(cs.cast_id, false)
+  }
+
   const castIds = new Set<number>([
     ...grossByCast.keys(),
     ...salesByCast.keys(),
@@ -259,6 +308,8 @@ export async function POST(request: NextRequest) {
         lineReserved,
         nominatedGuests,
         callRate: lineReserved > 0 ? nominatedGuests / lineReserved : null,
+        cumulativeHours: cumulativeHoursByCast.get(id) ?? 0,
+        hasGuaranteedType: hasGuaranteedTypeByCast.get(id) ?? false,
       }
     })
     .sort((a, b) => b.castSales - a.castSales)
@@ -268,6 +319,7 @@ export async function POST(request: NextRequest) {
     yearMonth,
     axis: salesAxis === 'total_sales_receipt_based' ? 'total_sales_receipt_based' : 'total_sales_item_based',
     rows,
+    guaranteedThresholdHours,
   }
   return NextResponse.json(response)
 }

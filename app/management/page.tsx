@@ -536,6 +536,30 @@ function CastWageView({ loading, data }: { loading: boolean; data: CastWageRateR
     { key: 'nominatedGuests', label: '実来店', num: (r) => r.nominatedGuests, cell: (r) => r.nominatedGuests || '-', total: num(tNom) },
     { key: 'callRate', label: '来店実現率', num: (r) => r.callRate ?? -1, cell: (r) => pct(r.callRate), total: tLine > 0 ? pct(tNom / tLine) : '-' },
   ]
+  // 保証時給運用のある店（閾値設定あり）でだけ、累計時間・保証時給の2列を追加
+  const threshold = data.guaranteedThresholdHours
+  if (typeof threshold === 'number' && threshold > 0) {
+    cols.push(
+      {
+        key: 'cumulativeHours',
+        label: '累計時間',
+        num: (r) => r.cumulativeHours,
+        cell: (r) => (r.cumulativeHours ? `${r.cumulativeHours.toFixed(1)}h` : '-'),
+        total: '',
+      },
+      {
+        key: 'guaranteed',
+        label: '保証時給',
+        num: (r) => r.cumulativeHours,
+        cell: (r) => {
+          if (!r.hasGuaranteedType) return <span style={{ color: '#94a3b8' }}>—</span>
+          if (r.cumulativeHours >= threshold) return <span style={{ color: '#64748b', fontWeight: 600 }}>✓終了</span>
+          return <span style={{ color: '#15803d', fontWeight: 700 }}>あと{(threshold - r.cumulativeHours).toFixed(1)}h</span>
+        },
+        total: '',
+      }
+    )
+  }
   const sorted = [...data.rows].sort((a, b) => {
     const col = cols.find((c) => c.key === sortKey)
     if (!col) return 0
@@ -596,6 +620,11 @@ function CastWageView({ loading, data }: { loading: boolean; data: CastWageRateR
         ※ 売上給与率 = 総支給額 ÷ キャスト売上（{axisLabel}）／ 店舗貢献率 = 総支給額 ÷ 貢献売上。給与率が高い（赤）ほど採算が重い<br />
         ※ 貢献売上 = 担当した卓の会計総額（税込）＋ BASE物販。そのキャストが店舗に上げた総売上<br />
         ※ ヘルプ = キャスト売上のうち、他の人の卓を手伝って上げた分（ヘルプした側）／ 出勤率 = 実出勤 ÷ シフト予定／ 来店実現率 = 推し卓の実来店 ÷ LINE予定客数<br />
+        {typeof threshold === 'number' && threshold > 0 && (
+          <>
+            ※ 累計時間 = 全期間の出勤時間の累計。保証時給 = 累計が{threshold}h に達すると終了（以降は売上連動）。「—」は保証時給対象外のキャスト。<br />
+          </>
+        )}
         ※ 列ヘッダをクリックで並べ替え（▼降順／▲昇順）。
       </p>
     </div>
