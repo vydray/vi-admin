@@ -21,6 +21,7 @@ interface Eligibility {
   reason: 'in_window' | 'after_window' | 'none'
   windowStartYm: string
   windowEndYm: string
+  months: { ym: string; sales: number; rank: number | null }[]
 }
 interface SavedRecord {
   amount: number
@@ -151,6 +152,7 @@ function EntryBonusContent() {
             <tr style={{ backgroundColor: '#f8fafc', textAlign: 'left' }}>
               <th style={th}>キャスト</th>
               <th style={th}>入社日</th>
+              <th style={th}>月別売上（判定窓）</th>
               <th style={th}>達成月</th>
               <th style={{ ...th, textAlign: 'right' }}>ランク</th>
               <th style={{ ...th, textAlign: 'right' }}>祝い金</th>
@@ -176,6 +178,17 @@ function EntryBonusContent() {
                     {e && (
                       <div style={{ fontSize: '11px', color: '#94a3b8' }}>判定 {e.windowStartYm}〜{e.windowEndYm}</div>
                     )}
+                  </td>
+                  <td style={td}>
+                    {e && e.months.length > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                        {e.months.map((m) => (
+                          <div key={m.ym} style={{ fontSize: '12px', color: m.rank ? '#0f766e' : '#94a3b8', fontWeight: m.rank ? 600 : 400 }}>
+                            {parseInt(m.ym.slice(5), 10)}月 {yen(m.sales)}{m.rank ? `（${m.rank}万）` : ''}
+                          </div>
+                        ))}
+                      </div>
+                    ) : '—'}
                   </td>
                   <td style={td}>{e?.achievedYm ?? '—'}{e?.reason === 'after_window' ? '（窓後）' : ''}</td>
                   <td style={{ ...td, textAlign: 'right' }}>{e?.rank ? `${e.rank}万` : '—'}</td>
@@ -221,7 +234,7 @@ function EntryBonusContent() {
             })}
             {visible.length === 0 && (
               <tr>
-                <td colSpan={9} style={{ ...td, textAlign: 'center', color: '#94a3b8', padding: '30px' }}>
+                <td colSpan={10} style={{ ...td, textAlign: 'center', color: '#94a3b8', padding: '30px' }}>
                   該当者がいません
                 </td>
               </tr>

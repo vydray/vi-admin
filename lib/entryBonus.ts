@@ -38,6 +38,7 @@ export interface EntryBonusResult {
   reason: 'in_window' | 'after_window' | 'none'
   windowStartYm: string
   windowEndYm: string
+  months: Array<{ ym: string; sales: number; rank: number | null }> // 判定窓内の各月の売上とランク
 }
 
 // ym: 'YYYY-MM'。salesByYm はその月の月売上。today は 'YYYY-MM-DD'。
@@ -69,6 +70,12 @@ export function computeEntryBonus(
     }
   }
 
+  // 窓内各月の売上とランク（表示用）
+  const months = windowMonths.map((ym) => {
+    const sales = salesByYm[ym] ?? 0
+    return { ym, sales, rank: tierForSales(sales)?.rank ?? null }
+  })
+
   // 窓内の最高ランク（同ランクなら最も早い月を達成月とする）
   let best: { rank: number; amount: number; ym: string } | null = null
   for (const ym of windowMonths) {
@@ -88,6 +95,7 @@ export function computeEntryBonus(
       reason: 'in_window',
       windowStartYm,
       windowEndYm,
+      months,
     }
   }
 
