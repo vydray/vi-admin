@@ -93,7 +93,7 @@ interface DailySalesData {
   items: Array<{
     product_name: string
     category: string | null
-    sales_type: 'self' | 'help'
+    sales_type: 'self' | 'help' | 'table_help'
     quantity: number
     subtotal: number
     back_ratio: number | null
@@ -102,6 +102,9 @@ interface DailySalesData {
     // ヘルプ行のみ: shift-app 表示用に推しキャスト情報を保持
     oshi_cast_id?: number | null
     oshi_cast_name?: string | null
+    // 卓内ヘルプ行(table_help)のみ: 自分の卓を手伝ったヘルパー情報
+    help_cast_id?: number | null
+    help_cast_name?: string | null
   }>
 }
 
@@ -678,15 +681,22 @@ async function calculatePayslipForCast(
       const isInTableHelp = item.help_cast_id === cast.id
       const helpBackContribution = isInTableHelp ? (item.help_back_amount || 0) : 0
       const totalBackAmount = selfBackAmount + helpBackContribution
-      const backInfo = getPosBackInfo(item.product_name, item.category, item.is_self)
+      // self バケットの金額は self_back_amount（自分売上×self率）主体なので、率も常に
+      // self_back_ratio を使う。item.is_self で引くと按分行(is_self=false)に help率が入り、
+      // shift-app が amount÷率 で売上逆算した際に過大表示になる不具合があったため true 固定。
+      const backInfo = getPosBackInfo(item.product_name, item.category, true)
       const backRatio = backInfo?.rate ?? null
+      // 自分の卓を他キャストに手伝ってもらった行(is_self=false・help_cast_idが他人)は
+      // 「卓内ヘルプ（自分の卓・他キャストの商品）」として分離(shift-app が3セクション表示)。
+      // 金額は自分の取り分(self_back)のまま。フリー卓の自ヘルプ(help_cast_id=自分)は 'self' 継続。
+      const isTableHelp = !item.is_self && item.help_cast_id != null && item.help_cast_id !== cast.id
+      const itemSalesType: 'self' | 'table_help' = isTableHelp ? 'table_help' : 'self'
 
       dayData.productBack += totalBackAmount
       dayData.selfBack += totalBackAmount
 
       // POS商品明細をitemsに追加（BASE商品も cast_daily_items に取り込まれているのでここで処理）
-      // sales_type は「このキャストの役割」基準: cast_id=自分の行 → 'self' (推し)
-      // 卓内ヘルプ（cast_id=help_cast_id=自分）も cast_id ベース規約により 'self' に分類
+      // sales_type: is_self=true → 'self'(推し・自分の卓の自分商品) / is_self=false(他人ヘルプ) → 'table_help'
 
       // Mary Mare(store_id=7)のみ: item_help_ratio による卓内ヘルプ按分で
       // self_back_amount が控除後(self_sales基準)になっているのに、表示明細の
@@ -711,12 +721,16 @@ async function calculatePayslipForCast(
       dayData.items.push({
         product_name: item.product_name,
         category: item.category || '',
-        sales_type: 'self',
+        sales_type: itemSalesType,
         quantity: displayQuantity,
         subtotal: displaySubtotal,
         back_ratio: backRatio,
         back_amount: totalBackAmount,
-        is_base: item.category === 'BASE'
+        is_base: item.category === 'BASE',
+        ...(isTableHelp ? {
+          help_cast_id: item.help_cast_id,
+          help_cast_name: castList.find(c => c.id === item.help_cast_id)?.name ?? null,
+        } : {}),
       })
     }
 
@@ -1540,13 +1554,15 @@ async function calculatePayslipForCast(
     const productBackDetails: Array<{
       product_name: string
       category: string | null
-      sales_type: 'self' | 'help'
+      sales_type: 'self' | 'help' | 'table_help'
       quantity: number
       subtotal: number
       back_ratio: number | null
       back_amount: number
       oshi_cast_id?: number | null
       oshi_cast_name?: string | null
+      help_cast_id?: number | null
+      help_cast_name?: string | null
     }> = []
 
     const grouped = new Map<string, typeof productBackDetails[0]>()
@@ -1554,6 +1570,8 @@ async function calculatePayslipForCast(
       for (const item of day.items) {
         const key = item.sales_type === 'help'
           ? `${item.category || ''}:${item.product_name}:help:${item.oshi_cast_id ?? ''}`
+          : item.sales_type === 'table_help'
+          ? `${item.category || ''}:${item.product_name}:table_help:${item.help_cast_id ?? ''}`
           : `${item.category || ''}:${item.product_name}:self`
         const existing = grouped.get(key)
         if (existing) {
