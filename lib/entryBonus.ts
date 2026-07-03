@@ -9,7 +9,7 @@
 // 「月売上」= その暦月の cast_daily_stats 合計（store7は item_based の total）。
 // 部分入社月もカウントする（入社月の暦月から窓に含める）＝現行v1の解釈。後で調整可。
 
-import { addMonths, format, parseISO, startOfMonth } from 'date-fns'
+import { addMonths, format, parseISO, startOfMonth, subDays } from 'date-fns'
 
 // 高い順（達成判定は上から）
 export const ENTRY_BONUS_TIERS = [
@@ -54,7 +54,9 @@ export function computeEntryBonus(
   const effectiveStart = ruleStartDate && ruleStartDate > hireDate ? ruleStartDate : hireDate
   const hire = parseISO(effectiveStart)
   const windowStartYm = format(hire, 'yyyy-MM')
-  const windowEnd = addMonths(hire, 2) // 丸2ヶ月
+  // 丸2ヶ月 = [起点, 起点+2ヶ月) の半開区間。最終日 = 起点+2ヶ月の前日。
+  // 例: 5/1起点 → 6/30(=5月と6月の丸2ヶ月)、6/1起点 → 7/31(=6月と7月)。
+  const windowEnd = subDays(addMonths(hire, 2), 1)
   const windowEndYm = format(windowEnd, 'yyyy-MM')
   const todayYm = format(parseISO(today), 'yyyy-MM')
   const windowClosed = format(startOfMonth(parseISO(today)), 'yyyy-MM') > windowEndYm
