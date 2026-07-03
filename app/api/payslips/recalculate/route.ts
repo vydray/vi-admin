@@ -1501,6 +1501,30 @@ async function calculatePayslipForCast(
     const totalDeduction = deductions.reduce((sum, d) => sum + d.amount, 0)
     const netEarnings = grossEarnings - totalDeduction
 
+    // RC1修正(方針A): JSONB内訳(daily_details/product_back_details/payslip_daily_orders)を
+    // スカラー列と同じ「採用形態」基準で生成する。まずMary Mare(store7)のみ有効化し、検証後に全店へ展開する予定
+    const adoptedBasisBreakdown = storeId === 7
+
+    // 採用形態が商品バックを支給するか（スカラー側 productBack のフォールバックと同値）
+    const payProductBack = selectedResult
+      ? selectedResult.compType.use_product_back === true
+      : true
+
+    // 採用形態基準の日別時給収入。selectedWageAmount と同じ分岐・丸めを使うことで月合計を1円単位で一致させる
+    const adoptedWageForDay = (stats: { date: string; work_hours: number | null; costume_id: number | null; wage_amount: number | null } | undefined): number => {
+      if (!selectedResult) return stats?.wage_amount || 0
+      if (!useWageData || !stats) return 0
+      const compType = selectedResult.compType
+      const useGuaranteedOnly = (compType as { use_guaranteed_wage_only?: boolean }).use_guaranteed_wage_only === true
+      const useUniformBased = (compType as { use_uniform_based_wage?: boolean }).use_uniform_based_wage === true
+      if (useGuaranteedOnly || useUniformBased) {
+        return computeWageForDay(compType, stats)
+      }
+      return statsWageAmount > 0
+        ? (stats.wage_amount || 0)
+        : Math.round((stats.work_hours || 0) * effectiveHourlyRate)
+    }
+
     // 日別詳細（フルスキーマで保存→画面側は動的計算ゼロで描画する想定）
     const days = eachDayOfInterval({ start: startOfMonth(month), end: endOfMonth(month) })
     const dailyDetails = days
@@ -1520,32 +1544,44 @@ async function calculatePayslipForCast(
           workTimeRange = `${pad(checkIn.getUTCHours())}:${pad(checkIn.getUTCMinutes())}〜${pad(checkOut.getUTCHours())}:${pad(checkOut.getUTCMinutes())}`
         }
 
+        const hours = stats?.work_hours || 0
+        // ゼロ化前の生値（フィルタ判定用）: バックだけの日が行ごと消えるのを防ぐため、フィルタは生値で行う
+        const rawBack = sales?.productBack || 0
+        const rawSelfBack = sales?.selfBack || 0
+        const rawHelpBack = sales?.helpBack || 0
+        const hourlyIncome = adoptedBasisBreakdown ? adoptedWageForDay(stats) : (stats?.wage_amount || 0)
+        const showProductBack = !adoptedBasisBreakdown || payProductBack
+
         return {
-          date: dateStr,
-          hours: stats?.work_hours || 0,
-          hourly_wage: stats?.work_hours ? Math.round((stats?.wage_amount || 0) / stats.work_hours) : 0,
-          hourly_income: stats?.wage_amount || 0,
-          sales: sales?.totalSales || 0,
-          sales_item_based: stats?.total_sales_item_based ?? sales?.totalSales ?? 0,
-          sales_receipt_based: stats?.total_sales_receipt_based ?? sales?.totalSales ?? 0,
-          // sales_service_charge は別計算が必要(exclude_service_charge使用時のみ) → 未保存。画面側でフォールバック計算する
-          back: sales?.productBack || 0,
-          self_back: sales?.selfBack || 0,
-          help_back: sales?.helpBack || 0,
-          work_time_range: workTimeRange,
-          daily_payment: attendance?.daily_payment || 0,
-          late_minutes: attendance?.late_minutes || 0,
+          rawBack,
+          detail: {
+            date: dateStr,
+            hours,
+            hourly_wage: hours > 0 ? Math.round(hourlyIncome / hours) : 0,
+            hourly_income: hourlyIncome,
+            sales: sales?.totalSales || 0,
+            sales_item_based: stats?.total_sales_item_based ?? sales?.totalSales ?? 0,
+            sales_receipt_based: stats?.total_sales_receipt_based ?? sales?.totalSales ?? 0,
+            // sales_service_charge は別計算が必要(exclude_service_charge使用時のみ) → 未保存。画面側でフォールバック計算する
+            back: showProductBack ? rawBack : 0,
+            self_back: showProductBack ? rawSelfBack : 0,
+            help_back: showProductBack ? rawHelpBack : 0,
+            work_time_range: workTimeRange,
+            daily_payment: attendance?.daily_payment || 0,
+            late_minutes: attendance?.late_minutes || 0,
+          },
         }
       })
-      .filter(d =>
+      .filter(({ rawBack, detail }) =>
         // 出勤あり、または売上・バック・日払い・遅刻のいずれかがある日を含める
         // (シフト外日のBASE売上等を含めるため hours=0 でも sales/back > 0 なら表示)
-        d.hours > 0 ||
-        d.sales > 0 ||
-        d.back > 0 ||
-        d.daily_payment > 0 ||
-        d.late_minutes > 0
+        detail.hours > 0 ||
+        detail.sales > 0 ||
+        rawBack > 0 ||
+        detail.daily_payment > 0 ||
+        detail.late_minutes > 0
       )
+      .map(({ detail }) => detail)
 
     // 商品バック詳細
     // - help 行は (category, product_name, oshi_cast_id) で groupping → 推しごとに分かれる
@@ -1583,7 +1619,10 @@ async function calculatePayslipForCast(
         }
       }
     })
-    grouped.forEach(item => productBackDetails.push(item))
+    // 採用形態が商品バックを支給しない場合、内訳は空(合計0)にする
+    if (!adoptedBasisBreakdown || payProductBack) {
+      grouped.forEach(item => productBackDetails.push(item))
+    }
 
     const workDays = dailyDetails.filter(d => d.hours > 0).length
     const averageHourlyWage = totalWorkHours > 0 ? Math.round(totalWageAmount / totalWorkHours) : 0
@@ -1670,6 +1709,8 @@ async function calculatePayslipForCast(
       const aggregation = (selectedResult?.compType as { sales_aggregation?: string })?.sales_aggregation === 'receipt_based'
         ? 'receipt_based' as const
         : 'item_based' as const
+      // 採用形態が商品バックを支給しない場合、伝票明細のバックだけ0化する（credit/売上表示は残す）
+      const zeroBack = adoptedBasisBreakdown && !payProductBack
 
       // 月内の関連 cast_daily_items を全件取得（推し or ヘルプ で関わってる行）
       const { data: pdoSourceItems, error: pdoSrcErr } = await supabaseAdmin
@@ -1734,10 +1775,11 @@ async function calculatePayslipForCast(
         }
 
         // 日次の wage / hours は既に取得済みの dailyStats から
+        // wage_amount はここで採用形態基準(adoptedWageForDay)に揃える。保存時の参照はこの map から読むだけなので併せて揃う
         const statsByDate = new Map<string, { wage_amount: number; work_hours: number }>()
         for (const ds of (dailyStats || [])) {
           statsByDate.set(ds.date, {
-            wage_amount: ds.wage_amount || 0,
+            wage_amount: adoptedBasisBreakdown ? adoptedWageForDay(ds) : (ds.wage_amount || 0),
             work_hours: ds.work_hours || 0,
           })
         }
@@ -1790,19 +1832,19 @@ async function calculatePayslipForCast(
                 credit = aggregation === 'receipt_based'
                   ? Number(row.self_sales_receipt_based) || 0
                   : Number(row.self_sales_item_based) || 0
-                back = Number(row.self_back_amount) || 0
+                back = zeroBack ? 0 : (Number(row.self_back_amount) || 0)
                 rate = row.self_back_rate || 0
                 // 卓内ヘルプ（help_cast_id=自分）の help 分も推し credit/back に加算
                 if (row.help_cast_id === cast.id) {
                   credit += Number(row.help_sales) || 0
-                  back += Number(row.help_back_amount) || 0
+                  back += zeroBack ? 0 : (Number(row.help_back_amount) || 0)
                 }
                 selfSalesTotal += credit
                 selfBackTotal += back
               } else if (row.help_cast_id === cast.id) {
                 // ヘルプの行（他卓のヘルプ）
                 credit = Number(row.help_sales) || 0
-                back = Number(row.help_back_amount) || 0
+                back = zeroBack ? 0 : (Number(row.help_back_amount) || 0)
                 rate = row.help_back_rate || 0
                 helpSalesTotal += credit
                 helpBackTotal += back
