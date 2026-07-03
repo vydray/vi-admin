@@ -44,11 +44,14 @@ export interface EntryBonusResult {
 export function computeEntryBonus(
   hireDate: string | null,
   salesByYm: Record<string, number>,
-  today: string
+  today: string,
+  ruleStartDate?: string // 祝い金プログラムの適用開始日。入社日がこれより前なら開始日から判定
 ): EntryBonusResult | null {
   if (!hireDate) return null
 
-  const hire = parseISO(hireDate)
+  // 適用開始日フロア: 入社日が開始日より前（=一括移行の4/23組など）は開始日から2ヶ月窓で判定
+  const effectiveStart = ruleStartDate && ruleStartDate > hireDate ? ruleStartDate : hireDate
+  const hire = parseISO(effectiveStart)
   const windowStartYm = format(hire, 'yyyy-MM')
   const windowEnd = addMonths(hire, 2) // 丸2ヶ月
   const windowEndYm = format(windowEnd, 'yyyy-MM')

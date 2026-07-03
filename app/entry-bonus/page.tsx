@@ -171,7 +171,12 @@ function EntryBonusContent() {
               return (
                 <tr key={r.cast_id} style={{ borderTop: '1px solid #f1f5f9', backgroundColor: edit.is_paid ? '#f8fafc' : '#fff' }}>
                   <td style={{ ...td, fontWeight: 600 }}>{r.cast_name}</td>
-                  <td style={td}>{r.hire_date ?? '—'}</td>
+                  <td style={td}>
+                    <div>{r.hire_date ?? '—'}</div>
+                    {e && (
+                      <div style={{ fontSize: '11px', color: '#94a3b8' }}>判定 {e.windowStartYm}〜{e.windowEndYm}</div>
+                    )}
+                  </td>
                   <td style={td}>{e?.achievedYm ?? '—'}{e?.reason === 'after_window' ? '（窓後）' : ''}</td>
                   <td style={{ ...td, textAlign: 'right' }}>{e?.rank ? `${e.rank}万` : '—'}</td>
                   <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: (e?.amount ?? 0) > 0 ? '#ea580c' : '#cbd5e1' }}>

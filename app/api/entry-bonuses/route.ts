@@ -20,6 +20,9 @@ const STORE_ID = 7
 const SALES_COL = 'total_sales_item_based'
 // 集計開始（十分過去から。窓＋窓後まで拾えればよい）
 const STATS_FROM = '2026-01-01'
+// 祝い金プログラムの適用開始日。入社日がこれより前（=一括移行の4/23組）は
+// この日から2ヶ月窓で判定する（快晟決定 2026-07: 4/23組は5/1判定）。
+const RULE_START = '2026-05-01'
 
 async function requireSuperAdmin() {
   const session = await validateAdminSession()
@@ -92,7 +95,8 @@ export async function GET() {
       const eligibility: EntryBonusResult | null = computeEntryBonus(
         c.hire_date,
         salesByCast.get(c.id) ?? {},
-        today
+        today,
+        RULE_START
       )
       const record = savedByCast.get(c.id) ?? null
       return {
