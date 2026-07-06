@@ -9,6 +9,7 @@ import LoadingSpinner from '@/components/LoadingSpinner'
 import Button from '@/components/Button'
 import Modal from '@/components/Modal'
 import ProtectedPage from '@/components/ProtectedPage'
+import { useIsMobile } from '@/hooks/useIsMobile'
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB
 const BUCKET = 'website-banners'
@@ -93,6 +94,7 @@ export default function WebsiteBannersPage() {
 function WebsiteBannersPageContent() {
   const { storeId, isLoading: storeLoading } = useStore()
   const { confirm } = useConfirm()
+  const { isMobile } = useIsMobile()
   const [banners, setBanners] = useState<Banner[]>([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
@@ -297,10 +299,10 @@ function WebsiteBannersPageContent() {
   if (storeLoading || loading) return <LoadingSpinner />
 
   return (
-    <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+    <div style={{ padding: isMobile ? '16px' : '24px', maxWidth: '1200px', margin: '0 auto' }}>
+      <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'center', gap: isMobile ? '12px' : 0, marginBottom: '20px' }}>
         <div>
-          <h1 style={{ fontSize: '24px', fontWeight: 700, margin: 0 }}>イベントバナー管理</h1>
+          <h1 style={{ fontSize: isMobile ? '20px' : '24px', fontWeight: 700, margin: 0 }}>イベントバナー管理</h1>
           <p style={{ fontSize: '13px', color: '#888', margin: '4px 0 0' }}>
             Webサイト TOP のスライドバナー。期間内 + 有効化されたものが表示されます。
           </p>
@@ -311,6 +313,41 @@ function WebsiteBannersPageContent() {
       {banners.length === 0 ? (
         <div style={{ padding: '40px', textAlign: 'center', color: '#888', backgroundColor: 'white', borderRadius: '8px' }}>
           バナーがまだ登録されていません
+        </div>
+      ) : isMobile ? (
+        /* スマホ: テーブルではなくカードで縦積み表示 */
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {banners.map(b => (
+            <div key={b.id} style={{ backgroundColor: 'white', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={b.image_url}
+                alt={b.title}
+                style={{ width: '100%', aspectRatio: '16 / 9', objectFit: 'contain', backgroundColor: '#f7f9fc', display: 'block' }}
+              />
+              <div style={{ padding: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                  <div style={{ fontWeight: 600, fontSize: '15px' }}>{b.title}</div>
+                  <button
+                    onClick={() => toggleActive(b)}
+                    style={{ flexShrink: 0, backgroundColor: b.is_active ? '#10b981' : '#888', color: 'white', border: 'none', padding: '5px 12px', borderRadius: '4px', fontSize: '12px', cursor: 'pointer', fontWeight: 600 }}
+                  >
+                    {b.is_active ? 'ON' : 'OFF'}
+                  </button>
+                </div>
+                {b.link_url && (
+                  <div style={{ fontSize: '11px', color: '#888', wordBreak: 'break-all', marginTop: '4px' }}>↗ {b.link_url}</div>
+                )}
+                <div style={{ fontSize: '12px', color: '#666', marginTop: '6px' }}>
+                  {b.start_date} 〜 {b.end_date}　·　表示順 {b.display_order}
+                </div>
+                <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+                  <Button onClick={() => openEdit(b)} variant="secondary" size="small">編集</Button>
+                  <Button onClick={() => remove(b)} variant="danger" size="small">削除</Button>
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       ) : (
         <div style={{ overflowX: 'auto' }}>
@@ -478,7 +515,7 @@ function WebsiteBannersPageContent() {
             />
           </label>
 
-          <div style={{ display: 'flex', gap: '12px' }}>
+          <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '12px' }}>
             <label style={{ fontSize: '13px', color: '#555', flex: 1 }}>
               開始日 *
               <input
