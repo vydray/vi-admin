@@ -573,7 +573,9 @@ const S: Record<string, CSSProperties> = {
 
   formPane: { flex: '1 1 44%', display: 'flex', flexDirection: 'column', background: T.card, border: `1px solid ${T.line}`, borderRadius: 14, overflow: 'hidden' },
   showDetailBtn: { alignSelf: 'flex-start', margin: '10px 0 0 12px', background: 'none', border: `1px solid ${T.line}`, borderRadius: 8, padding: '4px 10px', fontSize: 12, fontWeight: 700, color: T.sub, cursor: 'pointer' },
-  formScroll: { flex: 1, overflowY: 'auto', padding: 18 },
+  // flex:1 の子が overflowY:auto でスクロールするには minHeight:0 が必須。
+  // これが無いと min-height:auto(=中身)で縮まず、親の overflow:hidden に切られ下端に到達できない
+  formScroll: { flex: 1, minHeight: 0, overflowY: 'auto', padding: '18px 18px 28px' },
 
   tabBar: { display: 'flex', alignItems: 'center', gap: 6, padding: '8px 10px', borderBottom: `1px solid ${T.line}`, flexShrink: 0 },
   tab: { background: 'none', border: 'none', padding: '7px 16px', borderRadius: 9, fontSize: 14, fontWeight: 800, color: T.sub, cursor: 'pointer', letterSpacing: 0.3 },
