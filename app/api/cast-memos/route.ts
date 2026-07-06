@@ -5,14 +5,13 @@ import { validateAdminSession, canAccessStore, type AdminSession } from '@/lib/a
 import { hasPermission } from '@/lib/permissions'
 
 /**
- * キャスト面談記録 API（プロデュース・ダッシュボードの入力先）。
+ * キャスト会話メモ API（面談ページの「会話メモ」タブの入力先）。
+ * 面談(cast_interviews)とは別で、日付に縛られず時系列に何件でも追記できるメモ。
  *
- * 認可: opt-in の interview 権限で判定。super_admin は常に許可、それ以外は「店舗管理の
- * 権限管理」で interview を明示付与された時のみ（＝現状は実質 super_admin 限定、将来開ける）。
+ * 認可: 面談と同じ interview 権限で判定（super_admin は常に許可）。
  * 店舗隔離: 対象キャストの store_id を DB から引いて canAccessStore で照合（body 信用しない）。
  */
 
-// 認証＋interview権限。通れば AdminSession を返す。
 async function authorize(): Promise<AdminSession | null> {
   const session = await validateAdminSession()
   if (!session) return null
@@ -22,13 +21,12 @@ async function authorize(): Promise<AdminSession | null> {
   return session
 }
 
-// 対象キャストの所属 store_id（存在しなければ null）
 async function getCastStoreId(supabase: SupabaseClient, castId: number): Promise<number | null> {
   const { data } = await supabase.from('casts').select('store_id').eq('id', castId).maybeSingle()
   return (data as { store_id?: number } | null)?.store_id ?? null
 }
 
-// GET ?cast_id= : そのキャストの面談履歴（新しい順）
+// GET ?cast_id= : そのキャストの会話メモ（新しい順）
 export async function GET(request: NextRequest) {
   const session = await authorize()
   if (!session) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
@@ -42,70 +40,51 @@ export async function GET(request: NextRequest) {
   if (!canAccessStore(session, storeId)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { data, error } = await supabase
-    .from('cast_interviews')
+    .from('cast_memos')
     .select('*')
     .eq('cast_id', castId)
-    .order('interview_date', { ascending: false })
+    .order('created_at', { ascending: false })
   if (error) {
-    console.error('[cast-interviews] GET error:', error)
+    console.error('[cast-memos] GET error:', error)
     return NextResponse.json({ error: '取得に失敗しました' }, { status: 500 })
   }
-  return NextResponse.json({ interviews: data ?? [] })
+  return NextResponse.json({ memos: data ?? [] })
 }
 
-// POST : 面談を upsert（自動下書き／保存 共通。is_draft で未確定/確定を区別）
-// body: { cast_id, interview_date, answers, is_draft }
+// POST : 会話メモを1件追加
+// body: { cast_id, body }
 export async function POST(request: NextRequest) {
   const session = await authorize()
   if (!session) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await request.json()
   const castId = Number(body.cast_id)
-  const interviewDate: string = body.interview_date
-  if (!castId || !interviewDate) {
-    return NextResponse.json({ error: 'cast_id / interview_date が必要です' }, { status: 400 })
-  }
+  const text: string = (body.body ?? '').toString().trim()
+  if (!castId) return NextResponse.json({ error: 'cast_id が必要です' }, { status: 400 })
+  if (!text) return NextResponse.json({ error: 'メモ内容が空です' }, { status: 400 })
 
   const supabase = getSupabaseServerClient()
   const storeId = await getCastStoreId(supabase, castId)
   if (storeId == null) return NextResponse.json({ error: 'Cast not found' }, { status: 404 })
   if (!canAccessStore(session, storeId)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  // 中身が全て空の面談は行を残さない（＝開くたびのゴミ下書きを溜めない）。
-  // 既存行があれば削除し、無ければ何もしない＝空の行を作らない。
-  const answers = (body.answers ?? {}) as Record<string, unknown>
-  const hasContent = Object.values(answers).some(
-    (v) => v !== null && v !== undefined && String(v).trim() !== ''
-  )
-  if (!hasContent) {
-    await supabase.from('cast_interviews').delete().eq('cast_id', castId).eq('interview_date', interviewDate)
-    return NextResponse.json({ interview: null, emptied: true })
-  }
-
   const row = {
     cast_id: castId,
     store_id: storeId, // body ではなくキャストの所属店舗を採用（他店書き込み防止）
-    interview_date: interviewDate,
-    interviewer_id: session.id,
-    interviewer_name: session.username,
-    answers,
-    is_draft: body.is_draft === true,
-    updated_at: new Date().toISOString(),
+    author_id: session.id,
+    author_name: session.username,
+    body: text,
   }
 
-  const { data, error } = await supabase
-    .from('cast_interviews')
-    .upsert(row, { onConflict: 'cast_id,interview_date' })
-    .select()
-    .single()
+  const { data, error } = await supabase.from('cast_memos').insert(row).select().single()
   if (error) {
-    console.error('[cast-interviews] POST error:', error)
+    console.error('[cast-memos] POST error:', error)
     return NextResponse.json({ error: '保存に失敗しました' }, { status: 500 })
   }
-  return NextResponse.json({ interview: data })
+  return NextResponse.json({ memo: data })
 }
 
-// DELETE ?id= : 面談を削除
+// DELETE ?id= : 会話メモを削除
 export async function DELETE(request: NextRequest) {
   const session = await authorize()
   if (!session) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
@@ -114,16 +93,15 @@ export async function DELETE(request: NextRequest) {
   if (!id) return NextResponse.json({ error: 'id が必要です' }, { status: 400 })
 
   const supabase = getSupabaseServerClient()
-  // 対象行の store_id を引いて自店のみ削除可
-  const { data: row } = await supabase.from('cast_interviews').select('store_id').eq('id', id).maybeSingle()
+  const { data: row } = await supabase.from('cast_memos').select('store_id').eq('id', id).maybeSingle()
   if (!row) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   if (!canAccessStore(session, (row as { store_id: number }).store_id)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  const { error } = await supabase.from('cast_interviews').delete().eq('id', id)
+  const { error } = await supabase.from('cast_memos').delete().eq('id', id)
   if (error) {
-    console.error('[cast-interviews] DELETE error:', error)
+    console.error('[cast-memos] DELETE error:', error)
     return NextResponse.json({ error: '削除に失敗しました' }, { status: 500 })
   }
   return NextResponse.json({ success: true })

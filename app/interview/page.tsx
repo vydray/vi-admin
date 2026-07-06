@@ -56,6 +56,20 @@ interface InterviewRow {
   updated_at: string
 }
 
+interface CastMemo {
+  id: string
+  cast_id: number
+  author_name: string | null
+  body: string
+  created_at: string
+}
+
+const fmtDateTime = (iso: string) => {
+  const d = new Date(iso)
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}/${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
+}
+
 const todayStr = () => {
   const d = new Date()
   const m = String(d.getMonth() + 1).padStart(2, '0')
@@ -96,6 +110,11 @@ function InterviewContent() {
   const [dirty, setDirty] = useState(false)
   const [showDetail, setShowDetail] = useState(true)
   const [wage, setWage] = useState<CastWageRateRow | null>(null)
+  // 右ペインのタブ（面談フォーム / 会話メモ）
+  const [rightTab, setRightTab] = useState<'interview' | 'memo'>('interview')
+  const [memos, setMemos] = useState<CastMemo[]>([])
+  const [memoInput, setMemoInput] = useState('')
+  const [memoSaving, setMemoSaving] = useState(false)
   // 給率の対象月。既定は面談日の前月（直近の確定実績）。月セレクタで前後できる。
   const [kpiMonth, setKpiMonth] = useState<string>(() => shiftMonth(todayStr().slice(0, 7), -1))
 
@@ -184,6 +203,12 @@ function InterviewContent() {
         return
       }
       setDirty(false)
+      // 中身が空でサーバ側が行を削除した場合は、履歴からも該当日を消す（ゴミを残さない）
+      if (j.emptied) {
+        setHistory((prev) => prev.filter((iv) => iv.interview_date !== interviewDate))
+        setSaveState('idle')
+        return
+      }
       setSaveState('saved')
       if (!isDraft) {
         toast.success('面談を保存しました')
@@ -210,6 +235,53 @@ function InterviewContent() {
     return () => window.removeEventListener('beforeunload', onBeforeUnload)
   }, [dirty])
 
+  // ── 会話メモ（面談とは別・時系列でいつでも追記）──────────────
+  const loadMemos = useCallback(async (castId: number) => {
+    try {
+      const res = await fetch(`/api/cast-memos?cast_id=${castId}`)
+      const j = await res.json()
+      if (!res.ok) { setMemos([]); return }
+      setMemos((j.memos as CastMemo[]) ?? [])
+    } catch { setMemos([]) }
+  }, [])
+
+  useEffect(() => {
+    if (selectedId != null) loadMemos(selectedId)
+    else setMemos([])
+    setMemoInput('')
+  }, [selectedId, loadMemos])
+
+  const addMemo = useCallback(async () => {
+    const text = memoInput.trim()
+    if (selectedId == null || !text) return
+    setMemoSaving(true)
+    try {
+      const res = await fetch('/api/cast-memos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cast_id: selectedId, body: text }),
+      })
+      const j = await res.json()
+      if (!res.ok) { toast.error(j.error || 'メモの保存に失敗しました'); return }
+      setMemoInput('')
+      setMemos((prev) => [j.memo as CastMemo, ...prev])
+    } catch {
+      toast.error('メモの保存に失敗しました')
+    } finally {
+      setMemoSaving(false)
+    }
+  }, [selectedId, memoInput])
+
+  const deleteMemo = useCallback(async (id: string) => {
+    try {
+      const res = await fetch(`/api/cast-memos?id=${id}`, { method: 'DELETE' })
+      if (!res.ok) { toast.error('削除に失敗しました'); return }
+      setMemos((prev) => prev.filter((m) => m.id !== id))
+    } catch {
+      toast.error('削除に失敗しました')
+    }
+  }, [])
+
   const setAns = (key: string, value: string | number) => setAnswers((prev) => ({ ...prev, [key]: value }))
 
   const photoUrl = selected?.photo_path
@@ -226,7 +298,7 @@ function InterviewContent() {
   // 選択直後(検索文字=選択中の名前)は全員表示。1文字でも打ち変えたら絞り込む＝開き直しても全員見える
   const selectedName = selected?.name ?? ''
   const filtered = casts.filter((c) => !search.trim() || search === selectedName || c.name.includes(search.trim()))
-  const saveText = saveState === 'saving' ? '保存中…' : saveState === 'saved' ? '保存済み' : saveState === 'error' ? '保存エラー' : dirty ? '自動下書き待ち' : ''
+  const saveText = saveState === 'saving' ? '保存中…' : saveState === 'saved' ? '保存済み' : saveState === 'error' ? '保存エラー' : dirty ? '自動保存…' : ''
 
   return (
     <div style={S.page}>
@@ -328,51 +400,89 @@ function InterviewContent() {
             </div>
 
             <div style={S.formPane}>
-              {!showDetail && (
-                <button onClick={() => setShowDetail(true)} style={S.showDetailBtn}>‹ 売上を表示</button>
-              )}
-              <div style={S.formScroll}>
-                {INTERVIEW_BLOCKS.map((block) => (
-                  <section key={block} style={S.block}>
-                    <div style={S.blockHead}>
-                      <span style={S.blockJa}>{block}</span>
-                      <span style={S.blockEn}>{BLOCK_EN[block]}</span>
-                    </div>
-                    {INTERVIEW_QUESTIONS.filter((q) => q.block === block).map((q) => (
-                      <div key={q.key} style={S.field}>
-                        <label style={S.qLabel}>{q.label}{q.unit ? <span style={S.unit}>（{q.unit}）</span> : null}</label>
-                        {q.type === 'number' ? (
-                          <input type="number" value={(answers[q.key] as number | undefined) ?? ''}
-                            onChange={(e) => setAns(q.key, e.target.value === '' ? '' : Number(e.target.value))}
-                            style={S.numInput} placeholder="—" />
-                        ) : (
-                          <textarea value={(answers[q.key] as string | undefined) ?? ''}
-                            onChange={(e) => setAns(q.key, e.target.value)} rows={2} style={S.textArea} placeholder="—" />
-                        )}
-                      </div>
-                    ))}
-                  </section>
-                ))}
-              </div>
-
-              <div style={S.footer}>
-                <button onClick={() => persist(false)} disabled={saveState === 'saving'} style={S.saveBtn}>
-                  {saveState === 'saving' ? '保存中…' : '保存する'}
+              {/* タブ: 面談フォーム / 会話メモ（右ペインだけ切替、売上iframeは共通） */}
+              <div style={S.tabBar}>
+                {!showDetail && (
+                  <button onClick={() => setShowDetail(true)} style={S.showDetailBtn}>‹ 売上</button>
+                )}
+                <button onClick={() => setRightTab('interview')}
+                  style={{ ...S.tab, ...(rightTab === 'interview' ? S.tabActive : {}) }}>面談</button>
+                <button onClick={() => setRightTab('memo')}
+                  style={{ ...S.tab, ...(rightTab === 'memo' ? S.tabActive : {}) }}>
+                  会話メモ{memos.length > 0 ? ` (${memos.length})` : ''}
                 </button>
-                <span style={S.footHint}>入力は自動で下書き保存（閉じても残る）</span>
               </div>
 
-              {history.length > 0 && (
-                <div style={S.histBox}>
-                  <div style={S.histTitle}>過去の面談</div>
-                  {history.map((iv) => (
-                    <button key={iv.id} onClick={() => setInterviewDate(iv.interview_date)}
-                      style={{ ...S.histItem, ...(iv.interview_date === interviewDate ? S.histItemActive : {}) }}>
-                      <span style={S.histDate}>{iv.interview_date}</span>
-                      {iv.is_draft && <span style={S.draftTag}>下書き</span>}
-                      <span style={S.histBy}>{iv.interviewer_name ?? ''}</span>
-                    </button>
+              {rightTab === 'interview' ? (
+                /* 面談タブ: 質問・保存ボタン・過去面談を1つのスクロール枠にまとめる（#4） */
+                <div style={S.formScroll}>
+                  {INTERVIEW_BLOCKS.map((block) => (
+                    <section key={block} style={S.block}>
+                      <div style={S.blockHead}>
+                        <span style={S.blockJa}>{block}</span>
+                        <span style={S.blockEn}>{BLOCK_EN[block]}</span>
+                      </div>
+                      {INTERVIEW_QUESTIONS.filter((q) => q.block === block).map((q) => (
+                        <div key={q.key} style={S.field}>
+                          <label style={S.qLabel}>{q.label}{q.unit ? <span style={S.unit}>（{q.unit}）</span> : null}</label>
+                          {q.type === 'number' ? (
+                            <input type="number" value={(answers[q.key] as number | undefined) ?? ''}
+                              onChange={(e) => setAns(q.key, e.target.value === '' ? '' : Number(e.target.value))}
+                              style={S.numInput} placeholder="—" />
+                          ) : (
+                            <textarea value={(answers[q.key] as string | undefined) ?? ''}
+                              onChange={(e) => setAns(q.key, e.target.value)}
+                              rows={q.key === 'other' ? 7 : 3} style={S.textArea} placeholder="—" />
+                          )}
+                        </div>
+                      ))}
+                    </section>
                   ))}
+
+                  {/* 保存ボタンはスクロール末尾に置く（常時固定をやめる／#4）。入力は自動保存もされる */}
+                  <div style={S.saveRow}>
+                    <button onClick={() => persist(false)} disabled={saveState === 'saving'} style={S.saveBtn}>
+                      {saveState === 'saving' ? '保存中…' : '保存する'}
+                    </button>
+                    <span style={S.footHint}>入力は自動保存されます（空欄だけの面談は残りません）</span>
+                  </div>
+
+                  {history.length > 0 && (
+                    <div style={S.histInline}>
+                      <div style={S.histTitle}>過去の面談</div>
+                      {history.map((iv) => (
+                        <button key={iv.id} onClick={() => setInterviewDate(iv.interview_date)}
+                          style={{ ...S.histItem, ...(iv.interview_date === interviewDate ? S.histItemActive : {}) }}>
+                          <span style={S.histDate}>{iv.interview_date}</span>
+                          <span style={S.histBy}>{iv.interviewer_name ?? ''}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                /* 会話メモタブ: 時系列ログ＋追記（面談後でもいつでも） */
+                <div style={S.formScroll}>
+                  <div style={S.memoAdd}>
+                    <textarea value={memoInput} onChange={(e) => setMemoInput(e.target.value)}
+                      rows={3} style={S.textArea} placeholder="会話メモを追記…（面談後でもいつでもOK）" />
+                    <button onClick={addMemo} disabled={memoSaving || !memoInput.trim()} style={S.memoAddBtn}>
+                      {memoSaving ? '追加中…' : '追加'}
+                    </button>
+                  </div>
+                  {memos.length === 0 ? (
+                    <div style={S.memoEmpty}>まだ会話メモはありません。上の欄から追記できます。</div>
+                  ) : (
+                    memos.map((m) => (
+                      <div key={m.id} style={S.memoItem}>
+                        <div style={S.memoMeta}>
+                          <span>{fmtDateTime(m.created_at)}{m.author_name ? `　·　${m.author_name}` : ''}</span>
+                          <button onClick={() => deleteMemo(m.id)} style={S.memoDel}>削除</button>
+                        </div>
+                        <div style={S.memoBody}>{m.body}</div>
+                      </div>
+                    ))
+                  )}
                 </div>
               )}
             </div>
@@ -433,6 +543,20 @@ const S: Record<string, CSSProperties> = {
   formPane: { flex: '1 1 44%', display: 'flex', flexDirection: 'column', background: T.card, border: `1px solid ${T.line}`, borderRadius: 14, overflow: 'hidden' },
   showDetailBtn: { alignSelf: 'flex-start', margin: '10px 0 0 12px', background: 'none', border: `1px solid ${T.line}`, borderRadius: 8, padding: '4px 10px', fontSize: 12, fontWeight: 700, color: T.sub, cursor: 'pointer' },
   formScroll: { flex: 1, overflowY: 'auto', padding: 18 },
+
+  tabBar: { display: 'flex', alignItems: 'center', gap: 6, padding: '8px 10px', borderBottom: `1px solid ${T.line}`, flexShrink: 0 },
+  tab: { background: 'none', border: 'none', padding: '7px 16px', borderRadius: 9, fontSize: 14, fontWeight: 800, color: T.sub, cursor: 'pointer', letterSpacing: 0.3 },
+  tabActive: { background: '#FDEEF4', color: T.pink },
+  saveRow: { display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginTop: 6, marginBottom: 6 },
+  histInline: { marginTop: 18, paddingTop: 14, borderTop: `1px solid ${T.line}` },
+
+  memoAdd: { display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 },
+  memoAddBtn: { alignSelf: 'flex-end', padding: '8px 22px', borderRadius: 9, border: 'none', background: T.mint, color: '#fff', fontSize: 14, fontWeight: 800, cursor: 'pointer', letterSpacing: 0.5 },
+  memoEmpty: { color: T.faint, fontSize: 13, padding: '24px 4px', textAlign: 'center' },
+  memoItem: { border: `1px solid ${T.line}`, borderRadius: 11, padding: '10px 13px', marginBottom: 10, background: '#FCFCFD' },
+  memoMeta: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, fontSize: 11, color: T.faint, fontWeight: 700, marginBottom: 5 },
+  memoBody: { fontSize: 14, color: T.ink, lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word' },
+  memoDel: { background: 'none', border: 'none', color: T.faint, fontSize: 11, fontWeight: 700, cursor: 'pointer', padding: '2px 4px' },
   block: { marginBottom: 18 },
   blockHead: { display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10, paddingBottom: 6, borderBottom: `2px solid ${T.ink}` },
   blockJa: { fontSize: 15, fontWeight: 800, color: T.ink, letterSpacing: 1 },
@@ -443,15 +567,12 @@ const S: Record<string, CSSProperties> = {
   textArea: { width: '100%', padding: '9px 11px', borderRadius: 9, border: `1px solid ${T.line}`, fontSize: 14, fontFamily: 'inherit', resize: 'vertical', boxSizing: 'border-box', background: '#FCFCFD', lineHeight: 1.5 },
   numInput: { width: 170, padding: '9px 11px', borderRadius: 9, border: `1px solid ${T.line}`, fontSize: 16, fontWeight: 700, boxSizing: 'border-box', background: '#FCFCFD', fontFamily: T.mono, color: T.ink },
 
-  footer: { borderTop: `1px solid ${T.line}`, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 },
   saveBtn: { padding: '11px 30px', borderRadius: 10, border: 'none', background: T.pink, color: '#fff', fontSize: 15, fontWeight: 800, cursor: 'pointer', letterSpacing: 0.5, boxShadow: '0 2px 8px rgba(233,79,134,0.35)' },
   footHint: { fontSize: 11, color: T.faint },
 
-  histBox: { borderTop: `1px solid ${T.line}`, padding: '12px 16px', maxHeight: 150, overflowY: 'auto', background: '#FAFBFC' },
   histTitle: { fontSize: 11, fontWeight: 800, color: T.sub, marginBottom: 8, letterSpacing: 1 },
   histItem: { display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', padding: '7px 10px', borderRadius: 8, border: `1px solid ${T.line}`, background: T.card, fontSize: 13, cursor: 'pointer', marginBottom: 5 },
   histItemActive: { borderColor: T.pink, background: '#FDEEF4' },
   histDate: { fontWeight: 700, color: T.ink, fontFamily: T.mono },
-  draftTag: { fontSize: 10, fontWeight: 800, color: T.gold, border: `1px solid ${T.gold}`, borderRadius: 4, padding: '0 4px' },
   histBy: { color: T.faint, fontSize: 11, marginLeft: 'auto' },
 }
