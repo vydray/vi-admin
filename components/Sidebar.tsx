@@ -52,8 +52,7 @@ const mobileRestrictedPaths = [
   '/cast-back-rates',       // バック設定
   '/deduction-settings',    // 控除設定
   '/bonus-settings',        // 賞与設定
-  // Webサイト
-  '/website-banners',       // イベントバナー管理
+  // Webサイト(/website-banners)はスマホ対応済みのためモバイルでも表示する
 ]
 
 // モバイルで制限するグループ名
