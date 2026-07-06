@@ -1525,6 +1525,16 @@ async function calculatePayslipForCast(
         : Math.round((stats.work_hours || 0) * effectiveHourlyRate)
     }
 
+    // 候補時給スナップショット用: 有効な報酬形態から「売上連動(ブラケット)」「保証時給のみ」形態を特定。
+    // shift-app 等の読み手が動的計算せず daily_details を読むだけで比較列(売上連動/保証)を出せるように、
+    // 日別に両候補の時給を保存する（採用形態に関係なく、両候補を常に算出）
+    const uniformCompType = enabledTypes.find((t: CompType) =>
+      (t as { use_uniform_based_wage?: boolean }).use_uniform_based_wage === true
+    )
+    const guaranteedCompType = enabledTypes.find((t: CompType) =>
+      (t as { use_guaranteed_wage_only?: boolean }).use_guaranteed_wage_only === true
+    )
+
     // 日別詳細（フルスキーマで保存→画面側は動的計算ゼロで描画する想定）
     const days = eachDayOfInterval({ start: startOfMonth(month), end: endOfMonth(month) })
     const dailyDetails = days
@@ -1558,6 +1568,13 @@ async function calculatePayslipForCast(
             date: dateStr,
             hours,
             hourly_wage: hours > 0 ? Math.round(hourlyIncome / hours) : 0,
+            // 候補時給（採用可否に関わらず両方保存）。該当形態が無い/衣装未解決なら0
+            sales_based_wage: uniformCompType && stats && hours > 0
+              ? Math.round(computeWageForDay(uniformCompType, stats) / hours)
+              : 0,
+            guaranteed_wage: guaranteedCompType && stats && hours > 0
+              ? Math.round(computeWageForDay(guaranteedCompType, stats) / hours)
+              : 0,
             hourly_income: hourlyIncome,
             sales: sales?.totalSales || 0,
             sales_item_based: stats?.total_sales_item_based ?? sales?.totalSales ?? 0,

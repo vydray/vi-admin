@@ -1141,6 +1141,11 @@ export interface PayslipDailyDetail {
   date: string
   hours: number
   hourly_wage: number
+  // 候補時給スナップショット（shift-app が動的計算せず「読むだけ」で比較列を出せるよう保存）
+  // sales_based_wage=売上連動(ブラケット)時給 / guaranteed_wage=保証時給。該当形態が無ければ0。
+  // 旧snapshotには存在しない(undefined)ため、読み手側はフォールバック前提で扱う
+  sales_based_wage?: number
+  guaranteed_wage?: number
   hourly_income: number
   sales: number
   sales_item_based: number
