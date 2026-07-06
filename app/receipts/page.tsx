@@ -143,6 +143,7 @@ function ReceiptsPageContent() {
   })
   const [, setCastSearchTerm] = useState('')
   const [showCastDropdown, setShowCastDropdown] = useState(false)
+  const [recalcingDaily, setRecalcingDaily] = useState(false) // 伝票保存後の報酬データ再計算中フラグ
 
   // ドロップダウンのref（外側クリックで閉じる用）
   const editStaffDropdownRef = useRef<HTMLDivElement>(null)
@@ -575,6 +576,34 @@ function ReceiptsPageContent() {
     }
   }
 
+  // 伝票保存後に、その伝票の営業日(order_date の UTC日付)の日次売上データを再計算し報酬に反映する。
+  // recalculateForDate が order_date を [date T00:00Z, 翌日 T00:00Z) で括るため、渡す日付は必ず UTC日付。
+  const recalcDailyStats = async (storeIdArg: number, ...orderDates: (string | null | undefined)[]) => {
+    const dates = Array.from(new Set(
+      orderDates.filter((d): d is string => !!d).map(d => new Date(d).toISOString().slice(0, 10))
+    ))
+    if (!storeIdArg || dates.length === 0) return
+    setRecalcingDaily(true)
+    try {
+      for (const date of dates) {
+        const res = await fetch('/api/cast-stats/recalculate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ store_id: storeIdArg, date }),
+        })
+        if (!res.ok) {
+          const e = await res.json().catch(() => ({}))
+          throw new Error(e.error || `recalc failed (${res.status})`)
+        }
+      }
+    } catch (err) {
+      console.error('日次再計算エラー:', err)
+      toast.error('報酬データの更新に失敗しました。手動で再計算してください')
+    } finally {
+      setRecalcingDaily(false)
+    }
+  }
+
   const saveReceiptChanges = async () => {
     if (!selectedReceipt) return
 
@@ -621,6 +650,8 @@ function ReceiptsPageContent() {
       toast.success('伝票の基本情報を更新しました')
       setIsEditModalOpen(false)
       loadReceipts()
+      // 日付が変わった可能性があるので旧日付・新日付の両方を再計算
+      await recalcDailyStats(selectedReceipt.store_id, selectedReceipt.order_date, editFormData.order_date)
     } catch (error) {
       console.error('Error updating receipt:', error)
       toast.error('伝票の更新に失敗しました')
@@ -629,6 +660,10 @@ function ReceiptsPageContent() {
 
   const deleteReceipt = async (receiptId: number) => {
     if (!await confirm('この伝票を削除してもよろしいですか？')) return
+
+    const targetReceipt = selectedReceipt?.id === receiptId
+      ? selectedReceipt
+      : receipts.find(r => r.id === receiptId)
 
     try {
       const { error } = await supabase
@@ -650,6 +685,7 @@ function ReceiptsPageContent() {
       toast.success('伝票を削除しました')
       setIsEditModalOpen(false)
       loadReceipts()
+      await recalcDailyStats(targetReceipt?.store_id ?? storeId!, targetReceipt?.order_date)
     } catch (error) {
       console.error('Error deleting receipt:', error)
       toast.error('伝票の削除に失敗しました')
@@ -927,6 +963,7 @@ function ReceiptsPageContent() {
         toast.success('会計処理が完了しました')
         setIsPaymentModalOpen(false)
         loadReceiptDetails(selectedReceipt)
+        await recalcDailyStats(selectedReceipt.store_id, selectedReceipt.order_date)
       } else if (paymentModalMode === 'create') {
         // 新規作成モード：新しい伝票を作成
         if (!createFormData.table_number) {
@@ -1018,6 +1055,7 @@ function ReceiptsPageContent() {
         setIsPaymentModalOpen(false)
         setIsCreateModalOpen(false)
         loadReceipts()
+        await recalcDailyStats(storeId, createFormData.order_date)
       }
     } catch (error) {
       console.error('Error completing payment:', error)
@@ -1108,6 +1146,7 @@ function ReceiptsPageContent() {
       toast.success('伝票を複製しました')
       setIsEditModalOpen(false)
       loadReceipts()
+      await recalcDailyStats(selectedReceipt.store_id, now)
     } catch (error) {
       console.error('Error duplicating receipt:', error)
       toast.error('伝票の複製に失敗しました')
@@ -1236,6 +1275,7 @@ function ReceiptsPageContent() {
       toast.success('伝票を作成しました（未会計）')
       setIsCreateModalOpen(false)
       loadReceipts()
+      await recalcDailyStats(storeId, createFormData.order_date)
     } catch (error: any) {
       console.error('Error creating receipt:', error)
       const errorMessage = error?.message || error?.details || JSON.stringify(error)
@@ -1360,6 +1400,7 @@ function ReceiptsPageContent() {
       if (selectedReceipt) {
         loadReceiptDetails(selectedReceipt)
       }
+      await recalcDailyStats(selectedReceipt?.store_id ?? storeId!, selectedReceipt?.order_date)
     } catch (error) {
       console.error('Error updating order item:', error)
       toast.error('注文明細の更新に失敗しました')
@@ -1405,6 +1446,7 @@ function ReceiptsPageContent() {
       if (selectedReceipt) {
         loadReceiptDetails(selectedReceipt)
       }
+      await recalcDailyStats(selectedReceipt?.store_id ?? storeId!, selectedReceipt?.order_date)
     } catch (error) {
       console.error('Error deleting order item:', error)
       toast.error('注文明細の削除に失敗しました')
@@ -1482,6 +1524,7 @@ function ReceiptsPageContent() {
 
       // 詳細を再読み込み
       loadReceiptDetails(selectedReceipt)
+      await recalcDailyStats(selectedReceipt.store_id, selectedReceipt.order_date)
     } catch (error) {
       console.error('Error adding order item:', error)
       toast.error('注文明細の追加に失敗しました')
@@ -1557,6 +1600,13 @@ function ReceiptsPageContent() {
 
   return (
     <div style={styles.container}>
+      {recalcingDaily && (
+        <div style={styles.recalcOverlay}>
+          <div style={styles.recalcOverlayBox}>
+            <LoadingSpinner fullScreen={false} size="small" text="報酬データを更新中…" />
+          </div>
+        </div>
+      )}
       <div style={styles.header}>
         <div>
           <h1 style={styles.title}>伝票管理</h1>
@@ -3195,6 +3245,24 @@ const styles: { [key: string]: React.CSSProperties } = {
   container: {
     maxWidth: '1400px',
     margin: '0 auto',
+  },
+  recalcOverlay: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 9999,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+  },
+  recalcOverlayBox: {
+    backgroundColor: 'white',
+    borderRadius: '8px',
+    padding: '24px 32px',
+    boxShadow: '0 10px 25px rgba(0, 0, 0, 0.2)',
   },
   header: {
     marginBottom: '30px',
