@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback, type CSSProperties } from 'react'
+import { useState, useEffect, useRef, useCallback, type CSSProperties, type ChangeEvent } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
 import ProtectedPage from '@/components/ProtectedPage'
@@ -88,6 +88,37 @@ function snsUrl(platform: 'twitter' | 'instagram' | 'tiktok', handle: string | n
 }
 
 const BLOCK_EN: Record<string, string> = { 現状: 'NOW', 目標: 'GOAL', 達成プラン: 'PLAN', 次アクション: 'NEXT ACTION' }
+
+// 入力量に応じて縦に自動で伸びる textarea（中スクロールせず、書いた分だけ高くなる）
+function AutoTextarea({ value, onChange, placeholder, minHeight = 72, style }: {
+  value: string
+  onChange: (e: ChangeEvent<HTMLTextAreaElement>) => void
+  placeholder?: string
+  minHeight?: number
+  style?: CSSProperties
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null)
+  const fit = useCallback(() => {
+    const el = ref.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.max(el.scrollHeight, minHeight)}px`
+  }, [minHeight])
+  useEffect(fit)                        // 毎レンダー（値/幅変化）で高さ再計算
+  useEffect(() => {
+    window.addEventListener('resize', fit)
+    return () => window.removeEventListener('resize', fit)
+  }, [fit])
+  return (
+    <textarea
+      ref={ref}
+      value={value}
+      onChange={onChange}
+      placeholder={placeholder}
+      style={{ ...style, minHeight, resize: 'none', overflow: 'hidden' }}
+    />
+  )
+}
 
 export default function InterviewPage() {
   return (
@@ -430,9 +461,9 @@ function InterviewContent() {
                               onChange={(e) => setAns(q.key, e.target.value === '' ? '' : Number(e.target.value))}
                               style={S.numInput} placeholder="—" />
                           ) : (
-                            <textarea value={(answers[q.key] as string | undefined) ?? ''}
+                            <AutoTextarea value={(answers[q.key] as string | undefined) ?? ''}
                               onChange={(e) => setAns(q.key, e.target.value)}
-                              rows={q.key === 'other' ? 7 : 3} style={S.textArea} placeholder="—" />
+                              minHeight={q.key === 'other' ? 150 : 72} style={S.textArea} placeholder="—" />
                           )}
                         </div>
                       ))}
@@ -464,8 +495,8 @@ function InterviewContent() {
                 /* 会話メモタブ: 時系列ログ＋追記（面談後でもいつでも） */
                 <div style={S.formScroll}>
                   <div style={S.memoAdd}>
-                    <textarea value={memoInput} onChange={(e) => setMemoInput(e.target.value)}
-                      rows={3} style={S.textArea} placeholder="会話メモを追記…（面談後でもいつでもOK）" />
+                    <AutoTextarea value={memoInput} onChange={(e) => setMemoInput(e.target.value)}
+                      minHeight={72} style={S.textArea} placeholder="会話メモを追記…（面談後でもいつでもOK）" />
                     <button onClick={addMemo} disabled={memoSaving || !memoInput.trim()} style={S.memoAddBtn}>
                       {memoSaving ? '追加中…' : '追加'}
                     </button>
