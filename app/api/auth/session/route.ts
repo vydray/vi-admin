@@ -19,6 +19,7 @@ export async function GET() {
       role: session.role,
       store_id: session.storeId,
       isAllStore: session.isAllStore,
+      accessible_store_ids: session.accessibleStoreIds,
       permissions: session.permissions,
     }
 

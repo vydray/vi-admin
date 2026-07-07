@@ -161,7 +161,7 @@ interface SidebarProps {
 
 export default function Sidebar({ isMobileOverlay = false }: SidebarProps) {
   const pathname = usePathname()
-  const { storeId, setStoreId, stores } = useStore()
+  const { storeId, setStoreId, stores, canSwitchStore } = useStore()
   const { user, logout } = useAuth()
   const { canAccessPath, can, isSuperAdmin } = usePermissions()
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set())
@@ -234,8 +234,8 @@ export default function Sidebar({ isMobileOverlay = false }: SidebarProps) {
           </div>
         )}
 
-        {/* 店舗選択（super_adminのみ表示） */}
-        {isSuperAdmin && (
+        {/* 店舗選択（super_admin または 複数店アクセス可の管理者に表示） */}
+        {canSwitchStore && (
           <div className={styles.storeSelector}>
             <select
               value={storeId}

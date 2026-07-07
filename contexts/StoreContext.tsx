@@ -17,24 +17,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   // ユーザーの権限に基づいて店舗IDを初期化
   useEffect(() => {
-    if (!authLoading && user) {
-      const canSwitch = user.role === 'super_admin'
-      let targetStoreId: number | null | undefined = user.store_id
+    if (authLoading || !user) return
+    // アクセス可能店舗（super_admin は全店=null）
+    const accessible = user.role === 'super_admin'
+      ? null
+      : (user.accessible_store_ids && user.accessible_store_ids.length > 0
+          ? user.accessible_store_ids
+          : (user.store_id ? [user.store_id] : []))
+    // 切替可能 = super_admin もしくは アクセス店舗が2つ以上
+    const canSwitch = user.role === 'super_admin' || (accessible?.length ?? 0) > 1
+    let targetStoreId: number | null | undefined = user.store_id
 
-      // super_adminの場合、localStorageに保存された選択を優先
-      if (canSwitch && typeof window !== 'undefined') {
-        const stored = localStorage.getItem('vi-admin:selected-store-id')
-        const parsedId = stored ? parseInt(stored, 10) : NaN
-        if (!isNaN(parsedId) && parsedId > 0) {
-          targetStoreId = parsedId
-        }
+    // 切替可能な場合、localStorageに保存された選択を優先（アクセス可能な店に限る）
+    if (canSwitch && typeof window !== 'undefined') {
+      const stored = localStorage.getItem('vi-admin:selected-store-id')
+      const parsedId = stored ? parseInt(stored, 10) : NaN
+      if (!isNaN(parsedId) && parsedId > 0 && (!accessible || accessible.includes(parsedId))) {
+        targetStoreId = parsedId
       }
-
-      if (targetStoreId) {
-        setStoreIdState(targetStoreId)
-      }
-      setStoreIdInitialized(true)
     }
+
+    if (targetStoreId) {
+      setStoreIdState(targetStoreId)
+    }
+    setStoreIdInitialized(true)
   }, [user, authLoading])
 
   useEffect(() => {
@@ -82,18 +88,34 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const storeName = stores.find(s => s.id === storeId)?.name || 'Unknown'
 
-  // super_adminのみ店舗切り替え可能
-  const canSwitchStore = user?.role === 'super_admin'
+  // アクセス可能店舗（super_admin は全店=null）。canAccessStore(サーバ)と同じ考え方
+  const accessibleStoreIds: number[] | null =
+    !user || user.role === 'super_admin'
+      ? null
+      : (user.accessible_store_ids && user.accessible_store_ids.length > 0
+          ? user.accessible_store_ids
+          : (user.store_id ? [user.store_id] : []))
+
+  // 切替可能 = super_admin もしくは アクセス店舗が2つ以上
+  const canSwitchStore = user?.role === 'super_admin' || (accessibleStoreIds?.length ?? 0) > 1
+
+  // セレクタに出す店舗はアクセス可能な店だけに絞る（super_adminは全店）
+  const visibleStores = accessibleStoreIds ? stores.filter(s => accessibleStoreIds.includes(s.id)) : stores
 
   // 店舗切り替え関数（権限チェック付き）
   const setStoreId = (id: number) => {
-    if (canSwitchStore) {
-      setStoreIdState(id)
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('vi-admin:selected-store-id', String(id))
-      }
-    } else {
-      console.warn('店舗管理者は店舗を切り替えることができません')
+    if (!canSwitchStore) {
+      console.warn('この管理者は店舗を切り替えることができません')
+      return
+    }
+    // アクセス不可の店舗へは切り替えさせない（サーバ側 canAccessStore でも二重に防御）
+    if (accessibleStoreIds && !accessibleStoreIds.includes(id)) {
+      console.warn('アクセス権のない店舗です')
+      return
+    }
+    setStoreIdState(id)
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('vi-admin:selected-store-id', String(id))
     }
   }
 
@@ -103,7 +125,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         storeId,
         setStoreId,
         storeName,
-        stores,
+        stores: visibleStores,
         isLoading,
         canSwitchStore,
       }}

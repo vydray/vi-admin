@@ -25,6 +25,7 @@ export interface AdminSession {
   role: string // 'super_admin' | 'store_admin'
   storeId: number // super_admin(store_id=null)は旧login同様に既定1へ寄せる(挙動保存)
   isAllStore: boolean // super_admin は全店アクセス
+  accessibleStoreIds: number[] // store_admin がアクセス可能な店舗ID群（既定は自店のみ。複数店運用で拡張）
   permissions: Record<string, boolean>
   authMethod: string
 }
@@ -42,6 +43,7 @@ interface AdminUserRow {
   username: string
   role: string
   store_id: number | null
+  accessible_store_ids: number[] | null
   is_active: boolean
   permissions: Record<string, boolean> | null
   session_version: number | null
@@ -117,12 +119,17 @@ export async function validateAdminSession(): Promise<AdminSession | null> {
 
   const { data: userRaw } = await supabase
     .from('admin_users')
-    .select('id, username, role, store_id, is_active, permissions, session_version')
+    .select('id, username, role, store_id, accessible_store_ids, is_active, permissions, session_version')
     .eq('id', sess.admin_user_id)
     .single()
   const user = userRaw as AdminUserRow | null
   if (!user || !user.is_active) return null
   if ((user.session_version ?? 1) !== sess.session_version) return null
+
+  // アクセス可能店舗: accessible_store_ids があればそれ、無ければ自店のみ（従来挙動）
+  const accessibleStoreIds = (user.accessible_store_ids && user.accessible_store_ids.length > 0)
+    ? user.accessible_store_ids
+    : (user.store_id != null ? [user.store_id] : [])
 
   // 最終アクセス更新（ベストエフォート。失敗しても認証は通す）
   await supabase
@@ -136,6 +143,7 @@ export async function validateAdminSession(): Promise<AdminSession | null> {
     role: user.role,
     storeId: user.store_id ?? 1, // 旧login(store_id || 1)と同じ既定。super_adminはisAllStoreで全店判定
     isAllStore: user.role === 'super_admin',
+    accessibleStoreIds,
     permissions: user.permissions || {},
     authMethod: sess.auth_method,
   }
@@ -148,13 +156,14 @@ export function requireSuperAdmin(session: AdminSession | null): boolean {
 
 /**
  * 対象店舗にアクセスできるか。super_admin/isAllStore は全店OK、
- * それ以外は自店(session.storeId)のみ。store_id を body から信用せず本helperで判定する。
+ * それ以外は accessibleStoreIds に含まれる店舗のみ（既定は自店1店）。
+ * store_id を body から信用せず本helperで判定する。
  */
 export function canAccessStore(session: AdminSession | null, storeId: number | null | undefined): boolean {
   if (!session) return false
   if (session.isAllStore || session.role === 'super_admin') return true
   if (storeId == null) return false
-  return session.storeId === Number(storeId)
+  return session.accessibleStoreIds.includes(Number(storeId))
 }
 
 /** ログアウト。現在の token を revoke し cookie を削除。 */

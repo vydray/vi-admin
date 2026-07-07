@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
     // admin_usersテーブルからユーザーを検索
     const { data: user, error } = await supabase
       .from('admin_users')
-      .select('id, username, password_hash, role, store_id, is_active, permissions')
+      .select('id, username, password_hash, role, store_id, accessible_store_ids, is_active, permissions')
       .eq('username', username)
       .single()
 
@@ -120,6 +120,10 @@ export async function POST(request: NextRequest) {
       role: user.role,
       store_id: user.store_id || 1, // super_adminの場合はデフォルト店舗1
       isAllStore, // super_adminは全店舗アクセス可能
+      // アクセス可能店舗（複数店運用）。未設定なら自店のみ
+      accessible_store_ids: (user.accessible_store_ids && user.accessible_store_ids.length > 0)
+        ? user.accessible_store_ids
+        : (user.store_id ? [user.store_id] : []),
       permissions: user.permissions || {}, // ページ/機能ごとの権限
       session_created_at: new Date().toISOString(), // パスワード変更検知用
     }

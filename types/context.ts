@@ -45,6 +45,7 @@ export interface AdminUser {
   username: string
   role: 'super_admin' | 'store_admin'
   store_id: number | null
+  accessible_store_ids?: number[] // 複数店運用: アクセス可能な店舗ID群（未設定なら自店のみ）
   permissions?: Permissions
 }
 
