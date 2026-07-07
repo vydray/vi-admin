@@ -66,6 +66,12 @@ export async function POST(request: NextRequest) {
     if (authSecret) {
       const email = `admin_${user.id}@internal.local`
 
+      // 複数店アクセス可の管理者は RLS を全店開放(store_id=null)し、表示店舗は
+      // フロント(accessible_store_ids)と各APIの canAccessStore で [1,2,7] 等に限定する。
+      // 単一店の管理者は従来どおり自店のみ(RLSで厳密に制限)。
+      const isMultiStore = Array.isArray(user.accessible_store_ids) && user.accessible_store_ids.length > 1
+      const authStoreId = isMultiStore ? null : user.store_id
+
       // 既存のSupabase Authユーザーを確認
       const { data: existingUsers } = await supabase.auth.admin.listUsers()
       const existingUser = existingUsers?.users?.find((u: { email?: string }) => u.email === email) ?? null
@@ -77,7 +83,7 @@ export async function POST(request: NextRequest) {
           password: authSecret,
           email_confirm: true,
           app_metadata: {
-            store_id: user.store_id,
+            store_id: authStoreId,
             user_id: user.id,
             role: user.role,
             app: 'vi-admin'
@@ -90,7 +96,7 @@ export async function POST(request: NextRequest) {
         // 既存ユーザー：app_metadataを更新
         await supabase.auth.admin.updateUserById(existingUser.id, {
           app_metadata: {
-            store_id: user.store_id,
+            store_id: authStoreId,
             user_id: user.id,
             role: user.role,
             app: 'vi-admin'
