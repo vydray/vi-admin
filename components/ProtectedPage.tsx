@@ -8,10 +8,11 @@ import type { PermissionKey } from '@/types'
 interface ProtectedPageProps {
   children: React.ReactNode
   permissionKey?: PermissionKey        // 権限キー（store_admin用）
+  alsoRequire?: PermissionKey          // これも併せて必要（AND）。給与ページの labor_cost 等
   requireSuperAdmin?: boolean          // super_admin専用ページ
 }
 
-export default function ProtectedPage({ children, permissionKey, requireSuperAdmin }: ProtectedPageProps) {
+export default function ProtectedPage({ children, permissionKey, alsoRequire, requireSuperAdmin }: ProtectedPageProps) {
   const router = useRouter()
   const { can, isSuperAdmin } = usePermissions()
 
@@ -19,7 +20,10 @@ export default function ProtectedPage({ children, permissionKey, requireSuperAdm
   // 権限キー指定の場合
   const hasAccess = requireSuperAdmin
     ? isSuperAdmin
-    : (isSuperAdmin || (permissionKey ? can(permissionKey) : true))
+    : (isSuperAdmin || (
+        (permissionKey ? can(permissionKey) : true) &&
+        (alsoRequire ? can(alsoRequire) : true)
+      ))
 
   useEffect(() => {
     if (!hasAccess) {

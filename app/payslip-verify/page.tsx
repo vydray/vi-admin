@@ -177,7 +177,7 @@ const cardStyle: React.CSSProperties = {
 
 export default function PayslipVerifyPage() {
   return (
-    <ProtectedPage permissionKey="payslip">
+    <ProtectedPage permissionKey="payslip" alsoRequire="labor_cost">
       <PayslipVerifyContent />
     </ProtectedPage>
   )

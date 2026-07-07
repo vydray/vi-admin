@@ -6,6 +6,7 @@ import { useStore } from '@/contexts/StoreContext'
 import ProtectedPage from '@/components/ProtectedPage'
 import { toast } from 'react-hot-toast'
 import { INTERVIEW_QUESTIONS, INTERVIEW_BLOCKS, type InterviewAnswers } from '@/lib/interviewQuestions'
+import { usePermissions } from '@/hooks/usePermissions'
 import type { CastWageRateRow } from '@/types/management'
 
 const yen = (n: number) => '¥' + Math.round(n || 0).toLocaleString('ja-JP')
@@ -130,6 +131,8 @@ export default function InterviewPage() {
 
 function InterviewContent() {
   const { storeId } = useStore()
+  const { can } = usePermissions()
+  const showLabor = can('labor_cost') // 貢献売上・店舗貢献率(割に合ってない感が出る指標)を出してよいか
   const [casts, setCasts] = useState<CastRow[]>([])
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [search, setSearch] = useState('')
@@ -402,12 +405,14 @@ function InterviewContent() {
             </div>
             {wage ? (
               ([
+                // 総支給額・売上給与率は見せる。貢献売上・店舗貢献率は「割に合ってない感」が出るため
+                // labor_cost が無い人には隠す
                 { label: '総支給額', value: yen(wage.gross) },
                 { label: 'キャスト売上', value: yen(wage.castSales) },
                 { label: 'ヘルプ', value: yen(wage.helpSales) },
                 { label: '売上給与率', value: pct(wage.rate1), color: T.pink },
-                { label: '貢献売上', value: yen(wage.tableTotal) },
-                { label: '店舗貢献率', value: pct(wage.rate2), color: T.gold },
+                ...(showLabor ? [{ label: '貢献売上', value: yen(wage.tableTotal) }] : []),
+                ...(showLabor ? [{ label: '店舗貢献率', value: pct(wage.rate2), color: T.gold }] : []),
               ] as { label: string; value: string; color?: string }[]).map((m) => (
                 <div key={m.label} style={S.kpiCard}>
                   <div style={S.kpiLabel}>{m.label}</div>

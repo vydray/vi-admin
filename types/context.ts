@@ -36,6 +36,7 @@ export type PermissionKey =
   | 'management'         // 経営ダッシュボード（既定OFF・opt-in）
   | 'expenses'           // 経費管理
   | 'interview'          // キャスト面談（プロデュースDB・既定OFF・opt-in・機密）
+  | 'labor_cost'         // 人件費・給与の表示（OFFにすると給与/人件費を隠す横断フラグ）
 
 export type Permissions = Partial<Record<PermissionKey, boolean>>
 

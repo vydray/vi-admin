@@ -7,7 +7,7 @@ import { usePathname } from 'next/navigation'
 import { useStore } from '@/contexts/StoreContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { usePermissions } from '@/hooks/usePermissions'
-import { getPermissionKeyFromPath } from '@/lib/permissions'
+import { getPermissionKeyFromPath, LABOR_COST_GATED_PATHS } from '@/lib/permissions'
 import Icon from './Icon'
 import styles from './Sidebar.module.css'
 
@@ -163,13 +163,15 @@ export default function Sidebar({ isMobileOverlay = false }: SidebarProps) {
   const pathname = usePathname()
   const { storeId, setStoreId, stores } = useStore()
   const { user, logout } = useAuth()
-  const { canAccessPath, isSuperAdmin } = usePermissions()
+  const { canAccessPath, can, isSuperAdmin } = usePermissions()
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set())
 
   // 権限チェック: パスに対する権限があるかどうか
   const canAccessItem = (path: string): boolean => {
     // super_adminは全てアクセス可能
     if (isSuperAdmin) return true
+    // 給与/人件費を露出するページは labor_cost が無いと非表示
+    if (LABOR_COST_GATED_PATHS.includes(path) && !can('labor_cost')) return false
     // 権限マッピングがないパスは許可（ホームなど）
     const permissionKey = getPermissionKeyFromPath(path)
     if (!permissionKey) return true

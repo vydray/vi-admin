@@ -11,6 +11,7 @@ import Modal from '@/components/Modal'
 import Button from '@/components/Button'
 import toast from 'react-hot-toast'
 import { useIsMobile } from '@/hooks/useIsMobile'
+import { usePermissions } from '@/hooks/usePermissions'
 import holiday_jp from '@holiday-jp/holiday_jp'
 import type { DailyPlResponse, DailyPlRow, CastWageRateResponse, CastWageRateRow } from '@/types/management'
 import type { ManagementEvent } from '@/types/database'
@@ -503,6 +504,7 @@ function ManagementContent() {
 function CastWageView({ loading, data }: { loading: boolean; data: CastWageRateResponse | null }) {
   const [sortKey, setSortKey] = useState<string>('castSales')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+  const { can } = usePermissions()
   if (loading) return <LoadingSpinner />
   if (!data || data.rows.length === 0) {
     return <div style={{ textAlign: 'center', padding: '60px', color: '#94a3b8' }}>この月のデータがありません</div>
@@ -571,8 +573,10 @@ function CastWageView({ loading, data }: { loading: boolean; data: CastWageRateR
       }
     )
   }
+  // 貢献売上(tableTotal)・店舗貢献率(rate2)は「割に合ってない感」が出るため labor_cost が無いと隠す
+  const visibleCols = can('labor_cost') ? cols : cols.filter((c) => c.key !== 'tableTotal' && c.key !== 'rate2')
   const sorted = [...data.rows].sort((a, b) => {
-    const col = cols.find((c) => c.key === sortKey)
+    const col = visibleCols.find((c) => c.key === sortKey)
     if (!col) return 0
     return sortDir === 'desc' ? col.num(b) - col.num(a) : col.num(a) - col.num(b)
   })
@@ -591,7 +595,7 @@ function CastWageView({ loading, data }: { loading: boolean; data: CastWageRateR
           <thead>
             <tr>
               <th style={{ ...cwHead, textAlign: 'left', left: 0, zIndex: 3 }}>キャスト</th>
-              {cols.map((c) => (
+              {visibleCols.map((c) => (
                 <th
                   key={c.key}
                   onClick={() => onSort(c.key)}
@@ -607,7 +611,7 @@ function CastWageView({ loading, data }: { loading: boolean; data: CastWageRateR
             {sorted.map((r) => (
               <tr key={r.castId} style={{ borderTop: '1px solid #f1f5f9' }}>
                 <td style={{ ...cwCell, textAlign: 'left', fontWeight: 600, position: 'sticky', left: 0, background: '#fff', zIndex: 1 }}>{r.castName}</td>
-                {cols.map((c) => (
+                {visibleCols.map((c) => (
                   <td key={c.key} style={cwCell}>
                     {c.cell(r)}
                   </td>
@@ -618,7 +622,7 @@ function CastWageView({ loading, data }: { loading: boolean; data: CastWageRateR
           <tfoot>
             <tr style={{ background: '#f1f5f9', fontWeight: 700, borderTop: '2px solid #cbd5e1' }}>
               <td style={{ ...cwCell, textAlign: 'left', position: 'sticky', left: 0, background: '#f1f5f9', zIndex: 1 }}>合計</td>
-              {cols.map((c) => (
+              {visibleCols.map((c) => (
                 <td key={c.key} style={cwCell}>
                   {c.total}
                 </td>

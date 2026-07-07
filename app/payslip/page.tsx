@@ -272,7 +272,7 @@ interface ProductBackItem {
 
 export default function PayslipPage() {
   return (
-    <ProtectedPage permissionKey="payslip">
+    <ProtectedPage permissionKey="payslip" alsoRequire="labor_cost">
       <PayslipPageContent />
     </ProtectedPage>
   )

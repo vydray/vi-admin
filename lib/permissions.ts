@@ -29,7 +29,13 @@ export const PERMISSION_CONFIG: Record<PermissionKey, { label: string; category:
   management: { label: '経営ダッシュボード', category: '経営' },
   expenses: { label: '経費管理', category: 'その他' },
   interview: { label: 'キャスト面談', category: 'キャスト' },
+  labor_cost: { label: '給与明細・貢献率の表示', category: '経営' },
 }
+
+// 給与明細(個人の報酬)を露出するページ（labor_cost が false の人には見せない）。
+// 各ページ本来の権限に加えて labor_cost も必要にする（AND）。混在ページ(経営/面談)は
+// ページ自体は見せて「貢献売上・店舗貢献率」だけ非表示にするので、ここには含めない。
+export const LABOR_COST_GATED_PATHS = ['/payslip', '/payslip-verify', '/payslip-list', '/compensation-list']
 
 // カテゴリ順（経営は重要なので先頭）
 export const PERMISSION_CATEGORIES = ['経営', 'キャスト', '設定', '商品', 'その他'] as const
