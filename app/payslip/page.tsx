@@ -4302,11 +4302,10 @@ function PayslipPageContent() {
                           } else if (selectedType?.use_guaranteed_wage_only) {
                             appliedRate = guaranteedRate
                             appliedSource = 'guaranteed'
-                          } else if (selectedType && (selectedType.hourly_rate ?? 0) > 0) {
-                            appliedRate = selectedType.hourly_rate ?? 0
-                            appliedSource = 'hourly'
-                          } else if (!selectedType) {
-                            // 採用形態が未確定の場合は cast_daily_stats の wage_amount を逆算
+                          } else {
+                            // 通常時給/固定/status(昇格・hourly_wage_override 含む)は、保存済み日次
+                            // (wageAmount=hourly_income)から逆算した実効時給を使う。
+                            // comp_type.hourly_rate は status_id/override を反映せず実額とズレるため使わない。
                             appliedRate = hourlyRate
                             appliedSource = 'hourly'
                           }
