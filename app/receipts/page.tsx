@@ -107,6 +107,7 @@ function ReceiptsPageContent() {
   const [filterPaymentMethod, setFilterPaymentMethod] = useState('')
   const [filterMinAmount, setFilterMinAmount] = useState('')
   const [filterMaxAmount, setFilterMaxAmount] = useState('')
+  const [filterDate, setFilterDate] = useState('')  // 特定日で絞り込み（yyyy-MM-dd）
   const [selectedReceipt, setSelectedReceipt] = useState<ReceiptWithDetails | null>(null)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [editFormData, setEditFormData] = useState({
@@ -1561,8 +1562,12 @@ function ReceiptsPageContent() {
     // 商品名フィルター（order_items検索結果でフィルタ）
     const matchesItemSearch = matchingOrderIds === null || matchingOrderIds.includes(receipt.id)
 
+    // 日付フィルター（表示日と同じローカルTZの日付で比較）
+    const matchesDate = filterDate === '' ||
+      (receipt.order_date && format(new Date(receipt.order_date), 'yyyy-MM-dd') === filterDate)
+
     return matchesSearch && matchesStaffName && matchesCastName &&
-           matchesPaymentMethod && matchesMinAmount && matchesMaxAmount && matchesItemSearch
+           matchesPaymentMethod && matchesMinAmount && matchesMaxAmount && matchesItemSearch && matchesDate
   })
 
   const formatDateTime = (dateString: string) => {
@@ -1728,6 +1733,26 @@ function ReceiptsPageContent() {
         {/* 追加フィルター */}
         <div style={styles.additionalFilters}>
           <label style={styles.filterLabel}>
+            日付:
+            <input
+              type="date"
+              value={filterDate}
+              onChange={(e) => {
+                const v = e.target.value
+                setFilterDate(v)
+                // 選択日が表示中の月と違えば、その月の伝票を読み込む（月跨ぎでも効くように）
+                if (v) {
+                  const d = new Date(v + 'T00:00:00')
+                  if (!isNaN(d.getTime()) && (d.getFullYear() !== selectedMonth.getFullYear() || d.getMonth() !== selectedMonth.getMonth())) {
+                    setSelectedMonth(d)
+                  }
+                }
+              }}
+              style={styles.filterSelect}
+            />
+          </label>
+
+          <label style={styles.filterLabel}>
             推し:
             <select
               value={filterStaffName}
@@ -1800,7 +1825,7 @@ function ReceiptsPageContent() {
             </div>
           </label>
 
-          {(searchTerm || filterStaffName || filterCastName || filterPaymentMethod || filterMinAmount || filterMaxAmount) && (
+          {(searchTerm || filterStaffName || filterCastName || filterPaymentMethod || filterMinAmount || filterMaxAmount || filterDate) && (
             <Button
               onClick={() => {
                 setSearchTerm('')
@@ -1809,6 +1834,7 @@ function ReceiptsPageContent() {
                 setFilterPaymentMethod('')
                 setFilterMinAmount('')
                 setFilterMaxAmount('')
+                setFilterDate('')
               }}
               variant="secondary"
             >
