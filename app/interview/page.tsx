@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback, type CSSProperties, type ChangeEvent } from 'react'
+import { useState, useEffect, useRef, useCallback, Fragment, type CSSProperties, type ChangeEvent } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useStore } from '@/contexts/StoreContext'
 import ProtectedPage from '@/components/ProtectedPage'
@@ -151,6 +151,12 @@ function InterviewContent() {
   const [memoSaving, setMemoSaving] = useState(false)
   // 給率の対象月。既定は面談日の前月（直近の確定実績）。月セレクタで前後できる。
   const [kpiMonth, setKpiMonth] = useState<string>(() => shiftMonth(todayStr().slice(0, 7), -1))
+  // 一覧ビュー（誰が面談済/未かを俯瞰）
+  const [viewMode, setViewMode] = useState<'list' | 'detail'>('list')
+  const [allInterviews, setAllInterviews] = useState<InterviewRow[]>([])
+  const [listFilter, setListFilter] = useState<'all' | 'done' | 'todo'>('all')
+  const [listSearch, setListSearch] = useState('')
+  const [expandedCastId, setExpandedCastId] = useState<number | null>(null)
 
   const selected = casts.find((c) => c.id === selectedId) || null
   const skipAutosave = useRef(true)
@@ -217,6 +223,21 @@ function InterviewContent() {
     }
   }, [])
 
+  // 一覧ビュー用: その店舗の全キャストの面談をまとめて取得
+  const loadAllInterviews = useCallback(async (sid: number) => {
+    try {
+      const res = await fetch(`/api/cast-interviews?store_id=${sid}`)
+      const j = await res.json()
+      if (!res.ok) { setAllInterviews([]); return }
+      setAllInterviews((j.interviews as InterviewRow[]) ?? [])
+    } catch { setAllInterviews([]) }
+  }, [])
+
+  useEffect(() => {
+    if (storeId != null) loadAllInterviews(storeId)
+    else setAllInterviews([])
+  }, [storeId, loadAllInterviews])
+
   useEffect(() => {
     if (selectedId != null) loadInterviews(selectedId, interviewDate)
   }, [selectedId, interviewDate, loadInterviews])
@@ -241,18 +262,20 @@ function InterviewContent() {
       if (j.emptied) {
         setHistory((prev) => prev.filter((iv) => iv.interview_date !== interviewDate))
         setSaveState('idle')
+        if (storeId != null) loadAllInterviews(storeId) // 一覧の未/済も更新
         return
       }
       setSaveState('saved')
       if (!isDraft) {
         toast.success('面談を保存しました')
         loadInterviews(selectedId, interviewDate)
+        if (storeId != null) loadAllInterviews(storeId) // 一覧の未/済・最新日を更新
       }
     } catch {
       setSaveState('error')
       if (!isDraft) toast.error('保存に失敗しました')
     }
-  }, [selectedId, interviewDate, loadInterviews])
+  }, [selectedId, interviewDate, loadInterviews, loadAllInterviews, storeId])
 
   useEffect(() => {
     if (skipAutosave.current || selectedId == null) return
@@ -339,6 +362,12 @@ function InterviewContent() {
       {/* ツールバー */}
       <div style={S.toolbar}>
         <div style={S.brandMark}>面談卓<span style={S.brandEn}> / PRODUCE DESK</span></div>
+        <div style={S.viewToggle}>
+          <button onClick={() => { setViewMode('list'); if (storeId != null) loadAllInterviews(storeId) }}
+            style={{ ...S.viewBtn, ...(viewMode === 'list' ? S.viewBtnActive : {}) }}>一覧</button>
+          <button onClick={() => setViewMode('detail')}
+            style={{ ...S.viewBtn, ...(viewMode === 'detail' ? S.viewBtnActive : {}) }}>記録</button>
+        </div>
         <div style={S.comboWrap}>
           <input
             value={search}
@@ -351,7 +380,7 @@ function InterviewContent() {
           {comboOpen && (
             <div style={S.comboList}>
               {filtered.map((c) => (
-                <div key={c.id} onMouseDown={() => { setSelectedId(c.id); setSearch(c.name); setComboOpen(false) }}
+                <div key={c.id} onMouseDown={() => { setSelectedId(c.id); setSearch(c.name); setComboOpen(false); setViewMode('detail') }}
                   style={{ ...S.comboItem, ...(c.id === selectedId ? S.comboItemActive : {}) }}>
                   {c.name}
                 </div>
@@ -360,12 +389,139 @@ function InterviewContent() {
             </div>
           )}
         </div>
-        <label style={S.dateLabel}>面談日</label>
-        <input type="date" value={interviewDate} onChange={(e) => setInterviewDate(e.target.value)} style={S.dateInput} />
-        {selected && <span style={{ ...S.saveBadge, color: saveState === 'saved' ? T.mint : saveState === 'error' ? '#dc2626' : saveState === 'saving' ? T.sub : T.pink }}>{saveText}</span>}
+        {viewMode === 'detail' && (
+          <>
+            <label style={S.dateLabel}>面談日</label>
+            <input type="date" value={interviewDate} onChange={(e) => setInterviewDate(e.target.value)} style={S.dateInput} />
+            {selected && <span style={{ ...S.saveBadge, color: saveState === 'saved' ? T.mint : saveState === 'error' ? '#dc2626' : saveState === 'saving' ? T.sub : T.pink }}>{saveText}</span>}
+          </>
+        )}
       </div>
 
-      {!selected ? (
+      {viewMode === 'list' ? (
+        (() => {
+          // 在籍キャスト × 面談状況を集計
+          const byCast = new Map<number, InterviewRow[]>()
+          for (const iv of allInterviews) {
+            const arr = byCast.get(iv.cast_id) ?? []
+            arr.push(iv)
+            byCast.set(iv.cast_id, arr)
+          }
+          const rows = casts.map((c) => {
+            const ivs = (byCast.get(c.id) ?? []).slice().sort((a, b) => b.interview_date.localeCompare(a.interview_date))
+            return { cast: c, count: ivs.length, latest: ivs[0] ?? null, has: ivs.length > 0 }
+          })
+          const doneCount = rows.filter((r) => r.has).length
+          const q = listSearch.trim()
+          const shown = rows
+            .filter((r) => listFilter === 'all' || (listFilter === 'done' ? r.has : !r.has))
+            .filter((r) => !q || r.cast.name.includes(q))
+            .sort((a, b) => {
+              // 入力済を上（最新面談日 降順）、未入力を下（名前順）
+              if (a.has !== b.has) return a.has ? -1 : 1
+              if (a.has && b.has) return b.latest!.interview_date.localeCompare(a.latest!.interview_date)
+              return a.cast.name.localeCompare(b.cast.name, 'ja')
+            })
+          const openDetail = (castId: number) => {
+            const c = casts.find((x) => x.id === castId)
+            setSelectedId(castId)
+            if (c) setSearch(c.name)
+            const latestDate = (byCast.get(castId) ?? []).slice().sort((a, b) => b.interview_date.localeCompare(a.interview_date))[0]?.interview_date
+            if (latestDate) setInterviewDate(latestDate)
+            setViewMode('detail')
+          }
+          return (
+            <div style={S.listWrap}>
+              <div style={S.listBar}>
+                <span style={S.listCoverage}>
+                  面談済み <b style={{ color: T.mint }}>{doneCount}</b> / 在籍 {casts.length}
+                  <span style={{ color: T.faint }}>　（未入力 {casts.length - doneCount}）</span>
+                </span>
+                <div style={S.listFilters}>
+                  {(['all', 'done', 'todo'] as const).map((f) => (
+                    <button key={f} onClick={() => setListFilter(f)}
+                      style={{ ...S.filterChip, ...(listFilter === f ? S.filterChipActive : {}) }}>
+                      {f === 'all' ? '全て' : f === 'done' ? '入力済' : '未入力'}
+                    </button>
+                  ))}
+                </div>
+                <input value={listSearch} onChange={(e) => setListSearch(e.target.value)} placeholder="キャスト名で検索…" style={S.listSearch} />
+              </div>
+              <div style={S.listScroll}>
+                <table style={S.listTable}>
+                  <thead>
+                    <tr>
+                      <th style={S.lth}>キャスト</th>
+                      <th style={S.lth}>ステータス</th>
+                      <th style={{ ...S.lth, textAlign: 'center' }}>面談</th>
+                      <th style={{ ...S.lth, textAlign: 'center' }}>回数</th>
+                      <th style={S.lth}>最新面談日</th>
+                      <th style={S.lth}>記入者</th>
+                      <th style={S.lth}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {shown.map((r) => {
+                      const isOpen = expandedCastId === r.cast.id
+                      return (
+                        <Fragment key={r.cast.id}>
+                          <tr onClick={() => setExpandedCastId(isOpen ? null : r.cast.id)}
+                            style={{ ...S.ltr, ...(r.has ? {} : S.ltrTodo), ...(isOpen ? S.ltrOpen : {}) }}>
+                            <td style={{ ...S.ltd, fontWeight: 700, color: T.ink }}>{r.cast.name}</td>
+                            <td style={{ ...S.ltd, color: T.sub }}>{r.cast.status ?? '—'}</td>
+                            <td style={{ ...S.ltd, textAlign: 'center' }}>
+                              {r.has ? <span style={S.badgeDone}>✓ 済</span> : <span style={S.badgeTodo}>● 未</span>}
+                            </td>
+                            <td style={{ ...S.ltd, textAlign: 'center', fontFamily: T.mono }}>{r.count || '—'}</td>
+                            <td style={{ ...S.ltd, fontFamily: T.mono }}>{r.latest?.interview_date ?? '—'}</td>
+                            <td style={{ ...S.ltd, color: T.sub }}>{r.latest?.interviewer_name ?? '—'}</td>
+                            <td style={{ ...S.ltd, textAlign: 'right' }}>
+                              <button onClick={(e) => { e.stopPropagation(); openDetail(r.cast.id) }} style={S.editBtn}>編集 ›</button>
+                            </td>
+                          </tr>
+                          {isOpen && (
+                            <tr>
+                              <td colSpan={7} style={S.expandCell}>
+                                {r.latest ? (
+                                  <div style={S.expandBox}>
+                                    <div style={S.expandMeta}>{r.latest.interview_date}{r.latest.interviewer_name ? `　·　${r.latest.interviewer_name}` : ''} の面談</div>
+                                    {INTERVIEW_BLOCKS.map((block) => {
+                                      const qs = INTERVIEW_QUESTIONS.filter((qq) => qq.block === block)
+                                      const answered = qs.filter((qq) => {
+                                        const v = r.latest!.answers?.[qq.key]
+                                        return v !== undefined && v !== null && String(v).trim() !== ''
+                                      })
+                                      if (answered.length === 0) return null
+                                      return (
+                                        <div key={block} style={S.expandBlock}>
+                                          <div style={S.expandBlockHead}>{block}</div>
+                                          {answered.map((qq) => (
+                                            <div key={qq.key} style={S.expandQ}>
+                                              <span style={S.expandQLabel}>{qq.label}{qq.unit ? `（${qq.unit}）` : ''}</span>
+                                              <span style={S.expandQVal}>{String(r.latest!.answers?.[qq.key])}</span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )
+                                    })}
+                                  </div>
+                                ) : <div style={S.expandEmpty}>まだ面談記録がありません。「編集」から入力できます。</div>}
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
+                      )
+                    })}
+                    {shown.length === 0 && (
+                      <tr><td colSpan={7} style={{ ...S.ltd, textAlign: 'center', color: T.faint, padding: 30 }}>該当なし</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )
+        })()
+      ) : !selected ? (
         <div style={S.empty}>
           <div style={S.emptyMark}>◴</div>
           キャストを選ぶと、売上を見ながら面談を記録できます。
@@ -545,6 +701,39 @@ const S: Record<string, CSSProperties> = {
   saveBadge: { fontSize: 12, fontWeight: 800, marginLeft: 'auto', letterSpacing: 0.3 },
   empty: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, padding: '90px 20px', color: T.faint, fontSize: 15 },
   emptyMark: { fontSize: 40, color: T.line },
+
+  // ビュー切替（一覧 / 記録）
+  viewToggle: { display: 'flex', gap: 4, background: '#EAEDF1', borderRadius: 10, padding: 3, marginLeft: 6 },
+  viewBtn: { border: 'none', background: 'none', padding: '7px 16px', borderRadius: 8, fontSize: 13, fontWeight: 800, color: T.sub, cursor: 'pointer', letterSpacing: 0.5 },
+  viewBtnActive: { background: T.card, color: T.ink, boxShadow: '0 1px 3px rgba(23,26,32,0.12)' },
+
+  // 面談一覧ビュー
+  listWrap: { display: 'flex', flexDirection: 'column', gap: 12 },
+  listBar: { display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' },
+  listCoverage: { fontSize: 14, fontWeight: 700, color: T.ink },
+  listFilters: { display: 'flex', gap: 6 },
+  filterChip: { border: `1px solid ${T.line}`, background: T.card, padding: '6px 14px', borderRadius: 999, fontSize: 13, fontWeight: 700, color: T.sub, cursor: 'pointer' },
+  filterChipActive: { borderColor: T.pink, background: '#FDEEF4', color: T.pink },
+  listSearch: { marginLeft: 'auto', padding: '8px 14px', borderRadius: 10, border: `1px solid ${T.line}`, fontSize: 14, background: T.card, minWidth: 220, boxSizing: 'border-box', outlineColor: T.pink },
+  listScroll: { overflowX: 'auto', background: T.card, border: `1px solid ${T.line}`, borderRadius: 14 },
+  listTable: { width: '100%', borderCollapse: 'collapse', fontSize: 14 },
+  lth: { textAlign: 'left', padding: '11px 14px', fontSize: 12, fontWeight: 800, color: T.sub, borderBottom: `2px solid ${T.ink}`, whiteSpace: 'nowrap', letterSpacing: 0.5 },
+  ltr: { borderTop: `1px solid ${T.line}`, cursor: 'pointer' },
+  ltrTodo: { background: '#FFFCFB' },
+  ltrOpen: { background: '#FDEEF4' },
+  ltd: { padding: '10px 14px', verticalAlign: 'middle', whiteSpace: 'nowrap' },
+  badgeDone: { fontSize: 12, fontWeight: 800, color: T.mint, border: `1.5px solid ${T.mint}`, borderRadius: 999, padding: '2px 10px' },
+  badgeTodo: { fontSize: 12, fontWeight: 800, color: '#C2410C', border: '1.5px solid #FDBA74', background: '#FFF7ED', borderRadius: 999, padding: '2px 10px' },
+  editBtn: { border: `1px solid ${T.line}`, background: T.card, borderRadius: 8, padding: '5px 12px', fontSize: 12, fontWeight: 800, color: T.pink, cursor: 'pointer' },
+  expandCell: { padding: 0, background: '#FCFCFD', borderTop: `1px solid ${T.line}` },
+  expandBox: { padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 12 },
+  expandMeta: { fontSize: 11, fontWeight: 800, color: T.faint, letterSpacing: 0.5 },
+  expandBlock: { display: 'flex', flexDirection: 'column', gap: 5 },
+  expandBlockHead: { fontSize: 12, fontWeight: 800, color: T.ink, borderBottom: `1.5px solid ${T.line}`, paddingBottom: 3, letterSpacing: 1 },
+  expandQ: { display: 'flex', gap: 10, fontSize: 13, lineHeight: 1.5, flexWrap: 'wrap' },
+  expandQLabel: { color: T.sub, fontWeight: 700, minWidth: 200, flexShrink: 0 },
+  expandQVal: { color: T.ink, whiteSpace: 'pre-wrap', wordBreak: 'break-word', flex: 1 },
+  expandEmpty: { padding: '16px 18px', color: T.faint, fontSize: 13 },
 
   header: { position: 'relative', display: 'flex', alignItems: 'center', gap: 18, background: T.card, border: `1px solid ${T.line}`, borderRadius: 14, padding: '16px 20px 16px 24px', marginBottom: 14, overflow: 'hidden' },
   headerAccent: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 5, background: `linear-gradient(${T.pink}, ${T.gold})` },

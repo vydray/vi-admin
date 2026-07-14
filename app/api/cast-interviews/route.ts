@@ -29,14 +29,35 @@ async function getCastStoreId(supabase: SupabaseClient, castId: number): Promise
 }
 
 // GET ?cast_id= : そのキャストの面談履歴（新しい順）
+// GET ?store_id= : その店舗の全面談（面談一覧ビュー用。キャスト横断）
 export async function GET(request: NextRequest) {
   const session = await authorize()
   if (!session) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const castId = Number(request.nextUrl.searchParams.get('cast_id'))
-  if (!castId) return NextResponse.json({ error: 'cast_id が必要です' }, { status: 400 })
-
   const supabase = getSupabaseServerClient()
+  const castIdParam = request.nextUrl.searchParams.get('cast_id')
+  const storeIdParam = request.nextUrl.searchParams.get('store_id')
+
+  // 店舗単位（一覧ビュー）: その店の全キャストの面談をまとめて返す
+  if (!castIdParam && storeIdParam) {
+    const storeId = Number(storeIdParam)
+    if (!storeId) return NextResponse.json({ error: 'store_id が不正です' }, { status: 400 })
+    if (!canAccessStore(session, storeId)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    const { data, error } = await supabase
+      .from('cast_interviews')
+      .select('*')
+      .eq('store_id', storeId)
+      .order('interview_date', { ascending: false })
+    if (error) {
+      console.error('[cast-interviews] GET(store) error:', error)
+      return NextResponse.json({ error: '取得に失敗しました' }, { status: 500 })
+    }
+    return NextResponse.json({ interviews: data ?? [] })
+  }
+
+  const castId = Number(castIdParam)
+  if (!castId) return NextResponse.json({ error: 'cast_id または store_id が必要です' }, { status: 400 })
+
   const storeId = await getCastStoreId(supabase, castId)
   if (storeId == null) return NextResponse.json({ error: 'Cast not found' }, { status: 404 })
   if (!canAccessStore(session, storeId)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
