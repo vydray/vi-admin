@@ -408,8 +408,13 @@ function InterviewContent() {
             arr.push(iv)
             byCast.set(iv.cast_id, arr)
           }
+          // 中身が1つでも入っている面談だけを「済」として扱う（空レコードは済に数えない）
+          const hasAnswerContent = (a: InterviewAnswers | undefined | null) =>
+            !!a && Object.values(a).some((v) => v !== null && v !== undefined && String(v).trim() !== '')
           const rows = casts.map((c) => {
-            const ivs = (byCast.get(c.id) ?? []).slice().sort((a, b) => b.interview_date.localeCompare(a.interview_date))
+            const ivs = (byCast.get(c.id) ?? [])
+              .filter((iv) => hasAnswerContent(iv.answers))
+              .slice().sort((a, b) => b.interview_date.localeCompare(a.interview_date))
             return { cast: c, count: ivs.length, latest: ivs[0] ?? null, has: ivs.length > 0 }
           })
           const doneCount = rows.filter((r) => r.has).length
@@ -427,8 +432,10 @@ function InterviewContent() {
             const c = casts.find((x) => x.id === castId)
             setSelectedId(castId)
             if (c) setSearch(c.name)
-            const latestDate = (byCast.get(castId) ?? []).slice().sort((a, b) => b.interview_date.localeCompare(a.interview_date))[0]?.interview_date
-            // 履歴があればその最新日、無ければ本日。前に開いたキャストの日付が残って
+            const latestDate = (byCast.get(castId) ?? [])
+              .filter((iv) => hasAnswerContent(iv.answers))
+              .slice().sort((a, b) => b.interview_date.localeCompare(a.interview_date))[0]?.interview_date
+            // 中身のある面談があればその最新日、無ければ本日。前に開いたキャストの日付が残って
             // 新規面談が過去日で作られるのを防ぐ（キャスト切替で必ず日付を確定させる）
             setInterviewDate(latestDate ?? todayStr())
             setViewMode('detail')
