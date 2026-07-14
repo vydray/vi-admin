@@ -169,6 +169,8 @@ function InterviewContent() {
   const [listFilter, setListFilter] = useState<'all' | 'done' | 'todo'>('all')
   const [listSearch, setListSearch] = useState('')
   const [expandedCastId, setExpandedCastId] = useState<number | null>(null)
+  // 一覧の対象月（この月に面談したか/してないかで済・未を判定）
+  const [listMonth, setListMonth] = useState<string>(() => todayStr().slice(0, 7))
 
   const selected = casts.find((c) => c.id === selectedId) || null
   const skipAutosave = useRef(true)
@@ -396,27 +398,29 @@ function InterviewContent() {
           <button onClick={() => setViewMode('detail')}
             style={{ ...S.viewBtn, ...(viewMode === 'detail' ? S.viewBtnActive : {}) }}>記録</button>
         </div>
-        <div style={S.comboWrap}>
-          <input
-            value={search}
-            onChange={(e) => { setSearch(e.target.value); setComboOpen(true) }}
-            onFocus={() => setComboOpen(true)}
-            onBlur={() => setTimeout(() => setComboOpen(false), 150)}
-            placeholder="キャスト名で検索…"
-            style={S.combo}
-          />
-          {comboOpen && (
-            <div style={S.comboList}>
-              {filtered.map((c) => (
-                <div key={c.id} onMouseDown={() => { setSelectedId(c.id); setSearch(c.name); setComboOpen(false); setInterviewDate(todayStr()); setViewMode('detail') }}
-                  style={{ ...S.comboItem, ...(c.id === selectedId ? S.comboItemActive : {}) }}>
-                  {c.name}
-                </div>
-              ))}
-              {filtered.length === 0 && <div style={S.comboEmpty}>該当なし</div>}
-            </div>
-          )}
-        </div>
+        {viewMode === 'detail' && (
+          <div style={S.comboWrap}>
+            <input
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setComboOpen(true) }}
+              onFocus={() => setComboOpen(true)}
+              onBlur={() => setTimeout(() => setComboOpen(false), 150)}
+              placeholder="キャスト名で検索…"
+              style={S.combo}
+            />
+            {comboOpen && (
+              <div style={S.comboList}>
+                {filtered.map((c) => (
+                  <div key={c.id} onMouseDown={() => { setSelectedId(c.id); setSearch(c.name); setComboOpen(false); setInterviewDate(todayStr()); setViewMode('detail') }}
+                    style={{ ...S.comboItem, ...(c.id === selectedId ? S.comboItemActive : {}) }}>
+                    {c.name}
+                  </div>
+                ))}
+                {filtered.length === 0 && <div style={S.comboEmpty}>該当なし</div>}
+              </div>
+            )}
+          </div>
+        )}
         {viewMode === 'detail' && selected && (
           <>
             <div style={S.monthNav}>
@@ -444,9 +448,10 @@ function InterviewContent() {
           // 中身が1つでも入っている面談だけを「済」として扱う（空レコードは済に数えない）
           const hasAnswerContent = (a: InterviewAnswers | undefined | null) =>
             !!a && Object.values(a).some((v) => v !== null && v !== undefined && String(v).trim() !== '')
+          // 対象月(listMonth)に絞って「その月に面談したか」で済/未を判定
           const rows = casts.map((c) => {
             const ivs = (byCast.get(c.id) ?? [])
-              .filter((iv) => hasAnswerContent(iv.answers))
+              .filter((iv) => hasAnswerContent(iv.answers) && iv.interview_date.startsWith(listMonth))
               .slice().sort((a, b) => b.interview_date.localeCompare(a.interview_date))
             return { cast: c, count: ivs.length, latest: ivs[0] ?? null, has: ivs.length > 0 }
           })
@@ -465,20 +470,25 @@ function InterviewContent() {
             const c = casts.find((x) => x.id === castId)
             setSelectedId(castId)
             if (c) setSearch(c.name)
-            const latestDate = (byCast.get(castId) ?? [])
-              .filter((iv) => hasAnswerContent(iv.answers))
+            // 対象月(listMonth)の面談を開く。あればその日、無ければ新規(当月は本日・他月は月初)。
+            // 前キャストの日付が残って新規が過去日で作られるのを防ぐため必ず確定させる
+            const inMonth = (byCast.get(castId) ?? [])
+              .filter((iv) => hasAnswerContent(iv.answers) && iv.interview_date.startsWith(listMonth))
               .slice().sort((a, b) => b.interview_date.localeCompare(a.interview_date))[0]?.interview_date
-            // 中身のある面談があればその最新日、無ければ本日。前に開いたキャストの日付が残って
-            // 新規面談が過去日で作られるのを防ぐ（キャスト切替で必ず日付を確定させる）
-            setInterviewDate(latestDate ?? todayStr())
+            setInterviewDate(inMonth ?? (listMonth === todayStr().slice(0, 7) ? todayStr() : `${listMonth}-01`))
             setViewMode('detail')
           }
           return (
             <div style={S.listWrap}>
               <div style={S.listBar}>
+                <div style={S.monthNav}>
+                  <button onClick={() => setListMonth(shiftMonth(listMonth, -1))} style={S.monthNavBtn}>‹</button>
+                  <span style={S.monthNavLabel}>{fmtYm(`${listMonth}-01`)}</span>
+                  <button onClick={() => setListMonth(shiftMonth(listMonth, 1))} style={S.monthNavBtn}>›</button>
+                </div>
                 <span style={S.listCoverage}>
-                  面談済み <b style={{ color: T.mint }}>{doneCount}</b> / 在籍 {casts.length}
-                  <span style={{ color: T.faint }}>　（未入力 {casts.length - doneCount}）</span>
+                  この月に面談 <b style={{ color: T.mint }}>{doneCount}</b> / 在籍 {casts.length}
+                  <span style={{ color: T.faint }}>　（未 {casts.length - doneCount}）</span>
                 </span>
                 <div style={S.listFilters}>
                   {(['all', 'done', 'todo'] as const).map((f) => (
