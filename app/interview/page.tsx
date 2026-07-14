@@ -392,12 +392,6 @@ function InterviewContent() {
       {/* ツールバー */}
       <div style={S.toolbar}>
         <div style={S.brandMark}>面談卓<span style={S.brandEn}> / PRODUCE DESK</span></div>
-        <div style={S.viewToggle}>
-          <button onClick={() => { setViewMode('list'); if (storeId) loadAllInterviews(storeId) }}
-            style={{ ...S.viewBtn, ...(viewMode === 'list' ? S.viewBtnActive : {}) }}>一覧</button>
-          <button onClick={() => setViewMode('detail')}
-            style={{ ...S.viewBtn, ...(viewMode === 'detail' ? S.viewBtnActive : {}) }}>記録</button>
-        </div>
         {viewMode === 'detail' && (
           <div style={S.comboWrap}>
             <input
@@ -434,6 +428,13 @@ function InterviewContent() {
             <span style={{ ...S.saveBadge, color: saveState === 'saved' ? T.mint : saveState === 'error' ? '#dc2626' : saveState === 'saving' ? T.sub : T.pink }}>{saveText}</span>
           </>
         )}
+        {/* 一覧/記録 切替は常に右端に置く */}
+        <div style={S.viewToggle}>
+          <button onClick={() => { setViewMode('list'); if (storeId) loadAllInterviews(storeId) }}
+            style={{ ...S.viewBtn, ...(viewMode === 'list' ? S.viewBtnActive : {}) }}>一覧</button>
+          <button onClick={() => setViewMode('detail')}
+            style={{ ...S.viewBtn, ...(viewMode === 'detail' ? S.viewBtnActive : {}) }}>記録</button>
+        </div>
       </div>
 
       {viewMode === 'list' ? (
@@ -753,12 +754,12 @@ const S: Record<string, CSSProperties> = {
   monthNavBtn: { width: 28, height: 28, borderRadius: 7, border: 'none', background: 'none', color: T.sub, fontSize: 16, fontWeight: 800, cursor: 'pointer', lineHeight: 1 },
   monthNavLabel: { fontSize: 15, fontWeight: 800, color: T.ink, minWidth: 130, textAlign: 'center', letterSpacing: 0.3 },
   kinyuLabel: { fontSize: 12, fontWeight: 700, color: T.faint, fontFamily: T.mono, letterSpacing: 0.3 },
-  saveBadge: { fontSize: 12, fontWeight: 800, marginLeft: 'auto', letterSpacing: 0.3 },
+  saveBadge: { fontSize: 12, fontWeight: 800, letterSpacing: 0.3 },
   empty: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, padding: '90px 20px', color: T.faint, fontSize: 15 },
   emptyMark: { fontSize: 40, color: T.line },
 
   // ビュー切替（一覧 / 記録）
-  viewToggle: { display: 'flex', gap: 4, background: '#EAEDF1', borderRadius: 10, padding: 3, marginLeft: 6 },
+  viewToggle: { display: 'flex', gap: 4, background: '#EAEDF1', borderRadius: 10, padding: 3, marginLeft: 'auto' },
   viewBtn: { border: 'none', background: 'none', padding: '7px 16px', borderRadius: 8, fontSize: 13, fontWeight: 800, color: T.sub, cursor: 'pointer', letterSpacing: 0.5 },
   viewBtnActive: { background: T.card, color: T.ink, boxShadow: '0 1px 3px rgba(23,26,32,0.12)' },
 
