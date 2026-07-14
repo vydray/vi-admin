@@ -234,7 +234,7 @@ function InterviewContent() {
   }, [])
 
   useEffect(() => {
-    if (storeId != null) loadAllInterviews(storeId)
+    if (storeId) loadAllInterviews(storeId)
     else setAllInterviews([])
   }, [storeId, loadAllInterviews])
 
@@ -262,20 +262,21 @@ function InterviewContent() {
       if (j.emptied) {
         setHistory((prev) => prev.filter((iv) => iv.interview_date !== interviewDate))
         setSaveState('idle')
-        if (storeId != null) loadAllInterviews(storeId) // 一覧の未/済も更新
         return
       }
       setSaveState('saved')
       if (!isDraft) {
         toast.success('面談を保存しました')
         loadInterviews(selectedId, interviewDate)
-        if (storeId != null) loadAllInterviews(storeId) // 一覧の未/済・最新日を更新
       }
     } catch {
       setSaveState('error')
       if (!isDraft) toast.error('保存に失敗しました')
     }
-  }, [selectedId, interviewDate, loadInterviews, loadAllInterviews, storeId])
+    // 注: 一覧(allInterviews)の更新は「一覧」タブに切替えた時に loadAllInterviews で行う。
+    // persist の依存に storeId/loadAllInterviews を入れると、店舗切替で autosave effect が
+    // 再発火し前店舗のキャストへ不要な下書きPOSTが飛ぶため、ここでは呼ばない。
+  }, [selectedId, interviewDate, loadInterviews])
 
   useEffect(() => {
     if (skipAutosave.current || selectedId == null) return
@@ -363,7 +364,7 @@ function InterviewContent() {
       <div style={S.toolbar}>
         <div style={S.brandMark}>面談卓<span style={S.brandEn}> / PRODUCE DESK</span></div>
         <div style={S.viewToggle}>
-          <button onClick={() => { setViewMode('list'); if (storeId != null) loadAllInterviews(storeId) }}
+          <button onClick={() => { setViewMode('list'); if (storeId) loadAllInterviews(storeId) }}
             style={{ ...S.viewBtn, ...(viewMode === 'list' ? S.viewBtnActive : {}) }}>一覧</button>
           <button onClick={() => setViewMode('detail')}
             style={{ ...S.viewBtn, ...(viewMode === 'detail' ? S.viewBtnActive : {}) }}>記録</button>
@@ -380,7 +381,7 @@ function InterviewContent() {
           {comboOpen && (
             <div style={S.comboList}>
               {filtered.map((c) => (
-                <div key={c.id} onMouseDown={() => { setSelectedId(c.id); setSearch(c.name); setComboOpen(false); setViewMode('detail') }}
+                <div key={c.id} onMouseDown={() => { setSelectedId(c.id); setSearch(c.name); setComboOpen(false); setInterviewDate(todayStr()); setViewMode('detail') }}
                   style={{ ...S.comboItem, ...(c.id === selectedId ? S.comboItemActive : {}) }}>
                   {c.name}
                 </div>
@@ -427,7 +428,9 @@ function InterviewContent() {
             setSelectedId(castId)
             if (c) setSearch(c.name)
             const latestDate = (byCast.get(castId) ?? []).slice().sort((a, b) => b.interview_date.localeCompare(a.interview_date))[0]?.interview_date
-            if (latestDate) setInterviewDate(latestDate)
+            // 履歴があればその最新日、無ければ本日。前に開いたキャストの日付が残って
+            // 新規面談が過去日で作られるのを防ぐ（キャスト切替で必ず日付を確定させる）
+            setInterviewDate(latestDate ?? todayStr())
             setViewMode('detail')
           }
           return (
