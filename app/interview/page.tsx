@@ -54,7 +54,19 @@ interface InterviewRow {
   interviewer_name: string | null
   answers: InterviewAnswers
   is_draft: boolean
+  created_at: string
   updated_at: string
+}
+
+// 面談日(YYYY-MM-DD)から「YYYY年M月」を作る
+const fmtYm = (d: string) => {
+  const [y, m] = d.split('-')
+  return `${y}年${Number(m)}月`
+}
+// ISO日時から M/D（記入日ログ表示用）
+const fmtMd = (iso: string) => {
+  const d = new Date(iso)
+  return `${d.getMonth() + 1}/${d.getDate()}`
 }
 
 interface CastMemo {
@@ -342,6 +354,21 @@ function InterviewContent() {
 
   const setAns = (key: string, value: string | number) => setAnswers((prev) => ({ ...prev, [key]: value }))
 
+  // 月ナビ: 対象月(YYYY-MM)へ移動。その月に面談があればその日を開き、無ければ新規
+  // （当月なら本日、他月ならその月初を面談日に）＝面談は月単位、日は記入日として残る
+  const goToMonth = (ym: string) => {
+    const inMonth = history
+      .filter((iv) => iv.interview_date.startsWith(ym))
+      .sort((a, b) => b.interview_date.localeCompare(a.interview_date))
+    if (inMonth.length > 0) {
+      setInterviewDate(inMonth[0].interview_date)
+    } else {
+      setInterviewDate(ym === todayStr().slice(0, 7) ? todayStr() : `${ym}-01`)
+    }
+  }
+  // いま開いている面談の記入日（created_at）。無ければ新規
+  const currentIv = history.find((iv) => iv.interview_date === interviewDate) ?? null
+
   const photoUrl = selected?.photo_path
     ? supabase.storage.from('cast-photos').getPublicUrl(selected.photo_path).data.publicUrl
     : null
@@ -390,11 +417,17 @@ function InterviewContent() {
             </div>
           )}
         </div>
-        {viewMode === 'detail' && (
+        {viewMode === 'detail' && selected && (
           <>
-            <label style={S.dateLabel}>面談日</label>
-            <input type="date" value={interviewDate} onChange={(e) => setInterviewDate(e.target.value)} style={S.dateInput} />
-            {selected && <span style={{ ...S.saveBadge, color: saveState === 'saved' ? T.mint : saveState === 'error' ? '#dc2626' : saveState === 'saving' ? T.sub : T.pink }}>{saveText}</span>}
+            <div style={S.monthNav}>
+              <button onClick={() => goToMonth(shiftMonth(interviewDate.slice(0, 7), -1))} style={S.monthNavBtn}>‹</button>
+              <span style={S.monthNavLabel}>{fmtYm(interviewDate)}の面談</span>
+              <button onClick={() => goToMonth(shiftMonth(interviewDate.slice(0, 7), 1))} style={S.monthNavBtn}>›</button>
+            </div>
+            <span style={S.kinyuLabel}>
+              {currentIv ? `記入日 ${fmtMd(currentIv.created_at)}` : '新規'}
+            </span>
+            <span style={{ ...S.saveBadge, color: saveState === 'saved' ? T.mint : saveState === 'error' ? '#dc2626' : saveState === 'saving' ? T.sub : T.pink }}>{saveText}</span>
           </>
         )}
       </div>
@@ -655,8 +688,8 @@ function InterviewContent() {
                       {history.map((iv) => (
                         <button key={iv.id} onClick={() => setInterviewDate(iv.interview_date)}
                           style={{ ...S.histItem, ...(iv.interview_date === interviewDate ? S.histItemActive : {}) }}>
-                          <span style={S.histDate}>{iv.interview_date}</span>
-                          <span style={S.histBy}>{iv.interviewer_name ?? ''}</span>
+                          <span style={S.histDate}>{fmtYm(iv.interview_date)}</span>
+                          <span style={S.histBy}>記入 {fmtMd(iv.created_at)}{iv.interviewer_name ? `・${iv.interviewer_name}` : ''}</span>
                         </button>
                       ))}
                     </div>
@@ -706,8 +739,10 @@ const S: Record<string, CSSProperties> = {
   comboItem: { padding: '9px 14px', fontSize: 14, cursor: 'pointer', borderBottom: `1px solid ${T.panel}` },
   comboItemActive: { background: '#FDEEF4', color: T.pink, fontWeight: 700 },
   comboEmpty: { padding: '10px 14px', fontSize: 13, color: T.faint },
-  dateLabel: { fontSize: 12, color: T.sub, fontWeight: 700, letterSpacing: 0.5 },
-  dateInput: { padding: '8px 10px', borderRadius: 10, border: `1px solid ${T.line}`, fontSize: 14, background: T.card, fontFamily: T.mono },
+  monthNav: { display: 'flex', alignItems: 'center', gap: 4, background: T.card, border: `1px solid ${T.line}`, borderRadius: 10, padding: '4px 6px' },
+  monthNavBtn: { width: 28, height: 28, borderRadius: 7, border: 'none', background: 'none', color: T.sub, fontSize: 16, fontWeight: 800, cursor: 'pointer', lineHeight: 1 },
+  monthNavLabel: { fontSize: 15, fontWeight: 800, color: T.ink, minWidth: 130, textAlign: 'center', letterSpacing: 0.3 },
+  kinyuLabel: { fontSize: 12, fontWeight: 700, color: T.faint, fontFamily: T.mono, letterSpacing: 0.3 },
   saveBadge: { fontSize: 12, fontWeight: 800, marginLeft: 'auto', letterSpacing: 0.3 },
   empty: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, padding: '90px 20px', color: T.faint, fontSize: 15 },
   emptyMark: { fontSize: 40, color: T.line },
