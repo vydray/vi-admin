@@ -106,7 +106,7 @@ export async function runDailyCheck(
       .lte('business_date', to),
     supabase
       .from('attendance')
-      .select('store_id, date, cast_name, status, check_in_datetime, check_out_datetime, daily_payment')
+      .select('store_id, date, cast_name, status, check_in_datetime, check_out_datetime, daily_payment, check_in_photo_url')
       .gte('date', from)
       .lte('date', to),
     supabase
@@ -253,6 +253,21 @@ export async function runDailyCheck(
   }
   anomalyFindings.sort((a, b) => (a.date < b.date ? 1 : -1))
 
+  // ⑧⑨ 共通: cast_id→name と 内勤(admin/manager)判定。
+  // attendance は cast_id ではなく cast_name 参照なので store_id|name をキーにする
+  // （同名キャストが別店舗に存在するため store_id を必ず含める）。
+  // 内勤は衣装を着ない・出勤写真の対象外のため、衣装/写真チェックから除外する。
+  const { data: castsData } = await supabase
+    .from('casts')
+    .select('id, store_id, name, is_admin, is_manager')
+    .in('store_id', targetStoreIds)
+  const castById = new Map<number, { store_id: number; name: string }>()
+  const staffKeys = new Set<string>()
+  for (const c of castsData || []) {
+    castById.set(c.id, { store_id: c.store_id, name: c.name })
+    if (c.is_admin || c.is_manager) staffKeys.add(`${c.store_id}|${c.name}`)
+  }
+
   // ---- ⑧ 勤怠登録の不備（勤怠未登録 / 衣装未選択）----
   // 他項目と違い「月初〜昨日」を通して見る。理由:
   //  - 快晟の運用リマインドが「今月の頭から見直し」であり、月末の報酬計算前に潰す必要がある
@@ -268,16 +283,12 @@ export async function runDailyCheck(
 
   // 月初 = 当日 の場合（毎月1日）、対象期間が空になるのでスキップ
   if (monthStart <= checkTo) {
-    const [shiftsRes, castsRes, attMonthRes, uniformSetRes] = await Promise.all([
+    const [shiftsRes, attMonthRes, uniformSetRes] = await Promise.all([
       supabase
         .from('shifts')
         .select('store_id, date, cast_id, is_cancelled')
         .gte('date', monthStart)
         .lte('date', checkTo),
-      supabase
-        .from('casts')
-        .select('id, store_id, name, is_admin, is_manager')
-        .in('store_id', targetStoreIds),
       supabase
         .from('attendance')
         .select('store_id, date, cast_name, status, costume_id')
@@ -285,16 +296,6 @@ export async function runDailyCheck(
         .lte('date', checkTo),
       supabase.from('store_uniform_settings').select('store_id, is_enabled'),
     ])
-
-    const castById = new Map<number, { store_id: number; name: string }>()
-    // 内勤(admin/manager)は衣装を着ないため衣装チェックから除外する。
-    // attendance は cast_id ではなく cast_name 参照なので store_id|name をキーにする
-    // （同名キャストが別店舗に存在するため store_id を必ず含める）。
-    const staffKeys = new Set<string>()
-    for (const c of castsRes.data || []) {
-      castById.set(c.id, { store_id: c.store_id, name: c.name })
-      if (c.is_admin || c.is_manager) staffKeys.add(`${c.store_id}|${c.name}`)
-    }
 
     const attMonth = (attMonthRes.data || []).filter(a => inScope(a.store_id))
     const attKeys = new Set(attMonth.map(a => `${a.store_id}|${a.date}|${a.cast_name}`))
@@ -337,6 +338,72 @@ export async function runDailyCheck(
     costumeMissing.sort((a, b) => (a.date < b.date ? 1 : -1))
   }
 
+  // ---- ⑨ 出勤写真の不備（全店。全店で出勤写真を必須化する運用のため）----
+  // 窓は「月初」ではなく直近3日（当日除外 = from〜checkTo）。写真を運用していない店は
+  // 全員が該当するため月初窓だと毎日200件超が並び他の異常が埋もれる。日次ナッジにする。
+  // A. 写真なし: 出勤系なのに check_in_photo_url が無い。内勤除外。
+  //    その日の出勤全員が写真なし（=写真を撮らない店）なら1行に集約、一部だけなら氏名を出す。
+  // B. 時刻ズレ: 写真あり かつ ファイル名の撮影時刻(_checkin_<epochMs>.jpg)と
+  //    記録された出勤時刻(check_in_datetime, JST壁時計)が60分以上ズレ。
+  const PHOTO_GAP_MS = 60 * 60 * 1000
+  const photoMissing: Finding[] = []
+  const photoTimeGap: Finding[] = []
+
+  // 対象: 出勤系・内勤除外・[from, checkTo]（当日=営業中は除外）
+  const photoTargets = attendance.filter(
+    a =>
+      a.date <= checkTo &&
+      PRESENT_STATUSES.includes(a.status) &&
+      !staffKeys.has(`${a.store_id}|${a.cast_name}`)
+  )
+
+  // A. 写真なし（store|date 単位で集計）
+  const photoByDay = new Map<string, { total: number; missing: string[] }>()
+  for (const a of photoTargets) {
+    const k = `${a.store_id}|${a.date}`
+    const e = photoByDay.get(k) ?? { total: 0, missing: [] }
+    e.total++
+    if (!a.check_in_photo_url) e.missing.push(a.cast_name)
+    photoByDay.set(k, e)
+  }
+  for (const [k, e] of photoByDay) {
+    if (e.missing.length === 0) continue
+    const [sidStr, d] = k.split('|')
+    const sid = Number(sidStr)
+    const msg =
+      e.missing.length === e.total
+        ? `出勤${e.total}人 全員写真なし`
+        : `写真なし: ${e.missing.slice(0, 6).join('・')}${e.missing.length > 6 ? ` ほか${e.missing.length - 6}人` : ''}`
+    photoMissing.push({ store_id: sid, store_name: sname(sid), date: d, message: msg })
+  }
+  photoMissing.sort((a, b) => (a.date < b.date ? 1 : -1))
+
+  // B. 時刻ズレ（写真があるものだけ）
+  for (const a of photoTargets) {
+    if (!a.check_in_photo_url || !a.check_in_datetime) continue
+    const m = /_checkin_(\d+)\.jpg/.exec(a.check_in_photo_url)
+    if (!m) continue
+    const photoMs = Number(m[1])
+    if (!Number.isFinite(photoMs)) continue
+    // check_in_datetime は timestamp(without tz)で JST 壁時計を保持。JSでUTC誤解釈しないよう
+    // 明示的に +09:00 を付けて UTC instant に変換し、写真epoch(UTC)と比較する。
+    const iso = String(a.check_in_datetime).replace(' ', 'T')
+    const recordedMs = new Date(`${iso}+09:00`).getTime()
+    if (!Number.isFinite(recordedMs)) continue
+    const gapMs = Math.abs(photoMs - recordedMs)
+    if (gapMs > PHOTO_GAP_MS) {
+      const fmt = (ms: number) =>
+        new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit' }).format(new Date(ms))
+      photoTimeGap.push({
+        store_id: a.store_id,
+        store_name: sname(a.store_id),
+        date: a.date,
+        message: `出勤写真の時刻ズレ ${a.cast_name}（記録${fmt(recordedMs)}／写真${fmt(photoMs)}）`,
+      })
+    }
+  }
+  photoTimeGap.sort((a, b) => (a.date < b.date ? 1 : -1))
+
   const sev = (findings: Finding[], onHit: Severity): Severity =>
     findings.length > 0 ? onHit : 'ok'
 
@@ -350,6 +417,9 @@ export async function runDailyCheck(
     // ⑧ は月初〜昨日窓のため、ラベルに期間を明示する（他項目は from〜to の3日窓）
     { key: 'attendance_gap', label: '勤怠未登録（今月分）', severity: sev(attendanceGaps, 'warning'), findings: attendanceGaps },
     { key: 'costume_missing', label: '衣装未選択（今月分・時給に影響）', severity: sev(costumeMissing, 'warning'), findings: costumeMissing },
+    // ⑨ は直近3日窓（当日除外）。写真なしは日別サマリ、時刻ズレは個人単位。
+    { key: 'checkin_photo_missing', label: '出勤写真なし（直近3日）', severity: sev(photoMissing, 'warning'), findings: photoMissing },
+    { key: 'checkin_photo_time', label: '出勤写真の時刻ズレ（直近3日）', severity: sev(photoTimeGap, 'warning'), findings: photoTimeGap },
   ]
 
   return { from, to, results }

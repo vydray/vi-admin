@@ -198,3 +198,22 @@ WHERE a.store_id IN (SELECT store_id FROM store_uniform_settings WHERE is_enable
 - Mary Mare は衣装クラスが時給に直結する（store7 の報酬設定284件中239件が `use_uniform_based_wage=true`）。**衣装未選択は見た目ではなく報酬計算の実害**。
 
 **検証結果（2026-07-17 実行）**: store1=0件 / store2=0件 / store7=勤怠未登録9件・衣装未選択10件。
+
+### ⑨ 出勤写真の不備（写真なし / 時刻ズレ）
+
+全店対象（「全店で出勤写真を必須化する」方針）。**窓は直近3日（当日除外）**。⑧と違い月初窓にしない理由: 写真を運用していない店(2026-07 時点で MistressMirage / Mary Mare)は全出勤が該当し、月初窓だと毎日200件超が並び他の異常が埋もれるため。直近3日の日次ナッジにする。内勤(admin/manager)は写真対象外なので除外。
+
+#### A. 写真なし（`check_in_photo_url` が空）
+出勤系(出勤・遅刻・早退・リクエスト出勤)なのに写真URLが無い。**(store, date) 単位で集計**し、
+- その日の出勤者が**全員写真なし**（＝写真を撮らない店）→ 1行に集約: `出勤N人 全員写真なし`
+- **一部だけ**なし → 氏名を出す（誰に撮らせるかが分かる）: `写真なし: A・B・C`
+
+#### B. 時刻ズレ（写真の撮影時刻と記録出勤時刻の乖離）
+`check_in_photo_url` のファイル名は **`{store_id}/{date}/{cast_id}_checkin_{epochMs}.jpg`** 形式で、`_checkin_` と `.jpg` の間が**撮影時刻の Unix ミリ秒（UTC instant）**。これと記録された `check_in_datetime` を比較し、**60分以上ズレ**たら氏名で通知。
+
+**重要（時差の罠）**: `check_in_datetime` は `timestamp without time zone` に **JST 壁時計**を保持している。JS の `new Date("2026-07-15T17:00:00")` はローカル(Vercel=UTC)解釈で9時間ズレるため、必ず **`+09:00` を明示**して UTC instant に変換してから写真epochと比較する。誤ると全件が約9時間ズレで誤検知する。
+
+**検証（2026-07-18 基準・直近3日）**:
+- Memorable: 写真なし(一部)を氏名で3日分、時刻ズレ1件（まる 記録17:00／写真19:02 の2時間ズレを検出）。
+- MistressMirage / Mary Mare: 「出勤N人 全員写真なし」を日別に集約（写真運用なしのため）。
+- 時差補正が正しく効き、正常な出勤（写真≒記録）は誤検知ゼロ。
