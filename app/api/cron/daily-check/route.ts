@@ -18,6 +18,10 @@ async function validateSuperAdmin(): Promise<boolean> {
   return requireSuperAdmin(session)
 }
 
+// 1項目あたりの表示上限。勤怠未登録/衣装未選択は「全部直す」ための一覧なので
+// 打ち切ると目的を果たせない。全体は下の1900字で頭打ちにする（Discord上限2000字）。
+const MAX_FINDINGS_PER_CHECK = 20
+
 // Discord 用にレポートを整形（その店の findings のみ含まれている前提）
 function formatForDiscord(report: DailyCheckReport, storeName: string, isTest: boolean): string {
   const sevIcon = (sev: string) => (sev === 'critical' ? '🔴' : sev === 'warning' ? '🟡' : '✅')
@@ -35,11 +39,12 @@ function formatForDiscord(report: DailyCheckReport, storeName: string, isTest: b
   for (const r of hit) {
     lines.push('')
     lines.push(`${sevIcon(r.severity)} ${r.label}（${r.findings.length}件）`)
-    // 1項目あたり最大8件まで表示（長すぎ防止）
-    for (const f of r.findings.slice(0, 8)) {
+    for (const f of r.findings.slice(0, MAX_FINDINGS_PER_CHECK)) {
       lines.push(`・${f.date} ${f.message}`)
     }
-    if (r.findings.length > 8) lines.push(`…ほか${r.findings.length - 8}件`)
+    if (r.findings.length > MAX_FINDINGS_PER_CHECK) {
+      lines.push(`…ほか${r.findings.length - MAX_FINDINGS_PER_CHECK}件`)
+    }
   }
   if (okLabels.length > 0) {
     lines.push('')

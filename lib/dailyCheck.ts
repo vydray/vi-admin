@@ -13,6 +13,7 @@ import { getSupabaseServerClient } from '@/lib/supabase'
  *  ⑤ 釣銭不足（翌日の小銭が足りない）
  *  ⑥ 退勤打刻漏れ
  *  ⑦ 不明金・未収・不明伝票
+ *  ⑧ 勤怠登録の不備（勤怠未登録 / 衣装未選択）※他項目と違い「月初〜昨日」窓
  */
 
 export type Severity = 'critical' | 'warning' | 'ok'
@@ -84,14 +85,18 @@ export async function runDailyCheck(
   // ---- データ取得（read-only） ----
   const [ordersRes, reportsRes, cashRes, attRes, itemsRes] = await Promise.all([
     supabase
+      // 現金売上は daily_reports.cash_sales 列を使わない。この列は vi-admin では書き込まず
+      // POS/日報フロー依存で店により未入力（Mary Mare は 0 のまま）。ホーム(app/page.tsx)と
+      // 同様に payments から算出する（cash_amount - change_amount）。
       .from('orders')
-      .select('store_id, order_date')
+      .select('store_id, order_date, payments(cash_amount, change_amount)')
       .is('deleted_at', null)
       .gte('order_date', from)
       .lt('order_date', `${to}T23:59:59`),
     supabase
+      // cash_sales 列は上記理由で参照しない（現金売上は payments から算出）
       .from('daily_reports')
-      .select('store_id, business_date, cash_sales, expense_amount, unpaid_amount, unknown_amount, unknown_receipt')
+      .select('store_id, business_date, expense_amount, unpaid_amount, unknown_amount, unknown_receipt')
       .gte('business_date', from)
       .lte('business_date', to),
     supabase
@@ -123,11 +128,18 @@ export async function runDailyCheck(
   const cashSet = new Set(cashCounts.map(c => `${c.store_id}|${c.business_date}`))
   const reportMap = new Map(reports.map(r => [`${r.store_id}|${r.business_date}`, r]))
 
-  // 営業日 Set（orders から store_id|date を抽出。order_date は timestamp なので date 部分を取る）
+  // 営業日 Set + 現金売上マップ（store_id|date）
+  // 現金売上 = Σ(payments.cash_amount - change_amount)。ホーム app/page.tsx:919 と同一ロジック。
+  // （1注文=1payment行前提で payments[0] を採用。order_date は timestamp なので date 部分を取る）
   const bizDays = new Set<string>()
+  const cashSalesMap = new Map<string, number>()
   for (const o of orders) {
     const d = String(o.order_date).slice(0, 10)
-    bizDays.add(`${o.store_id}|${d}`)
+    const k = `${o.store_id}|${d}`
+    bizDays.add(k)
+    const payment = Array.isArray(o.payments) ? o.payments[0] : o.payments
+    const cash = (Number(payment?.cash_amount) || 0) - (Number(payment?.change_amount) || 0)
+    if (cash !== 0) cashSalesMap.set(k, (cashSalesMap.get(k) || 0) + cash)
   }
 
   // ---- ① 入力漏れ ----
@@ -158,7 +170,7 @@ export async function runDailyCheck(
     const dp = dpMap.get(k) || 0
     const theoretical =
       (c.register_amount || 0) +
-      Number(r.cash_sales || 0) -
+      (cashSalesMap.get(k) || 0) -
       dp -
       Number(r.expense_amount || 0) -
       Number(r.unpaid_amount || 0) -
@@ -241,6 +253,90 @@ export async function runDailyCheck(
   }
   anomalyFindings.sort((a, b) => (a.date < b.date ? 1 : -1))
 
+  // ---- ⑧ 勤怠登録の不備（勤怠未登録 / 衣装未選択）----
+  // 他項目と違い「月初〜昨日」を通して見る。理由:
+  //  - 快晟の運用リマインドが「今月の頭から見直し」であり、月末の報酬計算前に潰す必要がある
+  //  - 直っていない古い漏れ（例: 月初の未登録）を3日窓だと取りこぼす。直るまで毎日出続ける
+  // 当日は営業中で入力途中のため除外する（当日を入れると毎日必ず誤検知が出る）。
+  const monthStart = `${todayStr.slice(0, 7)}-01`
+  const yesterdayDate = new Date(today)
+  yesterdayDate.setDate(yesterdayDate.getDate() - 1)
+  const checkTo = toDateStr(yesterdayDate)
+
+  const attendanceGaps: Finding[] = []
+  const costumeMissing: Finding[] = []
+
+  // 月初 = 当日 の場合（毎月1日）、対象期間が空になるのでスキップ
+  if (monthStart <= checkTo) {
+    const [shiftsRes, castsRes, attMonthRes, uniformSetRes] = await Promise.all([
+      supabase
+        .from('shifts')
+        .select('store_id, date, cast_id, is_cancelled')
+        .gte('date', monthStart)
+        .lte('date', checkTo),
+      supabase
+        .from('casts')
+        .select('id, store_id, name, is_admin, is_manager')
+        .in('store_id', targetStoreIds),
+      supabase
+        .from('attendance')
+        .select('store_id, date, cast_name, status, costume_id')
+        .gte('date', monthStart)
+        .lte('date', checkTo),
+      supabase.from('store_uniform_settings').select('store_id, is_enabled'),
+    ])
+
+    const castById = new Map<number, { store_id: number; name: string }>()
+    // 内勤(admin/manager)は衣装を着ないため衣装チェックから除外する。
+    // attendance は cast_id ではなく cast_name 参照なので store_id|name をキーにする
+    // （同名キャストが別店舗に存在するため store_id を必ず含める）。
+    const staffKeys = new Set<string>()
+    for (const c of castsRes.data || []) {
+      castById.set(c.id, { store_id: c.store_id, name: c.name })
+      if (c.is_admin || c.is_manager) staffKeys.add(`${c.store_id}|${c.name}`)
+    }
+
+    const attMonth = (attMonthRes.data || []).filter(a => inScope(a.store_id))
+    const attKeys = new Set(attMonth.map(a => `${a.store_id}|${a.date}|${a.cast_name}`))
+
+    // A. 勤怠未登録: シフトが入っている(キャンセル済みを除く)のに勤怠レコードが無い。
+    //    欠勤(当欠/公欠/事前欠勤)は勤怠レコード自体は存在するのでここには出ない。
+    for (const s of shiftsRes.data || []) {
+      if (s.is_cancelled) continue
+      if (!inScope(s.store_id)) continue
+      const c = castById.get(s.cast_id)
+      if (!c) continue
+      if (attKeys.has(`${s.store_id}|${s.date}|${c.name}`)) continue
+      attendanceGaps.push({
+        store_id: s.store_id,
+        store_name: sname(s.store_id),
+        date: s.date,
+        message: `勤怠未登録 ${c.name}（シフトあり）`,
+      })
+    }
+    attendanceGaps.sort((a, b) => (a.date < b.date ? 1 : -1))
+
+    // B. 衣装未選択: 衣装を運用している店舗のみ対象（store_uniform_settings.is_enabled）。
+    //    店ごとにルールが違い、衣装マスタを持たない店で全行を誤検知させないため。
+    //    Mary Mare は衣装クラス(A/B/C)が時給に直結する(use_uniform_based_wage)ので実害あり。
+    const uniformStores = new Set(
+      (uniformSetRes.data || []).filter(u => u.is_enabled).map(u => u.store_id)
+    )
+    for (const a of attMonth) {
+      if (!uniformStores.has(a.store_id)) continue
+      if (!PRESENT_STATUSES.includes(a.status)) continue // 欠勤系は衣装不要
+      if (a.costume_id != null) continue
+      if (staffKeys.has(`${a.store_id}|${a.cast_name}`)) continue // 内勤は衣装なしが正常
+      costumeMissing.push({
+        store_id: a.store_id,
+        store_name: sname(a.store_id),
+        date: a.date,
+        message: `衣装未選択 ${a.cast_name}（${a.status}）`,
+      })
+    }
+    costumeMissing.sort((a, b) => (a.date < b.date ? 1 : -1))
+  }
+
   const sev = (findings: Finding[], onHit: Severity): Severity =>
     findings.length > 0 ? onHit : 'ok'
 
@@ -251,6 +347,9 @@ export async function runDailyCheck(
     { key: 'small_cash', label: '釣銭不足', severity: sev(smallCashFindings, 'warning'), findings: smallCashFindings },
     { key: 'checkout_missing', label: '退勤打刻漏れ', severity: sev(checkoutMissing, 'warning'), findings: checkoutMissing },
     { key: 'anomaly', label: '不明金・未収・不明伝票', severity: sev(anomalyFindings, 'warning'), findings: anomalyFindings },
+    // ⑧ は月初〜昨日窓のため、ラベルに期間を明示する（他項目は from〜to の3日窓）
+    { key: 'attendance_gap', label: '勤怠未登録（今月分）', severity: sev(attendanceGaps, 'warning'), findings: attendanceGaps },
+    { key: 'costume_missing', label: '衣装未選択（今月分・時給に影響）', severity: sev(costumeMissing, 'warning'), findings: costumeMissing },
   ]
 
   return { from, to, results }
