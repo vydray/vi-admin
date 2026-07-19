@@ -58,6 +58,7 @@ function ExpensesPageContent() {
     entered_by: '',
   })
   const [saving, setSaving] = useState(false)
+  const [exportingCsv, setExportingCsv] = useState(false)
   const [uploadingImage, setUploadingImage] = useState(false)
   const [editingExpenseId, setEditingExpenseId] = useState<number | null>(null)
   const [selectedExpense, setSelectedExpense] = useState<ExpenseWithCategory | null>(null)
@@ -874,6 +875,212 @@ function ExpensesPageContent() {
     }
   }
 
+  // 経費レジ出納帳CSV出力（選択月・小口現金の入出金台帳フォーマット）
+  const exportLedgerCSV = async () => {
+    setExportingCsv(true)
+    try {
+      const monthStart = format(startOfMonth(selectedMonth), 'yyyy-MM-dd')
+      const monthEnd = format(endOfMonth(selectedMonth), 'yyyy-MM-dd')
+      const monthLabel = format(selectedMonth, 'yyyy年MM月')
+
+      // 当月の小口取引(出金は経費詳細付き) / 業務日報入金 / 前月末残高(繰越金) / 当月の金種
+      const [
+        { data: txData, error: txErr },
+        { data: drData, error: drErr },
+        { data: prevTx },
+        { data: prevDr },
+        { data: checkData },
+      ] = await Promise.all([
+        supabase
+          .from('petty_cash_transactions')
+          .select('id, transaction_date, transaction_type, amount, description, expense:expenses(vendor, usage_purpose, description, category:expense_categories(name))')
+          .eq('store_id', storeId)
+          .gte('transaction_date', monthStart)
+          .lte('transaction_date', monthEnd),
+        supabase
+          .from('daily_reports')
+          .select('id, business_date, expense_amount')
+          .eq('store_id', storeId)
+          .gt('expense_amount', 0)
+          .gte('business_date', monthStart)
+          .lte('business_date', monthEnd),
+        supabase
+          .from('petty_cash_transactions')
+          .select('transaction_type, amount')
+          .eq('store_id', storeId)
+          .lt('transaction_date', monthStart),
+        supabase
+          .from('daily_reports')
+          .select('expense_amount')
+          .eq('store_id', storeId)
+          .gt('expense_amount', 0)
+          .lt('business_date', monthStart),
+        supabase
+          .from('petty_cash_checks')
+          .select('*')
+          .eq('store_id', storeId)
+          .gte('check_date', monthStart)
+          .lte('check_date', monthEnd)
+          .order('check_date', { ascending: false })
+          .limit(1),
+      ])
+
+      if (txErr) throw txErr
+      if (drErr) throw drErr
+
+      // 繰越金 = 前月末のシステム残高(monthStartより前の全取引積み上げ)
+      let carryover = 0
+      for (const t of prevTx || []) carryover += t.transaction_type === 'withdrawal' ? -t.amount : t.amount
+      for (const d of prevDr || []) carryover += d.expense_amount
+
+      // 明細行を組み立て
+      type Row = { date: string; vendor: string; detail: string; category: string; method: string; plus: number | null; minus: number | null }
+      const detailRows: Row[] = []
+      for (const tx of txData || []) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const exp = (tx as any).expense
+        if (tx.transaction_type === 'withdrawal') {
+          detailRows.push({
+            date: tx.transaction_date,
+            vendor: exp?.vendor || '',
+            detail: exp?.usage_purpose || exp?.description || tx.description || '',
+            category: exp?.category?.name || '',
+            method: '現金',
+            plus: null,
+            minus: tx.amount,
+          })
+        } else {
+          detailRows.push({
+            date: tx.transaction_date,
+            vendor: tx.description || '小口現金補充',
+            detail: tx.description || '小口現金補充',
+            category: tx.transaction_type === 'adjustment' ? '調整' : '入金',
+            method: '現金',
+            plus: tx.amount,
+            minus: null,
+          })
+        }
+      }
+      for (const dr of drData || []) {
+        detailRows.push({
+          date: dr.business_date,
+          vendor: '現金回収より',
+          detail: '現金回収より経費レジに入金',
+          category: '入金',
+          method: '現金',
+          plus: dr.expense_amount,
+          minus: null,
+        })
+      }
+      // 日付昇順(同日は入金→出金)
+      detailRows.sort((a, b) => {
+        if (a.date !== b.date) return a.date.localeCompare(b.date)
+        return (a.plus != null ? 0 : 1) - (b.plus != null ? 0 : 1)
+      })
+
+      // 繰越行を先頭に、残高を積み上げ
+      const rows: (Row & { balance: number })[] = []
+      let running = carryover
+      rows.push({ date: monthStart, vendor: '現金繰越金', detail: '現金繰越金', category: '繰越金', method: '現金', plus: carryover, minus: null, balance: running })
+      for (const r of detailRows) {
+        running += (r.plus || 0) - (r.minus || 0)
+        rows.push({ ...r, balance: running })
+      }
+
+      const totalPlus = rows.reduce((s, r) => s + (r.plus || 0), 0)
+      const totalMinus = rows.reduce((s, r) => s + (r.minus || 0), 0)
+
+      // カテゴリ別集計(出現順を維持)
+      const catOrder: string[] = []
+      const catMap = new Map<string, { plus: number; minus: number }>()
+      for (const r of rows) {
+        if (!catMap.has(r.category)) {
+          catMap.set(r.category, { plus: 0, minus: 0 })
+          catOrder.push(r.category)
+        }
+        const c = catMap.get(r.category)!
+        c.plus += r.plus || 0
+        c.minus += r.minus || 0
+      }
+
+      // CSV組み立て
+      const esc = (v: string | number | null | undefined) => {
+        if (v === null || v === undefined || v === '') return ''
+        return `"${String(v).replace(/"/g, '""')}"`
+      }
+      const num = (v: number | null | undefined) => (v === null || v === undefined ? '' : String(v))
+      const slash = (s: string) => s.replace(/-/g, '/')
+
+      const lines: string[] = []
+      lines.push(esc(`経費レジ出納帳　${storeName}　${monthLabel}`))
+      lines.push('')
+      lines.push(['日付', '購入場所', '詳細', 'カテゴリ', 'PayPay銀行or現金', '＋', '－', '残高'].map(esc).join(','))
+      for (const r of rows) {
+        lines.push([
+          esc(slash(r.date)), esc(r.vendor), esc(r.detail), esc(r.category), esc(r.method),
+          num(r.plus), num(r.minus), num(r.balance),
+        ].join(','))
+      }
+      lines.push(['', '', '', '', esc('合計'), num(totalPlus), num(totalMinus), num(totalPlus - totalMinus)].join(','))
+
+      // カテゴリ別集計ブロック
+      lines.push('')
+      lines.push(esc('【カテゴリ別集計】'))
+      lines.push(['カテゴリ', '＋', '－'].map(esc).join(','))
+      for (const cat of catOrder) {
+        const c = catMap.get(cat)!
+        lines.push([esc(cat), num(c.plus), num(c.minus)].join(','))
+      }
+      lines.push([esc('合計'), num(totalPlus), num(totalMinus)].join(','))
+
+      // 金種集計ブロック(当月の残高確認があれば)
+      lines.push('')
+      const check = checkData?.[0]
+      if (check) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const ck = check as any
+        lines.push(esc(`【金種集計】（${slash(ck.check_date)} 残高確認）`))
+        lines.push(['金種', '枚数', '金額'].map(esc).join(','))
+        const denoms: [number, string, string][] = [
+          [10000, '1万円札', 'yen10000_count'],
+          [5000, '5千円札', 'yen5000_count'],
+          [1000, '千円札', 'yen1000_count'],
+          [500, '500円玉', 'yen500_count'],
+          [100, '100円玉', 'yen100_count'],
+          [50, '50円玉', 'yen50_count'],
+          [10, '10円玉', 'yen10_count'],
+          [5, '5円玉', 'yen5_count'],
+          [1, '1円玉', 'yen1_count'],
+        ]
+        for (const [unit, label, key] of denoms) {
+          const cnt = Number(ck[key] || 0)
+          lines.push([esc(label), num(cnt), num(cnt * unit)].join(','))
+        }
+        lines.push([esc('現物合計'), '', num(Number(ck.actual_balance || 0))].join(','))
+        lines.push([esc('システム残高'), '', num(Number(ck.system_balance || 0))].join(','))
+        lines.push([esc('差額'), '', num(Number(ck.difference || 0))].join(','))
+      } else {
+        lines.push(esc(`【金種集計】${monthLabel}の残高確認記録なし`))
+      }
+
+      // BOM付きUTF-8でExcelの文字化けを防ぐ
+      const csv = '﻿' + lines.join('\n')
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `経費レジ出納帳_${storeName}_${monthLabel}.csv`
+      link.click()
+      URL.revokeObjectURL(url)
+      toast.success('CSVをダウンロードしました')
+    } catch (err) {
+      console.error('CSV出力エラー:', err)
+      toast.error('CSVの出力に失敗しました')
+    } finally {
+      setExportingCsv(false)
+    }
+  }
+
   // 入出金履歴（petty_cash_transactions + daily_reports を統合 + 残高付き）
   const mergedTransactions = useMemo(() => {
     const items = [
@@ -1054,6 +1261,9 @@ function ExpensesPageContent() {
 
           {/* 経費追加ボタン */}
           <div style={styles.actionBar}>
+            <Button variant="success" onClick={exportLedgerCSV} disabled={exportingCsv} style={{ marginRight: '8px' }}>
+              {exportingCsv ? '出力中...' : '📄 出納帳CSV'}
+            </Button>
             <Button onClick={() => setShowAddForm(true)}>
               + 経費を追加
             </Button>
